@@ -2,6 +2,8 @@
 package org.glavo.scssfx.internal.evaluate;
 
 import org.glavo.scssfx.SourceSpan;
+import org.glavo.scssfx.internal.callable.Callable;
+import org.glavo.scssfx.internal.callable.UserDefinedCallable;
 import org.glavo.scssfx.internal.value.SassValue;
 import org.glavo.scssfx.internal.value.SassValueException;
 import org.jetbrains.annotations.ApiStatus;
@@ -17,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Supplier;
 
 /// Stores Sass lexical bindings and their dynamic assignment semantics.
 ///
@@ -27,8 +30,17 @@ import java.util.Objects;
 @ApiStatus.Internal
 @NotNullByDefault
 public final class Environment {
-    /// Contains lexical frames from the global frame through the current frame.
+    /// Contains lexical variable frames from the global frame through the current frame.
     private final ArrayList<LinkedHashMap<String, VariableBinding>> variableFrames;
+
+    /// Contains lexical function frames parallel to the variable frames.
+    private final ArrayList<LinkedHashMap<String, Callable>> functionFrames;
+
+    /// Contains lexical mixin frames parallel to the variable frames.
+    private final ArrayList<LinkedHashMap<String, Callable>> mixinFrames;
+
+    /// Contains the active content block callable, or {@code null}.
+    private @Nullable UserDefinedCallable content;
 
     /// Contains active scope handles in last-opened-first order.
     private final Deque<Scope> activeScopes;
@@ -40,15 +52,31 @@ public final class Environment {
     public Environment() {
         this.variableFrames = new ArrayList<>();
         this.variableFrames.add(new LinkedHashMap<>());
+        this.functionFrames = new ArrayList<>();
+        this.functionFrames.add(new LinkedHashMap<>());
+        this.mixinFrames = new ArrayList<>();
+        this.mixinFrames.add(new LinkedHashMap<>());
+        this.content = null;
         this.activeScopes = new ArrayDeque<>();
         this.inSemiGlobalScope = true;
     }
 
     /// Creates a closure environment that shares existing frames.
     ///
-    /// @param variableFrames the frames captured by reference
-    private Environment(List<LinkedHashMap<String, VariableBinding>> variableFrames) {
+    /// @param variableFrames the variable frames captured by reference
+    /// @param functionFrames the function frames captured by reference
+    /// @param mixinFrames    the mixin frames captured by reference
+    /// @param content        the captured content callable, or {@code null}
+    private Environment(
+            List<LinkedHashMap<String, VariableBinding>> variableFrames,
+            List<LinkedHashMap<String, Callable>> functionFrames,
+            List<LinkedHashMap<String, Callable>> mixinFrames,
+            @Nullable UserDefinedCallable content
+    ) {
         this.variableFrames = new ArrayList<>(variableFrames);
+        this.functionFrames = new ArrayList<>(functionFrames);
+        this.mixinFrames = new ArrayList<>(mixinFrames);
+        this.content = content;
         this.activeScopes = new ArrayDeque<>();
         this.inSemiGlobalScope = true;
     }
@@ -62,7 +90,7 @@ public final class Environment {
     ///
     /// @return the closure environment
     public Environment closure() {
-        return new Environment(variableFrames);
+        return new Environment(variableFrames, functionFrames, mixinFrames, content);
     }
 
     /// Returns whether the current frame is the global frame.
@@ -73,9 +101,6 @@ public final class Environment {
     }
 
     /// Finds a visible variable binding.
-    ///
-    /// This environment contains lexical frames but no module registry, so a
-    /// non-null namespace is rejected rather than treated as a local name.
     ///
     /// @param name      the normalized variable name without a dollar sign
     /// @param namespace the module namespace, or {@code null} for lexical lookup
@@ -135,11 +160,6 @@ public final class Environment {
 
     /// Assigns a variable according to lexical, semi-global, and explicit-global rules.
     ///
-    /// At root or with {@code global}, this writes frame zero. Otherwise an
-    /// existing outer local is updated. A global binding is shadowed in a
-    /// lexical scope but updated from an effective flow-control scope. A new
-    /// name is always created in the current frame.
-    ///
     /// @param name       the normalized variable name without a dollar sign
     /// @param value      the assigned value
     /// @param originSpan the source that produced the value
@@ -189,14 +209,90 @@ public final class Environment {
         );
     }
 
+    /// Registers a function in the current frame.
+    ///
+    /// @param callable the function callable
+    public void setFunction(Callable callable) {
+        Objects.requireNonNull(callable, "callable");
+        functionFrames.get(functionFrames.size() - 1).put(callable.name(), callable);
+    }
+
+    /// Registers a mixin in the current frame.
+    ///
+    /// @param callable the mixin callable
+    public void setMixin(Callable callable) {
+        Objects.requireNonNull(callable, "callable");
+        mixinFrames.get(mixinFrames.size() - 1).put(callable.name(), callable);
+    }
+
+    /// Finds a visible function.
+    ///
+    /// @param name      the normalized function name
+    /// @param namespace the module namespace, or {@code null}
+    /// @return the function, or {@code null} when absent
+    /// @throws SassValueException if a namespace is supplied
+    public @Nullable Callable getFunction(String name, @Nullable String namespace) {
+        validateName(name);
+        if (namespace != null) {
+            throw missingModule(namespace);
+        }
+        for (var index = functionFrames.size() - 1; index >= 0; index--) {
+            @Nullable Callable callable = functionFrames.get(index).get(name);
+            if (callable != null) {
+                return callable;
+            }
+        }
+        return null;
+    }
+
+    /// Finds a visible mixin.
+    ///
+    /// @param name      the normalized mixin name
+    /// @param namespace the module namespace, or {@code null}
+    /// @return the mixin, or {@code null} when absent
+    /// @throws SassValueException if a namespace is supplied
+    public @Nullable Callable getMixin(String name, @Nullable String namespace) {
+        validateName(name);
+        if (namespace != null) {
+            throw missingModule(namespace);
+        }
+        for (var index = mixinFrames.size() - 1; index >= 0; index--) {
+            @Nullable Callable callable = mixinFrames.get(index).get(name);
+            if (callable != null) {
+                return callable;
+            }
+        }
+        return null;
+    }
+
+    /// Returns the active content block callable.
+    ///
+    /// @return the content callable, or {@code null}
+    public @Nullable UserDefinedCallable content() {
+        return content;
+    }
+
+    /// Runs a body with a temporary content block binding.
+    ///
+    /// @param content the content callable, or {@code null}
+    /// @param body    the body to run
+    /// @param <T>     the result type
+    /// @return the body result
+    public <T> T withContent(@Nullable UserDefinedCallable content, Supplier<T> body) {
+        Objects.requireNonNull(body, "body");
+        var previous = this.content;
+        this.content = content;
+        try {
+            return body.get();
+        } finally {
+            this.content = previous;
+        }
+    }
+
     /// Opens a dynamically scoped assignment mode and optional lexical frame.
     ///
-    /// Flow-control permission is intersected with the enclosing permission.
-    /// This state transition occurs even when {@code createFrame} is false.
-    /// The returned handle must be closed in last-opened-first order.
-    ///
     /// @param semantics   the requested assignment semantics
-    /// @param createFrame whether to push an empty lexical frame
+    /// @param createFrame whether to push empty lexical frames
     /// @return the scope handle
     public Scope scope(ScopeSemantics semantics, boolean createFrame) {
         Objects.requireNonNull(semantics, "semantics");
@@ -205,6 +301,8 @@ public final class Environment {
                 && previousSemiGlobal;
         if (createFrame) {
             variableFrames.add(new LinkedHashMap<>());
+            functionFrames.add(new LinkedHashMap<>());
+            mixinFrames.add(new LinkedHashMap<>());
         }
         var scope = new Scope(this, previousSemiGlobal, createFrame);
         activeScopes.push(scope);
@@ -212,9 +310,6 @@ public final class Environment {
     }
 
     /// Returns an immutable snapshot of global values in declaration order.
-    ///
-    /// Later assignments do not change the returned map. Reassigning an
-    /// existing name does not change its iteration position.
     ///
     /// @return the global value snapshot
     public @Unmodifiable Map<String, SassValue> globalVariablesSnapshot() {
@@ -245,7 +340,7 @@ public final class Environment {
         return -1;
     }
 
-    /// Validates a normalized variable name.
+    /// Validates a normalized name.
     ///
     /// @param name the name to validate
     /// @throws IllegalArgumentException if the name is empty
@@ -270,9 +365,6 @@ public final class Environment {
     }
 
     /// Restores an environment after one dynamic scope.
-    ///
-    /// A handle is idempotent after a successful close. Closing active
-    /// handles out of order is rejected without changing the environment.
     @ApiStatus.Internal
     @NotNullByDefault
     public static final class Scope implements AutoCloseable {
@@ -282,17 +374,13 @@ public final class Environment {
         /// Contains the assignment mode restored on close.
         private final boolean previousSemiGlobal;
 
-        /// Records whether this scope pushed a lexical frame.
+        /// Records whether this scope pushed lexical frames.
         private final boolean createdFrame;
 
         /// Records whether this handle has already restored its environment.
         private boolean closed;
 
         /// Creates an active scope handle.
-        ///
-        /// @param environment        the owning environment
-        /// @param previousSemiGlobal the mode restored on close
-        /// @param createdFrame       whether a lexical frame was pushed
         private Scope(
                 Environment environment,
                 boolean previousSemiGlobal,
@@ -303,11 +391,7 @@ public final class Environment {
             this.createdFrame = createdFrame;
         }
 
-        /// Restores the preceding frame stack and assignment mode.
-        ///
-        /// Repeated calls after a successful close have no effect.
-        ///
-        /// @throws IllegalStateException if a newer scope remains active
+        /// Restores the preceding frame stacks and assignment mode.
         @Override
         public void close() {
             if (closed) {
@@ -319,6 +403,8 @@ public final class Environment {
             environment.activeScopes.pop();
             if (createdFrame) {
                 environment.variableFrames.remove(environment.variableFrames.size() - 1);
+                environment.functionFrames.remove(environment.functionFrames.size() - 1);
+                environment.mixinFrames.remove(environment.mixinFrames.size() - 1);
             }
             environment.inSemiGlobalScope = previousSemiGlobal;
             closed = true;

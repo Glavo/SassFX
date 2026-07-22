@@ -14,17 +14,23 @@ import org.glavo.scssfx.internal.ast.ElseClause;
 import org.glavo.scssfx.internal.ast.ExpressionInterpolationPart;
 import org.glavo.scssfx.internal.ast.ForRule;
 import org.glavo.scssfx.internal.ast.ArgumentList;
+import org.glavo.scssfx.internal.ast.ContentRule;
 import org.glavo.scssfx.internal.ast.FunctionExpression;
+import org.glavo.scssfx.internal.ast.FunctionRule;
 import org.glavo.scssfx.internal.ast.IfRule;
+import org.glavo.scssfx.internal.ast.IncludeRule;
 import org.glavo.scssfx.internal.ast.InterpolatedFunctionExpression;
 import org.glavo.scssfx.internal.ast.Interpolation;
 import org.glavo.scssfx.internal.ast.LegacyIfExpression;
 import org.glavo.scssfx.internal.ast.ListExpression;
 import org.glavo.scssfx.internal.ast.LoudComment;
 import org.glavo.scssfx.internal.ast.MapExpression;
+import org.glavo.scssfx.internal.ast.MixinRule;
 import org.glavo.scssfx.internal.ast.NullExpression;
 import org.glavo.scssfx.internal.ast.NumberExpression;
+import org.glavo.scssfx.internal.ast.ParameterList;
 import org.glavo.scssfx.internal.ast.ParenthesizedExpression;
+import org.glavo.scssfx.internal.ast.ReturnRule;
 import org.glavo.scssfx.internal.ast.SassExpression;
 import org.glavo.scssfx.internal.ast.SassExpressionVisitor;
 import org.glavo.scssfx.internal.ast.SassStatement;
@@ -41,6 +47,7 @@ import org.glavo.scssfx.internal.ast.WhileRule;
 import org.glavo.scssfx.internal.callable.BuiltInCallable;
 import org.glavo.scssfx.internal.callable.Callable;
 import org.glavo.scssfx.internal.callable.PlainCssCallable;
+import org.glavo.scssfx.internal.callable.UserDefinedCallable;
 import org.glavo.scssfx.internal.css.CssComment;
 import org.glavo.scssfx.internal.function.BuiltInFunctions;
 import org.glavo.scssfx.internal.css.CssDeclaration;
@@ -91,8 +98,8 @@ public final class SassEvaluator implements
     private static final Map<String, BuiltInCallable> BUILT_IN_FUNCTIONS =
             BuiltInFunctions.global();
 
-    /// Contains variable bindings for this evaluation.
-    private final Environment environment;
+    /// Contains variable and callable bindings for this evaluation.
+    private Environment environment;
 
     /// Contains parse-time and evaluation-time diagnostics in reporting order.
     private final ArrayList<Diagnostic> diagnostics;
@@ -411,7 +418,7 @@ public final class SassEvaluator implements
     /// Executes the first truthy `@if`/`@else if` branch, or the `@else` branch.
     ///
     /// @param statement the if rule
-    /// @return the continue result, [StatementResult#CONTINUE]
+    /// @return the statement result, which may carry a function return
     @Override
     public StatementResult visitIfRule(IfRule statement) {
         @Nullable List<SassStatement> children = null;
@@ -434,7 +441,7 @@ public final class SassEvaluator implements
     /// Iterates over a list view, binding one or more local loop variables.
     ///
     /// @param statement the each rule
-    /// @return the continue result, [StatementResult#CONTINUE]
+    /// @return the statement result, which may carry a function return
     @Override
     public StatementResult visitEachRule(EachRule statement) {
         var listValue = evaluate(statement.list());
@@ -450,15 +457,19 @@ public final class SassEvaluator implements
                 } else {
                     setMultipleVariables(statement.variables(), element, origin);
                 }
-                executeChildren(statement.children());
+                var result = executeChildren(statement.children());
+                if (result instanceof StatementResult.ReturnValue) {
+                    return result;
+                }
             }
+            return StatementResult.CONTINUE;
         });
     }
 
     /// Iterates an integer index from one bound toward another.
     ///
     /// @param statement the for rule
-    /// @return the continue result, [StatementResult#CONTINUE]
+    /// @return the statement result, which may carry a function return
     @Override
     public StatementResult visitForRule(ForRule statement) {
         var fromNumber = valueOperation(
@@ -496,25 +507,137 @@ public final class SassEvaluator implements
                         ),
                         origin
                 );
-                executeChildren(statement.children());
+                var result = executeChildren(statement.children());
+                if (result instanceof StatementResult.ReturnValue) {
+                    return result;
+                }
             }
+            return StatementResult.CONTINUE;
         });
     }
 
     /// Repeatedly executes children while the condition remains truthy.
     ///
     /// @param statement the while rule
-    /// @return the continue result, [StatementResult#CONTINUE]
+    /// @return the statement result, which may carry a function return
     @Override
     public StatementResult visitWhileRule(WhileRule statement) {
         return inFlowScope(
                 hasDirectDeclarations(statement.children()),
                 () -> {
                     while (evaluate(statement.condition()).isTruthy()) {
-                        executeChildren(statement.children());
+                        var result = executeChildren(statement.children());
+                        if (result instanceof StatementResult.ReturnValue) {
+                            return result;
+                        }
                     }
+                    return StatementResult.CONTINUE;
                 }
         );
+    }
+
+    /// Registers a mixin in the current environment.
+    ///
+    /// @param statement the mixin rule
+    /// @return the continue result
+    @Override
+    public StatementResult visitMixinRule(MixinRule statement) {
+        environment.setMixin(new UserDefinedCallable(
+                statement.name(),
+                statement.parameters(),
+                statement.children(),
+                environment.closure(),
+                statement.span(),
+                statement.hasContent()
+        ));
+        return StatementResult.CONTINUE;
+    }
+
+    /// Registers a function in the current environment.
+    ///
+    /// @param statement the function rule
+    /// @return the continue result
+    @Override
+    public StatementResult visitFunctionRule(FunctionRule statement) {
+        environment.setFunction(new UserDefinedCallable(
+                statement.name(),
+                statement.parameters(),
+                statement.children(),
+                environment.closure(),
+                statement.span(),
+                false
+        ));
+        return StatementResult.CONTINUE;
+    }
+
+    /// Includes a previously declared mixin.
+    ///
+    /// @param statement the include rule
+    /// @return the statement result
+    @Override
+    public StatementResult visitIncludeRule(IncludeRule statement) {
+        @Nullable Callable mixin;
+        try {
+            mixin = environment.getMixin(statement.name(), statement.namespace());
+        } catch (SassValueException cause) {
+            throw new EvaluationException(
+                    Objects.requireNonNull(cause.getMessage(), "value failure message"),
+                    statement.span(),
+                    List.of(),
+                    cause
+            );
+        }
+        if (!(mixin instanceof UserDefinedCallable userMixin)) {
+            throw new EvaluationException("Undefined mixin.", statement.span());
+        }
+        @Nullable UserDefinedCallable contentCallable = null;
+        if (statement.content() != null) {
+            if (!userMixin.acceptsContent()) {
+                throw new EvaluationException(
+                        "Mixin doesn't accept a content block.",
+                        statement.span()
+                );
+            }
+            contentCallable = new UserDefinedCallable(
+                    "@content",
+                    statement.content().parameters(),
+                    statement.content().children(),
+                    environment.closure(),
+                    statement.content().span(),
+                    false
+            );
+        }
+        runUserDefinedMixin(userMixin, statement.arguments(), contentCallable, statement.span());
+        return StatementResult.CONTINUE;
+    }
+
+    /// Invokes the content block supplied by the enclosing include.
+    ///
+    /// @param statement the content rule
+    /// @return the statement result
+    @Override
+    public StatementResult visitContentRule(ContentRule statement) {
+        @Nullable UserDefinedCallable content = environment.content();
+        if (content == null) {
+            return StatementResult.CONTINUE;
+        }
+        if (!statement.arguments().isEmpty()) {
+            throw new EvaluationException(
+                    "Content arguments aren't supported.",
+                    statement.span()
+            );
+        }
+        runUserDefinedMixin(content, statement.arguments(), null, statement.span());
+        return StatementResult.CONTINUE;
+    }
+
+    /// Returns a value from the current user-defined function.
+    ///
+    /// @param statement the return rule
+    /// @return the return result
+    @Override
+    public StatementResult visitReturnRule(ReturnRule statement) {
+        return new StatementResult.ReturnValue(evaluate(statement.expression()).withoutSlash());
     }
 
     /// Evaluates a string and its embedded expressions.
@@ -672,24 +795,36 @@ public final class SassEvaluator implements
 
     /// Resolves and invokes a statically named function.
     ///
-    /// Built-in functions are consulted first. Unknown un-namespaced functions
-    /// fall back to plain-CSS serialization. Namespaced lookups fail because
-    /// this evaluator has no module registry.
+    /// Resolution order is user-defined, then built-in, then plain-CSS fallback.
+    /// Namespaced lookups fail because this evaluator has no module registry.
     ///
     /// @param expression the function expression
     /// @return the function result
     /// @throws EvaluationException if invocation fails
     @Override
     public SassValue visitFunctionExpression(FunctionExpression expression) {
-        if (expression.namespace() != null) {
+        @Nullable Callable callable;
+        try {
+            callable = environment.getFunction(expression.name(), expression.namespace());
+        } catch (SassValueException cause) {
+            throw new EvaluationException(
+                    Objects.requireNonNull(cause.getMessage(), "value failure message"),
+                    expression.span(),
+                    List.of(),
+                    cause
+            );
+        }
+        if (callable == null && expression.namespace() == null) {
+            callable = BUILT_IN_FUNCTIONS.get(expression.name());
+        }
+        if (callable == null && expression.namespace() == null) {
+            callable = new PlainCssCallable(expression.originalName());
+        }
+        if (callable == null) {
             throw new EvaluationException(
                     "There is no module with the namespace \"" + expression.namespace() + "\".",
                     expression.span()
             );
-        }
-        @Nullable Callable callable = BUILT_IN_FUNCTIONS.get(expression.name());
-        if (callable == null) {
-            callable = new PlainCssCallable(expression.originalName());
         }
         return runCallable(callable, expression.arguments(), expression.span());
     }
@@ -952,7 +1087,136 @@ public final class SassEvaluator implements
         if (callable instanceof PlainCssCallable plainCss) {
             return valueOperation(span, () -> serializePlainCss(plainCss.name(), positional));
         }
+        if (callable instanceof UserDefinedCallable userDefined) {
+            return runUserDefinedFunction(userDefined, List.copyOf(positional), span);
+        }
         throw new IllegalStateException("unsupported callable: " + callable.getClass().getName());
+    }
+
+    /// Executes a user-defined function body and returns its `@return` value.
+    ///
+    /// @param function   the user function
+    /// @param positional the evaluated positional arguments
+    /// @param span       the call span
+    /// @return the returned value
+    private SassValue runUserDefinedFunction(
+            UserDefinedCallable function,
+            List<SassValue> positional,
+            SourceSpan span
+    ) {
+        return withEnvironment(function.environment().closure(), () -> {
+            var scope = environment.scope(ScopeSemantics.LEXICAL, true);
+            try {
+                bindParameters(function.parameters(), positional, span);
+                var result = executeChildren(function.children());
+                if (result instanceof StatementResult.ReturnValue returned) {
+                    return returned.value();
+                }
+                throw new EvaluationException(
+                        "Function finished without @return.",
+                        function.span()
+                );
+            } finally {
+                scope.close();
+            }
+        });
+    }
+
+    /// Executes a user-defined mixin body.
+    ///
+    /// @param mixin      the mixin or content callable
+    /// @param arguments  the unevaluated arguments
+    /// @param content    the optional content block
+    /// @param span       the include or content span
+    private void runUserDefinedMixin(
+            UserDefinedCallable mixin,
+            ArgumentList arguments,
+            @Nullable UserDefinedCallable content,
+            SourceSpan span
+    ) {
+        if (!arguments.named().isEmpty() || arguments.keywordRest() != null) {
+            throw new EvaluationException("Named arguments aren't supported.", span);
+        }
+        var positional = new ArrayList<SassValue>();
+        for (var argument : arguments.positional()) {
+            positional.add(evaluate(argument).withoutSlash());
+        }
+        if (arguments.rest() != null) {
+            positional.addAll(evaluate(arguments.rest()).withoutSlash().asList());
+        }
+        withEnvironment(mixin.environment().closure(), () -> {
+            environment.withContent(content, () -> {
+                var scope = environment.scope(ScopeSemantics.LEXICAL, true);
+                try {
+                    bindParameters(mixin.parameters(), List.copyOf(positional), span);
+                    executeChildren(mixin.children());
+                    return null;
+                } finally {
+                    scope.close();
+                }
+            });
+            return null;
+        });
+    }
+
+    /// Binds positional arguments and default parameter expressions.
+    ///
+    /// @param parameters the declared parameters
+    /// @param positional the evaluated positional values
+    /// @param span       the invocation span
+    private void bindParameters(
+            ParameterList parameters,
+            List<SassValue> positional,
+            SourceSpan span
+    ) {
+        var declared = parameters.parameters();
+        if (positional.size() > declared.size()) {
+            throw new EvaluationException(
+                    "Only " + declared.size() + " "
+                            + (declared.size() == 1 ? "argument" : "arguments")
+                            + " allowed, but " + positional.size() + " "
+                            + (positional.size() == 1 ? "was" : "were")
+                            + " passed.",
+                    span
+            );
+        }
+        for (var index = 0; index < positional.size(); index++) {
+            environment.setLocalVariable(
+                    declared.get(index).name(),
+                    positional.get(index),
+                    span
+            );
+        }
+        for (var index = positional.size(); index < declared.size(); index++) {
+            var parameter = declared.get(index);
+            if (parameter.defaultValue() == null) {
+                throw new EvaluationException(
+                        "Missing argument $" + parameter.name() + ".",
+                        span
+                );
+            }
+            environment.setLocalVariable(
+                    parameter.name(),
+                    evaluate(parameter.defaultValue()).withoutSlash(),
+                    parameter.defaultValue().span()
+            );
+        }
+    }
+
+    /// Runs a body with a temporary evaluation environment.
+    ///
+    /// @param next the environment to install
+    /// @param body the body to run
+    /// @param <T>  the result type
+    /// @return the body result
+    private <T> T withEnvironment(Environment next, Supplier<T> body) {
+        var previous = environment;
+        environment = next;
+        try {
+            return body.get();
+        } finally {
+            environment = previous;
+        }
     }
 
     /// Serializes a plain-CSS function call.
@@ -977,7 +1241,7 @@ public final class SassEvaluator implements
     ///
     /// @param children    the children to execute
     /// @param createFrame whether a local frame is required
-    /// @return the continue result
+    /// @return the statement result
     private StatementResult executeInFlowScope(
             List<SassStatement> children,
             boolean createFrame
@@ -989,24 +1253,31 @@ public final class SassEvaluator implements
     ///
     /// @param createFrame whether a local frame is required
     /// @param body        the body to run
-    /// @return the continue result
-    private StatementResult inFlowScope(boolean createFrame, Runnable body) {
+    /// @return the statement result
+    private StatementResult inFlowScope(
+            boolean createFrame,
+            Supplier<StatementResult> body
+    ) {
         var scope = environment.scope(ScopeSemantics.FLOW_CONTROL, createFrame);
         try {
-            body.run();
-            return StatementResult.CONTINUE;
+            return body.get();
         } finally {
             scope.close();
         }
     }
 
-    /// Executes direct children in source order.
+    /// Executes direct children in source order and propagates function returns.
     ///
     /// @param children the children to execute
-    private void executeChildren(List<SassStatement> children) {
+    /// @return the statement result
+    private StatementResult executeChildren(List<SassStatement> children) {
         for (var child : children) {
-            child.accept(this);
+            var result = child.accept(this);
+            if (result instanceof StatementResult.ReturnValue) {
+                return result;
+            }
         }
+        return StatementResult.CONTINUE;
     }
 
     /// Destructures a list-like value into multiple local loop variables.
@@ -1058,9 +1329,13 @@ public final class SassEvaluator implements
     /// Returns whether direct children require a lexical declaration frame.
     ///
     /// @param statements the direct children
-    /// @return whether a variable declaration is present
+    /// @return whether a variable, mixin, or function declaration is present
     private static boolean hasDirectDeclarations(List<SassStatement> statements) {
-        return statements.stream().anyMatch(VariableDeclaration.class::isInstance);
+        return statements.stream().anyMatch(statement ->
+                statement instanceof VariableDeclaration
+                        || statement instanceof MixinRule
+                        || statement instanceof FunctionRule
+        );
     }
 
     /// Returns the exact `new-global` deprecation message for a declaration.

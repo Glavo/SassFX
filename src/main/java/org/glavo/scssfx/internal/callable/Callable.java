@@ -7,7 +7,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 /// A function that may be invoked during Sass evaluation.
 @ApiStatus.Internal
 @NotNullByDefault
-public sealed interface Callable permits BuiltInCallable, PlainCssCallable {
+public sealed interface Callable permits BuiltInCallable, PlainCssCallable, UserDefinedCallable {
     /// Returns the normalized callable name used for lookup.
     ///
     /// @return the hyphenated name

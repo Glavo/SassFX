@@ -69,4 +69,34 @@ public interface SassStatementVisitor<R> {
     /// @param statement the statement to visit
     /// @return the visit result
     R visitWhileRule(WhileRule statement);
+
+    /// Visits a `@mixin` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitMixinRule(MixinRule statement);
+
+    /// Visits a `@function` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitFunctionRule(FunctionRule statement);
+
+    /// Visits an `@include` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitIncludeRule(IncludeRule statement);
+
+    /// Visits a `@content` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitContentRule(ContentRule statement);
+
+    /// Visits a `@return` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitReturnRule(ReturnRule statement);
 }

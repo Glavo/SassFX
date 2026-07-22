@@ -4,15 +4,24 @@ package org.glavo.scssfx.internal.parse;
 import org.glavo.scssfx.Diagnostic;
 import org.glavo.scssfx.DiagnosticSeverity;
 import org.glavo.scssfx.SourceSpan;
+import org.glavo.scssfx.internal.ast.ArgumentList;
+import org.glavo.scssfx.internal.ast.ContentBlock;
+import org.glavo.scssfx.internal.ast.ContentRule;
 import org.glavo.scssfx.internal.ast.Declaration;
 import org.glavo.scssfx.internal.ast.EachRule;
 import org.glavo.scssfx.internal.ast.ElseClause;
 import org.glavo.scssfx.internal.ast.ForRule;
+import org.glavo.scssfx.internal.ast.FunctionRule;
 import org.glavo.scssfx.internal.ast.IfClause;
 import org.glavo.scssfx.internal.ast.IfRule;
+import org.glavo.scssfx.internal.ast.IncludeRule;
 import org.glavo.scssfx.internal.ast.Interpolation;
 import org.glavo.scssfx.internal.ast.InterpolationBuffer;
 import org.glavo.scssfx.internal.ast.LoudComment;
+import org.glavo.scssfx.internal.ast.MixinRule;
+import org.glavo.scssfx.internal.ast.Parameter;
+import org.glavo.scssfx.internal.ast.ParameterList;
+import org.glavo.scssfx.internal.ast.ReturnRule;
 import org.glavo.scssfx.internal.ast.SassExpression;
 import org.glavo.scssfx.internal.ast.SassStatement;
 import org.glavo.scssfx.internal.ast.SilentComment;
@@ -31,7 +40,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 
 /// Parses SCSS stylesheets containing declarations, nested properties, style rules,
-/// control-flow at-rules, and comments.
+/// control-flow at-rules, mixins, functions, and comments.
 @NotNullByDefault
 final class ScssParser extends SassExpressionParser {
     /// Identifies the statement forms allowed inside a braced block.
@@ -43,7 +52,10 @@ final class ScssParser extends SassExpressionParser {
         STYLE_RULE,
 
         /// Nested-property children that reject nested style rules.
-        DECLARATION
+        DECLARATION,
+
+        /// Function bodies that accept only variables, control flow, and `@return`.
+        FUNCTION
     }
 
     /// First global declaration span for each normalized variable name.
@@ -51,6 +63,9 @@ final class ScssParser extends SassExpressionParser {
 
     /// The most recently parsed silent comment, or {@code null} when none exists.
     private @Nullable SilentComment lastSilentComment;
+
+    /// Records whether the parser is inside a mixin declaration body.
+    private boolean inMixin;
 
     /// Creates a parser for an indexed SCSS source.
     ///
@@ -338,6 +353,7 @@ final class ScssParser extends SassExpressionParser {
             case ROOT -> variableDeclarationOrStyleRule();
             case STYLE_RULE -> declarationOrStyleRule();
             case DECLARATION -> declarationChild();
+            case FUNCTION -> throw scanner.error("Expected @return rule or variable declaration.");
         };
     }
 
@@ -355,6 +371,11 @@ final class ScssParser extends SassExpressionParser {
             case "each" -> eachRule(start, context);
             case "for" -> forRule(start, context);
             case "while" -> whileRule(start, context);
+            case "mixin" -> mixinRule(start, context);
+            case "function" -> functionRule(start, context);
+            case "include" -> includeRule(start, context);
+            case "content" -> contentRule(start, context);
+            case "return" -> returnRule(start, context);
             case "else" -> throw scanner.error(
                     "This at-rule is not allowed here.",
                     start.position(),
@@ -504,6 +525,197 @@ final class ScssParser extends SassExpressionParser {
         var span = scanner.spanFrom(start);
         whitespaceWithoutComments(false);
         return new WhileRule(condition, children, span);
+    }
+
+    /// Parses a `@mixin` rule.
+    ///
+    /// @param start   the scanner state at the leading `@`
+    /// @param context the surrounding statement context
+    /// @return the mixin rule
+    private MixinRule mixinRule(ScannerState start, StatementContext context) {
+        if (context == StatementContext.FUNCTION || context == StatementContext.DECLARATION) {
+            throw scanner.error("Mixins may not be declared here.");
+        }
+        if (inMixin) {
+            throw scanner.error("Mixins may not be declared within a mixin.");
+        }
+        whitespace(true);
+        var originalName = identifier(false, false);
+        if (originalName.startsWith("--")) {
+            throw scanner.error("Mixin names may not begin with --.");
+        }
+        whitespace(true);
+        var parameters = scanner.peek() == '('
+                ? parameterList()
+                : ParameterList.empty(scanner.source().span(scanner.position(), scanner.position()));
+        whitespace(true);
+        inMixin = true;
+        ArrayList<SassStatement> children;
+        try {
+            children = statementBlock(context);
+        } finally {
+            inMixin = false;
+        }
+        var span = scanner.spanFrom(start);
+        whitespaceWithoutComments(false);
+        return new MixinRule(originalName, parameters, children, span);
+    }
+
+    /// Parses a `@function` rule.
+    ///
+    /// @param start   the scanner state at the leading `@`
+    /// @param context the surrounding statement context
+    /// @return the function rule
+    private FunctionRule functionRule(ScannerState start, StatementContext context) {
+        if (context == StatementContext.FUNCTION || context == StatementContext.DECLARATION) {
+            throw scanner.error("Functions may not be declared here.");
+        }
+        if (inMixin) {
+            throw scanner.error("Functions may not be declared within a mixin.");
+        }
+        whitespace(true);
+        var originalName = identifier(false, false);
+        if (originalName.startsWith("--")) {
+            throw scanner.error("Function names may not begin with --.");
+        }
+        whitespace(true);
+        var parameters = parameterList();
+        whitespace(true);
+        var children = statementBlock(StatementContext.FUNCTION);
+        var span = scanner.spanFrom(start);
+        whitespaceWithoutComments(false);
+        return new FunctionRule(originalName, parameters, children, span);
+    }
+
+    /// Parses an `@include` rule.
+    ///
+    /// @param start   the scanner state at the leading `@`
+    /// @param context the surrounding statement context
+    /// @return the include rule
+    private IncludeRule includeRule(ScannerState start, StatementContext context) {
+        if (context == StatementContext.FUNCTION) {
+            throw scanner.error("Includes may not be used within functions.");
+        }
+        whitespace(true);
+        var originalName = identifier(false, false);
+        whitespace(true);
+        if (scanner.scan('.')) {
+            throw scanner.error("Namespaced includes aren't supported.");
+        }
+        ArgumentList arguments;
+        if (scanner.peek() == '(') {
+            arguments = argumentInvocation(false);
+            whitespace(true);
+        } else {
+            arguments = ArgumentList.empty(
+                    scanner.source().span(scanner.position(), scanner.position())
+            );
+        }
+        if (scanIdentifier("using")) {
+            throw scanner.error("Content block parameters aren't supported.");
+        }
+        @Nullable ContentBlock content = null;
+        if (scanner.peek() == '{') {
+            var contentStart = scanner.state();
+            // Content blocks accept style-rule children even when the include is
+            // written at the stylesheet root.
+            var children = statementBlock(StatementContext.STYLE_RULE);
+            content = new ContentBlock(
+                    ParameterList.empty(scanner.source().span(
+                            contentStart.position(),
+                            contentStart.position()
+                    )),
+                    children,
+                    scanner.spanFrom(contentStart)
+            );
+        } else {
+            expectStatementSeparator();
+        }
+        var span = scanner.spanFrom(start);
+        whitespaceWithoutComments(false);
+        return new IncludeRule(null, originalName, arguments, content, span);
+    }
+
+    /// Parses a `@content` rule.
+    ///
+    /// @param start   the scanner state at the leading `@`
+    /// @param context the surrounding statement context
+    /// @return the content rule
+    private ContentRule contentRule(ScannerState start, StatementContext context) {
+        if (!inMixin) {
+            throw scanner.error("@content is only allowed within mixin declarations.");
+        }
+        if (context == StatementContext.FUNCTION) {
+            throw scanner.error("@content is only allowed within mixin declarations.");
+        }
+        whitespace(true);
+        ArgumentList arguments;
+        if (scanner.peek() == '(') {
+            arguments = argumentInvocation(false);
+            if (!arguments.isEmpty()) {
+                throw scanner.error("Content arguments aren't supported.");
+            }
+        } else {
+            arguments = ArgumentList.empty(
+                    scanner.source().span(scanner.position(), scanner.position())
+            );
+        }
+        expectStatementSeparator();
+        var span = scanner.spanFrom(start);
+        whitespaceWithoutComments(false);
+        return new ContentRule(arguments, span);
+    }
+
+    /// Parses a `@return` rule.
+    ///
+    /// @param start   the scanner state at the leading `@`
+    /// @param context the surrounding statement context
+    /// @return the return rule
+    private ReturnRule returnRule(ScannerState start, StatementContext context) {
+        if (context != StatementContext.FUNCTION) {
+            throw scanner.error("@return is only allowed within function declarations.");
+        }
+        whitespace(true);
+        var expression = expression();
+        expectStatementSeparator();
+        var span = scanner.spanFrom(start);
+        whitespaceWithoutComments(false);
+        return new ReturnRule(expression, span);
+    }
+
+    /// Parses a parenthesized parameter list.
+    ///
+    /// @return the parameter list
+    private ParameterList parameterList() {
+        var start = scanner.state();
+        scanner.expect('(');
+        whitespace(true);
+        var parameters = new ArrayList<Parameter>();
+        var names = new java.util.HashSet<String>();
+        while (scanner.peek() == '$') {
+            var parameterStart = scanner.state();
+            var name = variableName();
+            if (!names.add(name)) {
+                throw scanner.error("Duplicate parameter name.");
+            }
+            whitespace(true);
+            @Nullable SassExpression defaultValue = null;
+            if (scanner.scan(':')) {
+                whitespace(true);
+                defaultValue = expressionUntilComma();
+                whitespace(true);
+            }
+            if (scanner.scan('.') && scanner.scan('.') && scanner.scan('.')) {
+                throw scanner.error("Rest parameters aren't supported.");
+            }
+            parameters.add(new Parameter(name, defaultValue, scanner.spanFrom(parameterStart)));
+            if (!scanner.scan(',')) {
+                break;
+            }
+            whitespace(true);
+        }
+        scanner.expect(')');
+        return new ParameterList(parameters, scanner.spanFrom(start));
     }
 
     /// Parses a declaration when possible and otherwise reparses from the same

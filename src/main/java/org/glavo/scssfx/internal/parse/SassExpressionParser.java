@@ -193,6 +193,13 @@ class SassExpressionParser extends Parser {
         return spaceExpression(singleEquals, null);
     }
 
+    /// Parses an expression that stops before a top-level comma.
+    ///
+    /// @return the parsed expression
+    protected final SassExpression expressionUntilComma() {
+        return expressionUntilComma(false);
+    }
+
     /// Parses expressions separated implicitly as one space list.
     ///
     /// Sass permits some adjacent expression forms without a literal whitespace
@@ -1188,7 +1195,7 @@ class SassExpressionParser extends Parser {
     /// @param allowEmptySecondArgument whether a trailing comma after the only
     /// positional argument supplies an empty unquoted second argument
     /// @return the parsed invocation arguments
-    private ArgumentList argumentInvocation(boolean allowEmptySecondArgument) {
+    protected final ArgumentList argumentInvocation(boolean allowEmptySecondArgument) {
         var start = scanner.state();
         scanner.expect('(');
         whitespace(true);
