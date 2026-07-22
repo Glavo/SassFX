@@ -64,6 +64,22 @@ public record SassMap(@Unmodifiable Map<SassValue, SassValue> contents) implemen
         return contents.size();
     }
 
+    /// Returns this map.
+    ///
+    /// @return this map
+    @Override
+    public SassMap assertMap() {
+        return this;
+    }
+
+    /// Returns this map.
+    ///
+    /// @return this map
+    @Override
+    public SassMap tryMap() {
+        return this;
+    }
+
     /// Rejects direct CSS serialization of a Sass map.
     ///
     /// @return no value

@@ -2,7 +2,9 @@
 package org.glavo.scssfx.internal.function;
 
 import org.glavo.scssfx.internal.callable.BuiltInCallable;
+import org.glavo.scssfx.internal.callable.BuiltInCallable.Param;
 import org.glavo.scssfx.internal.value.ListSeparator;
+import org.glavo.scssfx.internal.value.SassArgumentList;
 import org.glavo.scssfx.internal.value.SassBoolean;
 import org.glavo.scssfx.internal.value.SassColor;
 import org.glavo.scssfx.internal.value.SassList;
@@ -14,17 +16,22 @@ import org.glavo.scssfx.internal.value.SassValue;
 import org.glavo.scssfx.internal.value.SassValueException;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
-/// Registers the first built-in global Sass functions.
+/// Registers the built-in global Sass functions.
 @ApiStatus.Internal
 @NotNullByDefault
 public final class BuiltInFunctions {
+    /// Generates unique IDs within the current process.
+    private static final AtomicLong UNIQUE_ID = new AtomicLong(1);
+
     /// Prevents instantiation.
     private BuiltInFunctions() {
     }
@@ -34,32 +41,163 @@ public final class BuiltInFunctions {
     /// @return an immutable name-to-callable map
     public static @Unmodifiable Map<String, BuiltInCallable> global() {
         var functions = new LinkedHashMap<String, BuiltInCallable>();
-        register(functions, BuiltInCallable.of("rgb", 3, 4, BuiltInFunctions::rgb));
-        register(functions, BuiltInCallable.of("rgba", 3, 4, BuiltInFunctions::rgb));
-        register(functions, BuiltInCallable.of("quote", 1, BuiltInFunctions::quote));
-        register(functions, BuiltInCallable.of("unquote", 1, BuiltInFunctions::unquote));
-        register(functions, BuiltInCallable.of("length", 1, BuiltInFunctions::length));
-        register(functions, BuiltInCallable.of("nth", 2, BuiltInFunctions::nth));
-        register(functions, BuiltInCallable.of("join", 2, 3, BuiltInFunctions::join));
-        register(functions, BuiltInCallable.of("append", 2, 3, BuiltInFunctions::append));
-        register(functions, BuiltInCallable.of("type-of", 1, BuiltInFunctions::typeOf));
-        register(functions, BuiltInCallable.of("inspect", 1, BuiltInFunctions::inspect));
-        register(functions, BuiltInCallable.of("unit", 1, BuiltInFunctions::unit));
-        register(functions, BuiltInCallable.of("comparable", 2, BuiltInFunctions::comparable));
-        register(functions, BuiltInCallable.of("percentage", 1, BuiltInFunctions::percentage));
-        register(functions, BuiltInCallable.of("abs", 1, BuiltInFunctions::abs));
-        register(functions, BuiltInCallable.of("round", 1, BuiltInFunctions::round));
-        register(functions, BuiltInCallable.of("ceil", 1, BuiltInFunctions::ceil));
-        register(functions, BuiltInCallable.of("floor", 1, BuiltInFunctions::floor));
-        register(functions, BuiltInCallable.of("min", 1, Integer.MAX_VALUE, BuiltInFunctions::min));
-        register(functions, BuiltInCallable.of("max", 1, Integer.MAX_VALUE, BuiltInFunctions::max));
+        register(functions, BuiltInCallable.of(
+                "rgb",
+                List.of(
+                        Param.required("red"),
+                        Param.required("green"),
+                        Param.required("blue"),
+                        Param.optional("alpha", SassNumber.of(1, null))
+                ),
+                3,
+                BuiltInFunctions::rgb
+        ));
+        register(functions, BuiltInCallable.of(
+                "rgba",
+                List.of(
+                        Param.required("red"),
+                        Param.required("green"),
+                        Param.required("blue"),
+                        Param.optional("alpha", SassNumber.of(1, null))
+                ),
+                3,
+                BuiltInFunctions::rgb
+        ));
+        register(functions, BuiltInCallable.of("quote", List.of("string"), BuiltInFunctions::quote));
+        register(functions, BuiltInCallable.of("unquote", List.of("string"), BuiltInFunctions::unquote));
+        register(functions, BuiltInCallable.of("length", List.of("list"), BuiltInFunctions::length));
+        register(functions, BuiltInCallable.of("nth", List.of("list", "n"), BuiltInFunctions::nth));
+        register(functions, BuiltInCallable.of(
+                "join",
+                List.of(
+                        Param.required("list1"),
+                        Param.required("list2"),
+                        Param.optional("separator", new SassString("auto", false))
+                ),
+                2,
+                BuiltInFunctions::join
+        ));
+        register(functions, BuiltInCallable.of(
+                "append",
+                List.of(
+                        Param.required("list"),
+                        Param.required("val"),
+                        Param.optional("separator", new SassString("auto", false))
+                ),
+                2,
+                BuiltInFunctions::append
+        ));
+        register(functions, BuiltInCallable.of("type-of", List.of("value"), BuiltInFunctions::typeOf));
+        register(functions, BuiltInCallable.of("inspect", List.of("value"), BuiltInFunctions::inspect));
+        register(functions, BuiltInCallable.of("unit", List.of("number"), BuiltInFunctions::unit));
+        register(functions, BuiltInCallable.of(
+                "comparable",
+                List.of("number1", "number2"),
+                BuiltInFunctions::comparable
+        ));
+        register(functions, BuiltInCallable.of(
+                "percentage",
+                List.of("number"),
+                BuiltInFunctions::percentage
+        ));
+        register(functions, BuiltInCallable.of("abs", List.of("number"), BuiltInFunctions::abs));
+        register(functions, BuiltInCallable.of("round", List.of("number"), BuiltInFunctions::round));
+        register(functions, BuiltInCallable.of("ceil", List.of("number"), BuiltInFunctions::ceil));
+        register(functions, BuiltInCallable.of("floor", List.of("number"), BuiltInFunctions::floor));
+        register(functions, BuiltInCallable.withRest(
+                "min",
+                List.of(),
+                "numbers",
+                BuiltInFunctions::min
+        ));
+        register(functions, BuiltInCallable.withRest(
+                "max",
+                List.of(),
+                "numbers",
+                BuiltInFunctions::max
+        ));
+
+        register(functions, BuiltInCallable.of("map-get", List.of("map", "key"), BuiltInFunctions::mapGet));
+        register(functions, BuiltInCallable.of("map-keys", List.of("map"), BuiltInFunctions::mapKeys));
+        register(functions, BuiltInCallable.of("map-values", List.of("map"), BuiltInFunctions::mapValues));
+        register(functions, BuiltInCallable.of(
+                "map-merge",
+                List.of("map1", "map2"),
+                BuiltInFunctions::mapMerge
+        ));
+        register(functions, BuiltInCallable.of(
+                "map-has-key",
+                List.of("map", "key"),
+                BuiltInFunctions::mapHasKey
+        ));
+
+        register(functions, BuiltInCallable.of(
+                "str-length",
+                List.of("string"),
+                BuiltInFunctions::strLength
+        ));
+        register(functions, BuiltInCallable.of(
+                "str-index",
+                List.of("string", "substring"),
+                BuiltInFunctions::strIndex
+        ));
+        register(functions, BuiltInCallable.of(
+                "str-slice",
+                List.of(
+                        Param.required("string"),
+                        Param.required("start-at"),
+                        Param.optional("end-at", SassNumber.of(-1, null))
+                ),
+                2,
+                BuiltInFunctions::strSlice
+        ));
+        register(functions, BuiltInCallable.of(
+                "to-upper-case",
+                List.of("string"),
+                BuiltInFunctions::toUpperCase
+        ));
+        register(functions, BuiltInCallable.of(
+                "to-lower-case",
+                List.of("string"),
+                BuiltInFunctions::toLowerCase
+        ));
+        register(functions, BuiltInCallable.of("unique-id", List.of(), BuiltInFunctions::uniqueId));
+
+        register(functions, BuiltInCallable.of(
+                "list-separator",
+                List.of("list"),
+                BuiltInFunctions::listSeparator
+        ));
+        register(functions, BuiltInCallable.of(
+                "is-bracketed",
+                List.of("list"),
+                BuiltInFunctions::isBracketed
+        ));
+        register(functions, BuiltInCallable.of(
+                "index",
+                List.of("list", "value"),
+                BuiltInFunctions::index
+        ));
+        register(functions, BuiltInCallable.of(
+                "set-nth",
+                List.of("list", "n", "value"),
+                BuiltInFunctions::setNth
+        ));
+        register(functions, BuiltInCallable.withRest(
+                "zip",
+                List.of(),
+                "lists",
+                BuiltInFunctions::zip
+        ));
+
+        register(functions, BuiltInCallable.of("red", List.of("color"), BuiltInFunctions::red));
+        register(functions, BuiltInCallable.of("green", List.of("color"), BuiltInFunctions::green));
+        register(functions, BuiltInCallable.of("blue", List.of("color"), BuiltInFunctions::blue));
+        register(functions, BuiltInCallable.of("alpha", List.of("color"), BuiltInFunctions::alphaChannel));
+        register(functions, BuiltInCallable.of("opacity", List.of("color"), BuiltInFunctions::opacity));
         return Map.copyOf(functions);
     }
 
-    /// Adds one callable to the registry.
-    ///
-    /// @param functions the mutable registry
-    /// @param callable  the callable to add
     private static void register(
             LinkedHashMap<String, BuiltInCallable> functions,
             BuiltInCallable callable
@@ -67,32 +205,20 @@ public final class BuiltInFunctions {
         functions.put(callable.name(), callable);
     }
 
-    /// Implements `rgb`/`rgba`.
     private static SassValue rgb(List<SassValue> args) {
-        if (args.size() == 3) {
-            return SassColor.rgb(
-                    channel(args.get(0)),
-                    channel(args.get(1)),
-                    channel(args.get(2)),
-                    1.0,
-                    null
-            );
-        }
         return SassColor.rgb(
                 channel(args.get(0)),
                 channel(args.get(1)),
                 channel(args.get(2)),
-                alpha(args.get(3)),
+                args.size() > 3 ? alpha(args.get(3)) : 1.0,
                 null
         );
     }
 
-    /// Reads one RGB channel number.
     private static double channel(SassValue value) {
         return value.assertNumber().assertNoUnits().value();
     }
 
-    /// Reads one alpha channel number in `[0, 1]`.
     private static double alpha(SassValue value) {
         var number = value.assertNumber().assertNoUnits();
         var alpha = number.value();
@@ -102,59 +228,50 @@ public final class BuiltInFunctions {
         return alpha;
     }
 
-    /// Implements `quote`.
     private static SassValue quote(List<SassValue> args) {
         var string = args.get(0).assertString();
         return new SassString(string.text(), true);
     }
 
-    /// Implements `unquote`.
     private static SassValue unquote(List<SassValue> args) {
         var string = args.get(0).assertString();
         return new SassString(string.text(), false);
     }
 
-    /// Implements `length`.
     private static SassValue length(List<SassValue> args) {
         return SassNumber.of(args.get(0).lengthAsList(), null);
     }
 
-    /// Implements `nth`.
     private static SassValue nth(List<SassValue> args) {
         var list = args.get(0);
         var index = list.sassIndexToListIndex(args.get(1), list.lengthAsList());
         return list.asList().get(index);
     }
 
-    /// Implements `join`.
     private static SassValue join(List<SassValue> args) {
         var left = args.get(0);
         var right = args.get(1);
-        var separator = args.size() == 3
-                ? separatorArgument(args.get(2), left, right)
-                : defaultSeparator(left, right);
+        var separator = separatorArgument(args.get(2), left, right);
         var contents = new ArrayList<SassValue>(left.lengthAsList() + right.lengthAsList());
         contents.addAll(left.asList());
         contents.addAll(right.asList());
         return new SassList(contents, separator, false);
     }
 
-    /// Implements `append`.
     private static SassValue append(List<SassValue> args) {
         var list = args.get(0);
         var value = args.get(1);
-        var separator = args.size() == 3
-                ? separatorArgument(args.get(2), list, value)
-                : list.separator() == ListSeparator.UNDECIDED
+        var separator = args.get(2) instanceof SassString string && string.text().equals("auto")
+                ? (list.separator() == ListSeparator.UNDECIDED
                 ? ListSeparator.SPACE
-                : list.separator();
+                : list.separator())
+                : separatorArgument(args.get(2), list, value);
         var contents = new ArrayList<SassValue>(list.lengthAsList() + 1);
         contents.addAll(list.asList());
         contents.add(value);
         return new SassList(contents, separator, list.hasBrackets());
     }
 
-    /// Chooses a separator for `join` when none is supplied.
     private static ListSeparator defaultSeparator(SassValue left, SassValue right) {
         if (left.separator() != ListSeparator.UNDECIDED) {
             return left.separator();
@@ -165,11 +282,6 @@ public final class BuiltInFunctions {
         return ListSeparator.SPACE;
     }
 
-    /// Parses a separator argument string.
-    ///
-    /// @param value the separator argument
-    /// @param left  the left operand used when {@code auto} is selected
-    /// @param right the right operand used when {@code auto} is selected
     private static ListSeparator separatorArgument(
             SassValue value,
             SassValue left,
@@ -187,7 +299,6 @@ public final class BuiltInFunctions {
         };
     }
 
-    /// Implements `type-of`.
     private static SassValue typeOf(List<SassValue> args) {
         var value = args.get(0);
         String type;
@@ -201,40 +312,32 @@ public final class BuiltInFunctions {
             type = "string";
         } else if (value instanceof SassColor) {
             type = "color";
-        } else if (value instanceof SassList) {
-            type = "list";
         } else if (value instanceof SassMap) {
             type = "map";
+        } else if (value instanceof SassList || value instanceof SassArgumentList) {
+            type = "list";
         } else {
             throw new AssertionError("unexpected value type: " + value.getClass().getName());
         }
         return new SassString(type, false);
     }
 
-    /// Implements `inspect`.
     private static SassValue inspect(List<SassValue> args) {
         return new SassString(args.get(0).toString(), false);
     }
 
-    /// Implements `unit`.
     private static SassValue unit(List<SassValue> args) {
         return new SassString(args.get(0).assertNumber().unitString(), true);
     }
 
-    /// Implements `comparable`.
     private static SassValue comparable(List<SassValue> args) {
-        var left = args.get(0).assertNumber();
-        var right = args.get(1).assertNumber();
-        return SassBoolean.of(left.isComparableTo(right));
+        return SassBoolean.of(args.get(0).assertNumber().isComparableTo(args.get(1).assertNumber()));
     }
 
-    /// Implements `percentage`.
     private static SassValue percentage(List<SassValue> args) {
-        var number = args.get(0).assertNumber().assertNoUnits();
-        return SassNumber.of(number.value() * 100.0, "%");
+        return SassNumber.of(args.get(0).assertNumber().assertNoUnits().value() * 100.0, "%");
     }
 
-    /// Implements `abs`.
     private static SassValue abs(List<SassValue> args) {
         var number = args.get(0).assertNumber();
         return SassNumber.withUnits(
@@ -244,32 +347,33 @@ public final class BuiltInFunctions {
         );
     }
 
-    /// Implements `round`.
     private static SassValue round(List<SassValue> args) {
         return mapNumber(args.get(0), Math::rint);
     }
 
-    /// Implements `ceil`.
     private static SassValue ceil(List<SassValue> args) {
         return mapNumber(args.get(0), Math::ceil);
     }
 
-    /// Implements `floor`.
     private static SassValue floor(List<SassValue> args) {
         return mapNumber(args.get(0), Math::floor);
     }
 
-    /// Implements `min`.
     private static SassValue min(List<SassValue> args) {
-        return extreme(args, true);
+        return extreme(restValues(args), true);
     }
 
-    /// Implements `max`.
     private static SassValue max(List<SassValue> args) {
-        return extreme(args, false);
+        return extreme(restValues(args), false);
     }
 
-    /// Selects the minimum or maximum among number arguments.
+    private static List<SassValue> restValues(List<SassValue> args) {
+        if (args.size() == 1 && args.get(0) instanceof SassArgumentList list) {
+            return list.asList();
+        }
+        return args;
+    }
+
     private static SassValue extreme(List<SassValue> args, boolean minimum) {
         if (args.isEmpty()) {
             throw new SassValueException("At least one argument required.");
@@ -288,7 +392,6 @@ public final class BuiltInFunctions {
         return best;
     }
 
-    /// Applies a magnitude transform while retaining units.
     private static SassNumber mapNumber(
             SassValue value,
             java.util.function.DoubleUnaryOperator operator
@@ -299,5 +402,181 @@ public final class BuiltInFunctions {
                 number.numeratorUnits(),
                 number.denominatorUnits()
         );
+    }
+
+    private static SassValue mapGet(List<SassValue> args) {
+        var map = args.get(0).assertMap();
+        @Nullable SassValue value = map.contents().get(args.get(1));
+        return value == null ? SassNull.NULL : value;
+    }
+
+    private static SassValue mapKeys(List<SassValue> args) {
+        return new SassList(
+                List.copyOf(args.get(0).assertMap().contents().keySet()),
+                ListSeparator.COMMA,
+                false
+        );
+    }
+
+    private static SassValue mapValues(List<SassValue> args) {
+        return new SassList(
+                List.copyOf(args.get(0).assertMap().contents().values()),
+                ListSeparator.COMMA,
+                false
+        );
+    }
+
+    private static SassValue mapMerge(List<SassValue> args) {
+        var result = new LinkedHashMap<>(args.get(0).assertMap().contents());
+        result.putAll(args.get(1).assertMap().contents());
+        return new SassMap(result);
+    }
+
+    private static SassValue mapHasKey(List<SassValue> args) {
+        return SassBoolean.of(args.get(0).assertMap().contents().containsKey(args.get(1)));
+    }
+
+    private static SassValue strLength(List<SassValue> args) {
+        var text = args.get(0).assertString().text();
+        return SassNumber.of(text.codePointCount(0, text.length()), null);
+    }
+
+    private static SassValue strIndex(List<SassValue> args) {
+        var text = args.get(0).assertString().text();
+        var substring = args.get(1).assertString().text();
+        var index = text.indexOf(substring);
+        return index < 0
+                ? SassNull.NULL
+                : SassNumber.of(text.codePointCount(0, index) + 1, null);
+    }
+
+    private static SassValue strSlice(List<SassValue> args) {
+        var string = args.get(0).assertString();
+        var text = string.text();
+        var length = text.codePointCount(0, text.length());
+        var start = normalizeStringIndex(args.get(1).assertNumber().assertInt(), length);
+        var end = normalizeStringIndex(args.get(2).assertNumber().assertInt(), length);
+        if (end < start || start > length || end < 1) {
+            return new SassString("", string.hasQuotes());
+        }
+        var startOffset = text.offsetByCodePoints(0, start - 1);
+        var endOffset = text.offsetByCodePoints(0, end);
+        return new SassString(text.substring(startOffset, endOffset), string.hasQuotes());
+    }
+
+    private static int normalizeStringIndex(int index, int length) {
+        if (index == 0) {
+            return 0;
+        }
+        if (index > 0) {
+            return Math.min(index, length);
+        }
+        return Math.max(length + index + 1, 0);
+    }
+
+    private static SassValue toUpperCase(List<SassValue> args) {
+        var string = args.get(0).assertString();
+        return new SassString(asciiCase(string.text(), true), string.hasQuotes());
+    }
+
+    private static SassValue toLowerCase(List<SassValue> args) {
+        var string = args.get(0).assertString();
+        return new SassString(asciiCase(string.text(), false), string.hasQuotes());
+    }
+
+    private static String asciiCase(String text, boolean upper) {
+        var result = new StringBuilder(text.length());
+        for (var index = 0; index < text.length(); ) {
+            var codePoint = text.codePointAt(index);
+            if (codePoint >= 'a' && codePoint <= 'z' && upper) {
+                result.append((char) (codePoint - 32));
+            } else if (codePoint >= 'A' && codePoint <= 'Z' && !upper) {
+                result.append((char) (codePoint + 32));
+            } else {
+                result.appendCodePoint(codePoint);
+            }
+            index += Character.charCount(codePoint);
+        }
+        return result.toString();
+    }
+
+    private static SassValue uniqueId(List<SassValue> args) {
+        var value = UNIQUE_ID.getAndIncrement();
+        return new SassString("u" + Long.toString(value, 36), false);
+    }
+
+    private static SassValue listSeparator(List<SassValue> args) {
+        var separator = args.get(0).separator();
+        var text = separator == ListSeparator.COMMA
+                ? "comma"
+                : separator == ListSeparator.SLASH ? "slash" : "space";
+        return new SassString(text, false);
+    }
+
+    private static SassValue isBracketed(List<SassValue> args) {
+        return SassBoolean.of(args.get(0).hasBrackets());
+    }
+
+    private static SassValue index(List<SassValue> args) {
+        var list = args.get(0).asList();
+        var value = args.get(1);
+        for (var index = 0; index < list.size(); index++) {
+            if (list.get(index).equals(value)) {
+                return SassNumber.of(index + 1, null);
+            }
+        }
+        return SassNull.NULL;
+    }
+
+    private static SassValue setNth(List<SassValue> args) {
+        var list = args.get(0);
+        var contents = new ArrayList<>(list.asList());
+        var index = list.sassIndexToListIndex(args.get(1), contents.size());
+        contents.set(index, args.get(2));
+        var separator = list.separator() == ListSeparator.UNDECIDED
+                ? ListSeparator.SPACE
+                : list.separator();
+        return new SassList(contents, separator, list.hasBrackets());
+    }
+
+    private static SassValue zip(List<SassValue> args) {
+        var lists = restValues(args);
+        if (lists.isEmpty()) {
+            return new SassList(List.of(), ListSeparator.COMMA, false);
+        }
+        var min = lists.stream().mapToInt(SassValue::lengthAsList).min().orElse(0);
+        var result = new ArrayList<SassValue>(min);
+        for (var index = 0; index < min; index++) {
+            var row = new ArrayList<SassValue>(lists.size());
+            for (var list : lists) {
+                row.add(list.asList().get(index));
+            }
+            result.add(new SassList(row, ListSeparator.SPACE, false));
+        }
+        return new SassList(result, ListSeparator.COMMA, false);
+    }
+
+    private static SassValue red(List<SassValue> args) {
+        return SassNumber.of(args.get(0).assertColor().red(), null);
+    }
+
+    private static SassValue green(List<SassValue> args) {
+        return SassNumber.of(args.get(0).assertColor().green(), null);
+    }
+
+    private static SassValue blue(List<SassValue> args) {
+        return SassNumber.of(args.get(0).assertColor().blue(), null);
+    }
+
+    private static SassValue alphaChannel(List<SassValue> args) {
+        return SassNumber.of(args.get(0).assertColor().alpha(), null);
+    }
+
+    private static SassValue opacity(List<SassValue> args) {
+        var value = args.get(0);
+        if (value instanceof SassNumber number) {
+            return new SassString("opacity(" + number.toCssString() + ")", false);
+        }
+        return SassNumber.of(value.assertColor().alpha(), null);
     }
 }

@@ -57,6 +57,8 @@ import org.glavo.scssfx.internal.css.CssParentNode;
 import org.glavo.scssfx.internal.css.CssStyleRule;
 import org.glavo.scssfx.internal.css.CssStylesheet;
 import org.glavo.scssfx.internal.css.CssValue;
+import org.glavo.scssfx.internal.value.ListSeparator;
+import org.glavo.scssfx.internal.value.SassArgumentList;
 import org.glavo.scssfx.internal.value.SassBoolean;
 import org.glavo.scssfx.internal.value.SassList;
 import org.glavo.scssfx.internal.value.SassMap;
@@ -1087,50 +1089,52 @@ public final class SassEvaluator implements
             ArgumentList arguments,
             SourceSpan span
     ) {
-        if (!arguments.named().isEmpty() || arguments.keywordRest() != null) {
-            throw new EvaluationException(
-                    "Named arguments aren't supported.",
-                    span
-            );
-        }
-
-        var positional = new ArrayList<SassValue>();
-        for (var argument : arguments.positional()) {
-            positional.add(evaluate(argument).withoutSlash());
-        }
-        if (arguments.rest() != null) {
-            var rest = evaluate(arguments.rest()).withoutSlash();
-            positional.addAll(rest.asList());
-        }
-
+        var evaluated = evaluateArguments(arguments, span);
         if (callable instanceof BuiltInCallable builtIn) {
-            return valueOperation(span, () -> builtIn.invoke(List.copyOf(positional)));
+            return valueOperation(span, () -> {
+                var bound = bindForBuiltin(builtIn, evaluated, span);
+                return builtIn.invoke(bound);
+            });
         }
         if (callable instanceof PlainCssCallable plainCss) {
-            return valueOperation(span, () -> serializePlainCss(plainCss.name(), positional));
+            if (!evaluated.named().isEmpty()) {
+                throw new EvaluationException(
+                        "Plain CSS functions don't support keyword arguments.",
+                        span
+                );
+            }
+            return valueOperation(
+                    span,
+                    () -> serializePlainCss(plainCss.name(), evaluated.positional())
+            );
         }
         if (callable instanceof UserDefinedCallable userDefined) {
-            return runUserDefinedFunction(userDefined, List.copyOf(positional), span);
+            return runUserDefinedFunction(userDefined, evaluated, span);
         }
         throw new IllegalStateException("unsupported callable: " + callable.getClass().getName());
     }
 
     /// Executes a user-defined function body and returns its `@return` value.
     ///
-    /// @param function   the user function
-    /// @param positional the evaluated positional arguments
-    /// @param span       the call span
+    /// @param function  the user function
+    /// @param evaluated the evaluated arguments
+    /// @param span      the call span
     /// @return the returned value
     private SassValue runUserDefinedFunction(
             UserDefinedCallable function,
-            List<SassValue> positional,
+            EvaluatedArguments evaluated,
             SourceSpan span
     ) {
         return withEnvironment(function.environment().closure(), () -> {
             var scope = environment.scope(ScopeSemantics.LEXICAL, true);
             try {
-                bindParameters(function.parameters(), positional, span);
+                @Nullable SassArgumentList rest = bindParameters(
+                        function.parameters(),
+                        evaluated,
+                        span
+                );
                 var result = executeChildren(function.children());
+                checkUnusedKeywords(rest, span);
                 if (result instanceof StatementResult.ReturnValue returned) {
                     return returned.value();
                 }
@@ -1156,22 +1160,18 @@ public final class SassEvaluator implements
             @Nullable UserDefinedCallable content,
             SourceSpan span
     ) {
-        if (!arguments.named().isEmpty() || arguments.keywordRest() != null) {
-            throw new EvaluationException("Named arguments aren't supported.", span);
-        }
-        var positional = new ArrayList<SassValue>();
-        for (var argument : arguments.positional()) {
-            positional.add(evaluate(argument).withoutSlash());
-        }
-        if (arguments.rest() != null) {
-            positional.addAll(evaluate(arguments.rest()).withoutSlash().asList());
-        }
+        var evaluated = evaluateArguments(arguments, span);
         withEnvironment(mixin.environment().closure(), () -> {
             environment.withContent(content, () -> {
                 var scope = environment.scope(ScopeSemantics.LEXICAL, true);
                 try {
-                    bindParameters(mixin.parameters(), List.copyOf(positional), span);
+                    @Nullable SassArgumentList rest = bindParameters(
+                            mixin.parameters(),
+                            evaluated,
+                            span
+                    );
                     executeChildren(mixin.children());
+                    checkUnusedKeywords(rest, span);
                     return null;
                 } finally {
                     scope.close();
@@ -1181,18 +1181,99 @@ public final class SassEvaluator implements
         });
     }
 
-    /// Binds positional arguments and default parameter expressions.
+    /// Evaluates an argument invocation into positional and named values.
+    ///
+    /// @param arguments the unevaluated arguments
+    /// @param span      the invocation span
+    /// @return the evaluated arguments
+    private EvaluatedArguments evaluateArguments(ArgumentList arguments, SourceSpan span) {
+        var positional = new ArrayList<SassValue>();
+        for (var argument : arguments.positional()) {
+            positional.add(evaluate(argument).withoutSlash());
+        }
+        var named = new LinkedHashMap<String, SassValue>();
+        for (var entry : arguments.named().entrySet()) {
+            named.put(entry.getKey(), evaluate(entry.getValue()).withoutSlash());
+        }
+        var separator = ListSeparator.UNDECIDED;
+        if (arguments.rest() != null) {
+            var rest = evaluate(arguments.rest()).withoutSlash();
+            if (rest instanceof SassMap map) {
+                addRestMap(named, map, span);
+            } else if (rest instanceof SassArgumentList argumentList) {
+                positional.addAll(argumentList.asList());
+                separator = argumentList.separator();
+                named.putAll(argumentList.keywordsWithoutMarking());
+            } else if (rest instanceof SassList list) {
+                positional.addAll(list.contents());
+                separator = list.separator();
+            } else {
+                positional.add(rest);
+            }
+        }
+        if (arguments.keywordRest() != null) {
+            var keywordRest = evaluate(arguments.keywordRest()).withoutSlash();
+            if (!(keywordRest instanceof SassMap map)) {
+                throw new EvaluationException(
+                        "Variable keyword arguments must be a map (was " + keywordRest + ").",
+                        span
+                );
+            }
+            addRestMap(named, map, span);
+        }
+        return new EvaluatedArguments(positional, named, separator);
+    }
+
+    /// Merges a rest map into the named-argument table.
+    private void addRestMap(
+            LinkedHashMap<String, SassValue> named,
+            SassMap map,
+            SourceSpan span
+    ) {
+        for (var entry : map.contents().entrySet()) {
+            if (!(entry.getKey() instanceof SassString key) || key.hasQuotes()) {
+                throw new EvaluationException(
+                        "Variable keyword argument map must have string keys.",
+                        span
+                );
+            }
+            var name = key.text().replace('_', '-');
+            if (named.containsKey(name)) {
+                throw new EvaluationException(
+                        "Argument $" + name + " was passed both by position and by name.",
+                        span
+                );
+            }
+            named.put(name, entry.getValue());
+        }
+    }
+
+    /// Binds evaluated arguments into the current local frame.
     ///
     /// @param parameters the declared parameters
-    /// @param positional the evaluated positional values
+    /// @param evaluated  the evaluated arguments
     /// @param span       the invocation span
-    private void bindParameters(
+    /// @return the rest argument list when a rest parameter exists
+    private @Nullable SassArgumentList bindParameters(
             ParameterList parameters,
-            List<SassValue> positional,
+            EvaluatedArguments evaluated,
             SourceSpan span
     ) {
         var declared = parameters.parameters();
-        if (positional.size() > declared.size()) {
+        var positional = new ArrayList<>(evaluated.positional());
+        var named = new LinkedHashMap<>(evaluated.named());
+
+        for (var index = 0; index < declared.size(); index++) {
+            var name = declared.get(index).name();
+            if (index < positional.size() && named.containsKey(name)) {
+                throw new EvaluationException(
+                        "Argument $" + name + " was passed both by position and by name.",
+                        span
+                );
+            }
+        }
+
+        if (parameters.restParameter() == null && positional.size() > declared.size()) {
             throw new EvaluationException(
                     "Only " + declared.size() + " "
                             + (declared.size() == 1 ? "argument" : "arguments")
@@ -1202,15 +1283,17 @@ public final class SassEvaluator implements
                     span
             );
         }
-        for (var index = 0; index < positional.size(); index++) {
-            environment.setLocalVariable(
-                    declared.get(index).name(),
-                    positional.get(index),
-                    span
-            );
+
+        for (var index = 0; index < Math.min(positional.size(), declared.size()); index++) {
+            environment.setLocalVariable(declared.get(index).name(), positional.get(index), span);
         }
         for (var index = positional.size(); index < declared.size(); index++) {
             var parameter = declared.get(index);
+            @Nullable SassValue namedValue = named.remove(parameter.name());
+            if (namedValue != null) {
+                environment.setLocalVariable(parameter.name(), namedValue, span);
+                continue;
+            }
             if (parameter.defaultValue() == null) {
                 throw new EvaluationException(
                         "Missing argument $" + parameter.name() + ".",
@@ -1223,6 +1306,126 @@ public final class SassEvaluator implements
                     parameter.defaultValue().span()
             );
         }
+
+        if (parameters.restParameter() == null) {
+            if (!named.isEmpty()) {
+                throw unknownNamed(named.keySet(), span);
+            }
+            return null;
+        }
+
+        var restPositional = positional.size() > declared.size()
+                ? List.copyOf(positional.subList(declared.size(), positional.size()))
+                : List.<SassValue>of();
+        var separator = evaluated.separator() == ListSeparator.UNDECIDED
+                ? ListSeparator.COMMA
+                : evaluated.separator();
+        var rest = new SassArgumentList(restPositional, separator, named);
+        environment.setLocalVariable(parameters.restParameter(), rest, span);
+        return rest;
+    }
+
+    /// Converts evaluated arguments into a positional list for a built-in callable.
+    private List<SassValue> bindForBuiltin(
+            BuiltInCallable builtIn,
+            EvaluatedArguments evaluated,
+            SourceSpan span
+    ) {
+        var params = builtIn.parameters();
+        var positional = new ArrayList<>(evaluated.positional());
+        var named = new LinkedHashMap<>(evaluated.named());
+        var bound = new ArrayList<SassValue>();
+
+        for (var index = 0; index < params.size(); index++) {
+            var param = params.get(index);
+            if (index < positional.size()) {
+                if (named.containsKey(param.name())) {
+                    throw new EvaluationException(
+                            "Argument $" + param.name()
+                                    + " was passed both by position and by name.",
+                            span
+                    );
+                }
+                bound.add(positional.get(index));
+                continue;
+            }
+            @Nullable SassValue namedValue = named.remove(param.name());
+            if (namedValue != null) {
+                bound.add(namedValue);
+                continue;
+            }
+            if (param.defaultValue() != null) {
+                bound.add(param.defaultValue());
+                continue;
+            }
+            if (builtIn.restParameter() == null && index >= builtIn.minArgs()) {
+                break;
+            }
+            throw new EvaluationException("Missing argument $" + param.name() + ".", span);
+        }
+
+        if (builtIn.restParameter() == null) {
+            if (positional.size() > params.size()) {
+                throw new EvaluationException(
+                        "Only " + params.size() + " "
+                                + (params.size() == 1 ? "argument" : "arguments")
+                                + " allowed, but " + positional.size() + " "
+                                + (positional.size() == 1 ? "was" : "were")
+                                + " passed.",
+                        span
+                );
+            }
+            if (!named.isEmpty()) {
+                throw unknownNamed(named.keySet(), span);
+            }
+            return bound;
+        }
+
+        var restPositional = positional.size() > params.size()
+                ? List.copyOf(positional.subList(params.size(), positional.size()))
+                : List.<SassValue>of();
+        var separator = evaluated.separator() == ListSeparator.UNDECIDED
+                ? ListSeparator.COMMA
+                : evaluated.separator();
+        var rest = new SassArgumentList(restPositional, separator, named);
+        bound.add(rest);
+        // Built-ins that accept rest are assumed to consume keywords by reading
+        // the argument list as a plain list; unused named keywords error here.
+        if (!named.isEmpty()) {
+            throw unknownNamed(named.keySet(), span);
+        }
+        return bound;
+    }
+
+    /// Throws when leftover named arguments remain.
+    private static EvaluationException unknownNamed(
+            java.util.Set<String> names,
+            SourceSpan span
+    ) {
+        var list = names.stream().sorted().map(name -> "$" + name).toList();
+        var message = list.size() == 1
+                ? "No parameter named " + list.get(0) + "."
+                : "No parameters named " + String.join(" or ", list) + ".";
+        return new EvaluationException(message, span);
+    }
+
+    /// Reports unused keyword arguments after a rest parameter call.
+    private static void checkUnusedKeywords(
+            @Nullable SassArgumentList rest,
+            SourceSpan span
+    ) {
+        if (rest == null || rest.wereKeywordsAccessed() || rest.keywordsWithoutMarking().isEmpty()) {
+            return;
+        }
+        throw unknownNamed(rest.keywordsWithoutMarking().keySet(), span);
+    }
+
+    /// Contains evaluated invocation arguments.
+    private record EvaluatedArguments(
+            List<SassValue> positional,
+            LinkedHashMap<String, SassValue> named,
+            ListSeparator separator
+    ) {
     }
 
     /// Runs a body with a temporary evaluation environment.

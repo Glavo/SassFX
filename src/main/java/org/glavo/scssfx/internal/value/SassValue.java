@@ -3,6 +3,7 @@ package org.glavo.scssfx.internal.value;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.List;
@@ -20,6 +21,7 @@ public sealed interface SassValue permits
         SassNumber,
         SassString,
         SassList,
+        SassArgumentList,
         SassMap,
         SassColor {
     /// Returns this value's separator when viewed as a Sass list.
@@ -255,6 +257,27 @@ public sealed interface SassValue permits
     /// @throws SassValueException if this value is not a color
     default SassColor assertColor() {
         throw new SassValueException(this + " is not a color.");
+    }
+
+    /// Returns this value when it is a Sass map.
+    ///
+    /// Empty unbracketed lists are treated as empty maps.
+    ///
+    /// @return this map
+    /// @throws SassValueException if this value is not a map
+    default SassMap assertMap() {
+        @Nullable SassMap map = tryMap();
+        if (map == null) {
+            throw new SassValueException(this + " is not a map.");
+        }
+        return map;
+    }
+
+    /// Returns this value as a map when possible.
+    ///
+    /// @return the map, or {@code null} when conversion is unavailable
+    default @Nullable SassMap tryMap() {
+        return null;
     }
 
     /// Converts a Sass list index into a zero-based Java list index.

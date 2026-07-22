@@ -692,6 +692,7 @@ final class ScssParser extends SassExpressionParser {
         whitespace(true);
         var parameters = new ArrayList<Parameter>();
         var names = new java.util.HashSet<String>();
+        @Nullable String restParameter = null;
         while (scanner.peek() == '$') {
             var parameterStart = scanner.state();
             var name = variableName();
@@ -706,7 +707,14 @@ final class ScssParser extends SassExpressionParser {
                 whitespace(true);
             }
             if (scanner.scan('.') && scanner.scan('.') && scanner.scan('.')) {
-                throw scanner.error("Rest parameters aren't supported.");
+                if (defaultValue != null) {
+                    throw scanner.error("Rest parameters may not have default values.");
+                }
+                restParameter = name;
+                whitespace(true);
+                scanner.scan(',');
+                whitespace(true);
+                break;
             }
             parameters.add(new Parameter(name, defaultValue, scanner.spanFrom(parameterStart)));
             if (!scanner.scan(',')) {
@@ -715,7 +723,7 @@ final class ScssParser extends SassExpressionParser {
             whitespace(true);
         }
         scanner.expect(')');
-        return new ParameterList(parameters, scanner.spanFrom(start));
+        return new ParameterList(parameters, restParameter, scanner.spanFrom(start));
     }
 
     /// Parses a declaration when possible and otherwise reparses from the same

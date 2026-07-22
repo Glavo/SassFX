@@ -7,6 +7,7 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /// Represents an immutable Sass list.
@@ -48,6 +49,14 @@ public record SassList(
     @Override
     public int lengthAsList() {
         return contents.size();
+    }
+
+    /// Returns an empty map when this list is empty.
+    ///
+    /// @return an empty map, or {@code null} when the list is non-empty
+    @Override
+    public @Nullable SassMap tryMap() {
+        return contents.isEmpty() ? new SassMap(Map.of()) : null;
     }
 
     /// Returns whether this is an unbracketed list containing only blank values.
