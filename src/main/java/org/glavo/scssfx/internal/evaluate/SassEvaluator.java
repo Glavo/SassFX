@@ -48,6 +48,7 @@ import org.glavo.scssfx.internal.callable.BuiltInCallable;
 import org.glavo.scssfx.internal.callable.Callable;
 import org.glavo.scssfx.internal.callable.PlainCssCallable;
 import org.glavo.scssfx.internal.callable.UserDefinedCallable;
+import org.glavo.scssfx.internal.ast.selector.SelectorList;
 import org.glavo.scssfx.internal.css.CssComment;
 import org.glavo.scssfx.internal.function.BuiltInFunctions;
 import org.glavo.scssfx.internal.css.CssDeclaration;
@@ -56,7 +57,6 @@ import org.glavo.scssfx.internal.css.CssParentNode;
 import org.glavo.scssfx.internal.css.CssStyleRule;
 import org.glavo.scssfx.internal.css.CssStylesheet;
 import org.glavo.scssfx.internal.css.CssValue;
-import org.glavo.scssfx.internal.css.SelectorNesting;
 import org.glavo.scssfx.internal.value.SassBoolean;
 import org.glavo.scssfx.internal.value.SassList;
 import org.glavo.scssfx.internal.value.SassMap;
@@ -239,8 +239,30 @@ public final class SassEvaluator implements
         }
 
         var selectorText = performInterpolation(statement.selector());
-        @Nullable String parentSelector = styleRule == null ? null : styleRule.selector().value();
-        var nestedSelector = SelectorNesting.nest(parentSelector, selectorText);
+        SelectorList parsed;
+        try {
+            parsed = SelectorList.parse(selectorText, statement.selector().span());
+        } catch (SassValueException cause) {
+            throw new EvaluationException(
+                    Objects.requireNonNull(cause.getMessage(), "selector failure message"),
+                    statement.selector().span(),
+                    List.of(),
+                    cause
+            );
+        }
+        @Nullable SelectorList parentSelector =
+                styleRule == null ? null : styleRule.selector().value();
+        SelectorList nestedSelector;
+        try {
+            nestedSelector = parsed.nestWithin(parentSelector);
+        } catch (SassValueException cause) {
+            throw new EvaluationException(
+                    Objects.requireNonNull(cause.getMessage(), "selector failure message"),
+                    statement.selector().span(),
+                    List.of(),
+                    cause
+            );
+        }
         var rule = new CssStyleRule(
                 new CssValue<>(nestedSelector, statement.selector().span()),
                 statement.span()

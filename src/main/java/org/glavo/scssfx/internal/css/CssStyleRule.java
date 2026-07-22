@@ -2,6 +2,7 @@
 package org.glavo.scssfx.internal.css;
 
 import org.glavo.scssfx.SourceSpan;
+import org.glavo.scssfx.internal.ast.selector.SelectorList;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.UnmodifiableView;
@@ -11,12 +12,12 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
-/// A plain-CSS style rule with an already-resolved selector string.
+/// A plain-CSS style rule with an already-resolved selector list.
 @ApiStatus.Internal
 @NotNullByDefault
 public final class CssStyleRule extends AbstractCssNode implements CssParentNode {
-    /// Contains the evaluated selector text and its source span.
-    private final CssValue<String> selector;
+    /// Contains the evaluated selector list and its source span.
+    private final CssValue<SelectorList> selector;
 
     /// Contains child statements in evaluation order.
     private final ArrayList<CssNode> children;
@@ -26,19 +27,19 @@ public final class CssStyleRule extends AbstractCssNode implements CssParentNode
 
     /// Creates an empty style rule.
     ///
-    /// @param selector the resolved selector
+    /// @param selector the resolved selector list
     /// @param span     the source range of the originating Sass style rule
-    public CssStyleRule(CssValue<String> selector, SourceSpan span) {
+    public CssStyleRule(CssValue<SelectorList> selector, SourceSpan span) {
         super(span);
         this.selector = Objects.requireNonNull(selector, "selector");
         this.children = new ArrayList<>();
         this.childrenView = Collections.unmodifiableList(children);
     }
 
-    /// Returns the resolved selector.
+    /// Returns the resolved selector list.
     ///
     /// @return the selector value
-    public CssValue<String> selector() {
+    public CssValue<SelectorList> selector() {
         return selector;
     }
 
@@ -91,14 +92,14 @@ public final class CssStyleRule extends AbstractCssNode implements CssParentNode
         return false;
     }
 
-    /// Returns whether {@code other} is a style rule with the same selector text.
+    /// Returns whether {@code other} is a style rule with the same selector CSS.
     ///
     /// @param other the node to compare
     /// @return whether the selectors match
     @Override
     public boolean equalsIgnoringChildren(CssNode other) {
         return other instanceof CssStyleRule rule
-                && selector.value().equals(rule.selector.value());
+                && selector.value().toCssString().equals(rule.selector.value().toCssString());
     }
 
     /// Returns an empty style rule that shares this selector and span.

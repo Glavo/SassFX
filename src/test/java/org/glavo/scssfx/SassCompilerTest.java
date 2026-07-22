@@ -80,7 +80,7 @@ final class SassCompilerTest {
 
         assertEquals(
                 """
-                        a c, a d, b c, b d {
+                        a c, b c, a d, b d {
                           color: red;
                         }
 

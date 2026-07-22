@@ -104,7 +104,7 @@ public final class CssSerializer {
             int indentation
     ) {
         writeIndentation(buffer, indentation);
-        buffer.append(rule.selector().value());
+        buffer.append(rule.selector().value().toCssString());
         buffer.append(" {");
         writeChildren(rule, buffer, indentation);
         buffer.append('}');
