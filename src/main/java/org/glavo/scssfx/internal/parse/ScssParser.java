@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.parse;
 
+import org.glavo.scssfx.Diagnostic;
+import org.glavo.scssfx.DiagnosticSeverity;
+import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.ast.Declaration;
 import org.glavo.scssfx.internal.ast.Interpolation;
 import org.glavo.scssfx.internal.ast.InterpolationBuffer;
@@ -11,17 +14,28 @@ import org.glavo.scssfx.internal.ast.SilentComment;
 import org.glavo.scssfx.internal.ast.StringExpression;
 import org.glavo.scssfx.internal.ast.StyleRule;
 import org.glavo.scssfx.internal.ast.Stylesheet;
+import org.glavo.scssfx.internal.ast.VariableDeclaration;
 import org.glavo.scssfx.internal.source.SourceFile;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 /// Parses SCSS stylesheets containing declarations, nested properties, style rules, and comments.
 @NotNullByDefault
 final class ScssParser extends SassExpressionParser {
+    /// Parse-time diagnostics retained for later compiler reporting.
+    private final ArrayList<Diagnostic> parseTimeWarnings = new ArrayList<>();
+
+    /// First global declaration span for each normalized variable name.
+    private final LinkedHashMap<String, SourceSpan> globalVariables = new LinkedHashMap<>();
+
+    /// The most recently parsed silent comment, or {@code null} when none exists.
+    private @Nullable SilentComment lastSilentComment;
+
     /// Creates a parser for an indexed SCSS source.
     ///
     /// @param source the SCSS source to parse
@@ -42,10 +56,16 @@ final class ScssParser extends SassExpressionParser {
         scanner.scan(0xFEFF);
         var children = statements();
         scanner.expectDone();
-        return new Stylesheet(children, scanner.spanFrom(start), false);
+        return new Stylesheet(
+                children,
+                scanner.spanFrom(start),
+                false,
+                parseTimeWarnings,
+                globalVariables
+        );
     }
 
-    /// Parses top-level style rules, comment statements, and empty statements.
+    /// Parses top-level variable declarations, style rules, comments, and empty statements.
     ///
     /// @return the parsed statements in source order
     /// @throws ParseException if another statement production begins
@@ -68,10 +88,11 @@ final class ScssParser extends SassExpressionParser {
                     scanner.read();
                     whitespaceWithoutComments(true);
                 }
-                case '@', '$' -> throw scanner.error(
+                case '$' -> statements.add(variableDeclarationWithoutNamespace());
+                case '@' -> throw scanner.error(
                         "This stylesheet statement is not available."
                 );
-                default -> statements.add(styleRule());
+                default -> statements.add(variableDeclarationOrStyleRule());
             }
         }
         return statements;
@@ -85,6 +106,14 @@ final class ScssParser extends SassExpressionParser {
     private StyleRule styleRule() {
         var start = scanner.state();
         return styleRule(new InterpolationBuffer(), start);
+    }
+
+    /// Parses a namespaced variable declaration when one begins here, or a style rule otherwise.
+    ///
+    /// @return the parsed variable declaration or style rule
+    private SassStatement variableDeclarationOrStyleRule() {
+        var variable = tryNamespacedVariableDeclaration();
+        return variable == null ? styleRule() : variable;
     }
 
     /// Parses a style rule after declaration lookahead consumed a selector prefix.
@@ -244,9 +273,10 @@ final class ScssParser extends SassExpressionParser {
 
     /// Parses a braced statement block.
     ///
-    /// Style-rule blocks accept declarations and nested style rules. Nested
-    /// property blocks accept declarations only. Comments are retained as
-    /// statements and empty semicolon statements are discarded.
+    /// Style-rule blocks accept variable and property declarations as well as
+    /// nested style rules. Nested-property blocks accept variable and property
+    /// declarations only. Comments are retained as statements and empty
+    /// semicolon statements are discarded.
     ///
     /// @param declarationsOnly whether style-rule fallback is forbidden
     /// @return the child statements in source order
@@ -278,7 +308,8 @@ final class ScssParser extends SassExpressionParser {
                     scanner.read();
                     return children;
                 }
-                case '@', '$' -> throw scanner.error(
+                case '$' -> children.add(variableDeclarationWithoutNamespace());
+                case '@' -> throw scanner.error(
                         "This block statement is not available."
                 );
                 default -> {
@@ -296,6 +327,11 @@ final class ScssParser extends SassExpressionParser {
     ///
     /// @return the parsed declaration or style rule
     private SassStatement declarationOrStyleRule() {
+        var variable = tryNamespacedVariableDeclaration();
+        if (variable != null) {
+            return variable;
+        }
+
         var start = scanner.state();
         var selectorPrefix = new InterpolationBuffer();
         @Nullable Declaration declaration = tryDeclaration(
@@ -311,9 +347,14 @@ final class ScssParser extends SassExpressionParser {
 
     /// Parses one child of a nested-property block without selector fallback.
     ///
-    /// @return the nested declaration
-    /// @throws ParseException if the child is not a property declaration
-    private Declaration declarationChild() {
+    /// @return the nested variable or property declaration
+    /// @throws ParseException if the child is not a supported declaration
+    private SassStatement declarationChild() {
+        var variable = tryNamespacedVariableDeclaration();
+        if (variable != null) {
+            return variable;
+        }
+
         var start = scanner.state();
         @Nullable Declaration declaration = tryDeclaration(
                 start,
@@ -322,6 +363,144 @@ final class ScssParser extends SassExpressionParser {
         );
         if (declaration == null) {
             throw scanner.error("Expected declaration.");
+        }
+        return declaration;
+    }
+
+    /// Attempts to parse a variable assignment beginning with a module namespace.
+    ///
+    /// Input is restored when the next tokens are not exactly an identifier,
+    /// period, and dollar sign. Once that prefix is recognized, malformed
+    /// declarations are reported rather than reparsed as selectors.
+    ///
+    /// @return the declaration, or {@code null} without consuming input
+    private @Nullable VariableDeclaration tryNamespacedVariableDeclaration() {
+        if (!lookingAtIdentifier()) {
+            return null;
+        }
+
+        var start = scanner.state();
+        var namespaceStart = scanner.state();
+        var namespace = identifier(false, false);
+        var namespaceEnd = scanner.state();
+        if (scanner.peek() != '.' || scanner.peek(1) != '$') {
+            scanner.restore(start);
+            return null;
+        }
+
+        scanner.read();
+        return variableDeclarationWithoutNamespace(
+                namespace,
+                scanner.spanFrom(namespaceStart, namespaceEnd),
+                start
+        );
+    }
+
+    /// Parses an unqualified variable declaration at the current position.
+    ///
+    /// @return the parsed declaration
+    private VariableDeclaration variableDeclarationWithoutNamespace() {
+        return variableDeclarationWithoutNamespace(null, null, scanner.state());
+    }
+
+    /// Parses a variable declaration after an optional namespace.
+    ///
+    /// The namespace, when present, has already been consumed along with its
+    /// following period. Duplicate flags are retained as parse-time
+    /// deprecations, while unknown flags and cross-module global assignments
+    /// are syntax errors.
+    ///
+    /// @param namespace the decoded namespace, or {@code null}
+    /// @param namespaceSpan the namespace source range, or {@code null}
+    /// @param start the beginning of the complete declaration
+    /// @return the parsed declaration
+    private VariableDeclaration variableDeclarationWithoutNamespace(
+            @Nullable String namespace,
+            @Nullable SourceSpan namespaceSpan,
+            ScannerState start
+    ) {
+        var precedingComment = lastSilentComment;
+        lastSilentComment = null;
+
+        var nameStart = scanner.state();
+        var name = variableName();
+        var nameSpan = scanner.spanFrom(nameStart);
+        if (namespace != null && (name.startsWith("-") || name.startsWith("_"))) {
+            throw scanner.error(
+                    "Private members can't be accessed from outside their modules.",
+                    start.position(),
+                    scanner.position() - start.position()
+            );
+        }
+
+        whitespace(true);
+        scanner.expect(':');
+        whitespace(true);
+        var value = expression();
+
+        var guarded = false;
+        var global = false;
+        var flagStart = scanner.state();
+        while (scanner.scan('!')) {
+            var flag = identifier(false, false);
+            var flagSpan = scanner.spanFrom(flagStart);
+            switch (flag) {
+                case "default" -> {
+                    if (guarded) {
+                        parseTimeWarnings.add(new Diagnostic(
+                                DiagnosticSeverity.DEPRECATION,
+                                "!default should only be written once for each variable.\n"
+                                        + "This will be an error in Dart Sass 2.0.0.",
+                                flagSpan,
+                                "duplicate-var-flags"
+                        ));
+                    }
+                    guarded = true;
+                }
+                case "global" -> {
+                    if (namespace != null) {
+                        throw scanner.error(
+                                "!global isn't allowed for variables in other modules.",
+                                flagSpan.start().offset(),
+                                flagSpan.text().length()
+                        );
+                    }
+                    if (global) {
+                        parseTimeWarnings.add(new Diagnostic(
+                                DiagnosticSeverity.DEPRECATION,
+                                "!global should only be written once for each variable.\n"
+                                        + "This will be an error in Dart Sass 2.0.0.",
+                                flagSpan,
+                                "duplicate-var-flags"
+                        ));
+                    }
+                    global = true;
+                }
+                default -> throw scanner.error(
+                        "Invalid flag name.",
+                        flagSpan.start().offset(),
+                        flagSpan.text().length()
+                );
+            }
+
+            whitespace(false);
+            flagStart = scanner.state();
+        }
+
+        expectStatementSeparator();
+        var declaration = new VariableDeclaration(
+                namespace,
+                name,
+                value,
+                guarded,
+                global,
+                precedingComment,
+                nameSpan,
+                namespaceSpan,
+                scanner.spanFrom(start)
+        );
+        if (global) {
+            globalVariables.putIfAbsent(name, declaration.span());
         }
         return declaration;
     }
@@ -344,9 +523,7 @@ final class ScssParser extends SassExpressionParser {
             boolean declarationsOnly,
             InterpolationBuffer nameBuffer
     ) {
-        var startsWithPunctuation = false;
         if (lookingAtPotentialPropertyHack()) {
-            startsWithPunctuation = true;
             nameBuffer.append((char) scanner.read());
             nameBuffer.append(rawText(() -> whitespace(false)));
         }
@@ -361,12 +538,6 @@ final class ScssParser extends SassExpressionParser {
         nameBuffer.add(identifier);
         var declarationNameEnd = scanner.state();
 
-        if (!startsWithPunctuation
-                && identifier.isPlain()
-                && scanner.peek() == '.'
-                && scanner.peek(1) == '$') {
-            throw scanner.error("Namespaced variable declarations are not available.");
-        }
         if (!declarationsOnly
                 && scanner.peek() == '/'
                 && scanner.peek(1) == '*') {
@@ -623,10 +794,12 @@ final class ScssParser extends SassExpressionParser {
             spaces();
         } while (scanner.scan("//"));
 
-        return new SilentComment(
+        var comment = new SilentComment(
                 scanner.substring(start.position()),
                 scanner.spanFrom(start)
         );
+        lastSilentComment = comment;
+        return comment;
     }
 
     /// Parses one CSS-style loud comment and normalizes its line endings.

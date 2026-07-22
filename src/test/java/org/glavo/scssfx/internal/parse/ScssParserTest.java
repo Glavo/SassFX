@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.parse;
 
+import org.glavo.scssfx.Diagnostic;
+import org.glavo.scssfx.DiagnosticSeverity;
+import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.ast.BinaryOperationExpression;
 import org.glavo.scssfx.internal.ast.BinaryOperator;
 import org.glavo.scssfx.internal.ast.ColorExpression;
@@ -13,6 +16,7 @@ import org.glavo.scssfx.internal.ast.SilentComment;
 import org.glavo.scssfx.internal.ast.StringExpression;
 import org.glavo.scssfx.internal.ast.StyleRule;
 import org.glavo.scssfx.internal.ast.Stylesheet;
+import org.glavo.scssfx.internal.ast.VariableDeclaration;
 import org.glavo.scssfx.internal.ast.VariableExpression;
 import org.glavo.scssfx.internal.source.SourceFile;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -24,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -151,6 +156,323 @@ final class ScssParserTest {
                 comment.text().parts().get(1)
         );
         assertEquals("#{1 + 2}", commentExpression.interpolationSpan().text());
+    }
+
+    /// Verifies top-level and nested variable declarations, normalized names, and source ranges.
+    @Test
+    void parsesTopLevelAndNestedVariableDeclarations() {
+        var source = "$top_level: 1 + 2;a {$nested_value: red}";
+        var stylesheet = parse(source);
+
+        assertEquals(2, stylesheet.children().size());
+        var topLevel = assertInstanceOf(
+                VariableDeclaration.class,
+                stylesheet.children().get(0)
+        );
+        assertNull(topLevel.namespace());
+        assertEquals("top-level", topLevel.name());
+        assertEquals("$top_level", topLevel.originalName());
+        assertFalse(topLevel.isGuarded());
+        assertFalse(topLevel.isGlobal());
+        assertNull(topLevel.comment());
+        assertInstanceOf(BinaryOperationExpression.class, topLevel.expression());
+        assertSpan(topLevel.nameSpan(), 0, 10, "$top_level");
+        assertNull(topLevel.namespaceSpan());
+        assertSpan(topLevel.span(), 0, 17, "$top_level: 1 + 2");
+
+        var rule = assertInstanceOf(StyleRule.class, stylesheet.children().get(1));
+        assertEquals(1, rule.children().size());
+        var nested = assertInstanceOf(VariableDeclaration.class, rule.children().get(0));
+        assertEquals("nested-value", nested.name());
+        assertEquals("$nested_value", nested.originalName());
+        assertInstanceOf(ColorExpression.class, nested.expression());
+        assertSpan(nested.nameSpan(), 21, 34, "$nested_value");
+        assertSpan(nested.span(), 21, 39, "$nested_value: red");
+
+        assertTrue(stylesheet.parseTimeWarnings().isEmpty());
+        assertTrue(stylesheet.globalVariables().isEmpty());
+    }
+
+    /// Verifies variable declarations at block, nested-property, and end-of-input boundaries.
+    @Test
+    void parsesVariableDeclarationStatementBoundaries() {
+        var adjacent = parse("a {$x: 1}$top: 2");
+        assertEquals(2, adjacent.children().size());
+        var rule = assertInstanceOf(StyleRule.class, adjacent.children().get(0));
+        assertInstanceOf(VariableDeclaration.class, rule.children().get(0));
+        var topLevel = assertInstanceOf(
+                VariableDeclaration.class,
+                adjacent.children().get(1)
+        );
+        assertEquals("top", topLevel.name());
+        assertEquals("$top: 2", topLevel.span().text());
+
+        var nestedRule = assertInstanceOf(
+                StyleRule.class,
+                parse("a {font: {$nested: 3;size: $nested;}}").children().get(0)
+        );
+        var font = assertInstanceOf(Declaration.class, nestedRule.children().get(0));
+        var fontChildren = Objects.requireNonNull(font.children());
+        assertEquals(2, fontChildren.size());
+        var nested = assertInstanceOf(VariableDeclaration.class, fontChildren.get(0));
+        assertEquals("nested", nested.name());
+        assertEquals("$nested: 3", nested.span().text());
+        var size = assertInstanceOf(Declaration.class, fontChildren.get(1));
+        var reference = assertInstanceOf(VariableExpression.class, size.value());
+        assertEquals("nested", reference.name());
+
+        var namespacedRule = assertInstanceOf(
+                StyleRule.class,
+                parse("a {theme.$value: 4}").children().get(0)
+        );
+        var namespaced = assertInstanceOf(
+                VariableDeclaration.class,
+                namespacedRule.children().get(0)
+        );
+        assertEquals("theme", namespaced.namespace());
+        assertEquals("value", namespaced.name());
+        assertEquals("theme.$value: 4", namespaced.span().text());
+
+        var missingSeparator = assertThrows(
+                ParseException.class,
+                () -> parse("$x: 1 $y: 2;")
+        );
+        assertEquals(":", missingSeparator.span().text());
+    }
+
+    /// Verifies both flag orders, intervening trivia, escaped flags, and qualified assignments.
+    @Test
+    void parsesVariableFlagsAndNamespacedAssignments() {
+        var source = "$first_value: 1 !default/**/ !global  ;\n"
+                + "$second: 2 !global\n  /* gap */ !d\\65 fault;\n"
+                + "theme_tools.$accent_color: blue !default;\n"
+                + "_private_namespace.$public: 3;";
+        var stylesheet = parse(source);
+
+        assertEquals(4, stylesheet.children().size());
+        var first = assertInstanceOf(
+                VariableDeclaration.class,
+                stylesheet.children().get(0)
+        );
+        assertEquals("first-value", first.name());
+        assertTrue(first.isGuarded());
+        assertTrue(first.isGlobal());
+        assertSpan(first.span(), 0, 38, "$first_value: 1 !default/**/ !global  ");
+
+        var second = assertInstanceOf(
+                VariableDeclaration.class,
+                stylesheet.children().get(1)
+        );
+        assertEquals("second", second.name());
+        assertTrue(second.isGuarded());
+        assertTrue(second.isGlobal());
+        assertEquals("$second: 2 !global\n  /* gap */ !d\\65 fault", second.span().text());
+
+        var namespaced = assertInstanceOf(
+                VariableDeclaration.class,
+                stylesheet.children().get(2)
+        );
+        assertEquals("theme_tools", namespaced.namespace());
+        assertEquals("accent-color", namespaced.name());
+        assertEquals("theme_tools.$accent_color", namespaced.originalName());
+        assertTrue(namespaced.isGuarded());
+        assertFalse(namespaced.isGlobal());
+        var namespacedStart = source.indexOf("theme_tools");
+        assertSpan(
+                Objects.requireNonNull(namespaced.namespaceSpan()),
+                namespacedStart,
+                namespacedStart + 11,
+                "theme_tools"
+        );
+        assertSpan(
+                namespaced.nameSpan(),
+                namespacedStart + 12,
+                namespacedStart + 25,
+                "$accent_color"
+        );
+        assertEquals(
+                "theme_tools.$accent_color: blue !default",
+                namespaced.span().text()
+        );
+
+        var privateNamespace = assertInstanceOf(
+                VariableDeclaration.class,
+                stylesheet.children().get(3)
+        );
+        assertEquals("_private_namespace", privateNamespace.namespace());
+        assertEquals("public", privateNamespace.name());
+
+        assertTrue(stylesheet.parseTimeWarnings().isEmpty());
+        assertEquals(
+                java.util.List.of("first-value", "second"),
+                stylesheet.globalVariables().keySet().stream().toList()
+        );
+        assertEquals(first.span(), stylesheet.globalVariables().get("first-value"));
+        assertEquals(second.span(), stylesheet.globalVariables().get("second"));
+    }
+
+    /// Verifies that important values remain expressions rather than declaration flags.
+    @Test
+    void distinguishesImportantValuesFromVariableFlags() {
+        var source = "$priority: 1px ! /* hidden */ IMPORTANT !default;";
+        var declaration = assertInstanceOf(
+                VariableDeclaration.class,
+                parse(source).children().get(0)
+        );
+
+        assertEquals("1px !important", declaration.expression().toString());
+        assertTrue(declaration.isGuarded());
+        assertFalse(declaration.isGlobal());
+        assertSpan(
+                declaration.span(),
+                0,
+                source.length() - 1,
+                source.substring(0, source.length() - 1)
+        );
+
+        assertParseError(
+                "$value: 1 !DEFAULT;",
+                "Invalid flag name.",
+                10,
+                18,
+                "!DEFAULT"
+        );
+    }
+
+    /// Verifies duplicate-flag diagnostics and first-global-assignment metadata.
+    @Test
+    void recordsVariableDeclarationMetadata() {
+        var source = "$same_name: 0;$same_name: 1 !global;$same_name: 2 !global;"
+                + "$guarded: 3 !default !default;"
+                + "$global: 4 !global !global;"
+                + "$both: 5 !default !global !default !global;";
+        var stylesheet = parse(source);
+
+        var warnings = stylesheet.parseTimeWarnings();
+        assertEquals(4, warnings.size());
+
+        var guardedFirst = source.indexOf("!default", source.indexOf("$guarded"));
+        var guardedDuplicate = source.indexOf("!default", guardedFirst + 1);
+        assertDuplicateFlagWarning(warnings.get(0), "!default", guardedDuplicate);
+
+        var globalFirst = source.indexOf("!global", source.indexOf("$global"));
+        var globalDuplicate = source.indexOf("!global", globalFirst + 1);
+        assertDuplicateFlagWarning(warnings.get(1), "!global", globalDuplicate);
+
+        var bothStart = source.indexOf("$both");
+        var bothDefaultFirst = source.indexOf("!default", bothStart);
+        var bothGlobalFirst = source.indexOf("!global", bothDefaultFirst);
+        var bothDefaultDuplicate = source.indexOf("!default", bothGlobalFirst);
+        var bothGlobalDuplicate = source.indexOf("!global", bothDefaultDuplicate);
+        assertDuplicateFlagWarning(warnings.get(2), "!default", bothDefaultDuplicate);
+        assertDuplicateFlagWarning(warnings.get(3), "!global", bothGlobalDuplicate);
+        assertThrows(UnsupportedOperationException.class, warnings::clear);
+
+        var globals = stylesheet.globalVariables();
+        assertEquals(
+                java.util.List.of("same-name", "global", "both"),
+                globals.keySet().stream().toList()
+        );
+        var firstSameNameGlobal = assertInstanceOf(
+                VariableDeclaration.class,
+                stylesheet.children().get(1)
+        );
+        assertEquals(firstSameNameGlobal.span(), globals.get("same-name"));
+        assertEquals(
+                assertInstanceOf(VariableDeclaration.class, stylesheet.children().get(4)).span(),
+                globals.get("global")
+        );
+        assertEquals(
+                assertInstanceOf(VariableDeclaration.class, stylesheet.children().get(5)).span(),
+                globals.get("both")
+        );
+        assertThrows(UnsupportedOperationException.class, globals::clear);
+    }
+
+    /// Verifies that immediately preceding silent comments are attached to declarations.
+    @Test
+    void attachesPrecedingSilentCommentsToVariables() {
+        var source = "/// First line\n/// second\n$documented: 1;\n"
+                + "// ordinary\n$ordinary: 2;";
+        var stylesheet = parse(source);
+
+        assertEquals(4, stylesheet.children().size());
+        var documentation = assertInstanceOf(
+                SilentComment.class,
+                stylesheet.children().get(0)
+        );
+        var documented = assertInstanceOf(
+                VariableDeclaration.class,
+                stylesheet.children().get(1)
+        );
+        assertSame(documentation, documented.comment());
+        assertEquals("First line\nsecond", documentation.documentation());
+
+        var ordinaryComment = assertInstanceOf(
+                SilentComment.class,
+                stylesheet.children().get(2)
+        );
+        var ordinary = assertInstanceOf(
+                VariableDeclaration.class,
+                stylesheet.children().get(3)
+        );
+        assertSame(ordinaryComment, ordinary.comment());
+        assertNull(ordinaryComment.documentation());
+    }
+
+    /// Verifies committed variable-declaration failures and their exact source ranges.
+    @Test
+    void rejectsMalformedVariableDeclarations() {
+        assertParseError("$value 1;", "Expected \":\".", 7, 8, "1");
+        assertParseError("$value:;", "Expected expression.", 7, 8, ";");
+        assertParseError(
+                "$value: 1 !unknown;",
+                "Invalid flag name.",
+                10,
+                18,
+                "!unknown"
+        );
+        assertParseError(
+                "theme.$value: 1 !global;",
+                "!global isn't allowed for variables in other modules.",
+                16,
+                23,
+                "!global"
+        );
+        assertParseError(
+                "theme.$_secret: 1;",
+                "Private members can't be accessed from outside their modules.",
+                0,
+                14,
+                "theme.$_secret"
+        );
+        assertParseError(
+                "theme.$-secret: 1;",
+                "Private members can't be accessed from outside their modules.",
+                0,
+                14,
+                "theme.$-secret"
+        );
+        assertParseError(
+                "theme.$\\5f secret: 1;",
+                "Private members can't be accessed from outside their modules.",
+                0,
+                17,
+                "theme.$\\5f secret"
+        );
+        assertParseError(
+                "theme.$value {}",
+                "Expected \":\".",
+                13,
+                14,
+                "{"
+        );
+
+        var nearMiss = assertInstanceOf(
+                StyleRule.class,
+                parse("theme . $value {}").children().get(0)
+        );
+        assertEquals("theme . $value ", nearMiss.selector().asPlain());
     }
 
     /// Verifies ordinary declaration names, values, hacks, interpolation, and spans.
@@ -452,12 +774,6 @@ final class ScssParserTest {
         );
         assertEquals("{", nestedSelector.span().text());
 
-        var namespace = assertThrows(
-                ParseException.class,
-                () -> parse("a { theme.$value: 1; }")
-        );
-        assertEquals(".", namespace.span().text());
-
         var customChildren = assertThrows(
                 ParseException.class,
                 () -> parse("a { --x:{} }")
@@ -505,9 +821,6 @@ final class ScssParserTest {
         var atRule = assertThrows(ParseException.class, () -> parse("@media {}"));
         assertEquals("@", atRule.span().text());
 
-        var variable = assertThrows(ParseException.class, () -> parse("$name {}"));
-        assertEquals("$", variable.span().text());
-
         var unmatchedBracket = assertThrows(ParseException.class, () -> parse("a) {}"));
         assertEquals(")", unmatchedBracket.span().text());
 
@@ -519,6 +832,67 @@ final class ScssParserTest {
 
         var block = assertThrows(ParseException.class, () -> parse("a {"));
         assertEquals("", block.span().text());
+    }
+
+    /// Verifies one duplicate-variable-flag diagnostic.
+    ///
+    /// @param diagnostic the diagnostic to verify
+    /// @param flag the repeated flag spelling
+    /// @param startOffset the expected flag offset
+    private static void assertDuplicateFlagWarning(
+            Diagnostic diagnostic,
+            String flag,
+            int startOffset
+    ) {
+        assertEquals(DiagnosticSeverity.DEPRECATION, diagnostic.severity());
+        assertEquals(
+                flag + " should only be written once for each variable.\n"
+                        + "This will be an error in Dart Sass 2.0.0.",
+                diagnostic.message()
+        );
+        assertEquals("duplicate-var-flags", diagnostic.code());
+        assertSpan(
+                Objects.requireNonNull(diagnostic.span()),
+                startOffset,
+                startOffset + flag.length(),
+                flag
+        );
+    }
+
+    /// Verifies a parse failure and its exact source range.
+    ///
+    /// @param source the malformed SCSS source
+    /// @param message the expected diagnostic message
+    /// @param startOffset the expected inclusive source offset
+    /// @param endOffset the expected exclusive source offset
+    /// @param text the expected source text
+    private static void assertParseError(
+            String source,
+            String message,
+            int startOffset,
+            int endOffset,
+            String text
+    ) {
+        var error = assertThrows(ParseException.class, () -> parse(source));
+        assertEquals(message, error.getMessage());
+        assertSpan(error.span(), startOffset, endOffset, text);
+    }
+
+    /// Verifies an exact half-open source span.
+    ///
+    /// @param span the source span to verify
+    /// @param startOffset the expected inclusive offset
+    /// @param endOffset the expected exclusive offset
+    /// @param text the expected captured source text
+    private static void assertSpan(
+            SourceSpan span,
+            int startOffset,
+            int endOffset,
+            String text
+    ) {
+        assertEquals(startOffset, span.start().offset());
+        assertEquals(endOffset, span.end().offset());
+        assertEquals(text, span.text());
     }
 
     /// Parses a complete SCSS source string.

@@ -8,5 +8,5 @@ import org.jetbrains.annotations.NotNullByDefault;
 @ApiStatus.Internal
 @NotNullByDefault
 public sealed interface SassStatement extends SassNode
-        permits Stylesheet, StyleRule, Declaration, SilentComment, LoudComment {
+        permits Stylesheet, StyleRule, Declaration, VariableDeclaration, SilentComment, LoudComment {
 }
