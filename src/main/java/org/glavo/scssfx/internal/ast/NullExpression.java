@@ -18,6 +18,16 @@ public record NullExpression(SourceSpan span) implements SassExpression {
         Objects.requireNonNull(span, "span");
     }
 
+    /// Dispatches this expression to the null-expression visitor method.
+    ///
+    /// @param visitor the visitor that receives this expression
+    /// @param <R> the result type produced by the visitor
+    /// @return the result returned by the visitor
+    @Override
+    public <R> R accept(SassExpressionVisitor<R> visitor) {
+        return visitor.visitNullExpression(this);
+    }
+
     /// Returns the Sass source representation of this literal.
     ///
     /// @return {@code null}

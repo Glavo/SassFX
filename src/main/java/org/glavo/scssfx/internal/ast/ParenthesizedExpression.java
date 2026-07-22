@@ -21,6 +21,16 @@ public record ParenthesizedExpression(SassExpression expression, SourceSpan span
         Objects.requireNonNull(span, "span");
     }
 
+    /// Dispatches this expression to the parenthesized-expression visitor method.
+    ///
+    /// @param visitor the visitor that receives this expression
+    /// @param <R> the result type produced by the visitor
+    /// @return the result returned by the visitor
+    @Override
+    public <R> R accept(SassExpressionVisitor<R> visitor) {
+        return visitor.visitParenthesizedExpression(this);
+    }
+
     /// Returns a Sass source representation of this expression.
     ///
     /// @return the inner expression surrounded by parentheses

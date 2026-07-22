@@ -2,6 +2,7 @@
 package org.glavo.scssfx.internal.ast;
 
 import org.glavo.scssfx.SourceSpan;
+import org.glavo.scssfx.internal.value.ListSeparator;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Unmodifiable;
@@ -35,6 +36,16 @@ public record ListExpression(
                     "a list with multiple elements must have an explicit separator"
             );
         }
+    }
+
+    /// Dispatches this expression to the list-expression visitor method.
+    ///
+    /// @param visitor the visitor that receives this expression
+    /// @param <R> the result type produced by the visitor
+    /// @return the result returned by the visitor
+    @Override
+    public <R> R accept(SassExpressionVisitor<R> visitor) {
+        return visitor.visitListExpression(this);
     }
 
     /// Returns whether an expression is an unbracketed list with multiple elements.

@@ -59,6 +59,16 @@ public record Stylesheet(
         this(children, span, plainCss, List.of(), Map.of());
     }
 
+    /// Dispatches this statement to the stylesheet visitor method.
+    ///
+    /// @param visitor the visitor that receives this statement
+    /// @param <R> the result type produced by the visitor
+    /// @return the result returned by the visitor
+    @Override
+    public <R> R accept(SassStatementVisitor<R> visitor) {
+        return visitor.visitStylesheet(this);
+    }
+
     /// Returns the source representation of the top-level statements.
     ///
     /// @return statements separated by one space

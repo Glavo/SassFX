@@ -2,6 +2,7 @@
 package org.glavo.scssfx.internal.ast;
 
 import org.glavo.scssfx.internal.source.SourceFile;
+import org.glavo.scssfx.internal.value.ListSeparator;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
 

@@ -26,6 +26,16 @@ public record UnaryOperationExpression(
         Objects.requireNonNull(span, "span");
     }
 
+    /// Dispatches this expression to the unary-operation visitor method.
+    ///
+    /// @param visitor the visitor that receives this expression
+    /// @param <R> the result type produced by the visitor
+    /// @return the result returned by the visitor
+    @Override
+    public <R> R accept(SassExpressionVisitor<R> visitor) {
+        return visitor.visitUnaryOperationExpression(this);
+    }
+
     /// Returns a Sass source representation of this operation.
     ///
     /// @return the operator and operand, with required grouping parentheses

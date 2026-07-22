@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-package org.glavo.scssfx.internal.ast;
+package org.glavo.scssfx.internal.value;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
-/// Identifies how the elements of a Sass list are separated.
+/// Identifies how the elements of a Sass list value or expression are separated.
 @ApiStatus.Internal
 @NotNullByDefault
 public enum ListSeparator {

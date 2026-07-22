@@ -19,6 +19,16 @@ public record StringExpression(Interpolation text, boolean hasQuotes) implements
         Objects.requireNonNull(text, "text");
     }
 
+    /// Dispatches this expression to the string-expression visitor method.
+    ///
+    /// @param visitor the visitor that receives this expression
+    /// @param <R> the result type produced by the visitor
+    /// @return the result returned by the visitor
+    @Override
+    public <R> R accept(SassExpressionVisitor<R> visitor) {
+        return visitor.visitStringExpression(this);
+    }
+
     /// Creates an unquoted string containing no expression interpolation.
     ///
     /// @param text the plain string contents

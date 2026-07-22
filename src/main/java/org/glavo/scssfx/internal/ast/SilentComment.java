@@ -21,6 +21,16 @@ public record SilentComment(String text, SourceSpan span) implements SassStateme
         Objects.requireNonNull(span, "span");
     }
 
+    /// Dispatches this statement to the silent-comment visitor method.
+    ///
+    /// @param visitor the visitor that receives this statement
+    /// @param <R> the result type produced by the visitor
+    /// @return the result returned by the visitor
+    @Override
+    public <R> R accept(SassStatementVisitor<R> visitor) {
+        return visitor.visitSilentComment(this);
+    }
+
     /// Returns the documentation-comment lines contained in this block.
     ///
     /// Leading comment markers and at most one following space are removed

@@ -18,6 +18,16 @@ public record LoudComment(Interpolation text) implements SassStatement {
         Objects.requireNonNull(text, "text");
     }
 
+    /// Dispatches this statement to the loud-comment visitor method.
+    ///
+    /// @param visitor the visitor that receives this statement
+    /// @param <R> the result type produced by the visitor
+    /// @return the result returned by the visitor
+    @Override
+    public <R> R accept(SassStatementVisitor<R> visitor) {
+        return visitor.visitLoudComment(this);
+    }
+
     /// Returns the source range covering the complete comment.
     ///
     /// @return the interpolation source range

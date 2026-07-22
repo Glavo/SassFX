@@ -19,6 +19,16 @@ public record BooleanExpression(boolean value, SourceSpan span) implements SassE
         Objects.requireNonNull(span, "span");
     }
 
+    /// Dispatches this expression to the boolean-expression visitor method.
+    ///
+    /// @param visitor the visitor that receives this expression
+    /// @param <R> the result type produced by the visitor
+    /// @return the result returned by the visitor
+    @Override
+    public <R> R accept(SassExpressionVisitor<R> visitor) {
+        return visitor.visitBooleanExpression(this);
+    }
+
     /// Returns the Sass source representation of this literal.
     ///
     /// @return {@code true} or {@code false}

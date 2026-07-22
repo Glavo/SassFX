@@ -31,6 +31,16 @@ public record VariableExpression(@Nullable String namespace, String name, Source
         }
     }
 
+    /// Dispatches this expression to the variable-expression visitor method.
+    ///
+    /// @param visitor the visitor that receives this expression
+    /// @param <R> the result type produced by the visitor
+    /// @return the result returned by the visitor
+    @Override
+    public <R> R accept(SassExpressionVisitor<R> visitor) {
+        return visitor.visitVariableExpression(this);
+    }
+
     /// Returns the original Sass source representation of this reference.
     ///
     /// @return the source text that produced this reference

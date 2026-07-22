@@ -8,8 +8,6 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.math.BigDecimal;
-import java.math.BigInteger;
-import java.math.RoundingMode;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -21,15 +19,7 @@ import java.util.Objects;
 /// hashing.
 @ApiStatus.Internal
 @NotNullByDefault
-public final class SassColor {
-    /// Contains the maximum distance between two non-identical fuzzy-equal
-    /// channel values.
-    private static final double FUZZY_EPSILON = 1e-11;
-
-    /// Contains the multiplier used to assign channel values to fuzzy hash
-    /// buckets.
-    private static final double FUZZY_INVERSE_EPSILON = 1e11;
-
+public final class SassColor implements SassValue {
     /// Contains the complete case-insensitive CSS named-color table as packed
     /// RGBA values.
     private static final @Unmodifiable Map<String, Integer> NAMED_RGBA =
@@ -169,10 +159,10 @@ public final class SassColor {
             return true;
         }
         return other instanceof SassColor color
-                && fuzzyEquals(red, color.red)
-                && fuzzyEquals(green, color.green)
-                && fuzzyEquals(blue, color.blue)
-                && fuzzyEquals(alpha, color.alpha);
+                && SassFuzzy.equals(red, color.red)
+                && SassFuzzy.equals(green, color.green)
+                && SassFuzzy.equals(blue, color.blue)
+                && SassFuzzy.equals(alpha, color.alpha);
     }
 
     /// Returns a fuzzy semantic channel hash that ignores source format.
@@ -180,10 +170,10 @@ public final class SassColor {
     /// @return the color hash
     @Override
     public int hashCode() {
-        return fuzzyHashCode(red)
-                ^ fuzzyHashCode(green)
-                ^ fuzzyHashCode(blue)
-                ^ fuzzyHashCode(alpha);
+        return SassFuzzy.hashCode(red)
+                ^ SassFuzzy.hashCode(green)
+                ^ SassFuzzy.hashCode(blue)
+                ^ SassFuzzy.hashCode(alpha);
     }
 
     /// Returns the inspect-mode Sass representation of this color.
@@ -258,46 +248,6 @@ public final class SassColor {
         }
         var decimal = BigDecimal.valueOf(value).stripTrailingZeros();
         return decimal.signum() == 0 ? "0" : decimal.toPlainString();
-    }
-
-    /// Returns whether two channels occupy the same Sass fuzzy-equality bucket
-    /// and differ by at most the Sass epsilon.
-    ///
-    /// @param first the first channel
-    /// @param second the second channel
-    /// @return whether the channels are fuzzy equal
-    private static boolean fuzzyEquals(double first, double second) {
-        if (first == second) {
-            return true;
-        }
-        return Math.abs(first - second) <= FUZZY_EPSILON
-                && fuzzyBucket(first).equals(fuzzyBucket(second));
-    }
-
-    /// Returns a hash derived from the Sass fuzzy-equality bucket.
-    ///
-    /// @param value the channel value
-    /// @return the fuzzy channel hash
-    private static int fuzzyHashCode(double value) {
-        return Double.isFinite(value)
-                ? fuzzyBucket(value).hashCode()
-                : Double.hashCode(value);
-    }
-
-    /// Returns the arbitrary-precision integer bucket used by Sass fuzzy
-    /// comparison and hashing.
-    ///
-    /// @param value the finite channel value
-    /// @return the channel multiplied by 10 to the Sass precision plus one
-    /// and rounded away from zero at a half
-    private static BigInteger fuzzyBucket(double value) {
-        var scaled = value * FUZZY_INVERSE_EPSILON;
-        var decimal = Double.isFinite(scaled)
-                ? BigDecimal.valueOf(scaled)
-                : BigDecimal.valueOf(value).movePointRight(11);
-        return decimal
-                .setScale(0, RoundingMode.HALF_UP)
-                .toBigIntegerExact();
     }
 
     /// Creates the immutable named-color lookup table.

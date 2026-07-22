@@ -53,6 +53,16 @@ public record Declaration(
         }
     }
 
+    /// Dispatches this statement to the declaration visitor method.
+    ///
+    /// @param visitor the visitor that receives this statement
+    /// @param <R> the result type produced by the visitor
+    /// @return the result returned by the visitor
+    @Override
+    public <R> R accept(SassStatementVisitor<R> visitor) {
+        return visitor.visitDeclaration(this);
+    }
+
     /// Creates a leaf declaration whose value is parsed as SassScript.
     ///
     /// @param name  the unevaluated property name

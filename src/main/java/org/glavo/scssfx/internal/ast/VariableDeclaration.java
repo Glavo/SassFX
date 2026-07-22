@@ -113,6 +113,16 @@ public record VariableDeclaration(
         }
     }
 
+    /// Dispatches this statement to the variable-declaration visitor method.
+    ///
+    /// @param visitor the visitor that receives this statement
+    /// @param <R> the result type produced by the visitor
+    /// @return the result returned by the visitor
+    @Override
+    public <R> R accept(SassStatementVisitor<R> visitor) {
+        return visitor.visitVariableDeclaration(this);
+    }
+
     /// Returns the variable name exactly as written before the assignment colon.
     ///
     /// A qualified declaration includes its namespace. Trailing ASCII

@@ -55,6 +55,16 @@ public record BinaryOperationExpression(
         }
     }
 
+    /// Dispatches this expression to the binary-operation visitor method.
+    ///
+    /// @param visitor the visitor that receives this expression
+    /// @param <R> the result type produced by the visitor
+    /// @return the result returned by the visitor
+    @Override
+    public <R> R accept(SassExpressionVisitor<R> visitor) {
+        return visitor.visitBinaryOperationExpression(this);
+    }
+
     /// Returns whether source text represents the selected operator.
     ///
     /// Sass accepts ASCII case variations after the lowercase first code unit

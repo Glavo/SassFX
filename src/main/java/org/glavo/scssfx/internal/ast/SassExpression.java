@@ -21,4 +21,10 @@ public sealed interface SassExpression extends SassNode permits
         InterpolatedFunctionExpression,
         MapExpression,
         ColorExpression {
+    /// Dispatches this expression to its type-specific visitor method.
+    ///
+    /// @param visitor the visitor that receives this expression
+    /// @param <R> the result type produced by the visitor
+    /// @return the result returned by the visitor
+    <R> R accept(SassExpressionVisitor<R> visitor);
 }

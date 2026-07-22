@@ -2,6 +2,7 @@
 package org.glavo.scssfx.internal.ast;
 
 import org.glavo.scssfx.SourceSpan;
+import org.glavo.scssfx.internal.value.ListSeparator;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;

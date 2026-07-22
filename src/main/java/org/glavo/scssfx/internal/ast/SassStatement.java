@@ -9,4 +9,10 @@ import org.jetbrains.annotations.NotNullByDefault;
 @NotNullByDefault
 public sealed interface SassStatement extends SassNode
         permits Stylesheet, StyleRule, Declaration, VariableDeclaration, SilentComment, LoudComment {
+    /// Dispatches this statement to its type-specific visitor method.
+    ///
+    /// @param visitor the visitor that receives this statement
+    /// @param <R> the result type produced by the visitor
+    /// @return the result returned by the visitor
+    <R> R accept(SassStatementVisitor<R> visitor);
 }

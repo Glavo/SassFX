@@ -28,6 +28,16 @@ public record MapExpression(
         Objects.requireNonNull(span, "span");
     }
 
+    /// Dispatches this expression to the map-expression visitor method.
+    ///
+    /// @param visitor the visitor that receives this expression
+    /// @param <R> the result type produced by the visitor
+    /// @return the result returned by the visitor
+    @Override
+    public <R> R accept(SassExpressionVisitor<R> visitor) {
+        return visitor.visitMapExpression(this);
+    }
+
     /// Returns a normalized Sass source representation of this map.
     ///
     /// @return the comma-separated pairs surrounded by parentheses
