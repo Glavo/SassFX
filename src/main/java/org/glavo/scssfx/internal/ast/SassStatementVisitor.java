@@ -45,4 +45,28 @@ public interface SassStatementVisitor<R> {
     /// @param statement the statement to visit
     /// @return the visit result
     R visitLoudComment(LoudComment statement);
+
+    /// Visits an `@if` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitIfRule(IfRule statement);
+
+    /// Visits an `@each` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitEachRule(EachRule statement);
+
+    /// Visits a `@for` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitForRule(ForRule statement);
+
+    /// Visits a `@while` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitWhileRule(WhileRule statement);
 }

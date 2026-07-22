@@ -176,6 +176,62 @@ public final class SassNumber implements SassValue {
         return numeratorUnits.isEmpty() && denominatorUnits.isEmpty();
     }
 
+    /// Returns this number.
+    ///
+    /// @return this number
+    @Override
+    public SassNumber assertNumber() {
+        return this;
+    }
+
+    /// Returns this magnitude when it is a Sass integer.
+    ///
+    /// @return the integer magnitude
+    /// @throws SassValueException if the magnitude is not an integer
+    public int assertInt() {
+        @Nullable Integer integer = SassFuzzy.asInt(value);
+        if (integer == null) {
+            throw new SassValueException(this + " is not an int.");
+        }
+        return integer;
+    }
+
+    /// Returns this number coerced into the requested unit structure.
+    ///
+    /// A unitless number adopts the target units without changing magnitude.
+    /// Compatible unitful numbers are converted; incompatible structures fail.
+    ///
+    /// @param targetNumerators   the required numerator units
+    /// @param targetDenominators the required denominator units
+    /// @return the coerced number
+    /// @throws SassValueException if the units are incompatible
+    public SassNumber coerce(
+            List<String> targetNumerators,
+            List<String> targetDenominators
+    ) {
+        Objects.requireNonNull(targetNumerators, "targetNumerators");
+        Objects.requireNonNull(targetDenominators, "targetDenominators");
+        if (isUnitless()) {
+            return withUnits(value, targetNumerators, targetDenominators);
+        }
+        if (targetNumerators.isEmpty() && targetDenominators.isEmpty()) {
+            return withUnits(value, List.of(), List.of());
+        }
+        try {
+            return withUnits(
+                    coerceValueTo(this, targetNumerators, targetDenominators),
+                    targetNumerators,
+                    targetDenominators
+            );
+        } catch (IllegalArgumentException ignored) {
+            throw new SassValueException(
+                    this + " and "
+                            + withUnits(0, targetNumerators, targetDenominators)
+                            + " have incompatible units."
+            );
+        }
+    }
+
     /// Returns the original numerator of a slash-separated number.
     ///
     /// @return the slash numerator, or {@code null} when this is not slash-presented

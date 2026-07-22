@@ -2,6 +2,7 @@
 package org.glavo.scssfx.internal.value;
 
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -41,6 +42,29 @@ final class SassFuzzy {
         return Double.isFinite(value)
                 ? bucket(value).hashCode()
                 : Double.hashCode(value);
+    }
+
+    /// Returns whether a finite value is fuzzy-equal to an integer.
+    ///
+    /// @param value the value to test
+    /// @return whether the value is an integer under Sass numeric semantics
+    static boolean isInt(double value) {
+        return Double.isFinite(value) && equals(value, Math.rint(value));
+    }
+
+    /// Returns the nearest integer when {@code value} is fuzzy-equal to one.
+    ///
+    /// @param value the value to convert
+    /// @return the integer, or {@code null} when the value is not an integer
+    static @Nullable Integer asInt(double value) {
+        if (!isInt(value)) {
+            return null;
+        }
+        var rounded = Math.rint(value);
+        if (rounded > Integer.MAX_VALUE || rounded < Integer.MIN_VALUE) {
+            return null;
+        }
+        return (int) rounded;
     }
 
     /// Returns the arbitrary-precision Sass fuzzy bucket.

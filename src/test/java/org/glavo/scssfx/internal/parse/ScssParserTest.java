@@ -1100,7 +1100,7 @@ final class ScssParserTest {
         assertInstanceOf(ColorExpression.class, colorExpression);
 
         var atRule = assertThrows(ParseException.class, () -> parse("@media {}"));
-        assertEquals("@", atRule.span().text());
+        assertEquals("@media", atRule.span().text());
 
         var unmatchedBracket = assertThrows(ParseException.class, () -> parse("a) {}"));
         assertEquals(")", unmatchedBracket.span().text());

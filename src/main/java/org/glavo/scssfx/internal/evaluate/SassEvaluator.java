@@ -9,8 +9,12 @@ import org.glavo.scssfx.internal.ast.BinaryOperator;
 import org.glavo.scssfx.internal.ast.BooleanExpression;
 import org.glavo.scssfx.internal.ast.ColorExpression;
 import org.glavo.scssfx.internal.ast.Declaration;
+import org.glavo.scssfx.internal.ast.EachRule;
+import org.glavo.scssfx.internal.ast.ElseClause;
 import org.glavo.scssfx.internal.ast.ExpressionInterpolationPart;
+import org.glavo.scssfx.internal.ast.ForRule;
 import org.glavo.scssfx.internal.ast.FunctionExpression;
+import org.glavo.scssfx.internal.ast.IfRule;
 import org.glavo.scssfx.internal.ast.InterpolatedFunctionExpression;
 import org.glavo.scssfx.internal.ast.Interpolation;
 import org.glavo.scssfx.internal.ast.ListExpression;
@@ -31,6 +35,7 @@ import org.glavo.scssfx.internal.ast.TextInterpolationPart;
 import org.glavo.scssfx.internal.ast.UnaryOperationExpression;
 import org.glavo.scssfx.internal.ast.VariableDeclaration;
 import org.glavo.scssfx.internal.ast.VariableExpression;
+import org.glavo.scssfx.internal.ast.WhileRule;
 import org.glavo.scssfx.internal.css.CssComment;
 import org.glavo.scssfx.internal.css.CssDeclaration;
 import org.glavo.scssfx.internal.css.CssNode;
@@ -390,6 +395,115 @@ public final class SassEvaluator implements
         copyParentAfterSibling();
         requireCssParent().addChild(new CssComment(text, statement.span()));
         return StatementResult.CONTINUE;
+    }
+
+    /// Executes the first truthy `@if`/`@else if` branch, or the `@else` branch.
+    ///
+    /// @param statement the if rule
+    /// @return the continue result, [StatementResult#CONTINUE]
+    @Override
+    public StatementResult visitIfRule(IfRule statement) {
+        @Nullable List<SassStatement> children = null;
+        for (var clause : statement.clauses()) {
+            if (evaluate(clause.expression()).isTruthy()) {
+                children = clause.children();
+                break;
+            }
+        }
+        if (children == null) {
+            @Nullable ElseClause lastClause = statement.lastClause();
+            if (lastClause == null) {
+                return StatementResult.CONTINUE;
+            }
+            children = lastClause.children();
+        }
+        return executeInFlowScope(children, hasDirectDeclarations(children));
+    }
+
+    /// Iterates over a list view, binding one or more local loop variables.
+    ///
+    /// @param statement the each rule
+    /// @return the continue result, [StatementResult#CONTINUE]
+    @Override
+    public StatementResult visitEachRule(EachRule statement) {
+        var listValue = evaluate(statement.list());
+        var origin = expressionOrigin(statement.list());
+        return inFlowScope(true, () -> {
+            for (var element : listValue.asList()) {
+                if (statement.variables().size() == 1) {
+                    environment.setLocalVariable(
+                            statement.variables().get(0),
+                            element.withoutSlash(),
+                            origin
+                    );
+                } else {
+                    setMultipleVariables(statement.variables(), element, origin);
+                }
+                executeChildren(statement.children());
+            }
+        });
+    }
+
+    /// Iterates an integer index from one bound toward another.
+    ///
+    /// @param statement the for rule
+    /// @return the continue result, [StatementResult#CONTINUE]
+    @Override
+    public StatementResult visitForRule(ForRule statement) {
+        var fromNumber = valueOperation(
+                statement.from().span(),
+                () -> evaluate(statement.from()).assertNumber()
+        );
+        var toNumber = valueOperation(
+                statement.to().span(),
+                () -> evaluate(statement.to()).assertNumber()
+        );
+        var fromInt = valueOperation(statement.from().span(), fromNumber::assertInt);
+        var toCoerced = valueOperation(
+                statement.to().span(),
+                () -> toNumber.coerce(fromNumber.numeratorUnits(), fromNumber.denominatorUnits())
+        );
+        var toInt = valueOperation(statement.to().span(), toCoerced::assertInt);
+        var direction = fromInt > toInt ? -1 : 1;
+        if (!statement.exclusive()) {
+            toInt += direction;
+        }
+        if (fromInt == toInt) {
+            return StatementResult.CONTINUE;
+        }
+
+        var origin = expressionOrigin(statement.from());
+        var end = toInt;
+        return inFlowScope(true, () -> {
+            for (var index = fromInt; index != end; index += direction) {
+                environment.setLocalVariable(
+                        statement.variable(),
+                        SassNumber.withUnits(
+                                index,
+                                fromNumber.numeratorUnits(),
+                                fromNumber.denominatorUnits()
+                        ),
+                        origin
+                );
+                executeChildren(statement.children());
+            }
+        });
+    }
+
+    /// Repeatedly executes children while the condition remains truthy.
+    ///
+    /// @param statement the while rule
+    /// @return the continue result, [StatementResult#CONTINUE]
+    @Override
+    public StatementResult visitWhileRule(WhileRule statement) {
+        return inFlowScope(
+                hasDirectDeclarations(statement.children()),
+                () -> {
+                    while (evaluate(statement.condition()).isTruthy()) {
+                        executeChildren(statement.children());
+                    }
+                }
+        );
     }
 
     /// Evaluates a string and its embedded expressions.
@@ -752,6 +866,68 @@ public final class SassEvaluator implements
     /// @return whether the list view is empty
     private static boolean isEmptyList(SassValue value) {
         return value.asList().isEmpty();
+    }
+
+    /// Executes children inside a flow-control scope.
+    ///
+    /// @param children    the children to execute
+    /// @param createFrame whether a local frame is required
+    /// @return the continue result
+    private StatementResult executeInFlowScope(
+            List<SassStatement> children,
+            boolean createFrame
+    ) {
+        return inFlowScope(createFrame, () -> executeChildren(children));
+    }
+
+    /// Opens a flow-control scope, runs a body, and closes the scope.
+    ///
+    /// @param createFrame whether a local frame is required
+    /// @param body        the body to run
+    /// @return the continue result
+    private StatementResult inFlowScope(boolean createFrame, Runnable body) {
+        var scope = environment.scope(ScopeSemantics.FLOW_CONTROL, createFrame);
+        try {
+            body.run();
+            return StatementResult.CONTINUE;
+        } finally {
+            scope.close();
+        }
+    }
+
+    /// Executes direct children in source order.
+    ///
+    /// @param children the children to execute
+    private void executeChildren(List<SassStatement> children) {
+        for (var child : children) {
+            child.accept(this);
+        }
+    }
+
+    /// Destructures a list-like value into multiple local loop variables.
+    ///
+    /// Missing elements become Sass null. Extra elements are ignored.
+    ///
+    /// @param variables  the normalized local variable names
+    /// @param value      the value being destructured
+    /// @param originSpan the origin associated with assigned values
+    private void setMultipleVariables(
+            List<String> variables,
+            SassValue value,
+            SourceSpan originSpan
+    ) {
+        var elements = value.asList();
+        var assigned = Math.min(variables.size(), elements.size());
+        for (var index = 0; index < assigned; index++) {
+            environment.setLocalVariable(
+                    variables.get(index),
+                    elements.get(index).withoutSlash(),
+                    originSpan
+            );
+        }
+        for (var index = assigned; index < variables.size(); index++) {
+            environment.setLocalVariable(variables.get(index), SassNull.NULL, originSpan);
+        }
     }
 
     /// Returns the source span from which an expression's stored value originated.

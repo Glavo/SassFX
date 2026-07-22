@@ -122,17 +122,35 @@ class SassExpressionParser extends Parser {
     /// @return the parsed expression
     /// @throws ParseException if no expression begins here or it is malformed
     protected final SassExpression expression() {
+        return expression(null);
+    }
+
+    /// Parses an expression that stops when {@code until} reports a terminator.
+    ///
+    /// @param until a predicate that consumes a terminator and returns
+    /// {@code true}, or {@code null} when no terminator is used
+    /// @return the parsed expression
+    /// @throws ParseException if no expression begins here or it is malformed
+    protected final SassExpression expression(
+            @Nullable java.util.function.BooleanSupplier until
+    ) {
+        if (until != null && until.getAsBoolean()) {
+            throw scanner.error("Expected expression.");
+        }
         if (!lookingAtExpression()) {
             throw scanner.error("Expected expression.");
         }
-        return commaExpression();
+        return commaExpression(until);
     }
 
     /// Parses a comma-separated expression or a single lower-level expression.
     ///
+    /// @param until a terminator predicate, or {@code null}
     /// @return the parsed expression
-    private SassExpression commaExpression() {
-        var first = spaceExpression(false);
+    private SassExpression commaExpression(
+            @Nullable java.util.function.BooleanSupplier until
+    ) {
+        var first = spaceExpression(false, until);
         if (scanner.peek() != ',') {
             return first;
         }
@@ -141,8 +159,11 @@ class SassExpressionParser extends Parser {
         contents.add(first);
         while (scanner.scan(',')) {
             whitespace(true);
+            if (until != null && until.getAsBoolean()) {
+                break;
+            }
             if (lookingAtExpression()) {
-                contents.add(spaceExpression(false));
+                contents.add(spaceExpression(false, until));
                 continue;
             }
             if (scanner.peek() == ',') {
@@ -168,7 +189,7 @@ class SassExpressionParser extends Parser {
         if (!lookingAtExpression()) {
             throw scanner.error("Expected expression.");
         }
-        return spaceExpression(singleEquals);
+        return spaceExpression(singleEquals, null);
     }
 
     /// Parses expressions separated implicitly as one space list.
@@ -177,13 +198,20 @@ class SassExpressionParser extends Parser {
     /// code unit; these still use the space-list separator in the syntax tree.
     ///
     /// @param singleEquals whether a lone equals sign is accepted
+    /// @param until        a terminator predicate, or {@code null}
     /// @return the parsed expression or space list
-    private SassExpression spaceExpression(boolean singleEquals) {
+    private SassExpression spaceExpression(
+            boolean singleEquals,
+            @Nullable java.util.function.BooleanSupplier until
+    ) {
         var first = slashAwareBinaryExpression(singleEquals);
         @Nullable ArrayList<SassExpression> contents = null;
 
         while (true) {
             whitespace(true);
+            if (until != null && until.getAsBoolean()) {
+                break;
+            }
             if (!lookingAtExpression()) {
                 break;
             }
@@ -626,7 +654,7 @@ class SassExpressionParser extends Parser {
             throw scanner.error("Expected expression.");
         }
 
-        var expression = commaExpression();
+        var expression = commaExpression(null);
         scanner.expect(']');
         var span = scanner.spanFrom(start);
         if (expression instanceof ListExpression list && !list.hasBrackets()) {

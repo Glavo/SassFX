@@ -233,6 +233,14 @@ public sealed interface SassValue permits
         return this;
     }
 
+    /// Returns this value when it is a Sass number.
+    ///
+    /// @return this number
+    /// @throws SassValueException if this value is not a number
+    default SassNumber assertNumber() {
+        throw new SassValueException(this + " is not a number.");
+    }
+
     /// Creates the standard undefined-operation failure for two operands.
     ///
     /// @param operator the Sass operator spelling

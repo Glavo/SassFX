@@ -5,6 +5,11 @@ import org.glavo.scssfx.Diagnostic;
 import org.glavo.scssfx.DiagnosticSeverity;
 import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.ast.Declaration;
+import org.glavo.scssfx.internal.ast.EachRule;
+import org.glavo.scssfx.internal.ast.ElseClause;
+import org.glavo.scssfx.internal.ast.ForRule;
+import org.glavo.scssfx.internal.ast.IfClause;
+import org.glavo.scssfx.internal.ast.IfRule;
 import org.glavo.scssfx.internal.ast.Interpolation;
 import org.glavo.scssfx.internal.ast.InterpolationBuffer;
 import org.glavo.scssfx.internal.ast.LoudComment;
@@ -15,6 +20,7 @@ import org.glavo.scssfx.internal.ast.StringExpression;
 import org.glavo.scssfx.internal.ast.StyleRule;
 import org.glavo.scssfx.internal.ast.Stylesheet;
 import org.glavo.scssfx.internal.ast.VariableDeclaration;
+import org.glavo.scssfx.internal.ast.WhileRule;
 import org.glavo.scssfx.internal.source.SourceFile;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -24,9 +30,22 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 
-/// Parses SCSS stylesheets containing declarations, nested properties, style rules, and comments.
+/// Parses SCSS stylesheets containing declarations, nested properties, style rules,
+/// control-flow at-rules, and comments.
 @NotNullByDefault
 final class ScssParser extends SassExpressionParser {
+    /// Identifies the statement forms allowed inside a braced block.
+    private enum StatementContext {
+        /// Top-level statements and top-level control-flow bodies.
+        ROOT,
+
+        /// Style-rule children, including nested rules and declarations.
+        STYLE_RULE,
+
+        /// Nested-property children that reject nested style rules.
+        DECLARATION
+    }
+
     /// First global declaration span for each normalized variable name.
     private final LinkedHashMap<String, SourceSpan> globalVariables = new LinkedHashMap<>();
 
@@ -86,9 +105,7 @@ final class ScssParser extends SassExpressionParser {
                     whitespaceWithoutComments(true);
                 }
                 case '$' -> statements.add(variableDeclarationWithoutNamespace());
-                case '@' -> throw scanner.error(
-                        "This stylesheet statement is not available."
-                );
+                case '@' -> statements.add(atRule(StatementContext.ROOT));
                 default -> statements.add(variableDeclarationOrStyleRule());
             }
         }
@@ -129,7 +146,7 @@ final class ScssParser extends SassExpressionParser {
         if (selector.parts().isEmpty()) {
             throw scanner.error("Expected selector.");
         }
-        var children = statementBlock(false);
+        var children = statementBlock(StatementContext.STYLE_RULE);
         var span = scanner.spanFrom(start);
         whitespaceWithoutComments(false);
         return new StyleRule(selector, children, span);
@@ -268,17 +285,16 @@ final class ScssParser extends SassExpressionParser {
         return null;
     }
 
-    /// Parses a braced statement block.
+    /// Parses a braced statement block for the given context.
     ///
-    /// Style-rule blocks accept variable and property declarations as well as
-    /// nested style rules. Nested-property blocks accept variable and property
-    /// declarations only. Comments are retained as statements and empty
-    /// semicolon statements are discarded.
+    /// Comments are retained as statements and empty semicolon statements are
+    /// discarded. Control-flow at-rules are accepted in every context; unknown
+    /// at-rules remain structured failures.
     ///
-    /// @param declarationsOnly whether style-rule fallback is forbidden
+    /// @param context the statement forms permitted in the block
     /// @return the child statements in source order
     /// @throws ParseException if the block is unterminated or a child is malformed
-    private ArrayList<SassStatement> statementBlock(boolean declarationsOnly) {
+    private ArrayList<SassStatement> statementBlock(StatementContext context) {
         scanner.expect('{');
         var children = new ArrayList<SassStatement>();
         whitespaceWithoutComments(true);
@@ -291,9 +307,7 @@ final class ScssParser extends SassExpressionParser {
                     } else if (scanner.peek(1) == '*') {
                         children.add(loudCommentStatement());
                     } else {
-                        children.add(declarationsOnly
-                                ? declarationChild()
-                                : declarationOrStyleRule());
+                        children.add(blockChild(context));
                     }
                     whitespaceWithoutComments(true);
                 }
@@ -306,17 +320,190 @@ final class ScssParser extends SassExpressionParser {
                     return children;
                 }
                 case '$' -> children.add(variableDeclarationWithoutNamespace());
-                case '@' -> throw scanner.error(
-                        "This block statement is not available."
-                );
+                case '@' -> children.add(atRule(context));
                 default -> {
-                    children.add(declarationsOnly
-                            ? declarationChild()
-                            : declarationOrStyleRule());
+                    children.add(blockChild(context));
                     whitespaceWithoutComments(true);
                 }
             }
         }
+    }
+
+    /// Parses one non-comment, non-at-rule child for a braced block.
+    ///
+    /// @param context the statement forms permitted in the block
+    /// @return the parsed child statement
+    private SassStatement blockChild(StatementContext context) {
+        return switch (context) {
+            case ROOT -> variableDeclarationOrStyleRule();
+            case STYLE_RULE -> declarationOrStyleRule();
+            case DECLARATION -> declarationChild();
+        };
+    }
+
+    /// Dispatches a plain `@`-rule after consuming the leading `@`.
+    ///
+    /// @param context the statement forms permitted in the rule body
+    /// @return the parsed at-rule statement
+    /// @throws ParseException if the at-rule is unknown or malformed
+    private SassStatement atRule(StatementContext context) {
+        var start = scanner.state();
+        scanner.expect('@');
+        var name = identifier(false, false);
+        return switch (name) {
+            case "if" -> ifRule(start, context);
+            case "each" -> eachRule(start, context);
+            case "for" -> forRule(start, context);
+            case "while" -> whileRule(start, context);
+            case "else" -> throw scanner.error(
+                    "This at-rule is not allowed here.",
+                    start.position(),
+                    scanner.position() - start.position()
+            );
+            default -> throw scanner.error(
+                    context == StatementContext.ROOT
+                            ? "This stylesheet statement is not available."
+                            : "This block statement is not available.",
+                    start.position(),
+                    scanner.position() - start.position()
+            );
+        };
+    }
+
+    /// Parses an `@if` rule and its trailing `@else if` / `@else` branches.
+    ///
+    /// @param start   the scanner state at the leading `@`
+    /// @param context the statement forms permitted in branch bodies
+    /// @return the if rule
+    private IfRule ifRule(ScannerState start, StatementContext context) {
+        whitespace(true);
+        var clauses = new ArrayList<IfClause>();
+        clauses.add(new IfClause(expression(), statementBlock(context)));
+        whitespaceWithoutComments(false);
+
+        @Nullable ElseClause lastClause = null;
+        while (scanElse()) {
+            whitespace(false);
+            if (scanIdentifier("if")) {
+                whitespace(true);
+                clauses.add(new IfClause(expression(), statementBlock(context)));
+                whitespaceWithoutComments(false);
+            } else {
+                lastClause = new ElseClause(statementBlock(context));
+                whitespaceWithoutComments(false);
+                break;
+            }
+        }
+        return new IfRule(clauses, lastClause, scanner.spanFrom(start));
+    }
+
+    /// Attempts to consume a trailing `@else` or deprecated `@elseif`.
+    ///
+    /// @return whether an else introducer was consumed
+    private boolean scanElse() {
+        var start = scanner.state();
+        whitespace(true);
+        var beforeAt = scanner.state();
+        if (!scanner.scan('@')) {
+            scanner.restore(start);
+            return false;
+        }
+        if (scanIdentifier("else", true)) {
+            return true;
+        }
+        if (scanIdentifier("elseif", true)) {
+            addParseTimeWarning(new Diagnostic(
+                    DiagnosticSeverity.DEPRECATION,
+                    "@elseif is deprecated and will not be supported in future Sass "
+                            + "versions.\n\n"
+                            + "Recommendation: @else if",
+                    scanner.spanFrom(beforeAt),
+                    "elseif"
+            ));
+            scanner.restore(new ScannerState(scanner.position() - 2));
+            return true;
+        }
+        scanner.restore(start);
+        return false;
+    }
+
+    /// Parses an `@each` rule.
+    ///
+    /// @param start   the scanner state at the leading `@`
+    /// @param context the statement forms permitted in the body
+    /// @return the each rule
+    private EachRule eachRule(ScannerState start, StatementContext context) {
+        whitespace(true);
+        var variables = new ArrayList<String>();
+        variables.add(variableName());
+        whitespace(true);
+        while (scanner.scan(',')) {
+            whitespace(true);
+            variables.add(variableName());
+            whitespace(true);
+        }
+        expectIdentifier("in");
+        whitespace(true);
+        var list = expression();
+        var children = statementBlock(context);
+        var span = scanner.spanFrom(start);
+        whitespaceWithoutComments(false);
+        return new EachRule(variables, list, children, span);
+    }
+
+    /// Parses a `@for` rule.
+    ///
+    /// @param start   the scanner state at the leading `@`
+    /// @param context the statement forms permitted in the body
+    /// @return the for rule
+    private ForRule forRule(ScannerState start, StatementContext context) {
+        whitespace(true);
+        var variable = variableName();
+        whitespace(true);
+        expectIdentifier("from");
+        whitespace(true);
+
+        var exclusive = new boolean[]{false};
+        var bound = new boolean[]{false};
+        var from = expression(() -> {
+            if (!lookingAtIdentifier()) {
+                return false;
+            }
+            if (scanIdentifier("through")) {
+                exclusive[0] = false;
+                bound[0] = true;
+                return true;
+            }
+            if (scanIdentifier("to")) {
+                exclusive[0] = true;
+                bound[0] = true;
+                return true;
+            }
+            return false;
+        });
+        if (!bound[0]) {
+            throw scanner.error("Expected \"to\" or \"through\".");
+        }
+        whitespace(true);
+        var to = expression();
+        var children = statementBlock(context);
+        var span = scanner.spanFrom(start);
+        whitespaceWithoutComments(false);
+        return new ForRule(variable, from, to, exclusive[0], children, span);
+    }
+
+    /// Parses a `@while` rule.
+    ///
+    /// @param start   the scanner state at the leading `@`
+    /// @param context the statement forms permitted in the body
+    /// @return the while rule
+    private WhileRule whileRule(ScannerState start, StatementContext context) {
+        whitespace(true);
+        var condition = expression();
+        var children = statementBlock(context);
+        var span = scanner.spanFrom(start);
+        whitespaceWithoutComments(false);
+        return new WhileRule(condition, children, span);
     }
 
     /// Parses a declaration when possible and otherwise reparses from the same
@@ -646,7 +833,7 @@ final class ScssParser extends SassExpressionParser {
             @Nullable SassExpression value,
             ScannerState start
     ) {
-        var children = statementBlock(true);
+        var children = statementBlock(StatementContext.DECLARATION);
         return Declaration.nested(name, value, children, scanner.spanFrom(start));
     }
 
