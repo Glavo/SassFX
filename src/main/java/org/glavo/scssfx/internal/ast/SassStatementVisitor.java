@@ -99,4 +99,10 @@ public interface SassStatementVisitor<R> {
     /// @param statement the statement to visit
     /// @return the visit result
     R visitReturnRule(ReturnRule statement);
+
+    /// Visits a `@use` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitUseRule(UseRule statement);
 }

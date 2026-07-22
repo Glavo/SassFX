@@ -22,6 +22,7 @@ import org.glavo.scssfx.internal.ast.MixinRule;
 import org.glavo.scssfx.internal.ast.Parameter;
 import org.glavo.scssfx.internal.ast.ParameterList;
 import org.glavo.scssfx.internal.ast.ReturnRule;
+import org.glavo.scssfx.internal.ast.UseRule;
 import org.glavo.scssfx.internal.ast.SassExpression;
 import org.glavo.scssfx.internal.ast.SassStatement;
 import org.glavo.scssfx.internal.ast.SilentComment;
@@ -66,6 +67,9 @@ final class ScssParser extends SassExpressionParser {
 
     /// Records whether the parser is inside a mixin declaration body.
     private boolean inMixin;
+
+    /// Records whether `@use` rules are still allowed at the stylesheet root.
+    private boolean useAllowed = true;
 
     /// Creates a parser for an indexed SCSS source.
     ///
@@ -119,9 +123,21 @@ final class ScssParser extends SassExpressionParser {
                     scanner.read();
                     whitespaceWithoutComments(true);
                 }
-                case '$' -> statements.add(variableDeclarationWithoutNamespace());
-                case '@' -> statements.add(atRule(StatementContext.ROOT));
-                default -> statements.add(variableDeclarationOrStyleRule());
+                case '$' -> {
+                    useAllowed = false;
+                    statements.add(variableDeclarationWithoutNamespace());
+                }
+                case '@' -> {
+                    var rule = atRule(StatementContext.ROOT);
+                    if (!(rule instanceof UseRule)) {
+                        useAllowed = false;
+                    }
+                    statements.add(rule);
+                }
+                default -> {
+                    useAllowed = false;
+                    statements.add(variableDeclarationOrStyleRule());
+                }
             }
         }
         return statements;
@@ -376,6 +392,7 @@ final class ScssParser extends SassExpressionParser {
             case "include" -> includeRule(start, context);
             case "content" -> contentRule(start, context);
             case "return" -> returnRule(start, context);
+            case "use" -> useRule(start, context);
             case "else" -> throw scanner.error(
                     "This at-rule is not allowed here.",
                     start.position(),
@@ -552,7 +569,9 @@ final class ScssParser extends SassExpressionParser {
         inMixin = true;
         ArrayList<SassStatement> children;
         try {
-            children = statementBlock(context);
+            // Mixin bodies accept style-rule children so bare declarations can be
+            // applied when the mixin is included inside a style rule.
+            children = statementBlock(StatementContext.STYLE_RULE);
         } finally {
             inMixin = false;
         }
@@ -597,10 +616,13 @@ final class ScssParser extends SassExpressionParser {
             throw scanner.error("Includes may not be used within functions.");
         }
         whitespace(true);
+        @Nullable String namespace = null;
         var originalName = identifier(false, false);
         whitespace(true);
         if (scanner.scan('.')) {
-            throw scanner.error("Namespaced includes aren't supported.");
+            namespace = originalName;
+            originalName = identifier(false, false);
+            whitespace(true);
         }
         ArgumentList arguments;
         if (scanner.peek() == '(') {
@@ -633,7 +655,7 @@ final class ScssParser extends SassExpressionParser {
         }
         var span = scanner.spanFrom(start);
         whitespaceWithoutComments(false);
-        return new IncludeRule(null, originalName, arguments, content, span);
+        return new IncludeRule(namespace, originalName, arguments, content, span);
     }
 
     /// Parses a `@content` rule.
@@ -681,6 +703,66 @@ final class ScssParser extends SassExpressionParser {
         var span = scanner.spanFrom(start);
         whitespaceWithoutComments(false);
         return new ReturnRule(expression, span);
+    }
+
+    /// Parses a `@use` rule.
+    ///
+    /// @param start   the scanner state at the leading `@`
+    /// @param context the surrounding statement context
+    /// @return the use rule
+    private UseRule useRule(ScannerState start, StatementContext context) {
+        if (context != StatementContext.ROOT) {
+            throw scanner.error("@use rules must be at the root of the stylesheet.");
+        }
+        if (!useAllowed) {
+            throw scanner.error("@use rules must be written before any other rules.");
+        }
+        whitespace(true);
+        var url = string();
+        whitespace(true);
+        @Nullable String namespace = defaultNamespace(url);
+        if (scanIdentifier("as")) {
+            whitespace(true);
+            if (scanner.scan('*')) {
+                namespace = null;
+            } else {
+                namespace = identifier(false, false);
+            }
+            whitespace(true);
+        }
+        if (scanIdentifier("with")) {
+            throw scanner.error("Module configuration isn't supported yet.");
+        }
+        expectStatementSeparator();
+        var span = scanner.spanFrom(start);
+        whitespaceWithoutComments(false);
+        return new UseRule(url, namespace, span);
+    }
+
+    /// Derives the default namespace from an unresolved module URL.
+    ///
+    /// @param url the module URL string
+    /// @return the default namespace
+    private String defaultNamespace(String url) {
+        var path = url;
+        var slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        if (slash >= 0) {
+            path = path.substring(slash + 1);
+        }
+        if (path.startsWith("_")) {
+            path = path.substring(1);
+        }
+        var dot = path.lastIndexOf('.');
+        if (dot > 0) {
+            path = path.substring(0, dot);
+        }
+        if (path.isEmpty() || !Character.isLetter(path.charAt(0)) && path.charAt(0) != '_') {
+            throw scanner.error(
+                    "The default namespace \"" + path + "\" is not a valid CSS identifier.\n\n"
+                            + "Recommendation: add an \"as\" clause to define an explicit namespace."
+            );
+        }
+        return path.replace('_', '-');
     }
 
     /// Parses a parenthesized parameter list.

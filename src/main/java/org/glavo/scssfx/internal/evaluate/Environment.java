@@ -4,6 +4,8 @@ package org.glavo.scssfx.internal.evaluate;
 import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.callable.Callable;
 import org.glavo.scssfx.internal.callable.UserDefinedCallable;
+import org.glavo.scssfx.internal.module.LoadedModule;
+import org.glavo.scssfx.internal.module.MemberNames;
 import org.glavo.scssfx.internal.value.SassValue;
 import org.glavo.scssfx.internal.value.SassValueException;
 import org.jetbrains.annotations.ApiStatus;
@@ -42,6 +44,15 @@ public final class Environment {
     /// Contains the active content block callable, or {@code null}.
     private @Nullable UserDefinedCallable content;
 
+    /// Contains modules loaded with an explicit namespace.
+    private final LinkedHashMap<String, LoadedModule> modules;
+
+    /// Contains modules loaded with {@code as *}.
+    private final ArrayList<LoadedModule> globalModules;
+
+    /// Contains every module added to this environment in source order.
+    private final ArrayList<LoadedModule> allModules;
+
     /// Contains active scope handles in last-opened-first order.
     private final Deque<Scope> activeScopes;
 
@@ -57,26 +68,30 @@ public final class Environment {
         this.mixinFrames = new ArrayList<>();
         this.mixinFrames.add(new LinkedHashMap<>());
         this.content = null;
+        this.modules = new LinkedHashMap<>();
+        this.globalModules = new ArrayList<>();
+        this.allModules = new ArrayList<>();
         this.activeScopes = new ArrayDeque<>();
         this.inSemiGlobalScope = true;
     }
 
-    /// Creates a closure environment that shares existing frames.
-    ///
-    /// @param variableFrames the variable frames captured by reference
-    /// @param functionFrames the function frames captured by reference
-    /// @param mixinFrames    the mixin frames captured by reference
-    /// @param content        the captured content callable, or {@code null}
+    /// Creates a closure environment that shares existing frames and modules.
     private Environment(
             List<LinkedHashMap<String, VariableBinding>> variableFrames,
             List<LinkedHashMap<String, Callable>> functionFrames,
             List<LinkedHashMap<String, Callable>> mixinFrames,
-            @Nullable UserDefinedCallable content
+            @Nullable UserDefinedCallable content,
+            LinkedHashMap<String, LoadedModule> modules,
+            ArrayList<LoadedModule> globalModules,
+            ArrayList<LoadedModule> allModules
     ) {
         this.variableFrames = new ArrayList<>(variableFrames);
         this.functionFrames = new ArrayList<>(functionFrames);
         this.mixinFrames = new ArrayList<>(mixinFrames);
         this.content = content;
+        this.modules = modules;
+        this.globalModules = globalModules;
+        this.allModules = allModules;
         this.activeScopes = new ArrayDeque<>();
         this.inSemiGlobalScope = true;
     }
@@ -85,12 +100,19 @@ public final class Environment {
     ///
     /// Assignments to captured frames are visible through both environments.
     /// Scopes opened later in either environment are not added to the other.
-    /// The closure begins outside any dynamic assignment scope, so ordinary
-    /// assignments initially use semi-global rules.
+    /// Module registries are shared by reference.
     ///
     /// @return the closure environment
     public Environment closure() {
-        return new Environment(variableFrames, functionFrames, mixinFrames, content);
+        return new Environment(
+                variableFrames,
+                functionFrames,
+                mixinFrames,
+                content,
+                modules,
+                globalModules,
+                allModules
+        );
     }
 
     /// Returns whether the current frame is the global frame.
@@ -112,7 +134,7 @@ public final class Environment {
     ) {
         validateName(name);
         if (namespace != null) {
-            throw missingModule(namespace);
+            return requireModule(namespace).variables().get(name);
         }
         for (var index = variableFrames.size() - 1; index >= 0; index--) {
             @Nullable VariableBinding binding = variableFrames.get(index).get(name);
@@ -120,7 +142,7 @@ public final class Environment {
                 return binding;
             }
         }
-        return null;
+        return fromOneGlobalModule(name, LoadedModule::variables);
     }
 
     /// Returns the value of a visible variable.
@@ -177,7 +199,10 @@ public final class Environment {
         Objects.requireNonNull(value, "value");
         Objects.requireNonNull(originSpan, "originSpan");
         if (namespace != null) {
-            throw missingModule(namespace);
+            requireModule(namespace);
+            throw new SassValueException(
+                    "Modifying module variables isn't supported yet."
+            );
         }
 
         var binding = new VariableBinding(value, originSpan);
@@ -234,7 +259,7 @@ public final class Environment {
     public @Nullable Callable getFunction(String name, @Nullable String namespace) {
         validateName(name);
         if (namespace != null) {
-            throw missingModule(namespace);
+            return requireModule(namespace).functions().get(name);
         }
         for (var index = functionFrames.size() - 1; index >= 0; index--) {
             @Nullable Callable callable = functionFrames.get(index).get(name);
@@ -242,7 +267,7 @@ public final class Environment {
                 return callable;
             }
         }
-        return null;
+        return fromOneGlobalModule(name, LoadedModule::functions);
     }
 
     /// Finds a visible mixin.
@@ -254,7 +279,7 @@ public final class Environment {
     public @Nullable Callable getMixin(String name, @Nullable String namespace) {
         validateName(name);
         if (namespace != null) {
-            throw missingModule(namespace);
+            return requireModule(namespace).mixins().get(name);
         }
         for (var index = mixinFrames.size() - 1; index >= 0; index--) {
             @Nullable Callable callable = mixinFrames.get(index).get(name);
@@ -262,7 +287,120 @@ public final class Environment {
                 return callable;
             }
         }
-        return null;
+        return fromOneGlobalModule(name, LoadedModule::mixins);
+    }
+
+    /// Adds a loaded module to this environment.
+    ///
+    /// @param module    the loaded module
+    /// @param namespace the namespace, or {@code null} for {@code as *}
+    /// @param useSpan   the `@use` span used for conflict diagnostics
+    /// @throws SassValueException if the namespace is already taken or {@code as *}
+    /// conflicts with existing members
+    public void addModule(
+            LoadedModule module,
+            @Nullable String namespace,
+            SourceSpan useSpan
+    ) {
+        Objects.requireNonNull(module, "module");
+        Objects.requireNonNull(useSpan, "useSpan");
+        if (namespace == null) {
+            for (var name : module.variables().keySet()) {
+                if (variableExists(name, null)) {
+                    throw new SassValueException(
+                            "This module and the new module both define a variable named \"$"
+                                    + name + "\"."
+                    );
+                }
+            }
+            globalModules.add(module);
+        } else {
+            if (namespace.isEmpty()) {
+                throw new IllegalArgumentException("namespace must not be empty");
+            }
+            if (modules.containsKey(namespace)) {
+                throw new SassValueException(
+                        "There's already a module with namespace \"" + namespace + "\"."
+                );
+            }
+            modules.put(namespace, module);
+        }
+        allModules.add(module);
+    }
+
+    /// Returns modules added to this environment in source order.
+    ///
+    /// @return the upstream modules
+    public @Unmodifiable List<LoadedModule> allModules() {
+        return List.copyOf(allModules);
+    }
+
+    /// Returns public global variables for module export.
+    ///
+    /// @return the public global variable bindings
+    public @Unmodifiable Map<String, VariableBinding> publicGlobalVariables() {
+        var result = new LinkedHashMap<String, VariableBinding>();
+        for (var entry : variableFrames.get(0).entrySet()) {
+            if (MemberNames.isPublic(entry.getKey())) {
+                result.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return Collections.unmodifiableMap(result);
+    }
+
+    /// Returns public global functions for module export.
+    ///
+    /// @return the public global functions
+    public @Unmodifiable Map<String, Callable> publicGlobalFunctions() {
+        var result = new LinkedHashMap<String, Callable>();
+        for (var entry : functionFrames.get(0).entrySet()) {
+            if (MemberNames.isPublic(entry.getKey())) {
+                result.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return Collections.unmodifiableMap(result);
+    }
+
+    /// Returns public global mixins for module export.
+    ///
+    /// @return the public global mixins
+    public @Unmodifiable Map<String, Callable> publicGlobalMixins() {
+        var result = new LinkedHashMap<String, Callable>();
+        for (var entry : mixinFrames.get(0).entrySet()) {
+            if (MemberNames.isPublic(entry.getKey())) {
+                result.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return Collections.unmodifiableMap(result);
+    }
+
+    /// Returns a namespaced module or fails.
+    private LoadedModule requireModule(String namespace) {
+        @Nullable LoadedModule module = modules.get(namespace);
+        if (module == null) {
+            throw missingModule(namespace);
+        }
+        return module;
+    }
+
+    /// Looks up a member across {@code as *} modules.
+    private <T> @Nullable T fromOneGlobalModule(
+            String name,
+            java.util.function.Function<LoadedModule, Map<String, T>> getter
+    ) {
+        @Nullable T found = null;
+        for (var module : globalModules) {
+            @Nullable T value = getter.apply(module).get(name);
+            if (value != null) {
+                if (found != null) {
+                    throw new SassValueException(
+                            "This variable is available from multiple global modules."
+                    );
+                }
+                found = value;
+            }
+        }
+        return found;
     }
 
     /// Returns the active content block callable.

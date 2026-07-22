@@ -10,7 +10,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 public sealed interface SassStatement extends SassNode
         permits Stylesheet, StyleRule, Declaration, VariableDeclaration, SilentComment, LoudComment,
         IfRule, EachRule, ForRule, WhileRule,
-        MixinRule, FunctionRule, IncludeRule, ContentRule, ReturnRule {
+        MixinRule, FunctionRule, IncludeRule, ContentRule, ReturnRule, UseRule {
     /// Dispatches this statement to its type-specific visitor method.
     ///
     /// @param visitor the visitor that receives this statement

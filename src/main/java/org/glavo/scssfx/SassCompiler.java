@@ -5,6 +5,7 @@ import org.glavo.scssfx.internal.css.CssSerializeException;
 import org.glavo.scssfx.internal.css.CssSerializer;
 import org.glavo.scssfx.internal.evaluate.EvaluationException;
 import org.glavo.scssfx.internal.evaluate.SassEvaluator;
+import org.glavo.scssfx.internal.module.ModuleRegistry;
 import org.glavo.scssfx.internal.parse.ParseException;
 import org.glavo.scssfx.internal.parse.StylesheetParser;
 import org.glavo.scssfx.internal.source.SourceFile;
@@ -82,17 +83,16 @@ public final class SassCompiler {
         var loaded = readSource(source);
         try {
             var stylesheet = StylesheetParser.parse(loaded.file(), loaded.syntax());
-            var evaluator = new SassEvaluator();
-            evaluator.execute(stylesheet);
-            var css = evaluator.cssStylesheet();
-            if (css == null) {
-                throw new IllegalStateException("stylesheet execution produced no CSS IR");
-            }
-            var text = CssSerializer.serialize(css, cssTarget);
+            var registry = new ModuleRegistry(options.loadPaths());
+            var evaluator = new SassEvaluator(registry);
+            var root = evaluator.executeRoot(stylesheet, loaded.file().url());
+            var text = CssSerializer.serialize(root.css(), cssTarget);
+            var urls = new LinkedHashSet<>(registry.loadedUrls());
+            urls.addAll(loaded.loadedUrls());
             return (CompileResult<T>) new CompileResult<>(
                     text,
                     null,
-                    loaded.loadedUrls(),
+                    urls,
                     evaluator.diagnostics()
             );
         } catch (ParseException failure) {

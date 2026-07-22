@@ -31,7 +31,11 @@ import org.glavo.scssfx.internal.ast.NumberExpression;
 import org.glavo.scssfx.internal.ast.ParameterList;
 import org.glavo.scssfx.internal.ast.ParenthesizedExpression;
 import org.glavo.scssfx.internal.ast.ReturnRule;
+import org.glavo.scssfx.internal.ast.UseRule;
 import org.glavo.scssfx.internal.ast.SassExpression;
+import org.glavo.scssfx.internal.module.LoadedModule;
+import org.glavo.scssfx.internal.module.ModuleCss;
+import org.glavo.scssfx.internal.module.ModuleRegistry;
 import org.glavo.scssfx.internal.ast.SassExpressionVisitor;
 import org.glavo.scssfx.internal.ast.SassStatement;
 import org.glavo.scssfx.internal.ast.SassStatementVisitor;
@@ -72,6 +76,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -103,6 +108,9 @@ public final class SassEvaluator implements
     /// Contains variable and callable bindings for this evaluation.
     private Environment environment;
 
+    /// Contains the module loader for this compilation, or {@code null}.
+    private final @Nullable ModuleRegistry moduleRegistry;
+
     /// Contains parse-time and evaluation-time diagnostics in reporting order.
     private final ArrayList<Diagnostic> diagnostics;
 
@@ -121,8 +129,11 @@ public final class SassEvaluator implements
     /// Contains the property-name prefix for nested declarations, or {@code null}.
     private @Nullable String declarationName;
 
-    /// Records whether a stylesheet execution has already begun.
-    private boolean stylesheetStarted;
+    /// Contains the canonical URL of the stylesheet currently being executed.
+    private @Nullable URI currentUrl;
+
+    /// Records whether a stylesheet execution is active.
+    private boolean stylesheetActive;
 
     /// Contains the number of active style-rule ancestors.
     private int styleRuleDepth;
@@ -130,19 +141,32 @@ public final class SassEvaluator implements
     /// Contains the number of active nested-property declarations.
     private int nestedDeclarationDepth;
 
-    /// Creates an evaluator with an empty environment.
+    /// Creates an evaluator with an empty environment and no module loader.
     public SassEvaluator() {
-        this(new Environment());
+        this(new Environment(), null);
     }
 
     /// Creates an evaluator that uses an existing environment.
     ///
-    /// The environment is used directly rather than copied, allowing callers
-    /// to inspect bindings and to prepare controlled evaluation state.
-    ///
     /// @param environment the mutable evaluation environment
     public SassEvaluator(Environment environment) {
+        this(environment, null);
+    }
+
+    /// Creates an evaluator with a module registry.
+    ///
+    /// @param moduleRegistry the compilation module registry
+    public SassEvaluator(ModuleRegistry moduleRegistry) {
+        this(new Environment(), Objects.requireNonNull(moduleRegistry, "moduleRegistry"));
+    }
+
+    /// Creates an evaluator with an environment and optional module registry.
+    ///
+    /// @param environment    the mutable evaluation environment
+    /// @param moduleRegistry the module registry, or {@code null}
+    public SassEvaluator(Environment environment, @Nullable ModuleRegistry moduleRegistry) {
         this.environment = Objects.requireNonNull(environment, "environment");
+        this.moduleRegistry = moduleRegistry;
         this.diagnostics = new ArrayList<>();
     }
 
@@ -182,44 +206,180 @@ public final class SassEvaluator implements
     /// Executes one stylesheet in source order and builds CSS IR.
     ///
     /// @param stylesheet the stylesheet to execute
-    /// @throws IllegalStateException if stylesheet execution was already started
-    /// @throws EvaluationException   if evaluation fails
+    /// @throws EvaluationException if evaluation fails
     public void execute(Stylesheet stylesheet) {
-        Objects.requireNonNull(stylesheet, "stylesheet").accept(this);
+        executeRoot(stylesheet, null);
     }
 
-    /// Executes a stylesheet root and completes declared global metadata afterward.
+    /// Executes the root stylesheet and returns the combined module graph.
+    ///
+    /// The root environment and combined CSS remain installed on this evaluator.
+    ///
+    /// @param stylesheet the root stylesheet
+    /// @param url        the root canonical URL, or {@code null}
+    /// @return the root loaded module whose CSS has been combined
+    /// @throws EvaluationException if evaluation fails
+    public LoadedModule executeRoot(Stylesheet stylesheet, @Nullable URI url) {
+        Objects.requireNonNull(stylesheet, "stylesheet");
+        if (moduleRegistry != null) {
+            moduleRegistry.recordRoot(url);
+        }
+        var module = executeModuleBody(stylesheet, url, true);
+        cssStylesheet = ModuleCss.combine(module);
+        cssParent = cssStylesheet;
+        return new LoadedModule(
+                module.url(),
+                module.variables(),
+                module.functions(),
+                module.mixins(),
+                cssStylesheet,
+                module.upstream()
+        );
+    }
+
+    /// Executes a stylesheet as one module and returns its exports.
+    ///
+    /// Unlike [#executeRoot], this restores the previous evaluator state so
+    /// dependency loading does not clobber the importer's environment.
+    ///
+    /// @param stylesheet the stylesheet to execute
+    /// @param url        the canonical module URL, or {@code null}
+    /// @return the loaded module
+    /// @throws EvaluationException if evaluation fails
+    public LoadedModule executeAsModule(Stylesheet stylesheet, @Nullable URI url) {
+        return executeModuleBody(stylesheet, url, false);
+    }
+
+    /// Executes one stylesheet body, optionally retaining the resulting state.
+    ///
+    /// @param stylesheet the stylesheet to execute
+    /// @param url        the canonical module URL, or {@code null}
+    /// @param retainState whether to keep this module's environment installed
+    /// @return the loaded module
+    private LoadedModule executeModuleBody(
+            Stylesheet stylesheet,
+            @Nullable URI url,
+            boolean retainState
+    ) {
+        Objects.requireNonNull(stylesheet, "stylesheet");
+        var previousEnvironment = environment;
+        var previousStylesheet = this.stylesheet;
+        var previousCss = cssStylesheet;
+        var previousParent = cssParent;
+        var previousStyleRule = styleRule;
+        var previousDeclarationName = declarationName;
+        var previousUrl = currentUrl;
+        var previousActive = stylesheetActive;
+        var previousStyleRuleDepth = styleRuleDepth;
+        var previousNestedDepth = nestedDeclarationDepth;
+
+        environment = new Environment();
+        this.stylesheet = stylesheet;
+        cssStylesheet = new CssStylesheet(stylesheet.span());
+        cssParent = cssStylesheet;
+        styleRule = null;
+        declarationName = null;
+        currentUrl = url;
+        stylesheetActive = true;
+        styleRuleDepth = 0;
+        nestedDeclarationDepth = 0;
+        diagnostics.addAll(stylesheet.parseTimeWarnings());
+
+        try {
+            for (var child : stylesheet.children()) {
+                child.accept(this);
+            }
+            for (var entry : stylesheet.globalVariables().entrySet()) {
+                @Nullable SassValue value = environment.getVariable(entry.getKey(), null);
+                if (value == null || value == SassNull.NULL) {
+                    environment.setVariable(
+                            entry.getKey(),
+                            SassNull.NULL,
+                            entry.getValue(),
+                            null,
+                            true
+                    );
+                }
+            }
+            return new LoadedModule(
+                    url,
+                    environment.publicGlobalVariables(),
+                    environment.publicGlobalFunctions(),
+                    environment.publicGlobalMixins(),
+                    Objects.requireNonNull(cssStylesheet, "css"),
+                    environment.allModules()
+            );
+        } catch (RuntimeException failure) {
+            environment = previousEnvironment;
+            this.stylesheet = previousStylesheet;
+            cssStylesheet = previousCss;
+            cssParent = previousParent;
+            styleRule = previousStyleRule;
+            declarationName = previousDeclarationName;
+            currentUrl = previousUrl;
+            stylesheetActive = previousActive;
+            styleRuleDepth = previousStyleRuleDepth;
+            nestedDeclarationDepth = previousNestedDepth;
+            throw failure;
+        } finally {
+            if (!retainState) {
+                environment = previousEnvironment;
+                this.stylesheet = previousStylesheet;
+                cssStylesheet = previousCss;
+                cssParent = previousParent;
+                styleRule = previousStyleRule;
+                declarationName = previousDeclarationName;
+                currentUrl = previousUrl;
+                stylesheetActive = previousActive;
+                styleRuleDepth = previousStyleRuleDepth;
+                nestedDeclarationDepth = previousNestedDepth;
+            }
+        }
+    }
+
+    /// Executes a stylesheet root through the visitor entry point.
+    ///
+    /// Prefer [#executeRoot(Stylesheet, URI)] or [#executeAsModule(Stylesheet, URI)]
+    /// for compilation entry points.
     ///
     /// @param statement the stylesheet to execute
     /// @return the continue result, [StatementResult#CONTINUE]
     @Override
     public StatementResult visitStylesheet(Stylesheet statement) {
-        if (stylesheetStarted) {
-            throw new IllegalStateException("an evaluator can execute only one stylesheet");
+        if (stylesheetActive && statement == stylesheet) {
+            return StatementResult.CONTINUE;
         }
-        stylesheetStarted = true;
-        stylesheet = statement;
-        cssStylesheet = new CssStylesheet(statement.span());
-        cssParent = cssStylesheet;
-        diagnostics.addAll(statement.parseTimeWarnings());
+        executeAsModule(statement, currentUrl);
+        return StatementResult.CONTINUE;
+    }
 
-        for (var child : statement.children()) {
-            child.accept(this);
+    /// Loads another module and registers it in the current environment.
+    ///
+    /// @param statement the use rule
+    /// @return the continue result
+    @Override
+    public StatementResult visitUseRule(UseRule statement) {
+        if (moduleRegistry == null) {
+            throw new EvaluationException(
+                    "Module loading isn't available.",
+                    statement.span()
+            );
         }
-
-        // Global declarations discovered during parsing are materialized only
-        // after execution, preserving forward-reference and warning order.
-        for (var entry : statement.globalVariables().entrySet()) {
-            @Nullable SassValue value = environment.getVariable(entry.getKey(), null);
-            if (value == null || value == SassNull.NULL) {
-                environment.setVariable(
-                        entry.getKey(),
-                        SassNull.NULL,
-                        entry.getValue(),
-                        null,
-                        true
-                );
-            }
+        try {
+            var module = moduleRegistry.load(
+                    statement.url(),
+                    currentUrl,
+                    statement.span(),
+                    this
+            );
+            environment.addModule(module, statement.namespace(), statement.span());
+        } catch (SassValueException cause) {
+            throw new EvaluationException(
+                    Objects.requireNonNull(cause.getMessage(), "module failure message"),
+                    statement.span(),
+                    List.of(),
+                    cause
+            );
         }
         return StatementResult.CONTINUE;
     }
@@ -845,10 +1005,7 @@ public final class SassEvaluator implements
             callable = new PlainCssCallable(expression.originalName());
         }
         if (callable == null) {
-            throw new EvaluationException(
-                    "There is no module with the namespace \"" + expression.namespace() + "\".",
-                    expression.span()
-            );
+            throw new EvaluationException("Undefined function.", expression.span());
         }
         return runCallable(callable, expression.arguments(), expression.span());
     }
