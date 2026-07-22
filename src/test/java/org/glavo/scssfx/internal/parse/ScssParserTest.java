@@ -9,8 +9,12 @@ import org.glavo.scssfx.internal.ast.BinaryOperator;
 import org.glavo.scssfx.internal.ast.ColorExpression;
 import org.glavo.scssfx.internal.ast.Declaration;
 import org.glavo.scssfx.internal.ast.ExpressionInterpolationPart;
+import org.glavo.scssfx.internal.ast.FunctionExpression;
+import org.glavo.scssfx.internal.ast.ListExpression;
+import org.glavo.scssfx.internal.ast.ListSeparator;
 import org.glavo.scssfx.internal.ast.LoudComment;
 import org.glavo.scssfx.internal.ast.NumberExpression;
+import org.glavo.scssfx.internal.ast.ParenthesizedExpression;
 import org.glavo.scssfx.internal.ast.SassStatement;
 import org.glavo.scssfx.internal.ast.SilentComment;
 import org.glavo.scssfx.internal.ast.StringExpression;
@@ -538,6 +542,283 @@ final class ScssParserTest {
         assertEquals("-#{name}: 5px", hyphenInterpolation.span().text());
     }
 
+    /// Verifies strict-unary deprecations, normalized messages, spans, and parsed operations.
+    @Test
+    void recordsStrictUnaryDeprecations() {
+        var source = "a {plus: 1 +2;minus: 1 -$x;chain: 1 +2 +3;"
+                + "grouped: (1 +2);comment: 1 /**/+2;line: 1\n+2}";
+        var stylesheet = parse(source);
+        var rule = assertInstanceOf(StyleRule.class, stylesheet.children().get(0));
+
+        assertEquals(6, rule.children().size());
+        var plus = assertInstanceOf(
+                BinaryOperationExpression.class,
+                assertInstanceOf(Declaration.class, rule.children().get(0)).value()
+        );
+        assertEquals(BinaryOperator.PLUS, plus.operator());
+        assertInstanceOf(NumberExpression.class, plus.left());
+        assertInstanceOf(NumberExpression.class, plus.right());
+
+        var minus = assertInstanceOf(
+                BinaryOperationExpression.class,
+                assertInstanceOf(Declaration.class, rule.children().get(1)).value()
+        );
+        assertEquals(BinaryOperator.MINUS, minus.operator());
+        assertInstanceOf(VariableExpression.class, minus.right());
+
+        var chain = assertInstanceOf(
+                BinaryOperationExpression.class,
+                assertInstanceOf(Declaration.class, rule.children().get(2)).value()
+        );
+        assertEquals(BinaryOperator.PLUS, chain.operator());
+        assertInstanceOf(BinaryOperationExpression.class, chain.left());
+        assertInstanceOf(NumberExpression.class, chain.right());
+
+        var grouped = assertInstanceOf(
+                ParenthesizedExpression.class,
+                assertInstanceOf(Declaration.class, rule.children().get(3)).value()
+        );
+        assertInstanceOf(BinaryOperationExpression.class, grouped.expression());
+
+        var comment = assertInstanceOf(
+                BinaryOperationExpression.class,
+                assertInstanceOf(Declaration.class, rule.children().get(4)).value()
+        );
+        assertEquals(BinaryOperator.PLUS, comment.operator());
+
+        var line = assertInstanceOf(
+                BinaryOperationExpression.class,
+                assertInstanceOf(Declaration.class, rule.children().get(5)).value()
+        );
+        assertEquals(BinaryOperator.PLUS, line.operator());
+
+        var warnings = stylesheet.parseTimeWarnings();
+        assertEquals(7, warnings.size());
+
+        var plusStart = source.indexOf("1 +2");
+        assertStrictUnaryWarning(warnings.get(0), "1", "+", "2", plusStart, "1 +2");
+
+        var minusStart = source.indexOf("1 -$x");
+        assertStrictUnaryWarning(warnings.get(1), "1", "-", "$x", minusStart, "1 -$x");
+
+        var chainStart = source.indexOf("1 +2 +3");
+        assertStrictUnaryWarning(warnings.get(2), "1", "+", "2", chainStart, "1 +2");
+        assertStrictUnaryWarning(
+                warnings.get(3),
+                "1 + 2",
+                "+",
+                "3",
+                chainStart,
+                "1 +2 +3"
+        );
+
+        var groupedStart = source.indexOf("1 +2", source.indexOf("grouped"));
+        assertStrictUnaryWarning(warnings.get(4), "1", "+", "2", groupedStart, "1 +2");
+
+        var commentStart = source.indexOf("1 /**/+2");
+        assertStrictUnaryWarning(
+                warnings.get(5),
+                "1",
+                "+",
+                "2",
+                commentStart,
+                "1 /**/+2"
+        );
+
+        var lineStart = source.indexOf("1\n+2");
+        assertStrictUnaryWarning(warnings.get(6), "1", "+", "2", lineStart, "1\n+2");
+    }
+
+    /// Verifies syntax that unambiguously selects binary or unary interpretation emits no warning.
+    @Test
+    void acceptsUnambiguousUnaryAndBinarySyntax() {
+        var source = "a {adjacent: 1+2;spaced: 1 + 2;intended: 1 -2;"
+                + "parenthesized: 1 (+2);before-comment: 1/* before */ +2;"
+                + "after-comment: 1 +/**/2;other: 1 *2;"
+                + "right-spaced: 1+ 2;minus-spaced: 1 - ($x);"
+                + "comment-both: 1/**/+/**/2}";
+        var stylesheet = parse(source);
+        var rule = assertInstanceOf(StyleRule.class, stylesheet.children().get(0));
+
+        assertTrue(stylesheet.parseTimeWarnings().isEmpty());
+        assertEquals(10, rule.children().size());
+        assertEquals(BinaryOperator.PLUS, assertInstanceOf(
+                BinaryOperationExpression.class,
+                assertInstanceOf(Declaration.class, rule.children().get(0)).value()
+        ).operator());
+        assertEquals(BinaryOperator.PLUS, assertInstanceOf(
+                BinaryOperationExpression.class,
+                assertInstanceOf(Declaration.class, rule.children().get(1)).value()
+        ).operator());
+
+        var intended = assertInstanceOf(
+                ListExpression.class,
+                assertInstanceOf(Declaration.class, rule.children().get(2)).value()
+        );
+        assertEquals(-2.0, assertInstanceOf(
+                NumberExpression.class,
+                intended.contents().get(1)
+        ).value());
+
+        var parenthesized = assertInstanceOf(
+                ListExpression.class,
+                assertInstanceOf(Declaration.class, rule.children().get(3)).value()
+        );
+        var signed = assertInstanceOf(
+                ParenthesizedExpression.class,
+                parenthesized.contents().get(1)
+        );
+        assertEquals(2.0, assertInstanceOf(
+                NumberExpression.class,
+                signed.expression()
+        ).value());
+
+        assertEquals(BinaryOperator.PLUS, assertInstanceOf(
+                BinaryOperationExpression.class,
+                assertInstanceOf(Declaration.class, rule.children().get(4)).value()
+        ).operator());
+        assertEquals(BinaryOperator.PLUS, assertInstanceOf(
+                BinaryOperationExpression.class,
+                assertInstanceOf(Declaration.class, rule.children().get(5)).value()
+        ).operator());
+        assertEquals(BinaryOperator.TIMES, assertInstanceOf(
+                BinaryOperationExpression.class,
+                assertInstanceOf(Declaration.class, rule.children().get(6)).value()
+        ).operator());
+        assertEquals(BinaryOperator.PLUS, assertInstanceOf(
+                BinaryOperationExpression.class,
+                assertInstanceOf(Declaration.class, rule.children().get(7)).value()
+        ).operator());
+        assertEquals(BinaryOperator.MINUS, assertInstanceOf(
+                BinaryOperationExpression.class,
+                assertInstanceOf(Declaration.class, rule.children().get(8)).value()
+        ).operator());
+        assertEquals(BinaryOperator.PLUS, assertInstanceOf(
+                BinaryOperationExpression.class,
+                assertInstanceOf(Declaration.class, rule.children().get(9)).value()
+        ).operator());
+    }
+
+    /// Verifies parser-specific replay and fallback diagnostic retention.
+    @Test
+    void retainsWarningsAcrossExpressionReparsingAndFallback() {
+        var source = "a {comma: (1 +2, 3);space: (1 +2 3);"
+                + "fallback: url(#{1 +2} x)}";
+        var stylesheet = parse(source);
+        var rule = assertInstanceOf(StyleRule.class, stylesheet.children().get(0));
+
+        assertEquals(3, rule.children().size());
+        var comma = assertInstanceOf(
+                ParenthesizedExpression.class,
+                assertInstanceOf(Declaration.class, rule.children().get(0)).value()
+        );
+        var commaList = assertInstanceOf(ListExpression.class, comma.expression());
+        assertEquals(ListSeparator.COMMA, commaList.separator());
+        assertInstanceOf(BinaryOperationExpression.class, commaList.contents().get(0));
+
+        var space = assertInstanceOf(
+                ParenthesizedExpression.class,
+                assertInstanceOf(Declaration.class, rule.children().get(1)).value()
+        );
+        var spaceList = assertInstanceOf(ListExpression.class, space.expression());
+        assertEquals(ListSeparator.SPACE, spaceList.separator());
+        assertInstanceOf(BinaryOperationExpression.class, spaceList.contents().get(0));
+
+        var url = assertInstanceOf(
+                FunctionExpression.class,
+                assertInstanceOf(Declaration.class, rule.children().get(2)).value()
+        );
+        assertEquals("url", url.name());
+        assertEquals(1, url.arguments().positional().size());
+        assertInstanceOf(ListExpression.class, url.arguments().positional().get(0));
+
+        var warnings = stylesheet.parseTimeWarnings();
+        assertEquals(4, warnings.size());
+        var commaStart = source.indexOf("1 +2");
+        assertStrictUnaryWarning(warnings.get(0), "1", "+", "2", commaStart, "1 +2");
+        var spaceStart = source.indexOf("1 +2", commaStart + 1);
+        assertStrictUnaryWarning(warnings.get(1), "1", "+", "2", spaceStart, "1 +2");
+        var urlStart = source.indexOf("1 +2", spaceStart + 1);
+        assertStrictUnaryWarning(warnings.get(2), "1", "+", "2", urlStart, "1 +2");
+        assertStrictUnaryWarning(warnings.get(3), "1", "+", "2", urlStart, "1 +2");
+    }
+
+    /// Verifies declaration lookahead retains speculative warnings during selector fallback.
+    @Test
+    void retainsWarningsDuringDeclarationSelectorFallback() {
+        var source = "a {foo:bar +2 {};baz:qux#{1 +2} {}}";
+        var stylesheet = parse(source);
+        var outer = assertInstanceOf(StyleRule.class, stylesheet.children().get(0));
+
+        assertEquals(2, outer.children().size());
+        var speculativeOnly = assertInstanceOf(StyleRule.class, outer.children().get(0));
+        assertEquals("foo:bar +2 ", speculativeOnly.selector().asPlain());
+
+        var interpolated = assertInstanceOf(StyleRule.class, outer.children().get(1));
+        assertTrue(interpolated.selector().parts().stream()
+                .anyMatch(ExpressionInterpolationPart.class::isInstance));
+
+        var warnings = stylesheet.parseTimeWarnings();
+        assertEquals(3, warnings.size());
+        var speculativeStart = source.indexOf("bar +2");
+        assertStrictUnaryWarning(
+                warnings.get(0),
+                "bar",
+                "+",
+                "2",
+                speculativeStart,
+                "bar +2"
+        );
+        var interpolationStart = source.indexOf("1 +2");
+        assertStrictUnaryWarning(
+                warnings.get(1),
+                "1",
+                "+",
+                "2",
+                interpolationStart,
+                "1 +2"
+        );
+        assertStrictUnaryWarning(
+                warnings.get(2),
+                "1",
+                "+",
+                "2",
+                interpolationStart,
+                "1 +2"
+        );
+    }
+
+    /// Verifies strict-unary and duplicate-variable-flag diagnostics retain source order.
+    @Test
+    void ordersDifferentParseTimeWarningsBySource() {
+        var source = "$x: 1 +2 !default !default;a {b: 1 -$x}";
+        var stylesheet = parse(source);
+        var warnings = stylesheet.parseTimeWarnings();
+
+        assertEquals(3, warnings.size());
+        var firstOperation = source.indexOf("1 +2");
+        assertStrictUnaryWarning(
+                warnings.get(0),
+                "1",
+                "+",
+                "2",
+                firstOperation,
+                "1 +2"
+        );
+        var firstDefault = source.indexOf("!default");
+        var duplicateDefault = source.indexOf("!default", firstDefault + 1);
+        assertDuplicateFlagWarning(warnings.get(1), "!default", duplicateDefault);
+        var secondOperation = source.indexOf("1 -$x");
+        assertStrictUnaryWarning(
+                warnings.get(2),
+                "1",
+                "-",
+                "$x",
+                secondOperation,
+                "1 -$x"
+        );
+    }
+
     /// Verifies custom-property values remain raw while interpolation is structured.
     @Test
     void parsesRawCustomPropertyDeclarations() {
@@ -856,6 +1137,51 @@ final class ScssParserTest {
                 startOffset,
                 startOffset + flag.length(),
                 flag
+        );
+    }
+
+    /// Verifies one strict-unary deprecation diagnostic.
+    ///
+    /// @param diagnostic the diagnostic to verify
+    /// @param left the normalized left operand
+    /// @param operator the ambiguous operator
+    /// @param right the normalized right operand
+    /// @param startOffset the expected operation offset
+    /// @param sourceText the expected operation source text
+    private static void assertStrictUnaryWarning(
+            Diagnostic diagnostic,
+            String left,
+            String operator,
+            String right,
+            int startOffset,
+            String sourceText
+    ) {
+        assertEquals(DiagnosticSeverity.DEPRECATION, diagnostic.severity());
+        assertEquals("strict-unary", diagnostic.code());
+        assertEquals(
+                "This operation is parsed as:\n"
+                        + "\n"
+                        + "    " + left + " " + operator + " " + right + "\n"
+                        + "\n"
+                        + "but you may have intended it to mean:\n"
+                        + "\n"
+                        + "    " + left + " (" + operator + right + ")\n"
+                        + "\n"
+                        + "Add a space after " + operator + " to clarify that it's meant to be "
+                        + "a binary operation, or wrap\n"
+                        + "it in parentheses to make it a unary operation. This will be an error "
+                        + "in future\n"
+                        + "versions of Sass.\n"
+                        + "\n"
+                        + "More info and automated migrator: "
+                        + "https://sass-lang.com/d/strict-unary",
+                diagnostic.message()
+        );
+        assertSpan(
+                Objects.requireNonNull(diagnostic.span()),
+                startOffset,
+                startOffset + sourceText.length(),
+                sourceText
         );
     }
 

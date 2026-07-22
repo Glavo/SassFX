@@ -27,9 +27,6 @@ import java.util.List;
 /// Parses SCSS stylesheets containing declarations, nested properties, style rules, and comments.
 @NotNullByDefault
 final class ScssParser extends SassExpressionParser {
-    /// Parse-time diagnostics retained for later compiler reporting.
-    private final ArrayList<Diagnostic> parseTimeWarnings = new ArrayList<>();
-
     /// First global declaration span for each normalized variable name.
     private final LinkedHashMap<String, SourceSpan> globalVariables = new LinkedHashMap<>();
 
@@ -60,7 +57,7 @@ final class ScssParser extends SassExpressionParser {
                 children,
                 scanner.spanFrom(start),
                 false,
-                parseTimeWarnings,
+                parseTimeWarnings(),
                 globalVariables
         );
     }
@@ -447,7 +444,7 @@ final class ScssParser extends SassExpressionParser {
             switch (flag) {
                 case "default" -> {
                     if (guarded) {
-                        parseTimeWarnings.add(new Diagnostic(
+                        addParseTimeWarning(new Diagnostic(
                                 DiagnosticSeverity.DEPRECATION,
                                 "!default should only be written once for each variable.\n"
                                         + "This will be an error in Dart Sass 2.0.0.",
@@ -466,7 +463,7 @@ final class ScssParser extends SassExpressionParser {
                         );
                     }
                     if (global) {
-                        parseTimeWarnings.add(new Diagnostic(
+                        addParseTimeWarning(new Diagnostic(
                                 DiagnosticSeverity.DEPRECATION,
                                 "!global should only be written once for each variable.\n"
                                         + "This will be an error in Dart Sass 2.0.0.",
@@ -617,6 +614,8 @@ final class ScssParser extends SassExpressionParser {
                 throw failure;
             }
 
+            // Dart Sass retains warnings from speculative declaration values
+            // before reparsing the same source as selector text.
             scanner.restore(beforeDeclaration);
             var additional = almostAnyValue();
             if (scanner.peek() == ';') {

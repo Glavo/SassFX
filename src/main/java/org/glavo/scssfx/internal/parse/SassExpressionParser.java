@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.parse;
 
+import org.glavo.scssfx.Diagnostic;
+import org.glavo.scssfx.DiagnosticSeverity;
 import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.ast.ArgumentList;
 import org.glavo.scssfx.internal.ast.BinaryOperationExpression;
@@ -29,12 +31,14 @@ import org.glavo.scssfx.internal.value.SpanColorFormat;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 /// Parses the syntax-only SassScript expression subset shared by SCSS constructs.
 ///
@@ -45,6 +49,9 @@ import java.util.Locale;
 @ApiStatus.Internal
 @NotNullByDefault
 class SassExpressionParser extends Parser {
+    /// Parse-time diagnostics retained while parsing the current source.
+    private final ArrayList<Diagnostic> parseTimeWarnings = new ArrayList<>();
+
     /// Records whether the current expression is being parsed within parentheses.
     private boolean inParentheses;
 
@@ -53,6 +60,39 @@ class SassExpressionParser extends Parser {
     /// @param source the source containing SassScript expressions
     SassExpressionParser(SourceFile source) {
         super(source);
+    }
+
+    /// Appends a parse-time diagnostic in source-processing order.
+    ///
+    /// @param warning the diagnostic to append
+    protected final void addParseTimeWarning(Diagnostic warning) {
+        parseTimeWarnings.add(Objects.requireNonNull(warning, "warning"));
+    }
+
+    /// Returns a checkpoint for later removal of speculative diagnostics.
+    ///
+    /// @return the current number of retained diagnostics
+    protected final int parseTimeWarningCheckpoint() {
+        return parseTimeWarnings.size();
+    }
+
+    /// Removes diagnostics appended after a checkpoint.
+    ///
+    /// @param checkpoint a value returned by [#parseTimeWarningCheckpoint()]
+    /// @throws IllegalArgumentException if the checkpoint is outside the
+    /// current diagnostic range
+    protected final void restoreParseTimeWarnings(int checkpoint) {
+        if (checkpoint < 0 || checkpoint > parseTimeWarnings.size()) {
+            throw new IllegalArgumentException("invalid parse-time warning checkpoint");
+        }
+        parseTimeWarnings.subList(checkpoint, parseTimeWarnings.size()).clear();
+    }
+
+    /// Returns an immutable snapshot of diagnostics retained so far.
+    ///
+    /// @return the diagnostics in source-processing order
+    protected final @Unmodifiable List<Diagnostic> parseTimeWarnings() {
+        return List.copyOf(parseTimeWarnings);
     }
 
     /// Parses the complete source as one SassScript expression.
@@ -220,7 +260,7 @@ class SassExpressionParser extends Parser {
             }
 
             var right = binaryExpression(operator.precedence() + 1, singleEquals);
-            left = new BinaryOperationExpression(
+            var operation = new BinaryOperationExpression(
                     operator,
                     left,
                     right,
@@ -231,7 +271,59 @@ class SassExpressionParser extends Parser {
                             right.span().end().offset()
                     )
             );
+            warnForStrictUnary(operation);
+            left = operation;
         }
+    }
+
+    /// Records the deprecation for a binary plus or minus that is lexically
+    /// indistinguishable from a whitespace-separated unary operand.
+    ///
+    /// @param operation the newly parsed binary operation
+    private void warnForStrictUnary(BinaryOperationExpression operation) {
+        var operator = operation.operator();
+        if (operator != BinaryOperator.PLUS && operator != BinaryOperator.MINUS) {
+            return;
+        }
+
+        var content = scanner.source().content();
+        var leftEnd = operation.left().span().end().offset();
+        var rightStart = operation.right().span().start().offset();
+        if (leftEnd >= content.length()
+                || rightStart <= 0
+                || content.charAt(rightStart - 1) != operator.source().charAt(0)
+                || !CssCharacters.isWhitespace(content.charAt(leftEnd))) {
+            return;
+        }
+
+        addParseTimeWarning(new Diagnostic(
+                DiagnosticSeverity.DEPRECATION,
+                strictUnaryMessage(operation),
+                operation.span(),
+                "strict-unary"
+        ));
+    }
+
+    /// Creates the Dart Sass strict-unary migration guidance for an operation.
+    ///
+    /// @param operation the ambiguous binary operation
+    /// @return the complete deprecation message
+    private static String strictUnaryMessage(BinaryOperationExpression operation) {
+        var operator = operation.operator().source();
+        return "This operation is parsed as:\n"
+                + "\n"
+                + "    " + operation.left() + " " + operator + " " + operation.right() + "\n"
+                + "\n"
+                + "but you may have intended it to mean:\n"
+                + "\n"
+                + "    " + operation.left() + " (" + operator + operation.right() + ")\n"
+                + "\n"
+                + "Add a space after " + operator + " to clarify that it's meant to be a binary "
+                + "operation, or wrap\n"
+                + "it in parentheses to make it a unary operation. This will be an error in future\n"
+                + "versions of Sass.\n"
+                + "\n"
+                + "More info and automated migrator: https://sass-lang.com/d/strict-unary";
     }
 
     /// Consumes a binary operator when one begins at the current position.
@@ -425,6 +517,7 @@ class SassExpressionParser extends Parser {
                 );
             }
 
+            var warningCheckpoint = parseTimeWarningCheckpoint();
             var first = expressionUntilCommaWithSlashReparse();
             if (scanner.scan(':')) {
                 whitespace(true);
@@ -438,6 +531,7 @@ class SassExpressionParser extends Parser {
 
             // Once parentheses establish list context, slash operations use
             // the same historical metadata as expressions outside this pair.
+            restoreParseTimeWarnings(warningCheckpoint);
             scanner.restore(inside);
             inParentheses = false;
             first = expressionUntilComma(false);
@@ -473,11 +567,13 @@ class SassExpressionParser extends Parser {
     /// @return the parsed expression
     private SassExpression expressionUntilCommaWithSlashReparse() {
         var start = scanner.state();
+        var warningCheckpoint = parseTimeWarningCheckpoint();
         var expression = expressionUntilComma(false);
         if (inParentheses
                 && expression instanceof ListExpression list
                 && !list.hasBrackets()
                 && list.separator() == ListSeparator.SPACE) {
+            restoreParseTimeWarnings(warningCheckpoint);
             scanner.restore(start);
             inParentheses = false;
             return expressionUntilComma(false);
@@ -1379,6 +1475,8 @@ class SassExpressionParser extends Parser {
             break;
         }
 
+        // Dart Sass retains diagnostics from the failed raw-URL attempt, so
+        // ordinary-function fallback may report the same source again.
         scanner.restore(beginningOfContents);
         return null;
     }
