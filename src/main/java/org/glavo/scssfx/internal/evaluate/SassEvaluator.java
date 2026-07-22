@@ -31,6 +31,14 @@ import org.glavo.scssfx.internal.ast.TextInterpolationPart;
 import org.glavo.scssfx.internal.ast.UnaryOperationExpression;
 import org.glavo.scssfx.internal.ast.VariableDeclaration;
 import org.glavo.scssfx.internal.ast.VariableExpression;
+import org.glavo.scssfx.internal.css.CssComment;
+import org.glavo.scssfx.internal.css.CssDeclaration;
+import org.glavo.scssfx.internal.css.CssNode;
+import org.glavo.scssfx.internal.css.CssParentNode;
+import org.glavo.scssfx.internal.css.CssStyleRule;
+import org.glavo.scssfx.internal.css.CssStylesheet;
+import org.glavo.scssfx.internal.css.CssValue;
+import org.glavo.scssfx.internal.css.SelectorNesting;
 import org.glavo.scssfx.internal.value.SassBoolean;
 import org.glavo.scssfx.internal.value.SassList;
 import org.glavo.scssfx.internal.value.SassMap;
@@ -50,12 +58,12 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
 
-/// Evaluates Sass AST expressions and variable-bearing statements.
+/// Evaluates Sass AST expressions and statements into CSS IR.
 ///
 /// One evaluator represents one compilation environment. It may evaluate
 /// standalone expressions and execute at most one stylesheet. Statement
-/// execution establishes variable semantics and validates and evaluates
-/// declaration expressions without producing CSS output.
+/// execution establishes variable semantics and writes the supported statement
+/// subset into an internal [CssStylesheet].
 @ApiStatus.Internal
 @NotNullByDefault
 public final class SassEvaluator implements
@@ -75,6 +83,18 @@ public final class SassEvaluator implements
 
     /// Contains the stylesheet being executed, or {@code null} before execution.
     private @Nullable Stylesheet stylesheet;
+
+    /// Contains the CSS IR root produced by stylesheet execution.
+    private @Nullable CssStylesheet cssStylesheet;
+
+    /// Contains the CSS parent that currently receives children.
+    private @Nullable CssParentNode cssParent;
+
+    /// Contains the innermost active style rule, or {@code null} outside rules.
+    private @Nullable CssStyleRule styleRule;
+
+    /// Contains the property-name prefix for nested declarations, or {@code null}.
+    private @Nullable String declarationName;
 
     /// Records whether a stylesheet execution has already begun.
     private boolean stylesheetStarted;
@@ -118,6 +138,13 @@ public final class SassEvaluator implements
         return List.copyOf(diagnostics);
     }
 
+    /// Returns the CSS IR root produced by stylesheet execution.
+    ///
+    /// @return the CSS stylesheet, or {@code null} before execution completes
+    public @Nullable CssStylesheet cssStylesheet() {
+        return cssStylesheet;
+    }
+
     /// Evaluates one expression in the current environment.
     ///
     /// @param expression the expression to evaluate
@@ -127,7 +154,7 @@ public final class SassEvaluator implements
         return Objects.requireNonNull(expression, "expression").accept(this);
     }
 
-    /// Executes one stylesheet in source order.
+    /// Executes one stylesheet in source order and builds CSS IR.
     ///
     /// @param stylesheet the stylesheet to execute
     /// @throws IllegalStateException if stylesheet execution was already started
@@ -147,6 +174,8 @@ public final class SassEvaluator implements
         }
         stylesheetStarted = true;
         stylesheet = statement;
+        cssStylesheet = new CssStylesheet(statement.span());
+        cssParent = cssStylesheet;
         diagnostics.addAll(statement.parseTimeWarnings());
 
         for (var child : statement.children()) {
@@ -170,20 +199,35 @@ public final class SassEvaluator implements
         return StatementResult.CONTINUE;
     }
 
-    /// Evaluates a selector before executing its children in lexical scope.
+    /// Evaluates a selector, emits a CSS style rule, and executes its children.
+    ///
+    /// Nested style rules bubble through existing style-rule parents so the CSS
+    /// IR remains a flat sequence of resolved rules under the stylesheet root.
     ///
     /// @param statement the style rule
     /// @return the continue result, [StatementResult#CONTINUE]
     @Override
     public StatementResult visitStyleRule(StyleRule statement) {
-        if (nestedDeclarationDepth > 0) {
+        if (nestedDeclarationDepth > 0 || declarationName != null) {
             throw new EvaluationException(
                     "Style rules may not be used within nested declarations.",
                     statement.span()
             );
         }
-        performInterpolation(statement.selector());
 
+        var selectorText = performInterpolation(statement.selector());
+        @Nullable String parentSelector = styleRule == null ? null : styleRule.selector().value();
+        var nestedSelector = SelectorNesting.nest(parentSelector, selectorText);
+        var rule = new CssStyleRule(
+                new CssValue<>(nestedSelector, statement.selector().span()),
+                statement.span()
+        );
+        addCssChild(rule, true);
+
+        var previousParent = requireCssParent();
+        var previousStyleRule = styleRule;
+        cssParent = rule;
+        styleRule = rule;
         styleRuleDepth++;
         var scope = environment.scope(
                 ScopeSemantics.LEXICAL,
@@ -198,24 +242,33 @@ public final class SassEvaluator implements
                 scope.close();
             } finally {
                 styleRuleDepth--;
+                styleRule = previousStyleRule;
+                cssParent = previousParent;
             }
+        }
+
+        if (previousStyleRule == null && !previousParent.children().isEmpty()) {
+            previousParent.children().get(previousParent.children().size() - 1).setGroupEnd(true);
         }
         return StatementResult.CONTINUE;
     }
 
-    /// Evaluates a property name and value before its nested-property scope.
+    /// Evaluates a property name and value and writes a CSS declaration.
+    ///
+    /// Nested property blocks prefix child names with the parent name. Blank
+    /// values are omitted unless they are empty lists or custom properties.
     ///
     /// @param statement the property declaration
     /// @return the continue result, [StatementResult#CONTINUE]
     @Override
     public StatementResult visitDeclaration(Declaration statement) {
-        if (styleRuleDepth == 0) {
+        if (styleRule == null) {
             throw new EvaluationException(
                     "Declarations may only be used within style rules.",
                     statement.span()
             );
         }
-        if (nestedDeclarationDepth > 0 && !statement.parsedAsSassScript()) {
+        if (declarationName != null && !statement.parsedAsSassScript()) {
             throw new EvaluationException(
                     statement.name().initialPlain().startsWith("--")
                             ? "Declarations whose names begin with \"--\" may not be nested."
@@ -224,14 +277,32 @@ public final class SassEvaluator implements
             );
         }
 
-        performInterpolation(statement.name());
-        @Nullable SassExpression value = statement.value();
-        if (value != null) {
-            evaluate(value);
+        var resolvedName = performInterpolation(statement.name());
+        if (declarationName != null) {
+            resolvedName = declarationName + "-" + resolvedName;
+        }
+        var name = new CssValue<>(resolvedName, statement.name().span());
+
+        @Nullable SassExpression valueExpression = statement.value();
+        if (valueExpression != null) {
+            var value = evaluate(valueExpression);
+            if (!value.isBlank()
+                    || isEmptyList(value)
+                    || name.value().startsWith("--")) {
+                copyParentAfterSibling();
+                requireCssParent().addChild(new CssDeclaration(
+                        name,
+                        new CssValue<>(value, valueExpression.span()),
+                        statement.span(),
+                        statement.parsedAsSassScript()
+                ));
+            }
         }
 
         @Nullable List<SassStatement> children = statement.children();
         if (children != null) {
+            var previousDeclarationName = declarationName;
+            declarationName = name.value();
             nestedDeclarationDepth++;
             var scope = environment.scope(
                     ScopeSemantics.LEXICAL,
@@ -246,6 +317,7 @@ public final class SassEvaluator implements
                     scope.close();
                 } finally {
                     nestedDeclarationDepth--;
+                    declarationName = previousDeclarationName;
                 }
             }
         }
@@ -305,13 +377,18 @@ public final class SassEvaluator implements
         return StatementResult.CONTINUE;
     }
 
-    /// Evaluates interpolation embedded in a loud comment.
+    /// Evaluates interpolation embedded in a loud comment and emits CSS IR.
     ///
     /// @param statement the loud comment
     /// @return the continue result, [StatementResult#CONTINUE]
     @Override
     public StatementResult visitLoudComment(LoudComment statement) {
-        performInterpolation(statement.text());
+        var text = performInterpolation(statement.text());
+        if (!text.endsWith("*/")) {
+            text += " */";
+        }
+        copyParentAfterSibling();
+        requireCssParent().addChild(new CssComment(text, statement.span()));
         return StatementResult.CONTINUE;
     }
 
@@ -598,6 +675,83 @@ public final class SassEvaluator implements
             }
         }
         return result.toString();
+    }
+
+    /// Adds a CSS child, bubbling through style-rule parents when requested.
+    ///
+    /// @param node                 the child to append
+    /// @param throughStyleRules whether style-rule parents should be skipped
+    private void addCssChild(CssNode node, boolean throughStyleRules) {
+        var parent = requireCssParent();
+        if (throughStyleRules) {
+            while (parent instanceof CssStyleRule) {
+                @Nullable CssParentNode grandparent = parent.parent();
+                if (grandparent == null) {
+                    throw new IllegalStateException("style rule escaped the CSS root");
+                }
+                parent = grandparent;
+            }
+            if (parent.hasFollowingSibling()) {
+                @Nullable CssParentNode grandparent = parent.parent();
+                if (grandparent == null) {
+                    throw new IllegalStateException("CSS parent escaped the tree");
+                }
+                var siblings = grandparent.children();
+                var last = siblings.get(siblings.size() - 1);
+                if (parent.equalsIgnoringChildren(last) && last instanceof CssParentNode lastParent) {
+                    parent = lastParent;
+                } else {
+                    var copy = parent.copyWithoutChildren();
+                    grandparent.addChild(copy);
+                    parent = copy;
+                }
+            }
+        }
+        parent.addChild(node);
+    }
+
+    /// Copies the current CSS parent after a later sibling when needed.
+    ///
+    /// After a nested style rule bubbles beside the active rule, later
+    /// declarations must attach to a fresh copy of that rule rather than reopen
+    /// the earlier sibling.
+    private void copyParentAfterSibling() {
+        var parent = requireCssParent();
+        @Nullable CssParentNode grandparent = parent.parent();
+        if (grandparent == null) {
+            return;
+        }
+        var siblings = grandparent.children();
+        if (siblings.isEmpty() || siblings.get(siblings.size() - 1) == parent) {
+            return;
+        }
+        var copy = parent.copyWithoutChildren();
+        grandparent.addChild(copy);
+        cssParent = copy;
+        if (parent instanceof CssStyleRule && styleRule == parent) {
+            styleRule = (CssStyleRule) copy;
+        }
+    }
+
+    /// Returns the active CSS parent or fails if stylesheet execution has not begun.
+    ///
+    /// @return the current CSS parent
+    private CssParentNode requireCssParent() {
+        if (cssParent == null) {
+            throw new IllegalStateException("CSS parent is unavailable outside stylesheet execution");
+        }
+        return cssParent;
+    }
+
+    /// Returns whether a value is an empty list.
+    ///
+    /// Empty lists are retained so serialization can report that they are not
+    /// valid CSS values.
+    ///
+    /// @param value the evaluated value
+    /// @return whether the list view is empty
+    private static boolean isEmptyList(SassValue value) {
+        return value.asList().isEmpty();
     }
 
     /// Returns the source span from which an expression's stored value originated.
