@@ -28,6 +28,26 @@ $color: #c30;
 .button {
   color: #c30;
 }
+<===> modules/built-ins/input.scss
+@use "sass:math";
+@use "sass:list";
+@use "sass:map";
+
+$theme: map.set((size: 4px), size, math.div(12px, 3));
+
+.item {
+  size: map.get($theme, size);
+  list: list.join([a], [b], comma, true);
+  slash: list.slash(1px, 2px);
+  round: math.round(-1.5);
+}
+<===> modules/built-ins/output.css
+.item {
+  size: 4px;
+  list: [a, b];
+  slash: 1px / 2px;
+  round: -2;
+}
 <===> diagnostics/deprecations/input.scss
 a {
   $value: 1 !global;

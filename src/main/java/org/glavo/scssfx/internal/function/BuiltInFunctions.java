@@ -20,10 +20,10 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 
 /// Registers built-in Sass functions for global and module namespaces.
@@ -196,7 +196,7 @@ public final class BuiltInFunctions {
         register(functions, BuiltInCallable.of("blue", List.of("color"), BuiltInFunctions::blue));
         register(functions, BuiltInCallable.of("alpha", List.of("color"), BuiltInFunctions::alphaChannel));
         register(functions, BuiltInCallable.of("opacity", List.of("color"), BuiltInFunctions::opacity));
-        return Map.copyOf(functions);
+        return freeze(functions);
     }
 
     /// Returns the functions exported by the {@code sass:math} module.
@@ -228,7 +228,7 @@ public final class BuiltInFunctions {
                 List.of("number"),
                 BuiltInFunctions::isUnitless
         ));
-        return Map.copyOf(functions);
+        return freeze(functions);
     }
 
     /// Returns the functions exported by the {@code sass:list} module.
@@ -240,13 +240,29 @@ public final class BuiltInFunctions {
         moduleFunction(functions, global, "append", "append");
         moduleFunction(functions, global, "index", "index");
         moduleFunction(functions, global, "is-bracketed", "is-bracketed");
-        moduleFunction(functions, global, "join", "join");
         moduleFunction(functions, global, "length", "length");
         moduleFunction(functions, global, "nth", "nth");
         moduleFunction(functions, global, "list-separator", "separator");
         moduleFunction(functions, global, "set-nth", "set-nth");
         moduleFunction(functions, global, "zip", "zip");
-        return Map.copyOf(functions);
+        register(functions, BuiltInCallable.of(
+                "join",
+                List.of(
+                        Param.required("list1"),
+                        Param.required("list2"),
+                        Param.optional("separator", new SassString("auto", false)),
+                        Param.optional("bracketed", new SassString("auto", false))
+                ),
+                2,
+                BuiltInFunctions::moduleJoin
+        ));
+        register(functions, BuiltInCallable.withRest(
+                "slash",
+                List.of(),
+                "elements",
+                BuiltInFunctions::slash
+        ));
+        return freeze(functions);
     }
 
     /// Returns the functions exported by the {@code sass:map} module.
@@ -255,12 +271,44 @@ public final class BuiltInFunctions {
     public static @Unmodifiable Map<String, BuiltInCallable> mapModule() {
         var global = global();
         var functions = new LinkedHashMap<String, BuiltInCallable>();
-        moduleFunction(functions, global, "map-get", "get");
-        moduleFunction(functions, global, "map-has-key", "has-key");
         moduleFunction(functions, global, "map-keys", "keys");
         moduleFunction(functions, global, "map-merge", "merge");
         moduleFunction(functions, global, "map-values", "values");
-        return Map.copyOf(functions);
+        register(functions, BuiltInCallable.withRest(
+                "get",
+                List.of("map", "key"),
+                "keys",
+                BuiltInFunctions::moduleMapGet
+        ));
+        register(functions, BuiltInCallable.of(
+                "set",
+                List.of("map", "key", "value"),
+                BuiltInFunctions::mapSet
+        ));
+        register(functions, BuiltInCallable.withRest(
+                "remove",
+                List.of("map"),
+                "keys",
+                BuiltInFunctions::mapRemove
+        ));
+        register(functions, BuiltInCallable.withRest(
+                "has-key",
+                List.of("map", "key"),
+                "keys",
+                BuiltInFunctions::moduleMapHasKey
+        ));
+        register(functions, BuiltInCallable.of(
+                "deep-merge",
+                List.of("map1", "map2"),
+                BuiltInFunctions::mapDeepMerge
+        ));
+        register(functions, BuiltInCallable.withRest(
+                "deep-remove",
+                List.of("map", "key"),
+                "keys",
+                BuiltInFunctions::mapDeepRemove
+        ));
+        return freeze(functions);
     }
 
     /// Adds a global callable to a module map under its module-local name.
@@ -281,6 +329,21 @@ public final class BuiltInFunctions {
         }
         destination.put(moduleName, callable.withName(moduleName));
     }
+
+    /// Returns an insertion-ordered immutable view of a function table.
+    ///
+    /// @param functions the mutable table to snapshot
+    /// @return an immutable insertion-ordered function table
+    private static @Unmodifiable Map<String, BuiltInCallable> freeze(
+            LinkedHashMap<String, BuiltInCallable> functions
+    ) {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(functions));
+    }
+
+    /// Registers one callable under its normalized name.
+    ///
+    /// @param functions the mutable function table
+    /// @param callable the callable to register
     private static void register(
             LinkedHashMap<String, BuiltInCallable> functions,
             BuiltInCallable callable
@@ -339,6 +402,38 @@ public final class BuiltInFunctions {
         contents.addAll(left.asList());
         contents.addAll(right.asList());
         return new SassList(contents, separator, false);
+    }
+
+    /// Joins two lists using the module-only bracket control parameter.
+    ///
+    /// @param args the two lists, separator selector, and bracket selector
+    /// @return a list containing both input list views
+    private static SassValue moduleJoin(List<SassValue> args) {
+        var left = args.get(0);
+        var right = args.get(1);
+        var separator = separatorArgument(args.get(2), left, right);
+        var bracketedArgument = args.get(3);
+        var bracketed = bracketedArgument instanceof SassString string
+                && string.text().equals("auto")
+                ? left.hasBrackets()
+                : bracketedArgument.isTruthy();
+        var contents = new ArrayList<SassValue>(left.lengthAsList() + right.lengthAsList());
+        contents.addAll(left.asList());
+        contents.addAll(right.asList());
+        return new SassList(contents, separator, bracketed);
+    }
+
+    /// Creates a slash-separated list from at least two rest arguments.
+    ///
+    /// @param args the rest argument list
+    /// @return a slash-separated unbracketed list
+    /// @throws SassValueException if fewer than two elements are supplied
+    private static SassValue slash(List<SassValue> args) {
+        var elements = restValues(args);
+        if (elements.size() < 2) {
+            throw new SassValueException("At least two elements are required.");
+        }
+        return new SassList(elements, ListSeparator.SLASH, false);
     }
 
     private static SassValue append(List<SassValue> args) {
@@ -446,7 +541,16 @@ public final class BuiltInFunctions {
     }
 
     private static SassValue round(List<SassValue> args) {
-        return mapNumber(args.get(0), Math::rint);
+        return mapNumber(args.get(0), BuiltInFunctions::roundSass);
+    }
+
+    /// Rounds a finite midpoint away from zero, matching Sass number rounding.
+    ///
+    /// @param value the value to round
+    /// @return the nearest integral magnitude with midpoint ties away from zero
+    private static double roundSass(double value) {
+        var rounded = Math.floor(Math.abs(value) + 0.5);
+        return rounded == 0.0 ? 0.0 : Math.copySign(rounded, value);
     }
 
     private static SassValue ceil(List<SassValue> args) {
@@ -532,6 +636,157 @@ public final class BuiltInFunctions {
 
     private static SassValue mapHasKey(List<SassValue> args) {
         return SassBoolean.of(args.get(0).assertMap().contents().containsKey(args.get(1)));
+    }
+
+    /// Looks up a value by a possibly nested path in a map module call.
+    ///
+    /// @param args the map, first key, and remaining key arguments
+    /// @return the mapped value or Sass null when no path element exists
+    private static SassValue moduleMapGet(List<SassValue> args) {
+        var map = args.get(0).assertMap();
+        var keys = keysWithRest(args);
+        for (var index = 0; index < keys.size() - 1; index++) {
+            @Nullable SassValue value = map.contents().get(keys.get(index));
+            @Nullable SassMap nested = value == null ? null : value.tryMap();
+            if (nested == null) {
+                return SassNull.NULL;
+            }
+            map = nested;
+        }
+        @Nullable SassValue value = map.contents().get(keys.get(keys.size() - 1));
+        return value == null ? SassNull.NULL : value;
+    }
+
+    /// Returns whether a possibly nested path exists in a map module call.
+    ///
+    /// @param args the map, first key, and remaining key arguments
+    /// @return whether the complete path is present
+    private static SassValue moduleMapHasKey(List<SassValue> args) {
+        var map = args.get(0).assertMap();
+        var keys = keysWithRest(args);
+        for (var index = 0; index < keys.size() - 1; index++) {
+            @Nullable SassValue value = map.contents().get(keys.get(index));
+            @Nullable SassMap nested = value == null ? null : value.tryMap();
+            if (nested == null) {
+                return SassBoolean.FALSE;
+            }
+            map = nested;
+        }
+        return SassBoolean.of(map.contents().containsKey(keys.get(keys.size() - 1)));
+    }
+
+    /// Sets one direct map key to a replacement value.
+    ///
+    /// @param args the map, key, and replacement value
+    /// @return a map containing the replacement entry
+    private static SassValue mapSet(List<SassValue> args) {
+        var contents = new LinkedHashMap<>(args.get(0).assertMap().contents());
+        contents.put(args.get(1), args.get(2));
+        return new SassMap(contents);
+    }
+
+    /// Removes all supplied direct keys from a map.
+    ///
+    /// @param args the map and rest key arguments
+    /// @return a map without the supplied keys
+    private static SassValue mapRemove(List<SassValue> args) {
+        var contents = new LinkedHashMap<>(args.get(0).assertMap().contents());
+        for (var key : restValuesAt(args, 1)) {
+            contents.remove(key);
+        }
+        return new SassMap(contents);
+    }
+
+    /// Merges nested map values recursively while giving the second map precedence.
+    ///
+    /// @param args the maps to merge
+    /// @return a recursively merged map
+    private static SassValue mapDeepMerge(List<SassValue> args) {
+        return deepMerge(args.get(0).assertMap(), args.get(1).assertMap());
+    }
+
+    /// Removes a possibly nested path from a map.
+    ///
+    /// @param args the map, first key, and remaining key arguments
+    /// @return a map with the target path removed when it exists
+    private static SassValue mapDeepRemove(List<SassValue> args) {
+        return deepRemove(args.get(0).assertMap(), keysWithRest(args), 0);
+    }
+
+    /// Recursively merges a pair of Sass maps.
+    ///
+    /// @param first the lower-precedence map
+    /// @param second the higher-precedence map
+    /// @return the recursively merged map
+    private static SassMap deepMerge(SassMap first, SassMap second) {
+        var contents = new LinkedHashMap<>(first.contents());
+        for (var entry : second.contents().entrySet()) {
+            @Nullable SassValue previous = contents.get(entry.getKey());
+            @Nullable SassMap previousMap = previous == null ? null : previous.tryMap();
+            @Nullable SassMap replacementMap = entry.getValue().tryMap();
+            if (previousMap != null && replacementMap != null) {
+                contents.put(entry.getKey(), deepMerge(previousMap, replacementMap));
+            } else {
+                contents.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return new SassMap(contents);
+    }
+
+    /// Removes a nested path while preserving the original map for a missing path.
+    ///
+    /// @param map the map at the current recursion level
+    /// @param keys the complete non-empty target path
+    /// @param index the current path index
+    /// @return the updated map, or {@code map} when no matching path exists
+    private static SassMap deepRemove(SassMap map, List<SassValue> keys, int index) {
+        var key = keys.get(index);
+        @Nullable SassValue value = map.contents().get(key);
+        if (value == null) {
+            return map;
+        }
+        var contents = new LinkedHashMap<>(map.contents());
+        if (index == keys.size() - 1) {
+            contents.remove(key);
+            return new SassMap(contents);
+        }
+        @Nullable SassMap nested = value.tryMap();
+        if (nested == null) {
+            return map;
+        }
+        var updated = deepRemove(nested, keys, index + 1);
+        if (updated == nested) {
+            return map;
+        }
+        contents.put(key, updated);
+        return new SassMap(contents);
+    }
+
+    /// Returns the declared first key followed by rest keys for a map call.
+    ///
+    /// @param args the bound map call arguments
+    /// @return an immutable non-empty key path
+    private static @Unmodifiable List<SassValue> keysWithRest(List<SassValue> args) {
+        var keys = new ArrayList<SassValue>();
+        keys.add(args.get(1));
+        keys.addAll(restValuesAt(args, 2));
+        return List.copyOf(keys);
+    }
+
+    /// Reads positional values from the rest argument at one bound index.
+    ///
+    /// @param args the bound arguments
+    /// @param index the rest argument index
+    /// @return the rest values, or an empty list when no rest argument exists
+    private static @Unmodifiable List<SassValue> restValuesAt(
+            List<SassValue> args,
+            int index
+    ) {
+        if (args.size() <= index) {
+            return List.of();
+        }
+        var rest = args.get(index);
+        return rest instanceof SassArgumentList list ? list.asList() : List.of(rest);
     }
 
     private static SassValue strLength(List<SassValue> args) {

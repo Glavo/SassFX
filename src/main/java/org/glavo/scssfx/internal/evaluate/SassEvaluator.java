@@ -514,7 +514,8 @@ public final class SassEvaluator implements
                     currentUrl,
                     statement.span(),
                     this,
-                    configuration
+                    configuration,
+                    !statement.configuration().isEmpty()
             );
             environment.addModule(module, statement.namespace(), statement.span());
             assertConfigurationConsumed(configuration);
@@ -549,7 +550,8 @@ public final class SassEvaluator implements
                         currentUrl,
                         statement.span(),
                         this,
-                        adjusted
+                        adjusted,
+                        false
                 );
                 environment.forwardModule(module, statement);
             } else {
@@ -562,7 +564,8 @@ public final class SassEvaluator implements
                         currentUrl,
                         statement.span(),
                         this,
-                        configuration
+                        configuration,
+                        true
                 );
                 environment.forwardModule(module, statement);
 

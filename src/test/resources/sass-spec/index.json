@@ -17,6 +17,12 @@
           "loadedUrls": ["input.scss", "_facade.scss", "_tokens.scss"]
         },
         {
+          "directory": "modules/built-ins",
+          "action": "run",
+          "category": "BUILT_IN_MODULES",
+          "loadedUrls": ["input.scss"]
+        },
+        {
           "directory": "diagnostics/deprecations",
           "action": "run",
           "category": "DIAGNOSTICS",

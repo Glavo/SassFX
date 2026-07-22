@@ -931,6 +931,9 @@ final class ScssParser extends SassExpressionParser {
         if (slash >= 0) {
             path = path.substring(slash + 1);
         }
+        if (path.startsWith("sass:")) {
+            path = path.substring("sass:".length());
+        }
         if (path.startsWith("_")) {
             path = path.substring(1);
         }

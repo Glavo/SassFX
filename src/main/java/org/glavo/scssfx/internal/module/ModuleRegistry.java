@@ -28,6 +28,9 @@ public final class ModuleRegistry {
     /// Resolves stylesheet files.
     private final FilesystemImporter importer;
 
+    /// Resolves known Sass built-in module URLs.
+    private final BuiltInModules builtInModules;
+
     /// Contains fully loaded modules keyed by canonical URL.
     private final LinkedHashMap<URI, LoadedModule> loaded = new LinkedHashMap<>();
 
@@ -46,15 +49,17 @@ public final class ModuleRegistry {
     /// @param loadPaths directories searched after the containing file
     public ModuleRegistry(List<Path> loadPaths) {
         this.importer = new FilesystemImporter(loadPaths);
+        this.builtInModules = new BuiltInModules();
     }
 
     /// Loads a module URL, reusing a previously loaded instance when present.
     ///
-    /// @param url           the unresolved module URL
-    /// @param baseUrl       the containing stylesheet URL, or {@code null}
-    /// @param loadSpan      the module directive span
-    /// @param evaluator     the evaluator used to execute newly loaded modules
-    /// @param configuration values available to root {@code !default} declarations
+    /// @param url                 the unresolved module URL
+    /// @param baseUrl             the containing stylesheet URL, or {@code null}
+    /// @param loadSpan            the module directive span
+    /// @param evaluator           the evaluator used to execute newly loaded modules
+    /// @param configuration       values available to root {@code !default} declarations
+    /// @param hasOwnConfiguration whether the loading directive itself has a {@code with} clause
     /// @return the loaded module
     /// @throws EvaluationException if loading or evaluation fails
     public LoadedModule load(
@@ -62,12 +67,25 @@ public final class ModuleRegistry {
             @Nullable URI baseUrl,
             SourceSpan loadSpan,
             SassEvaluator evaluator,
-            ModuleConfiguration configuration
+            ModuleConfiguration configuration,
+            boolean hasOwnConfiguration
     ) {
         Objects.requireNonNull(url, "url");
         Objects.requireNonNull(loadSpan, "loadSpan");
         Objects.requireNonNull(evaluator, "evaluator");
         Objects.requireNonNull(configuration, "configuration");
+
+        @Nullable LoadedModule builtIn = builtInModules.find(url);
+        if (builtIn != null) {
+            if (hasOwnConfiguration) {
+                throw new EvaluationException(
+                        "Built-in modules can't be configured.",
+                        loadSpan
+                );
+            }
+            return builtIn;
+        }
+
         ImportResult imported;
         try {
             imported = importer.canonicalizeAndLoad(url, baseUrl);

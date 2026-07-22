@@ -65,6 +65,8 @@ final class BuiltInFunctionsTest {
         assertEquals(SassNumber.of(1, null), evaluate("min(1, 2, 3)"));
         assertEquals(SassNumber.of(3, null), evaluate("max(1, 2, 3)"));
         assertEquals(SassNumber.of(2, null), evaluate("round(1.5)"));
+        assertEquals(SassNumber.of(-2, null), evaluate("round(-1.5)"));
+        assertEquals(SassNumber.of(0, null), evaluate("round(-0.1)"));
         assertEquals(SassNumber.of(2, null), evaluate("ceil(1.1)"));
         assertEquals(SassNumber.of(1, null), evaluate("floor(1.9)"));
         assertEquals(SassColor.rgb(10, 20, 30, 1, null), evaluate("rgb(10, 20, 30)"));
