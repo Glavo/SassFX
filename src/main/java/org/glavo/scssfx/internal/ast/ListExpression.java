@@ -60,11 +60,7 @@ public record ListExpression(
             result.append('(');
         }
 
-        var delimiter = switch (separator) {
-            case COMMA -> ", ";
-            case SLASH -> " / ";
-            case SPACE, UNDECIDED -> " ";
-        };
+        var delimiter = separator == ListSeparator.COMMA ? ", " : " ";
         for (var index = 0; index < contents.size(); index++) {
             if (index > 0) {
                 result.append(delimiter);

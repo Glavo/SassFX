@@ -8,7 +8,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 /// Represents a node in an unevaluated Sass syntax tree.
 @ApiStatus.Internal
 @NotNullByDefault
-public sealed interface SassNode permits SassStatement, SassExpression, Interpolation {
+public sealed interface SassNode permits SassStatement, SassExpression, Interpolation, ArgumentList {
     /// Returns the source range that produced this node.
     ///
     /// @return the complete source range of the node

@@ -1,13 +1,20 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.parse;
 
+import org.glavo.scssfx.SourceSpan;
+import org.glavo.scssfx.internal.ast.ArgumentList;
 import org.glavo.scssfx.internal.ast.BinaryOperationExpression;
 import org.glavo.scssfx.internal.ast.BinaryOperator;
 import org.glavo.scssfx.internal.ast.BooleanExpression;
+import org.glavo.scssfx.internal.ast.ColorExpression;
+import org.glavo.scssfx.internal.ast.FunctionExpression;
 import org.glavo.scssfx.internal.ast.Interpolation;
 import org.glavo.scssfx.internal.ast.InterpolationBuffer;
+import org.glavo.scssfx.internal.ast.InterpolatedFunctionExpression;
 import org.glavo.scssfx.internal.ast.ListExpression;
 import org.glavo.scssfx.internal.ast.ListSeparator;
+import org.glavo.scssfx.internal.ast.MapEntry;
+import org.glavo.scssfx.internal.ast.MapExpression;
 import org.glavo.scssfx.internal.ast.NullExpression;
 import org.glavo.scssfx.internal.ast.NumberExpression;
 import org.glavo.scssfx.internal.ast.ParenthesizedExpression;
@@ -17,177 +24,27 @@ import org.glavo.scssfx.internal.ast.UnaryOperationExpression;
 import org.glavo.scssfx.internal.ast.UnaryOperator;
 import org.glavo.scssfx.internal.ast.VariableExpression;
 import org.glavo.scssfx.internal.source.SourceFile;
+import org.glavo.scssfx.internal.value.SassColor;
+import org.glavo.scssfx.internal.value.SpanColorFormat;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.Unmodifiable;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 
 /// Parses the syntax-only SassScript expression subset shared by SCSS constructs.
 ///
-/// This parser preserves literal, operator, list, parenthesis, variable, and
-/// interpolation structure. Evaluation and function, map, color, calculation,
-/// selector, and Unicode-range expressions are intentionally handled by later
+/// This parser preserves literal, operator, list, parenthesis, variable,
+/// function, map, color, and interpolation structure. Evaluation and selector
+/// and Unicode-range expressions are intentionally handled by later
 /// implementation stages.
 @ApiStatus.Internal
 @NotNullByDefault
 class SassExpressionParser extends Parser {
-    /// Contains identifier spellings reserved for unsupported named-color expressions.
-    private static final @Unmodifiable Set<String> NAMED_COLORS = Set.of(
-            "yellowgreen",
-            "yellow",
-            "whitesmoke",
-            "white",
-            "wheat",
-            "violet",
-            "turquoise",
-            "transparent",
-            "tomato",
-            "thistle",
-            "teal",
-            "tan",
-            "steelblue",
-            "springgreen",
-            "snow",
-            "slategrey",
-            "slategray",
-            "slateblue",
-            "skyblue",
-            "silver",
-            "sienna",
-            "seashell",
-            "seagreen",
-            "sandybrown",
-            "salmon",
-            "saddlebrown",
-            "royalblue",
-            "rosybrown",
-            "red",
-            "rebeccapurple",
-            "purple",
-            "powderblue",
-            "plum",
-            "pink",
-            "peru",
-            "peachpuff",
-            "papayawhip",
-            "palevioletred",
-            "paleturquoise",
-            "palegreen",
-            "palegoldenrod",
-            "orchid",
-            "orangered",
-            "orange",
-            "olivedrab",
-            "olive",
-            "oldlace",
-            "navy",
-            "navajowhite",
-            "moccasin",
-            "mistyrose",
-            "mintcream",
-            "midnightblue",
-            "mediumvioletred",
-            "mediumturquoise",
-            "mediumspringgreen",
-            "mediumslateblue",
-            "mediumseagreen",
-            "mediumpurple",
-            "mediumorchid",
-            "mediumblue",
-            "mediumaquamarine",
-            "maroon",
-            "magenta",
-            "linen",
-            "limegreen",
-            "lime",
-            "lightyellow",
-            "lightsteelblue",
-            "lightslategrey",
-            "lightslategray",
-            "lightskyblue",
-            "lightseagreen",
-            "lightsalmon",
-            "lightpink",
-            "lightgrey",
-            "lightgreen",
-            "lightgray",
-            "lightgoldenrodyellow",
-            "lightcyan",
-            "lightcoral",
-            "lightblue",
-            "lemonchiffon",
-            "lawngreen",
-            "lavenderblush",
-            "lavender",
-            "khaki",
-            "ivory",
-            "indigo",
-            "indianred",
-            "hotpink",
-            "honeydew",
-            "grey",
-            "greenyellow",
-            "green",
-            "gray",
-            "goldenrod",
-            "gold",
-            "ghostwhite",
-            "gainsboro",
-            "fuchsia",
-            "forestgreen",
-            "floralwhite",
-            "firebrick",
-            "dodgerblue",
-            "dimgrey",
-            "dimgray",
-            "deepskyblue",
-            "deeppink",
-            "darkviolet",
-            "darkturquoise",
-            "darkslategrey",
-            "darkslategray",
-            "darkslateblue",
-            "darkseagreen",
-            "darksalmon",
-            "darkred",
-            "darkorchid",
-            "darkorange",
-            "darkolivegreen",
-            "darkmagenta",
-            "darkkhaki",
-            "darkgrey",
-            "darkgreen",
-            "darkgray",
-            "darkgoldenrod",
-            "darkcyan",
-            "darkblue",
-            "cyan",
-            "crimson",
-            "cornsilk",
-            "cornflowerblue",
-            "coral",
-            "chocolate",
-            "chartreuse",
-            "cadetblue",
-            "burlywood",
-            "brown",
-            "blueviolet",
-            "blue",
-            "blanchedalmond",
-            "black",
-            "bisque",
-            "beige",
-            "azure",
-            "aquamarine",
-            "aqua",
-            "antiquewhite",
-            "aliceblue"
-    );
-
     /// Records whether the current expression is being parsed within parentheses.
     private boolean inParentheses;
 
@@ -235,7 +92,7 @@ class SassExpressionParser extends Parser {
     ///
     /// @return the parsed expression
     private SassExpression commaExpression() {
-        var first = spaceExpression();
+        var first = spaceExpression(false);
         if (scanner.peek() != ',') {
             return first;
         }
@@ -245,7 +102,7 @@ class SassExpressionParser extends Parser {
         while (scanner.scan(',')) {
             whitespace(true);
             if (lookingAtExpression()) {
-                contents.add(spaceExpression());
+                contents.add(spaceExpression(false));
                 continue;
             }
             if (scanner.peek() == ',') {
@@ -262,14 +119,27 @@ class SassExpressionParser extends Parser {
         );
     }
 
+    /// Parses an expression through the code unit before a top-level comma.
+    ///
+    /// @param singleEquals whether the Microsoft-style single-equals operator
+    /// may occur at this expression level
+    /// @return the parsed expression
+    protected final SassExpression expressionUntilComma(boolean singleEquals) {
+        if (!lookingAtExpression()) {
+            throw scanner.error("Expected expression.");
+        }
+        return spaceExpression(singleEquals);
+    }
+
     /// Parses expressions separated implicitly as one space list.
     ///
     /// Sass permits some adjacent expression forms without a literal whitespace
     /// code unit; these still use the space-list separator in the syntax tree.
     ///
+    /// @param singleEquals whether a lone equals sign is accepted
     /// @return the parsed expression or space list
-    private SassExpression spaceExpression() {
-        var first = slashAwareBinaryExpression();
+    private SassExpression spaceExpression(boolean singleEquals) {
+        var first = slashAwareBinaryExpression(singleEquals);
         @Nullable ArrayList<SassExpression> contents = null;
 
         while (true) {
@@ -281,7 +151,7 @@ class SassExpressionParser extends Parser {
                 contents = new ArrayList<>();
                 contents.add(first);
             }
-            contents.add(slashAwareBinaryExpression());
+            contents.add(slashAwareBinaryExpression(singleEquals));
         }
 
         if (contents == null) {
@@ -301,9 +171,10 @@ class SassExpressionParser extends Parser {
 
     /// Parses one precedence-ordered binary expression and applies slash metadata.
     ///
+    /// @param singleEquals whether a lone equals sign is accepted
     /// @return the parsed expression
-    private SassExpression slashAwareBinaryExpression() {
-        var result = binaryExpression(0);
+    private SassExpression slashAwareBinaryExpression(boolean singleEquals) {
+        var result = binaryExpression(0, singleEquals);
         return !inParentheses && isSlashTree(result)
                 ? markSlashTree(result)
                 : result;
@@ -312,8 +183,13 @@ class SassExpressionParser extends Parser {
     /// Parses binary operators whose precedence is at least the requested value.
     ///
     /// @param minimumPrecedence the lowest accepted binary precedence
+    /// @param singleEquals      whether the Microsoft-style single-equals operator
+    /// may occur at this expression level
     /// @return the parsed expression
-    private SassExpression binaryExpression(int minimumPrecedence) {
+    private SassExpression binaryExpression(
+            int minimumPrecedence,
+            boolean singleEquals
+    ) {
         var left = singleExpression();
 
         while (true) {
@@ -324,7 +200,10 @@ class SassExpressionParser extends Parser {
                     ? CssCharacters.END_OF_INPUT
                     : scanner.source().content().charAt(operatorStart.position() - 1);
             var precededByWhitespace = CssCharacters.isWhitespace(preceding);
-            @Nullable BinaryOperator operator = scanBinaryOperator(precededByWhitespace);
+            @Nullable BinaryOperator operator = scanBinaryOperator(
+                    precededByWhitespace,
+                    singleEquals
+            );
             if (operator == null || operator.precedence() < minimumPrecedence) {
                 scanner.restore(beforeTrivia);
                 return left;
@@ -340,7 +219,7 @@ class SassExpressionParser extends Parser {
                 );
             }
 
-            var right = binaryExpression(operator.precedence() + 1);
+            var right = binaryExpression(operator.precedence() + 1, singleEquals);
             left = new BinaryOperationExpression(
                     operator,
                     left,
@@ -363,12 +242,18 @@ class SassExpressionParser extends Parser {
     ///
     /// @param precededByWhitespace whether a whitespace code unit immediately
     /// precedes the candidate operator
+    /// @param singleEquals         whether a lone equals sign is accepted
     /// @return the consumed operator, or {@code null} without consuming input
-    private @Nullable BinaryOperator scanBinaryOperator(boolean precededByWhitespace) {
+    private @Nullable BinaryOperator scanBinaryOperator(
+            boolean precededByWhitespace,
+            boolean singleEquals
+    ) {
         var start = scanner.state();
         @Nullable BinaryOperator result = switch (scanner.peek()) {
             case '=' -> scanner.peek(1) == '='
                     ? scanTwoCodeUnitOperator(BinaryOperator.EQUALS)
+                    : singleEquals
+                    ? scanOneCodeUnitOperator(BinaryOperator.SINGLE_EQUALS)
                     : null;
             case '!' -> scanner.peek(1) == '='
                     ? scanTwoCodeUnitOperator(BinaryOperator.NOT_EQUALS)
@@ -426,12 +311,14 @@ class SassExpressionParser extends Parser {
         return operator;
     }
 
-    /// Returns whether an expression consists solely of slash operations over numbers.
+    /// Returns whether an expression consists solely of slash operations over
+    /// numbers or plain function calls.
     ///
     /// @param expression the expression to inspect
-    /// @return whether the tree may represent slash-separated numbers
+    /// @return whether the tree may represent a slash-separated value
     private boolean isSlashTree(SassExpression expression) {
-        if (expression instanceof NumberExpression) {
+        if (expression instanceof NumberExpression
+                || expression instanceof FunctionExpression) {
             return true;
         }
         return expression instanceof BinaryOperationExpression binary
@@ -467,7 +354,11 @@ class SassExpressionParser extends Parser {
             throw scanner.error("Expected expression.");
         }
         if ((next == 'u' || next == 'U') && scanner.peek(1) == '+') {
-            throw scanner.error("Unicode range expressions are not available.");
+            throw scanner.error(
+                    "Unicode range expressions are not available.",
+                    scanner.position(),
+                    2
+            );
         }
 
         return switch (next) {
@@ -517,41 +408,107 @@ class SassExpressionParser extends Parser {
     ///
     /// @return the parsed expression
     private SassExpression parenthesizedExpression() {
-        var start = scanner.state();
-        scanner.expect('(');
-        whitespace(true);
-        if (scanner.scan(')')) {
-            return new ListExpression(
-                    java.util.List.of(),
-                    ListSeparator.UNDECIDED,
-                    false,
-                    scanner.spanFrom(start)
-            );
-        }
-        if (!lookingAtExpression()) {
-            throw scanner.error("Expected expression.");
-        }
-
-        var inside = scanner.state();
         var previousInParentheses = inParentheses;
         inParentheses = true;
+        var start = scanner.state();
         try {
-            var expression = commaExpression();
-            if (expression instanceof ListExpression list
-                    && !list.hasBrackets()
-                    && list.separator() != ListSeparator.UNDECIDED) {
-                scanner.restore(inside);
-                inParentheses = false;
-                expression = commaExpression();
+            scanner.expect('(');
+            whitespace(true);
+            var inside = scanner.state();
+            if (!lookingAtExpression()) {
+                scanner.expect(')');
+                return new ListExpression(
+                        List.of(),
+                        ListSeparator.UNDECIDED,
+                        false,
+                        scanner.spanFrom(start)
+                );
             }
-            if (scanner.peek() == ':') {
-                throw scanner.error("Map expressions are not available.");
+
+            var first = expressionUntilCommaWithSlashReparse();
+            if (scanner.scan(':')) {
+                whitespace(true);
+                return mapExpression(first, start);
             }
+
+            if (!scanner.scan(',')) {
+                scanner.expect(')');
+                return new ParenthesizedExpression(first, scanner.spanFrom(start));
+            }
+
+            // Once parentheses establish list context, slash operations use
+            // the same historical metadata as expressions outside this pair.
+            scanner.restore(inside);
+            inParentheses = false;
+            first = expressionUntilComma(false);
+            scanner.expect(',');
+            whitespace(true);
+
+            var expressions = new ArrayList<SassExpression>();
+            expressions.add(first);
+            while (lookingAtExpression()) {
+                expressions.add(expressionUntilComma(false));
+                if (!scanner.scan(',')) {
+                    break;
+                }
+                whitespace(true);
+            }
+
+            var list = new ListExpression(
+                    expressions,
+                    ListSeparator.COMMA,
+                    false,
+                    scanner.source().span(inside.position(), scanner.position())
+            );
             scanner.expect(')');
-            return new ParenthesizedExpression(expression, scanner.spanFrom(start));
+            return new ParenthesizedExpression(list, scanner.spanFrom(start));
         } finally {
             inParentheses = previousInParentheses;
         }
+    }
+
+    /// Parses through a comma and reparses a discovered space list outside
+    /// parenthetical slash context.
+    ///
+    /// @return the parsed expression
+    private SassExpression expressionUntilCommaWithSlashReparse() {
+        var start = scanner.state();
+        var expression = expressionUntilComma(false);
+        if (inParentheses
+                && expression instanceof ListExpression list
+                && !list.hasBrackets()
+                && list.separator() == ListSeparator.SPACE) {
+            scanner.restore(start);
+            inParentheses = false;
+            return expressionUntilComma(false);
+        }
+        return expression;
+    }
+
+    /// Parses a map after its first key and separating colon were consumed.
+    ///
+    /// @param first the first map key
+    /// @param start the position before the opening parenthesis
+    /// @return the parsed map expression
+    private MapExpression mapExpression(SassExpression first, ScannerState start) {
+        var pairs = new ArrayList<MapEntry>();
+        pairs.add(new MapEntry(first, expressionUntilCommaWithSlashReparse()));
+
+        while (scanner.scan(',')) {
+            whitespace(true);
+            if (!lookingAtExpression()) {
+                break;
+            }
+
+            var key = expressionUntilCommaWithSlashReparse();
+            scanner.expect(':');
+            whitespace(true);
+            var value = expressionUntilCommaWithSlashReparse();
+            pairs.add(new MapEntry(key, value));
+        }
+
+        scanner.expect(')');
+        return new MapExpression(pairs, scanner.spanFrom(start));
     }
 
     /// Parses a bracketed list and moves its list semantics onto the bracket node.
@@ -563,7 +520,7 @@ class SassExpressionParser extends Parser {
         whitespace(true);
         if (scanner.scan(']')) {
             return new ListExpression(
-                    java.util.List.of(),
+                    List.of(),
                     ListSeparator.UNDECIDED,
                     true,
                     scanner.spanFrom(start)
@@ -580,7 +537,7 @@ class SassExpressionParser extends Parser {
             return new ListExpression(list.contents(), list.separator(), true, span);
         }
         return new ListExpression(
-                java.util.List.of(expression),
+                List.of(expression),
                 ListSeparator.UNDECIDED,
                 true,
                 span
@@ -699,7 +656,7 @@ class SassExpressionParser extends Parser {
     /// Parses a variable reference with an optional namespace.
     ///
     /// @param namespace the namespace, or {@code null} for an unqualified variable
-    /// @param start the state before the namespace or dollar sign
+    /// @param start     the state before the namespace or dollar sign
     /// @return the variable reference
     private VariableExpression variableExpression(
             @Nullable String namespace,
@@ -802,7 +759,7 @@ class SassExpressionParser extends Parser {
 
     /// Parses an expression beginning with a hash.
     ///
-    /// @return the interpolated unquoted string
+    /// @return the parsed color or interpolated unquoted string
     private SassExpression hashExpression() {
         if (scanner.peek(1) == '{') {
             return identifierLikeExpression();
@@ -811,20 +768,15 @@ class SassExpressionParser extends Parser {
         var start = scanner.state();
         scanner.expect('#');
         if (CssCharacters.isDigit(scanner.peek())) {
-            throw scanner.error(
-                    "Color expressions are not available.",
-                    start.position(),
-                    1
-            );
+            return hexColorExpression(start);
         }
+
+        var afterHash = scanner.state();
         var identifier = interpolatedIdentifier();
         var plain = identifier.asPlain();
         if (plain != null && isHexColorName(plain)) {
-            throw scanner.error(
-                    "Color expressions are not available.",
-                    start.position(),
-                    1
-            );
+            scanner.restore(afterHash);
+            return hexColorExpression(start);
         }
 
         var buffer = new InterpolationBuffer();
@@ -834,6 +786,75 @@ class SassExpressionParser extends Parser {
                 buffer.interpolation(scanner.spanFrom(start)),
                 false
         );
+    }
+
+    /// Parses a hexadecimal color after its leading hash was consumed.
+    ///
+    /// @param start the position before the leading hash
+    /// @return the hexadecimal color expression
+    private ColorExpression hexColorExpression(ScannerState start) {
+        var value = hexColorContents(start);
+        return new ColorExpression(value, scanner.spanFrom(start));
+    }
+
+    /// Parses three, four, six, or eight hexadecimal color digits.
+    ///
+    /// A color whose alpha channel is omitted retains its complete source span
+    /// as formatting metadata. Alpha-bearing colors deliberately omit that
+    /// metadata because four- and eight-digit output is not universally
+    /// supported by CSS consumers.
+    ///
+    /// @param start the position before the leading hash
+    /// @return the parsed color value
+    private SassColor hexColorContents(ScannerState start) {
+        var digit1 = hexDigit();
+        var digit2 = hexDigit();
+        var digit3 = hexDigit();
+
+        double red;
+        double green;
+        double blue;
+        var alpha = 1.0;
+        var hasAlpha = false;
+        if (!CssCharacters.isHex(scanner.peek())) {
+            red = (digit1 << 4) + digit1;
+            green = (digit2 << 4) + digit2;
+            blue = (digit3 << 4) + digit3;
+        } else {
+            var digit4 = hexDigit();
+            if (!CssCharacters.isHex(scanner.peek())) {
+                red = (digit1 << 4) + digit1;
+                green = (digit2 << 4) + digit2;
+                blue = (digit3 << 4) + digit3;
+                alpha = ((digit4 << 4) + digit4) / 255.0;
+                hasAlpha = true;
+            } else {
+                red = (digit1 << 4) + digit2;
+                green = (digit3 << 4) + digit4;
+                blue = (hexDigit() << 4) + hexDigit();
+                if (CssCharacters.isHex(scanner.peek())) {
+                    alpha = (hexDigit() << 4) + hexDigit();
+                    alpha /= 255.0;
+                    hasAlpha = true;
+                }
+            }
+        }
+
+        @Nullable SpanColorFormat format = hasAlpha
+                ? null
+                : new SpanColorFormat(scanner.spanFrom(start));
+        return SassColor.rgb(red, green, blue, alpha, format);
+    }
+
+    /// Consumes one hexadecimal digit.
+    ///
+    /// @return the digit value from zero through fifteen
+    /// @throws ParseException if the next code unit is not hexadecimal
+    private int hexDigit() {
+        if (!CssCharacters.isHex(scanner.peek())) {
+            throw scanner.error("Expected hex digit.");
+        }
+        return CssCharacters.hexValue(scanner.read());
     }
 
     /// Returns whether plain text has a hexadecimal color-literal length and alphabet.
@@ -867,64 +888,499 @@ class SassExpressionParser extends Parser {
 
     /// Parses an identifier-like expression and its reserved forms.
     ///
-    /// @return the parsed string, boolean, null, variable, or unary expression
+    /// @return the parsed literal, function, variable, or unary expression
     private SassExpression identifierLikeExpression() {
         var start = scanner.state();
         var identifier = interpolatedIdentifier();
         @Nullable String plain = identifier.asPlain();
 
-        if (plain != null && plain.equals("not")) {
-            whitespace(true);
-            var operand = singleExpression();
-            return new UnaryOperationExpression(
-                    UnaryOperator.NOT,
-                    operand,
-                    scanner.source().span(start.position(), operand.span().end().offset())
-            );
-        }
-
-        if (scanner.peek() == '(') {
-            throw scanner.error(
-                    "Function expressions are not available.",
-                    scanner.position(),
-                    1
-            );
-        }
-        if (scanner.scan('.')) {
-            if (plain != null && scanner.peek() == '$') {
-                return variableExpression(plain, start);
-            }
-            throw scanner.error(
-                    "Namespaced function expressions are not available.",
-                    scanner.position() - 1,
-                    1
-            );
-        }
-
+        @Nullable String lower = null;
         if (plain != null) {
-            switch (plain) {
-                case "true" -> {
-                    return new BooleanExpression(true, identifier.span());
-                }
-                case "false" -> {
-                    return new BooleanExpression(false, identifier.span());
-                }
-                case "null" -> {
-                    return new NullExpression(identifier.span());
-                }
-                default -> {
-                    // All other supported identifier-like expressions are strings.
-                }
-            }
-            if (NAMED_COLORS.contains(plain.toLowerCase(Locale.ROOT))) {
+            if (plain.equalsIgnoreCase("if") && scanner.peek() == '(') {
                 throw scanner.error(
-                        "Color expressions are not available.",
+                        "If expressions are not available.",
                         identifier.span().start().offset(),
                         identifier.span().text().length()
                 );
             }
+            if (plain.equals("not")) {
+                whitespace(true);
+                var operand = singleExpression();
+                return new UnaryOperationExpression(
+                        UnaryOperator.NOT,
+                        operand,
+                        scanner.source().span(
+                                start.position(),
+                                operand.span().end().offset()
+                        )
+                );
+            }
+
+            lower = plain.toLowerCase(Locale.ROOT);
+            if (scanner.peek() != '(') {
+                switch (plain) {
+                    case "true" -> {
+                        return new BooleanExpression(true, identifier.span());
+                    }
+                    case "false" -> {
+                        return new BooleanExpression(false, identifier.span());
+                    }
+                    case "null" -> {
+                        return new NullExpression(identifier.span());
+                    }
+                    default -> {
+                        // Continue with named colors and callable syntax.
+                    }
+                }
+
+                @Nullable SassColor color = SassColor.named(lower, identifier.span());
+                if (color != null) {
+                    return new ColorExpression(color, identifier.span());
+                }
+            }
+
+            @Nullable SassExpression specialFunction = trySpecialFunction(lower, start);
+            if (specialFunction != null) {
+                return specialFunction;
+            }
         }
+
+        if (scanner.peek() == '.') {
+            if (scanner.peek(1) == '.') {
+                return new StringExpression(identifier, false);
+            }
+            scanner.read();
+            if (plain != null) {
+                return namespacedExpression(plain, start);
+            }
+            throw scanner.error(
+                    "Interpolation isn't allowed in namespaces.",
+                    identifier.span().start().offset(),
+                    identifier.span().text().length()
+            );
+        }
+
+        if (scanner.peek() == '(') {
+            if (plain != null) {
+                return new FunctionExpression(
+                        null,
+                        plain,
+                        argumentInvocation("var".equals(lower)),
+                        scanner.spanFrom(start)
+                );
+            }
+            return new InterpolatedFunctionExpression(
+                    identifier,
+                    argumentInvocation(false),
+                    scanner.spanFrom(start)
+            );
+        }
+
         return new StringExpression(identifier, false);
+    }
+
+    /// Parses a function whose arguments use raw declaration-value syntax.
+    ///
+    /// Names passed to this method are lowercase. Failed URL recognition is
+    /// transactional so the ordinary function parser can consume the same
+    /// opening parenthesis and arguments.
+    ///
+    /// @param name  the lowercase decoded function name
+    /// @param start the position before the function name
+    /// @return the special function expression, or {@code null} if the name
+    /// and following punctuation do not select special syntax
+    private @Nullable SassExpression trySpecialFunction(
+            String name,
+            ScannerState start
+    ) {
+        InterpolationBuffer buffer;
+        if (name.equals("type") && scanner.scan('(')) {
+            buffer = new InterpolationBuffer();
+            buffer.append(name);
+            buffer.append('(');
+        } else {
+            var normalized = unvendor(name);
+            var vendored = !normalized.equals(name);
+
+            if (normalized.equals("url")) {
+                @Nullable Interpolation url = tryInterpolatedUrlContents(start, "url");
+                return url == null ? null : new StringExpression(url, false);
+            }
+
+            if (normalized.equals("progid") && scanner.scan(':')) {
+                buffer = new InterpolationBuffer();
+                buffer.append(name);
+                buffer.append(':');
+                while (CssCharacters.isAlphabetic(scanner.peek())
+                        || scanner.peek() == '.') {
+                    buffer.append((char) scanner.read());
+                }
+                scanner.expect('(');
+                buffer.append('(');
+            } else {
+                var rawFunction = normalized.equals("expression")
+                        || normalized.equals("element")
+                        || vendored && normalized.equals("calc");
+                if (!rawFunction || !scanner.scan('(')) {
+                    return null;
+                }
+                buffer = new InterpolationBuffer();
+                buffer.append(name);
+                buffer.append('(');
+            }
+        }
+
+        buffer.add(interpolatedDeclarationValue(true, true));
+        scanner.expect(')');
+        buffer.append(')');
+        return new StringExpression(
+                buffer.interpolation(scanner.spanFrom(start)),
+                false
+        );
+    }
+
+    /// Removes one CSS vendor prefix from a lowercase identifier.
+    ///
+    /// Custom-property names beginning with two hyphens are returned unchanged.
+    /// A leading hyphen without a second separating hyphen is likewise not a
+    /// vendor prefix.
+    ///
+    /// @param name the identifier to inspect
+    /// @return the unprefixed identifier or {@code name}
+    private static String unvendor(String name) {
+        if (name.length() < 2 || name.charAt(0) != '-' || name.charAt(1) == '-') {
+            return name;
+        }
+        var separator = name.indexOf('-', 2);
+        return separator < 0 ? name : name.substring(separator + 1);
+    }
+
+    /// Parses the arguments of a function invocation.
+    ///
+    /// Function arguments accept the Microsoft-style single-equals operator
+    /// only at their top level. A second rest argument becomes the keyword-rest
+    /// argument and terminates the invocation grammar.
+    ///
+    /// @param allowEmptySecondArgument whether a trailing comma after the only
+    /// positional argument supplies an empty unquoted second argument
+    /// @return the parsed invocation arguments
+    private ArgumentList argumentInvocation(boolean allowEmptySecondArgument) {
+        var start = scanner.state();
+        scanner.expect('(');
+        whitespace(true);
+
+        var positional = new ArrayList<SassExpression>();
+        var named = new LinkedHashMap<String, SassExpression>();
+        var namedSpans = new LinkedHashMap<String, SourceSpan>();
+        @Nullable SassExpression rest = null;
+        @Nullable SassExpression keywordRest = null;
+        while (lookingAtExpression()) {
+            var argument = expressionUntilComma(true);
+            whitespace(true);
+
+            if (argument instanceof VariableExpression variable
+                    && scanner.scan(':')) {
+                whitespace(true);
+                if (named.containsKey(variable.name())) {
+                    throw scanner.error(
+                            "Duplicate argument.",
+                            variable.span().start().offset(),
+                            variable.span().text().length()
+                    );
+                }
+                var value = expressionUntilComma(true);
+                named.put(variable.name(), value);
+                namedSpans.put(
+                        variable.name(),
+                        scanner.source().span(
+                                variable.span().start().offset(),
+                                value.span().end().offset()
+                        )
+                );
+            } else if (scanner.scan('.')) {
+                scanner.expect('.');
+                scanner.expect('.');
+                if (rest == null) {
+                    rest = argument;
+                } else {
+                    keywordRest = argument;
+                    whitespace(true);
+                    if (scanner.scan(',')) {
+                        whitespace(true);
+                    }
+                    break;
+                }
+            } else if (!named.isEmpty()) {
+                throw scanner.error(
+                        "Positional arguments must come before keyword arguments.",
+                        argument.span().start().offset(),
+                        argument.span().text().length()
+                );
+            } else {
+                positional.add(argument);
+            }
+
+            whitespace(true);
+            if (!scanner.scan(',')) {
+                break;
+            }
+            whitespace(true);
+
+            if (allowEmptySecondArgument
+                    && positional.size() == 1
+                    && named.isEmpty()
+                    && rest == null
+                    && scanner.peek() == ')') {
+                var empty = scanner.source().span(
+                        scanner.position(),
+                        scanner.position()
+                );
+                positional.add(StringExpression.plain("", empty));
+                break;
+            }
+        }
+        scanner.expect(')');
+
+        return new ArgumentList(
+                positional,
+                named,
+                namedSpans,
+                rest,
+                keywordRest,
+                scanner.spanFrom(start)
+        );
+    }
+
+    /// Parses a variable or function member after a namespace and dot.
+    ///
+    /// @param namespace the decoded module namespace
+    /// @param start     the position before the namespace
+    /// @return the namespaced expression
+    private SassExpression namespacedExpression(String namespace, ScannerState start) {
+        if (scanner.peek() == '$') {
+            return variableExpression(namespace, start);
+        }
+
+        var name = publicIdentifier();
+        return new FunctionExpression(
+                namespace,
+                name,
+                argumentInvocation(false),
+                scanner.spanFrom(start)
+        );
+    }
+
+    /// Parses an identifier that may be accessed through a module namespace.
+    ///
+    /// @return the decoded public identifier
+    /// @throws ParseException if the identifier starts with a private marker
+    private String publicIdentifier() {
+        var start = scanner.state();
+        var result = identifier(false, false);
+        if (result.startsWith("-") || result.startsWith("_")) {
+            throw scanner.error(
+                    "Private members can't be accessed from outside their modules.",
+                    start.position(),
+                    scanner.position() - start.position()
+            );
+        }
+        return result;
+    }
+
+    /// Parses a raw declaration value that may contain Sass interpolation.
+    ///
+    /// The terminating top-level semicolon or closing bracket remains
+    /// unconsumed. Whitespace and URL tokens are normalized, while quoted
+    /// strings and loud comments retain their token spelling.
+    ///
+    /// @param allowEmpty     whether an empty raw value is accepted
+    /// @param silentComments whether adjacent slashes begin an omitted silent
+    /// comment instead of being retained as raw text
+    /// @return the raw value interpolation
+    /// @throws ParseException if a required token is absent or a nested token
+    /// is malformed
+    protected final Interpolation interpolatedDeclarationValue(
+            boolean allowEmpty,
+            boolean silentComments
+    ) {
+        var start = scanner.state();
+        var buffer = new InterpolationBuffer();
+        var brackets = new ArrayDeque<Integer>();
+        var wroteNewline = false;
+
+        value:
+        while (true) {
+            var next = scanner.peek();
+            switch (next) {
+                case '\\' -> {
+                    buffer.append(escape(true));
+                    wroteNewline = false;
+                }
+                case '\'', '"' -> {
+                    buffer.add(interpolatedStringToken());
+                    wroteNewline = false;
+                }
+                case '/' -> {
+                    if (scanner.peek(1) == '*') {
+                        buffer.append(rawText(this::loudComment));
+                    } else if (scanner.peek(1) == '/' && silentComments) {
+                        silentComment();
+                    } else {
+                        buffer.append((char) scanner.read());
+                    }
+                    wroteNewline = false;
+                }
+                case '#' -> {
+                    if (scanner.peek(1) == '{') {
+                        buffer.add(interpolatedIdentifier());
+                    } else {
+                        buffer.append((char) scanner.read());
+                    }
+                    wroteNewline = false;
+                }
+                case ' ', '\t' -> {
+                    if (!wroteNewline && CssCharacters.isWhitespace(scanner.peek(1))) {
+                        scanner.read();
+                    } else {
+                        buffer.append((char) scanner.read());
+                    }
+                }
+                case '\n', '\r', '\f' -> {
+                    var previous = scanner.position() == 0
+                            ? CssCharacters.END_OF_INPUT
+                            : scanner.source().content().charAt(scanner.position() - 1);
+                    if (!CssCharacters.isNewline(previous)) {
+                        buffer.append('\n');
+                    }
+                    scanner.read();
+                    wroteNewline = true;
+                }
+                case '(', '{', '[' -> {
+                    var opening = scanner.read();
+                    buffer.append((char) opening);
+                    brackets.push(opposite(opening));
+                    wroteNewline = false;
+                }
+                case ')', '}', ']' -> {
+                    if (brackets.isEmpty()) {
+                        break value;
+                    }
+                    int closing = brackets.pop();
+                    scanner.expect(closing);
+                    buffer.append((char) closing);
+                    wroteNewline = false;
+                }
+                case ';' -> {
+                    if (brackets.isEmpty()) {
+                        break value;
+                    }
+                    buffer.append((char) scanner.read());
+                    wroteNewline = false;
+                }
+                case 'u', 'U' -> {
+                    var beforeUrl = scanner.state();
+                    var identifier = identifier(false, false);
+                    if (!identifier.equals("url") && !identifier.equals("url-prefix")) {
+                        buffer.append(identifier);
+                        wroteNewline = false;
+                        continue;
+                    }
+
+                    @Nullable Interpolation url = tryInterpolatedUrlContents(
+                            beforeUrl,
+                            identifier
+                    );
+                    if (url == null) {
+                        scanner.restore(beforeUrl);
+                        buffer.append((char) scanner.read());
+                    } else {
+                        buffer.add(url);
+                    }
+                    wroteNewline = false;
+                }
+                case CssCharacters.END_OF_INPUT -> {
+                    break value;
+                }
+                default -> {
+                    if (lookingAtIdentifier()) {
+                        buffer.append(identifier(false, false));
+                    } else {
+                        buffer.append((char) scanner.read());
+                    }
+                    wroteNewline = false;
+                }
+            }
+        }
+
+        if (!brackets.isEmpty()) {
+            scanner.expect(brackets.peek());
+        }
+        if (!allowEmpty && buffer.isEmpty()) {
+            throw scanner.error("Expected token.");
+        }
+        return buffer.interpolation(scanner.spanFrom(start));
+    }
+
+    /// Attempts to parse a normalized raw URL token with interpolation.
+    ///
+    /// The scanner must be positioned immediately after the already-consumed
+    /// function name. A grammar mismatch restores that position so the caller
+    /// can parse ordinary function or declaration syntax.
+    ///
+    /// @param start the position before the function name
+    /// @param name  the normalized name to place in the returned interpolation
+    /// @return the URL interpolation, or {@code null} after restoring input
+    protected final @Nullable Interpolation tryInterpolatedUrlContents(
+            ScannerState start,
+            String name
+    ) {
+        var beginningOfContents = scanner.state();
+        if (!scanner.scan('(')) {
+            return null;
+        }
+
+        whitespaceWithoutComments(true);
+        var buffer = new InterpolationBuffer();
+        buffer.append(name);
+        buffer.append('(');
+        while (true) {
+            var next = scanner.peek();
+            if (next == CssCharacters.END_OF_INPUT) {
+                break;
+            }
+            if (next == '\\') {
+                buffer.append(escape(false));
+                continue;
+            }
+            if (next == '#' && scanner.peek(1) == '{') {
+                singleInterpolation(buffer);
+                continue;
+            }
+            if (next == '!'
+                    || next == '%'
+                    || next == '&'
+                    || next == '#'
+                    || next >= '*' && next <= '~'
+                    || next >= 0x80) {
+                buffer.append((char) scanner.read());
+                continue;
+            }
+            if (CssCharacters.isWhitespace(next)) {
+                whitespaceWithoutComments(true);
+                if (scanner.peek() != ')') {
+                    break;
+                }
+                continue;
+            }
+            if (next == ')') {
+                buffer.append((char) scanner.read());
+                return buffer.interpolation(scanner.spanFrom(start));
+            }
+            break;
+        }
+
+        scanner.restore(beginningOfContents);
+        return null;
     }
 
     /// Parses an identifier whose body may contain any number of interpolations.

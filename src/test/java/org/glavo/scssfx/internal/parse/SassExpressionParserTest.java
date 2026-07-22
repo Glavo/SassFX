@@ -5,9 +5,13 @@ import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.ast.BinaryOperationExpression;
 import org.glavo.scssfx.internal.ast.BinaryOperator;
 import org.glavo.scssfx.internal.ast.BooleanExpression;
+import org.glavo.scssfx.internal.ast.ColorExpression;
 import org.glavo.scssfx.internal.ast.ExpressionInterpolationPart;
+import org.glavo.scssfx.internal.ast.FunctionExpression;
+import org.glavo.scssfx.internal.ast.InterpolatedFunctionExpression;
 import org.glavo.scssfx.internal.ast.ListExpression;
 import org.glavo.scssfx.internal.ast.ListSeparator;
+import org.glavo.scssfx.internal.ast.MapExpression;
 import org.glavo.scssfx.internal.ast.NullExpression;
 import org.glavo.scssfx.internal.ast.NumberExpression;
 import org.glavo.scssfx.internal.ast.ParenthesizedExpression;
@@ -18,6 +22,7 @@ import org.glavo.scssfx.internal.ast.UnaryOperationExpression;
 import org.glavo.scssfx.internal.ast.UnaryOperator;
 import org.glavo.scssfx.internal.ast.VariableExpression;
 import org.glavo.scssfx.internal.source.SourceFile;
+import org.glavo.scssfx.internal.value.SpanColorFormat;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
 
@@ -167,6 +172,15 @@ final class SassExpressionParserTest {
         assertTrue(assertInstanceOf(
                 BinaryOperationExpression.class,
                 list.contents().get(0)
+        ).allowsSlash());
+
+        assertTrue(assertInstanceOf(
+                BinaryOperationExpression.class,
+                parse("foo()/2")
+        ).allowsSlash());
+        assertFalse(assertInstanceOf(
+                BinaryOperationExpression.class,
+                parse("f#{o}o()/2")
         ).allowsSlash());
     }
 
@@ -332,6 +346,187 @@ final class SassExpressionParserTest {
         assertFailure("!urgent", "!");
     }
 
+    /// Verifies ordinary, qualified, and interpolated function calls retain argument structure.
+    @Test
+    void parsesFunctionCallsAndArguments() {
+        var function = assertInstanceOf(FunctionExpression.class, parse("foo(1, $bar: 2)"));
+        assertNull(function.namespace());
+        assertEquals("foo", function.name());
+        assertEquals(1, function.arguments().positional().size());
+        assertEquals(1.0, assertInstanceOf(
+                NumberExpression.class,
+                function.arguments().positional().get(0)
+        ).value());
+        assertEquals(2.0, assertInstanceOf(
+                NumberExpression.class,
+                function.arguments().named().get("bar")
+        ).value());
+        assertSpan(function.span(), 0, 15, "foo(1, $bar: 2)");
+        assertSpan(function.arguments().span(), 3, 15, "(1, $bar: 2)");
+
+        var qualified = assertInstanceOf(FunctionExpression.class, parse("math.div(1, 2)"));
+        assertEquals("math", qualified.namespace());
+        assertEquals("div", qualified.name());
+        assertEquals("math.div(1, 2)", qualified.toString());
+
+        var interpolated = assertInstanceOf(
+                InterpolatedFunctionExpression.class,
+                parse("f#{o}o(bar)")
+        );
+        assertEquals("f#{o}o", interpolated.name().toString());
+        assertEquals(1, interpolated.arguments().positional().size());
+        assertSpan(interpolated.span(), 0, 11, "f#{o}o(bar)");
+    }
+
+    /// Verifies rest arguments, the {@code var()} empty second argument, and argument diagnostics.
+    @Test
+    void parsesSpecialFunctionArgumentsAndRejectsInvalidOrdering() {
+        var rest = assertInstanceOf(FunctionExpression.class, parse("foo(1..., $keywords...)"));
+        assertEquals(1.0, assertInstanceOf(NumberExpression.class, rest.arguments().rest()).value());
+        assertInstanceOf(VariableExpression.class, rest.arguments().keywordRest());
+
+        var variable = assertInstanceOf(FunctionExpression.class, parse("var(--x,)"));
+        assertEquals(2, variable.arguments().positional().size());
+        assertEquals("", assertInstanceOf(
+                StringExpression.class,
+                variable.arguments().positional().get(1)
+        ).text().asPlain());
+
+        var ordinary = assertInstanceOf(FunctionExpression.class, parse("foo(--x,)"));
+        assertEquals(1, ordinary.arguments().positional().size());
+
+        assertFailure("foo($x: 1, $x: 2)", "$x");
+        assertFailure("foo($x: 1, 2)", "2");
+        var equals = assertInstanceOf(FunctionExpression.class, parse("foo(1 = 2)"));
+        assertEquals(BinaryOperator.SINGLE_EQUALS, assertInstanceOf(
+                BinaryOperationExpression.class,
+                equals.arguments().positional().get(0)
+        ).operator());
+        assertFailure("foo((1 = 2))", "=");
+    }
+
+    /// Verifies map recognition, map pair ranges, and malformed map diagnostics.
+    @Test
+    void parsesMapsAndRejectsMalformedPairs() {
+        var map = assertInstanceOf(MapExpression.class, parse("(a: b, c: 1 + 2,)"));
+        assertEquals(2, map.pairs().size());
+        assertEquals("a", assertInstanceOf(
+                StringExpression.class,
+                map.pairs().get(0).key()
+        ).text().asPlain());
+        assertEquals("b", assertInstanceOf(
+                StringExpression.class,
+                map.pairs().get(0).value()
+        ).text().asPlain());
+        assertInstanceOf(BinaryOperationExpression.class, map.pairs().get(1).value());
+        assertSpan(map.span(), 0, 17, "(a: b, c: 1 + 2,)");
+        assertEquals("(a: b, c: 1 + 2)", map.toString());
+
+        assertFailure("(a: )", ")");
+        assertFailure("(a: b, c)", ")");
+        assertFailure("(a: b", "");
+        assertFailure("(a, b: c)", ":");
+        assertFailure("(a,b:c)", ":");
+    }
+
+    /// Verifies hexadecimal and named colors remain distinct from hash strings and functions.
+    @Test
+    void parsesColorsAndSpecialRawFunctions() {
+        var shorthand = assertInstanceOf(ColorExpression.class, parse("#abc"));
+        assertEquals(170, shorthand.value().red());
+        assertEquals(187, shorthand.value().green());
+        assertEquals(204, shorthand.value().blue());
+        assertEquals(1.0, shorthand.value().alpha());
+        assertInstanceOf(SpanColorFormat.class, shorthand.value().format());
+        assertEquals("#abc", shorthand.toString());
+
+        var alpha = assertInstanceOf(ColorExpression.class, parse("#0a141E66"));
+        assertEquals(10, alpha.value().red());
+        assertEquals(20, alpha.value().green());
+        assertEquals(30, alpha.value().blue());
+        assertEquals(0.4, alpha.value().alpha());
+        assertNull(alpha.value().format());
+
+        var named = assertInstanceOf(ColorExpression.class, parse("ReD"));
+        assertEquals(255, named.value().red());
+        assertEquals(0, named.value().green());
+        assertEquals(0, named.value().blue());
+        assertEquals("ReD", named.toString());
+
+        var escapedNamed = assertInstanceOf(ColorExpression.class, parse("\\72 ed"));
+        assertEquals(255.0, escapedNamed.value().red());
+        assertEquals("\\72 ed", escapedNamed.toString());
+
+        var transparent = assertInstanceOf(ColorExpression.class, parse("transparent"));
+        assertEquals(0.0, transparent.value().alpha());
+
+        assertEquals("#foo", assertInstanceOf(StringExpression.class, parse("#foo")).toString());
+        assertEquals("#abcde", assertInstanceOf(StringExpression.class, parse("#abcde")).toString());
+        var colorAndNumber = assertInstanceOf(ListExpression.class, parse("#123456789"));
+        assertEquals(ListSeparator.SPACE, colorAndNumber.separator());
+        assertInstanceOf(ColorExpression.class, colorAndNumber.contents().get(0));
+        assertEquals(9.0, assertInstanceOf(NumberExpression.class, colorAndNumber.contents().get(1)).value());
+        assertInstanceOf(FunctionExpression.class, parse("red()"));
+        assertEquals("url(foo)", assertInstanceOf(
+                StringExpression.class,
+                parse("url(foo)")
+        ).toString());
+        assertInstanceOf(FunctionExpression.class, parse("url(foo bar)"));
+        var interpolatedUrl = assertInstanceOf(StringExpression.class, parse("url(#{x})"));
+        assertInstanceOf(ExpressionInterpolationPart.class, interpolatedUrl.text().parts().get(1));
+        assertInstanceOf(FunctionExpression.class, parse("url(\"foo\")"));
+        assertEquals("type(expression)", assertInstanceOf(
+                StringExpression.class,
+                parse("type(expression)")
+        ).toString());
+        assertEquals("expression(a + b)", assertInstanceOf(
+                StringExpression.class,
+                parse("expression(a + b)")
+        ).toString());
+        assertEquals("element(#id)", assertInstanceOf(
+                StringExpression.class,
+                parse("element(#id)")
+        ).toString());
+        assertEquals("-webkit-calc(1 + 2)", assertInstanceOf(
+                StringExpression.class,
+                parse("-webkit-calc(1 + 2)")
+        ).toString());
+        assertEquals("-webkit-expression(foo)", assertInstanceOf(
+                StringExpression.class,
+                parse("-webkit-expression(foo)")
+        ).toString());
+        assertEquals("progid:DXImageTransform.Microsoft.Alpha(Opacity=50)", assertInstanceOf(
+                StringExpression.class,
+                parse("progid:DXImageTransform.Microsoft.Alpha(Opacity=50)")
+        ).toString());
+
+        assertFailure("#12", "");
+        assertFailure("#12g", "g");
+        assertFailure("#12345", "");
+        assertFailure("if(true: red; else: blue)", "if");
+        assertFailure("red.$value", "$");
+    }
+
+    /// Verifies Sass name normalization rejects duplicate named arguments across underscores and hyphens.
+    @Test
+    void rejectsNormalizedDuplicateNamedArguments() {
+        assertFailure("foo($font_size: 1, $font-size: 2)", "$font-size");
+        assertFailure("theme.-private()", "-private");
+    }
+
+    /// Verifies empty, list, and map delimiters remain syntactically distinct.
+    @Test
+    void distinguishesEmptyAndTrailingCommaContainers() {
+        assertInstanceOf(ListExpression.class, parse("()"));
+        assertInstanceOf(ListExpression.class, parse("[]"));
+        assertInstanceOf(ListExpression.class, parse("a,"));
+
+        var map = assertInstanceOf(MapExpression.class, parse("(a: b,)"));
+        assertEquals(1, map.pairs().size());
+        assertSpan(map.span(), 0, 7, "(a: b,)");
+        assertFailure("(a:)", ")");
+    }
+
     /// Verifies invalid expressions report source-local parse failures.
     @Test
     void rejectsMalformedExpressions() {
@@ -351,12 +546,8 @@ final class SassExpressionParserTest {
     /// Verifies features reserved for later expression-parser milestones are explicit failures.
     @Test
     void rejectsDeferredExpressionForms() {
-        assertFailure("foo()", "(");
-        assertFailure("(a: b)", ":");
-        assertFailure("#abc", "#");
-        assertFailure("red", "red");
-        assertFailure("ReD", "ReD");
-        assertFailure("transparent", "transparent");
+        assertFailure("u+123", "u+");
+        assertFailure("&", "&");
     }
 
     /// Parses one complete SassScript expression.

@@ -16,5 +16,9 @@ public sealed interface SassExpression extends SassNode permits
         ParenthesizedExpression,
         UnaryOperationExpression,
         BinaryOperationExpression,
-        ListExpression {
+        ListExpression,
+        FunctionExpression,
+        InterpolatedFunctionExpression,
+        MapExpression,
+        ColorExpression {
 }

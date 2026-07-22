@@ -3,6 +3,7 @@ package org.glavo.scssfx.internal.parse;
 
 import org.glavo.scssfx.internal.ast.BinaryOperationExpression;
 import org.glavo.scssfx.internal.ast.BinaryOperator;
+import org.glavo.scssfx.internal.ast.ColorExpression;
 import org.glavo.scssfx.internal.ast.Declaration;
 import org.glavo.scssfx.internal.ast.ExpressionInterpolationPart;
 import org.glavo.scssfx.internal.ast.LoudComment;
@@ -419,11 +420,11 @@ final class ScssParserTest {
                 StyleRule.class,
                 parseSingleChild("foo:red { baz: qux; }")
         );
-        var definiteDeclaration = assertThrows(
-                ParseException.class,
-                () -> parseSingleChild("foo:red;")
+        var definiteDeclaration = assertInstanceOf(
+                Declaration.class,
+                parseSingleChild("foo:red;")
         );
-        assertEquals("red", definiteDeclaration.span().text());
+        assertInstanceOf(ColorExpression.class, definiteDeclaration.value());
     }
 
     /// Verifies malformed and unavailable declaration forms fail without fallback.
@@ -435,11 +436,15 @@ final class ScssParserTest {
         );
         assertEquals("--x", customNested.span().text());
 
-        var nestedValue = assertThrows(
-                ParseException.class,
-                () -> parse("a { font: { color:red} }")
+        var nestedColor = assertInstanceOf(
+                Declaration.class,
+                parseSingleChild("font: { color:red}")
         );
-        assertEquals("red", nestedValue.span().text());
+        var nestedColorChildren = Objects.requireNonNull(nestedColor.children());
+        assertInstanceOf(
+                ColorExpression.class,
+                assertInstanceOf(Declaration.class, nestedColorChildren.get(0)).value()
+        );
 
         var nestedSelector = assertThrows(
                 ParseException.class,
@@ -487,11 +492,15 @@ final class ScssParserTest {
         var interpolation = assertThrows(ParseException.class, () -> parse("/* #{} */"));
         assertEquals("}", interpolation.span().text());
 
-        var colorInterpolation = assertThrows(
-                ParseException.class,
-                () -> parse("a#{red} {}")
-        );
-        assertEquals("red", colorInterpolation.span().text());
+        var colorInterpolation = assertInstanceOf(
+                StyleRule.class,
+                parse("a#{red} {}").children().get(0)
+        ).selector();
+        var colorExpression = assertInstanceOf(
+                ExpressionInterpolationPart.class,
+                colorInterpolation.parts().get(1)
+        ).expression();
+        assertInstanceOf(ColorExpression.class, colorExpression);
 
         var atRule = assertThrows(ParseException.class, () -> parse("@media {}"));
         assertEquals("@", atRule.span().text());
