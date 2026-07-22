@@ -28,6 +28,7 @@ import org.glavo.scssfx.internal.value.ListSeparator;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
 
+import java.util.Set;
 import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -1124,6 +1125,12 @@ final class ScssParserTest {
         var forward = assertInstanceOf(ForwardRule.class, stylesheet.children().get(5));
         assertEquals("bridge", forward.url());
         assertEquals("@forward \"bridge\"", forward.span().text());
+        assertNull(forward.prefix());
+        assertNull(forward.shownMixinsAndFunctions());
+        assertNull(forward.shownVariables());
+        assertNull(forward.hiddenMixinsAndFunctions());
+        assertNull(forward.hiddenVariables());
+        assertTrue(forward.configuration().isEmpty());
         var globalUse = assertInstanceOf(UseRule.class, stylesheet.children().get(6));
         assertNull(globalUse.namespace());
         assertTrue(globalUse.configuration().isEmpty());
@@ -1166,32 +1173,102 @@ final class ScssParserTest {
         );
     }
 
-    /// Verifies unsupported advanced forward clauses produce feature-specific failures.
+    /// Verifies forward prefixes, member filters, and guarded configuration.
     @Test
-    void rejectsAdvancedForwardClauses() {
-        var prefix = assertThrows(
-                ParseException.class,
-                () -> parse("@forward \"a\" as prefix-*;")
-        );
-        assertEquals("@forward prefixes aren't supported yet.", prefix.getMessage());
+    void parsesAdvancedForwardClauses() {
+        var stylesheet = parse("""
+                @forward "a" as theme_* show public_fn, $public_var with (
+                  $first_value: 1,
+                  $second: 2 !default,
+                );
+                @forward "b" hide private_fn, $private_var;
+                """);
 
-        var show = assertThrows(
-                ParseException.class,
-                () -> parse("@forward \"a\" show member;")
+        var shown = assertInstanceOf(
+                ForwardRule.class,
+                stylesheet.children().get(0)
         );
-        assertEquals("@forward member filters aren't supported yet.", show.getMessage());
+        assertEquals("theme-", shown.prefix());
+        assertEquals(
+                Set.of("public-fn"),
+                shown.shownMixinsAndFunctions()
+        );
+        assertEquals(Set.of("public-var"), shown.shownVariables());
+        assertNull(shown.hiddenMixinsAndFunctions());
+        assertNull(shown.hiddenVariables());
+        assertEquals(2, shown.configuration().size());
+        assertFalse(shown.configuration().get(0).guarded());
+        assertTrue(shown.configuration().get(1).guarded());
+        assertEquals(
+                "$second: 2 !default",
+                shown.configuration().get(1).span().text()
+        );
+        assertThrows(
+                UnsupportedOperationException.class,
+                () -> Objects.requireNonNull(
+                        shown.shownVariables()
+                ).clear()
+        );
+        assertThrows(
+                UnsupportedOperationException.class,
+                () -> shown.configuration().clear()
+        );
 
-        var hide = assertThrows(
-                ParseException.class,
-                () -> parse("@forward \"a\" hide $member;")
+        var hidden = assertInstanceOf(
+                ForwardRule.class,
+                stylesheet.children().get(1)
         );
-        assertEquals("@forward member filters aren't supported yet.", hide.getMessage());
+        assertNull(hidden.prefix());
+        assertNull(hidden.shownMixinsAndFunctions());
+        assertNull(hidden.shownVariables());
+        assertEquals(
+                Set.of("private-fn"),
+                hidden.hiddenMixinsAndFunctions()
+        );
+        assertEquals(Set.of("private-var"), hidden.hiddenVariables());
+        assertTrue(hidden.configuration().isEmpty());
+    }
 
-        var configuration = assertThrows(
+    /// Rejects malformed or out-of-order advanced forward clauses.
+    @Test
+    void rejectsInvalidAdvancedForwardClauses() {
+        var duplicate = assertThrows(
                 ParseException.class,
-                () -> parse("@forward \"a\" with ($member: 1);")
+                () -> parse(
+                        "@forward \"a\" with ($foo_bar: 1, $foo-bar: 2);"
+                )
         );
-        assertEquals("@forward configuration isn't supported yet.", configuration.getMessage());
+        assertEquals(
+                "The same variable may only be configured once.",
+                duplicate.getMessage()
+        );
+
+        var invalidFlag = assertThrows(
+                ParseException.class,
+                () -> parse("@forward \"a\" with ($value: 1 !global);")
+        );
+        assertEquals("Invalid flag name.", invalidFlag.getMessage());
+
+        assertThrows(
+                ParseException.class,
+                () -> parse("@use \"a\" with ($value: 1 !default);")
+        );
+        assertThrows(
+                ParseException.class,
+                () -> parse("@forward \"a\" as prefix;")
+        );
+        assertThrows(
+                ParseException.class,
+                () -> parse("@forward \"a\" show;")
+        );
+        assertThrows(
+                ParseException.class,
+                () -> parse("@forward \"a\" with ($value: 1) show value;")
+        );
+        assertThrows(
+                ParseException.class,
+                () -> parse("@forward \"a\" show value as prefix-*;")
+        );
     }
 
     /// Verifies configuration names and default module namespaces are normalized and validated.

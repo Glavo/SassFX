@@ -36,12 +36,15 @@ import org.glavo.scssfx.internal.ast.WhileRule;
 import org.glavo.scssfx.internal.source.SourceFile;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /// Parses SCSS stylesheets containing declarations, nested properties, style rules,
 /// control-flow at-rules, module directives, mixins, functions, and comments.
@@ -747,7 +750,7 @@ final class ScssParser extends SassExpressionParser {
         List<ConfiguredVariable> configuration = List.of();
         if (scanIdentifier("with")) {
             whitespace(true);
-            configuration = configuredVariables();
+            configuration = configuredVariables(false);
             whitespace(true);
         }
         expectStatementSeparator();
@@ -756,13 +759,10 @@ final class ScssParser extends SassExpressionParser {
         return new UseRule(url, namespace, configuration, span);
     }
 
-    /// Parses a plain `@forward` rule.
+    /// Parses an {@code @forward} rule and its export transformation.
     ///
-    /// Prefixes, member filters, and configuration clauses are recognized and
-    /// rejected explicitly until their AST representations are implemented.
-    ///
-    /// @param start   the scanner state at the leading `@`
-    /// @param context the surrounding statement context
+    /// @param start            the scanner state at the leading {@code @}
+    /// @param context          the surrounding statement context
     /// @param atStylesheetRoot whether the rule is a direct stylesheet child
     /// @return the forward rule
     private ForwardRule forwardRule(
@@ -779,25 +779,73 @@ final class ScssParser extends SassExpressionParser {
         whitespace(true);
         var url = string();
         whitespace(true);
+
+        @Nullable String prefix = null;
         if (scanIdentifier("as")) {
-            throw scanner.error("@forward prefixes aren't supported yet.");
+            whitespace(true);
+            prefix = identifier(true, false);
+            scanner.expect('*');
+            whitespace(true);
         }
-        if (scanIdentifier("show") || scanIdentifier("hide")) {
-            throw scanner.error("@forward member filters aren't supported yet.");
+
+        @Nullable @Unmodifiable Set<String> shownMixinsAndFunctions = null;
+        @Nullable @Unmodifiable Set<String> shownVariables = null;
+        @Nullable @Unmodifiable Set<String> hiddenMixinsAndFunctions = null;
+        @Nullable @Unmodifiable Set<String> hiddenVariables = null;
+        if (scanIdentifier("show")) {
+            var members = forwardMemberList();
+            shownMixinsAndFunctions = members.mixinsAndFunctions();
+            shownVariables = members.variables();
+        } else if (scanIdentifier("hide")) {
+            var members = forwardMemberList();
+            hiddenMixinsAndFunctions = members.mixinsAndFunctions();
+            hiddenVariables = members.variables();
         }
+
+        List<ConfiguredVariable> configuration = List.of();
         if (scanIdentifier("with")) {
-            throw scanner.error("@forward configuration isn't supported yet.");
+            whitespace(true);
+            configuration = configuredVariables(true);
+            whitespace(true);
         }
         expectStatementSeparator();
         var span = scanner.spanFrom(start);
         whitespaceWithoutComments(false);
-        return new ForwardRule(url, span);
+        return new ForwardRule(
+                url,
+                prefix,
+                shownMixinsAndFunctions,
+                shownVariables,
+                hiddenMixinsAndFunctions,
+                hiddenVariables,
+                configuration,
+                span
+        );
     }
 
-    /// Parses the configured variables in a `@use ... with (...)` clause.
+    /// Parses the members named by a forward {@code show} or {@code hide} clause.
     ///
+    /// @return the normalized callable and variable names
+    private ForwardMembers forwardMemberList() {
+        var mixinsAndFunctions = new LinkedHashSet<String>();
+        var variables = new LinkedHashSet<String>();
+        do {
+            whitespace(true);
+            if (scanner.peek() == '$') {
+                variables.add(variableName());
+            } else {
+                mixinsAndFunctions.add(identifier(true, false));
+            }
+            whitespace(false);
+        } while (scanner.scan(','));
+        return new ForwardMembers(mixinsAndFunctions, variables);
+    }
+
+    /// Parses configured variables in a module directive.
+    ///
+    /// @param allowGuarded whether entries may end in {@code !default}
     /// @return configured variables in source order
-    private ArrayList<ConfiguredVariable> configuredVariables() {
+    private ArrayList<ConfiguredVariable> configuredVariables(boolean allowGuarded) {
         scanner.expect('(');
         whitespace(true);
         var variables = new ArrayList<ConfiguredVariable>();
@@ -818,11 +866,32 @@ final class ScssParser extends SassExpressionParser {
             scanner.expect(':');
             whitespace(true);
             var expression = expressionUntilComma();
+            var variableEnd = expression.span().end().offset();
+            var guarded = false;
+            if (allowGuarded && scanner.scan('!')) {
+                var flagStart = scanner.state();
+                var flag = identifier(false, false);
+                if (!"default".equals(flag)) {
+                    throw scanner.error(
+                            "Invalid flag name.",
+                            flagStart.position(),
+                            scanner.position() - flagStart.position()
+                    );
+                }
+                guarded = true;
+                variableEnd = scanner.position();
+            }
             var variableSpan = scanner.source().span(
                     variableStart.position(),
-                    expression.span().end().offset()
+                    variableEnd
             );
-            variables.add(new ConfiguredVariable(name, expression, nameSpan, variableSpan));
+            variables.add(new ConfiguredVariable(
+                    name,
+                    expression,
+                    nameSpan,
+                    variableSpan,
+                    guarded
+            ));
             whitespace(true);
             if (!scanner.scan(',')) {
                 break;
@@ -834,6 +903,22 @@ final class ScssParser extends SassExpressionParser {
         }
         scanner.expect(')');
         return variables;
+    }
+
+    /// Stores normalized forward member filters by Sass member namespace.
+    ///
+    /// @param mixinsAndFunctions callable member names
+    /// @param variables          variable member names
+    @NotNullByDefault
+    private record ForwardMembers(
+            @Unmodifiable Set<String> mixinsAndFunctions,
+            @Unmodifiable Set<String> variables
+    ) {
+        /// Creates an immutable member-filter snapshot.
+        private ForwardMembers {
+            mixinsAndFunctions = Set.copyOf(mixinsAndFunctions);
+            variables = Set.copyOf(variables);
+        }
     }
 
     /// Derives the default namespace from an unresolved module URL.

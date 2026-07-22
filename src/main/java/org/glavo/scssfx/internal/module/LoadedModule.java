@@ -28,6 +28,7 @@ import java.util.Set;
 /// @param upstream              modules loaded by this module in source order
 /// @param configurableVariables variables declared at the module root with
 ///                              {@code !default}
+/// @param forwardedModules      forwarded export views used for configuration reachability
 @ApiStatus.Internal
 @NotNullByDefault
 public record LoadedModule(
@@ -37,7 +38,8 @@ public record LoadedModule(
         @Unmodifiable Map<String, Callable> mixins,
         CssStylesheet css,
         @Unmodifiable List<LoadedModule> upstream,
-        @Unmodifiable Set<String> configurableVariables
+        @Unmodifiable Set<String> configurableVariables,
+        @Unmodifiable List<ForwardedModuleView> forwardedModules
 ) {
     /// Creates a loaded module snapshot.
     public LoadedModule {
@@ -47,6 +49,7 @@ public record LoadedModule(
         Objects.requireNonNull(css, "css");
         Objects.requireNonNull(upstream, "upstream");
         Objects.requireNonNull(configurableVariables, "configurableVariables");
+        Objects.requireNonNull(forwardedModules, "forwardedModules");
         variables = Collections.unmodifiableMap(new LinkedHashMap<>(variables));
         functions = Collections.unmodifiableMap(new LinkedHashMap<>(functions));
         mixins = Collections.unmodifiableMap(new LinkedHashMap<>(mixins));
@@ -54,17 +57,22 @@ public record LoadedModule(
         configurableVariables = Collections.unmodifiableSet(
                 new LinkedHashSet<>(configurableVariables)
         );
+        forwardedModules = List.copyOf(forwardedModules);
     }
 
     /// Returns whether any supplied name could configure this module.
     ///
-    /// @param names normalized variable names
-    /// @return {@code true} when at least one name was declared with
-    /// {@code !default} at the module root
-    public boolean couldHaveBeenConfigured(Set<String> names) {
+    /// @param names normalized variable names at this module boundary
+    /// @return {@code true} when a direct or forwarded declaration is configurable
+    public boolean couldHaveBeenConfigured(@Unmodifiable Set<String> names) {
         Objects.requireNonNull(names, "names");
         for (var name : names) {
             if (configurableVariables.contains(name)) {
+                return true;
+            }
+        }
+        for (var forwarded : forwardedModules) {
+            if (forwarded.couldHaveBeenConfigured(names)) {
                 return true;
             }
         }

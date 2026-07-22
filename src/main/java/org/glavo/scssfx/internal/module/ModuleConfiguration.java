@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.module;
 
+import org.glavo.scssfx.internal.ast.ForwardRule;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -13,12 +14,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/// Tracks configuration values that may be consumed by module variables.
+/// Tracks configuration values consumed through module-forward projections.
 ///
-/// A configuration is mutable so a single explicit configuration can pass
-/// through a chain of plain {@code @forward} rules. Its opaque identity remains
-/// stable after values are consumed and distinguishes that chain from a later,
-/// independent {@code @use ... with} clause.
+/// Projected configurations map names at a module boundary to a shared backing
+/// map. Consumption therefore propagates to the originating outer configuration
+/// while its opaque identity remains stable.
 @ApiStatus.Internal
 @NotNullByDefault
 public final class ModuleConfiguration {
@@ -32,10 +32,17 @@ public final class ModuleConfiguration {
     /// Records whether unused values must be diagnosed by the creating use rule.
     private final boolean explicit;
 
-    /// Contains values that have not yet been consumed, in source order.
-    private final LinkedHashMap<String, ConfiguredValue> values;
+    /// Contains unconsumed values under the root configuration names.
+    private final LinkedHashMap<String, ConfiguredValue> backingValues;
 
-    /// Creates a configuration snapshot.
+    /// Maps names at this module boundary to names in the backing map.
+    private final LinkedHashMap<String, String> projectedNames;
+
+    /// Creates a root configuration whose visible and backing names are identical.
+    ///
+    /// @param originalIdentity the opaque origin identity
+    /// @param explicit         whether unused values require a diagnostic
+    /// @param values           values in source order
     private ModuleConfiguration(
             Object originalIdentity,
             boolean explicit,
@@ -47,17 +54,45 @@ public final class ModuleConfiguration {
         );
         this.explicit = explicit;
         Objects.requireNonNull(values, "values");
-        this.values = new LinkedHashMap<>(values.size());
+        this.backingValues = new LinkedHashMap<>(values.size());
+        this.projectedNames = new LinkedHashMap<>(values.size());
         for (var entry : values.entrySet()) {
-            var name = Objects.requireNonNull(entry.getKey(), "configuration name");
-            if (name.isEmpty()) {
-                throw new IllegalArgumentException(
-                        "configuration name must not be empty"
-                );
-            }
-            this.values.put(
+            var name = validateName(entry.getKey());
+            this.backingValues.put(
                     name,
                     Objects.requireNonNull(entry.getValue(), "configured value")
+            );
+            this.projectedNames.put(name, name);
+        }
+    }
+
+    /// Creates a projected view over an existing backing map.
+    ///
+    /// @param originalIdentity the opaque origin identity
+    /// @param explicit         whether unused values require a diagnostic
+    /// @param backingValues    the shared backing values
+    /// @param projectedNames   boundary names mapped to backing names
+    private ModuleConfiguration(
+            Object originalIdentity,
+            boolean explicit,
+            LinkedHashMap<String, ConfiguredValue> backingValues,
+            Map<String, String> projectedNames
+    ) {
+        this.originalIdentity = Objects.requireNonNull(
+                originalIdentity,
+                "originalIdentity"
+        );
+        this.explicit = explicit;
+        this.backingValues = Objects.requireNonNull(
+                backingValues,
+                "backingValues"
+        );
+        Objects.requireNonNull(projectedNames, "projectedNames");
+        this.projectedNames = new LinkedHashMap<>(projectedNames.size());
+        for (var entry : projectedNames.entrySet()) {
+            this.projectedNames.put(
+                    validateName(entry.getKey()),
+                    validateName(entry.getValue())
             );
         }
     }
@@ -86,6 +121,81 @@ public final class ModuleConfiguration {
         return new ModuleConfiguration(new Object(), true, values);
     }
 
+    /// Copies visible values for a forward rule that owns configuration.
+    ///
+    /// The returned configuration has an independent backing map and a fresh
+    /// identity. It is explicit when the adjusted outer configuration is
+    /// explicit or empty.
+    ///
+    /// @param adjusted the outer configuration after forward projection
+    /// @return a writable configuration for loading the forwarded module
+    public static ModuleConfiguration forForward(
+            ModuleConfiguration adjusted
+    ) {
+        Objects.requireNonNull(adjusted, "adjusted");
+        var values = new LinkedHashMap<String, ConfiguredValue>();
+        for (var entry : adjusted.projectedNames.entrySet()) {
+            @Nullable ConfiguredValue value = adjusted.backingValues.get(
+                    entry.getValue()
+            );
+            if (value != null) {
+                values.put(entry.getKey(), value);
+            }
+        }
+        return new ModuleConfiguration(
+                new Object(),
+                adjusted.explicit || adjusted.isEmpty(),
+                values
+        );
+    }
+
+    /// Returns a configuration projected through one forward rule.
+    ///
+    /// A prefix selects outer names beginning with that prefix and removes it
+    /// before the target module sees the name. Variable filters are then
+    /// applied to the unprefixed names.
+    ///
+    /// @param rule the forwarding rule
+    /// @return a view sharing this configuration's backing values and identity
+    public ModuleConfiguration throughForward(ForwardRule rule) {
+        Objects.requireNonNull(rule, "rule");
+        if (isEmpty()) {
+            return this;
+        }
+        if (rule.prefix() == null
+                && rule.shownVariables() == null
+                && rule.hiddenVariables() == null) {
+            return this;
+        }
+
+        var names = new LinkedHashMap<String, String>();
+        for (var entry : projectedNames.entrySet()) {
+            if (!backingValues.containsKey(entry.getValue())) {
+                continue;
+            }
+            var name = entry.getKey();
+            if (rule.prefix() != null) {
+                if (!name.startsWith(rule.prefix())) {
+                    continue;
+                }
+                name = name.substring(rule.prefix().length());
+            }
+            if (isVisible(
+                    name,
+                    rule.shownVariables(),
+                    rule.hiddenVariables()
+            )) {
+                names.put(name, entry.getValue());
+            }
+        }
+        return new ModuleConfiguration(
+                originalIdentity,
+                explicit,
+                backingValues,
+                names
+        );
+    }
+
     /// Returns whether this configuration came from an explicit use clause.
     ///
     /// @return {@code true} when unused values must be diagnosed
@@ -93,35 +203,88 @@ public final class ModuleConfiguration {
         return explicit;
     }
 
-    /// Returns whether no unconsumed values remain.
+    /// Returns whether no visible unconsumed values remain.
     ///
-    /// @return {@code true} when every value has been consumed
+    /// @return {@code true} when every visible value has been consumed
     public boolean isEmpty() {
-        return values.isEmpty();
+        return firstUnused() == null;
+    }
+
+    /// Returns whether one visible unconsumed value exists.
+    ///
+    /// @param name the normalized boundary name
+    /// @return whether the name currently maps to a backing value
+    public boolean contains(String name) {
+        Objects.requireNonNull(name, "name");
+        @Nullable String backingName = projectedNames.get(name);
+        return backingName != null && backingValues.containsKey(backingName);
     }
 
     /// Removes and returns one configured value.
     ///
-    /// @param name the normalized variable name
+    /// Removing a projected name also removes its shared backing value.
+    ///
+    /// @param name the normalized variable name at this module boundary
     /// @return the configured value, or {@code null} when absent
     public @Nullable ConfiguredValue consume(String name) {
         Objects.requireNonNull(name, "name");
-        return values.remove(name);
+        @Nullable String backingName = projectedNames.remove(name);
+        return backingName == null ? null : backingValues.remove(backingName);
     }
 
-    /// Returns the first unconsumed value without modifying this configuration.
+    /// Adds or replaces a value owned by this configuration root.
+    ///
+    /// @param name  the normalized variable name
+    /// @param value the configured value
+    public void put(String name, ConfiguredValue value) {
+        name = validateName(name);
+        backingValues.put(name, Objects.requireNonNull(value, "value"));
+        projectedNames.put(name, name);
+    }
+
+    /// Discards values whose visible names are not retained.
+    ///
+    /// This is used on a fresh forward-owned configuration after inherited
+    /// consumption has been propagated to the outer configuration.
+    ///
+    /// @param retainedNames names owned by the forward rule
+    public void retainOnly(Set<String> retainedNames) {
+        Objects.requireNonNull(retainedNames, "retainedNames");
+        var iterator = projectedNames.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            if (retainedNames.contains(entry.getKey())) {
+                continue;
+            }
+            backingValues.remove(entry.getValue());
+            iterator.remove();
+        }
+    }
+
+    /// Returns the first visible unconsumed value without modifying this configuration.
     ///
     /// @return the first value in source order, or {@code null} when empty
     public @Nullable ConfiguredValue firstUnused() {
-        var iterator = values.values().iterator();
-        return iterator.hasNext() ? iterator.next() : null;
+        for (var backingName : projectedNames.values()) {
+            @Nullable ConfiguredValue value = backingValues.get(backingName);
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
     }
 
-    /// Returns the currently unconsumed variable names.
+    /// Returns the currently visible unconsumed variable names.
     ///
     /// @return an immutable source-order snapshot
     public @Unmodifiable Set<String> names() {
-        return Collections.unmodifiableSet(new LinkedHashSet<>(values.keySet()));
+        var names = new LinkedHashSet<String>();
+        for (var entry : projectedNames.entrySet()) {
+            if (backingValues.containsKey(entry.getValue())) {
+                names.add(entry.getKey());
+            }
+        }
+        return Collections.unmodifiableSet(names);
     }
 
     /// Returns whether another configuration originated from the same clause.
@@ -131,5 +294,36 @@ public final class ModuleConfiguration {
     public boolean sameOriginal(ModuleConfiguration other) {
         Objects.requireNonNull(other, "other");
         return originalIdentity == other.originalIdentity;
+    }
+
+    /// Returns whether one unprefixed name passes a variable filter.
+    ///
+    /// @param name   the unprefixed configuration name
+    /// @param shown  the allowlist, or {@code null}
+    /// @param hidden the blocklist, or {@code null}
+    /// @return whether the name remains visible
+    private static boolean isVisible(
+            String name,
+            @Nullable Set<String> shown,
+            @Nullable Set<String> hidden
+    ) {
+        return shown != null
+                ? shown.contains(name)
+                : hidden == null || !hidden.contains(name);
+    }
+
+    /// Validates and returns one normalized configuration name.
+    ///
+    /// @param name the prospective name
+    /// @return the same name
+    /// @throws IllegalArgumentException if the name is empty
+    private static String validateName(String name) {
+        Objects.requireNonNull(name, "configuration name");
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "configuration name must not be empty"
+            );
+        }
+        return name;
     }
 }

@@ -16,7 +16,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-/// Verifies plain `@forward` exports, configuration flow, conflicts, and module graphs.
+/// Verifies forward export views, configuration flow, conflicts, and module graphs.
 @NotNullByDefault
 final class ForwardModuleTest {
     /// Re-exports public variables, functions, and mixins while retaining dependency CSS.
@@ -306,6 +306,419 @@ final class ForwardModuleTest {
         );
     }
 
+    /// Applies prefixes and member filters while retaining the target module CSS.
+    @Test
+    void transformsForwardedMembersAndPreservesCss(
+            @TempDir Path directory
+    ) throws Exception {
+        Files.writeString(
+                directory.resolve("filtered-base.scss"),
+                """
+                        $shown: red;
+                        $hidden: blue;
+                        @function shown() { @return 1px; }
+                        @function hidden() { @return 2px; }
+                        @mixin shown { border-width: 3px; }
+                        @mixin hidden { border-width: 4px; }
+                        .base { color: $hidden; }
+                        """
+        );
+        Files.writeString(
+                directory.resolve("shown-facade.scss"),
+                """
+                        @forward "filtered-base" as theme-* show $theme-shown, theme-shown;
+                        """
+        );
+        var shownEntry = Files.writeString(
+                directory.resolve("shown-main.scss"),
+                """
+                        @use "shown-facade" as theme;
+                        .main {
+                          color: theme.$theme-shown;
+                          width: theme.theme-shown();
+                          @include theme.theme-shown;
+                        }
+                        """
+        );
+
+        assertEquals(
+                """
+                        .base {
+                          color: blue;
+                        }
+
+                        .main {
+                          color: red;
+                          width: 1px;
+                          border-width: 3px;
+                        }""",
+                compile(shownEntry)
+        );
+
+        Files.writeString(
+                directory.resolve("hidden-facade.scss"),
+                """
+                        @forward "filtered-base" hide $hidden, hidden;
+                        """
+        );
+        var hiddenEntry = Files.writeString(
+                directory.resolve("hidden-main.scss"),
+                """
+                        @use "hidden-facade" as visible;
+                        .main {
+                          color: visible.$shown;
+                          width: visible.shown();
+                          @include visible.shown;
+                        }
+                        """
+        );
+
+        assertEquals(
+                """
+                        .base {
+                          color: blue;
+                        }
+
+                        .main {
+                          color: red;
+                          width: 1px;
+                          border-width: 3px;
+                        }""",
+                compile(hiddenEntry)
+        );
+
+        var blockedEntry = Files.writeString(
+                directory.resolve("blocked-main.scss"),
+                """
+                        @use "shown-facade" as theme;
+                        a { color: theme.$theme-hidden; }
+                        """
+        );
+        assertEquals(
+                "Undefined variable.",
+                assertThrows(
+                        SassCompilationException.class,
+                        () -> compile(blockedEntry)
+                ).getMessage()
+        );
+    }
+
+    /// Projects configuration through prefixes and upstream-compatible filters.
+    @Test
+    void projectsConfigurationThroughPrefixesAndFilters(
+            @TempDir Path directory
+    ) throws Exception {
+        Files.writeString(
+                directory.resolve("prefix-base.scss"),
+                """
+                        $color: red !default;
+                        .prefix { color: $color; }
+                        """
+        );
+        Files.writeString(
+                directory.resolve("prefix-facade.scss"),
+                """
+                        @forward "prefix-base" as theme-*;
+                        """
+        );
+        var prefixEntry = Files.writeString(
+                directory.resolve("prefix-main.scss"),
+                """
+                        @use "prefix-facade" as theme with ($theme-color: blue);
+                        .main { color: theme.$theme-color; }
+                        """
+        );
+        assertEquals(
+                """
+                        .prefix {
+                          color: blue;
+                        }
+
+                        .main {
+                          color: blue;
+                        }""",
+                compile(prefixEntry)
+        );
+
+        Files.writeString(
+                directory.resolve("nested-base.scss"),
+                """
+                        $color: red !default;
+                        .nested { color: $color; }
+                        """
+        );
+        Files.writeString(
+                directory.resolve("nested-middle.scss"),
+                """
+                        @forward "nested-base" as inner-*;
+                        """
+        );
+        Files.writeString(
+                directory.resolve("nested-facade.scss"),
+                """
+                        @forward "nested-middle" as outer-*;
+                        """
+        );
+        var nestedEntry = Files.writeString(
+                directory.resolve("nested-main.scss"),
+                """
+                        @use "nested-facade" as nested with (
+                          $outer-inner-color: purple
+                        );
+                        .main { color: nested.$outer-inner-color; }
+                        """
+        );
+        assertEquals(
+                """
+                        .nested {
+                          color: purple;
+                        }
+
+                        .main {
+                          color: purple;
+                        }""",
+                compile(nestedEntry)
+        );
+
+        Files.writeString(
+                directory.resolve("show-base.scss"),
+                """
+                        $color: red !default;
+                        .show { color: $color; }
+                        """
+        );
+        Files.writeString(
+                directory.resolve("show-facade.scss"),
+                """
+                        @forward "show-base" as p-* show $p-color;
+                        """
+        );
+        var showEntry = Files.writeString(
+                directory.resolve("show-main.scss"),
+                """
+                        @use "show-facade" with ($p-color: blue);
+                        """
+        );
+        assertEquals(
+                "This variable was not declared with !default in the @used module.",
+                assertThrows(
+                        SassCompilationException.class,
+                        () -> compile(showEntry)
+                ).getMessage()
+        );
+
+        Files.writeString(
+                directory.resolve("hide-base.scss"),
+                """
+                        $color: red !default;
+                        .hide { color: $color; }
+                        """
+        );
+        Files.writeString(
+                directory.resolve("hide-facade.scss"),
+                """
+                        @forward "hide-base" as p-* hide $p-color;
+                        """
+        );
+        var hideEntry = Files.writeString(
+                directory.resolve("hide-main.scss"),
+                """
+                        @use "hide-facade" with ($p-color: blue);
+                        """
+        );
+        assertEquals(
+                """
+                        .hide {
+                          color: blue;
+                        }""",
+                compile(hideEntry)
+        );
+
+        var showCacheEntry = Files.writeString(
+                directory.resolve("show-cache-main.scss"),
+                """
+                        @use "show-facade" as first;
+                        @use "show-facade" as second with ($p-color: blue);
+                        """
+        );
+        assertEquals(
+                "This variable was not declared with !default in the @used module.",
+                assertThrows(
+                        SassCompilationException.class,
+                        () -> compile(showCacheEntry)
+                ).getMessage()
+        );
+
+        var prefixCacheEntry = Files.writeString(
+                directory.resolve("prefix-cache-main.scss"),
+                """
+                        @use "prefix-facade" as first;
+                        @use "prefix-facade" as second with ($theme-color: blue);
+                        """
+        );
+        assertEquals(
+                """
+                        This module was already loaded, so it can't be configured using "with".""",
+                assertThrows(
+                        SassCompilationException.class,
+                        () -> compile(prefixCacheEntry)
+                ).getMessage()
+        );
+    }
+
+    /// Applies hard and guarded forward-owned configuration with correct precedence.
+    @Test
+    void appliesHardAndGuardedForwardConfiguration(
+            @TempDir Path directory
+    ) throws Exception {
+        Files.writeString(
+                directory.resolve("hard-base.scss"),
+                """
+                        $value: base !default;
+                        .hard { value: $value; }
+                        """
+        );
+        Files.writeString(
+                directory.resolve("hard-facade.scss"),
+                """
+                        @forward "hard-base" with ($value: hard);
+                        """
+        );
+        var hardEntry = Files.writeString(
+                directory.resolve("hard-main.scss"),
+                """
+                        @use "hard-facade" as hard;
+                        .main { value: hard.$value; }
+                        """
+        );
+        assertEquals(
+                """
+                        .hard {
+                          value: hard;
+                        }
+
+                        .main {
+                          value: hard;
+                        }""",
+                compile(hardEntry)
+        );
+
+        var hardOuterEntry = Files.writeString(
+                directory.resolve("hard-outer-main.scss"),
+                """
+                        @use "hard-facade" with ($value: outer);
+                        """
+        );
+        assertEquals(
+                "This variable was not declared with !default in the @used module.",
+                assertThrows(
+                        SassCompilationException.class,
+                        () -> compile(hardOuterEntry)
+                ).getMessage()
+        );
+
+        Files.writeString(
+                directory.resolve("guard-base.scss"),
+                """
+                        $value: base !default;
+                        .guard { value: $value; }
+                        """
+        );
+        Files.writeString(
+                directory.resolve("guard-facade.scss"),
+                """
+                        @forward "guard-base" with ($value: forward !default);
+                        """
+        );
+        var guardDefaultEntry = Files.writeString(
+                directory.resolve("guard-default-main.scss"),
+                """
+                        @use "guard-facade" as guard;
+                        .main { value: guard.$value; }
+                        """
+        );
+        assertEquals(
+                """
+                        .guard {
+                          value: forward;
+                        }
+
+                        .main {
+                          value: forward;
+                        }""",
+                compile(guardDefaultEntry)
+        );
+
+        var guardNullEntry = Files.writeString(
+                directory.resolve("guard-null-main.scss"),
+                """
+                        @use "guard-facade" as guard with ($value: null);
+                        .main { value: guard.$value; }
+                        """
+        );
+        assertEquals(
+                """
+                        .guard {
+                          value: forward;
+                        }
+
+                        .main {
+                          value: forward;
+                        }""",
+                compile(guardNullEntry)
+        );
+
+        Files.writeString(
+                directory.resolve("guard-skip-facade.scss"),
+                """
+                        @forward "guard-base" with ($value: $missing !default);
+                        """
+        );
+        var guardOuterEntry = Files.writeString(
+                directory.resolve("guard-outer-main.scss"),
+                """
+                        @use "guard-skip-facade" as guard with ($value: outer);
+                        .main { value: guard.$value; }
+                        """
+        );
+        assertEquals(
+                """
+                        .guard {
+                          value: outer;
+                        }
+
+                        .main {
+                          value: outer;
+                        }""",
+                compile(guardOuterEntry)
+        );
+
+        Files.writeString(
+                directory.resolve("fixed-base.scss"),
+                """
+                        $value: fixed;
+                        """
+        );
+        Files.writeString(
+                directory.resolve("fixed-facade.scss"),
+                """
+                        @forward "fixed-base" with ($value: configured);
+                        """
+        );
+        var fixedEntry = Files.writeString(
+                directory.resolve("fixed-main.scss"),
+                """
+                        @use "fixed-facade";
+                        """
+        );
+        assertEquals(
+                "This variable was not declared with !default in the @used module.",
+                assertThrows(
+                        SassCompilationException.class,
+                        () -> compile(fixedEntry)
+                ).getMessage()
+        );
+    }
     /// Reports forwarding loops and preserves dependency order and loaded URLs.
     @Test
     void reportsLoopsAndOrdersDependencies(@TempDir Path directory) throws Exception {

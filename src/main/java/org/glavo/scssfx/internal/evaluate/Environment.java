@@ -2,8 +2,10 @@
 package org.glavo.scssfx.internal.evaluate;
 
 import org.glavo.scssfx.SourceSpan;
+import org.glavo.scssfx.internal.ast.ForwardRule;
 import org.glavo.scssfx.internal.callable.Callable;
 import org.glavo.scssfx.internal.callable.UserDefinedCallable;
+import org.glavo.scssfx.internal.module.ForwardedModuleView;
 import org.glavo.scssfx.internal.module.LoadedModule;
 import org.glavo.scssfx.internal.module.MemberNames;
 import org.glavo.scssfx.internal.value.SassValue;
@@ -57,7 +59,7 @@ public final class Environment {
     private final ArrayList<LoadedModule> allModules;
 
     /// Contains modules whose public members are re-exported downstream.
-    private final ArrayList<LoadedModule> forwardedModules;
+    private final ArrayList<ForwardedModuleView> forwardedModules;
 
     /// Contains root variables declared with {@code !default}.
     private final LinkedHashSet<String> configurableVariables;
@@ -95,7 +97,7 @@ public final class Environment {
             LinkedHashMap<String, LoadedModule> modules,
             ArrayList<LoadedModule> globalModules,
             ArrayList<LoadedModule> allModules,
-            ArrayList<LoadedModule> forwardedModules,
+            ArrayList<ForwardedModuleView> forwardedModules,
             LinkedHashSet<String> configurableVariables
     ) {
         this.variableFrames = new ArrayList<>(variableFrames);
@@ -345,37 +347,36 @@ public final class Environment {
         allModules.add(module);
     }
 
-    /// Re-exports a module without making its members visible in this module.
+    /// Re-exports a transformed module view without adding local bindings.
     ///
-    /// The original module is also added to the CSS dependency graph. Two
-    /// different forwarded definitions of the same member kind and name are
-    /// rejected, while a diamond that preserves member identity is accepted.
+    /// The original module is added to the CSS dependency graph. Prefixing and
+    /// filtering affect only exported members and configurable names.
     ///
-    /// @param module      the module to forward
-    /// @param forwardSpan the source span of the forwarding rule
+    /// @param module the loaded module
+    /// @param rule   the forwarding rule that defines the export view
     /// @throws SassValueException if another forwarded module exposes a
     /// conflicting member
-    public void forwardModule(LoadedModule module, SourceSpan forwardSpan) {
+    public void forwardModule(LoadedModule module, ForwardRule rule) {
         Objects.requireNonNull(module, "module");
-        Objects.requireNonNull(forwardSpan, "forwardSpan");
+        Objects.requireNonNull(rule, "rule");
+        var view = ForwardedModuleView.create(module, rule);
         assertNoForwardConflicts(
-                module,
+                view,
                 "variable",
-                LoadedModule::variables
+                ForwardedModuleView::variables
         );
         assertNoForwardConflicts(
-                module,
+                view,
                 "function",
-                LoadedModule::functions
+                ForwardedModuleView::functions
         );
         assertNoForwardConflicts(
-                module,
+                view,
                 "mixin",
-                LoadedModule::mixins
+                ForwardedModuleView::mixins
         );
-        forwardedModules.add(module);
-        configurableVariables.addAll(module.configurableVariables());
-        allModules.add(module);
+        forwardedModules.add(view);
+        allModules.add(view.original());
     }
 
     /// Returns modules added to this environment in source order.
@@ -383,6 +384,13 @@ public final class Environment {
     /// @return the upstream modules
     public @Unmodifiable List<LoadedModule> allModules() {
         return List.copyOf(allModules);
+    }
+
+    /// Returns forward views used to resolve configuration reachability.
+    ///
+    /// @return an immutable source-order snapshot
+    public @Unmodifiable List<ForwardedModuleView> forwardedModules() {
+        return List.copyOf(forwardedModules);
     }
 
     /// Returns public global variables for module export.
@@ -452,17 +460,17 @@ public final class Environment {
 
     /// Rejects conflicts between a new forward and existing forwarded modules.
     ///
-    /// @param module  the prospective forwarded module
+    /// @param view    the prospective forwarded view
     /// @param kind    the member kind used in diagnostics
     /// @param members the member-map accessor for that kind
     /// @param <T>     the member identity type
     /// @throws SassValueException if different member identities share a name
     private <T> void assertNoForwardConflicts(
-            LoadedModule module,
+            ForwardedModuleView view,
             String kind,
-            Function<LoadedModule, Map<String, T>> members
+            Function<ForwardedModuleView, Map<String, T>> members
     ) {
-        var newMembers = members.apply(module);
+        var newMembers = members.apply(view);
         for (var forwarded : forwardedModules) {
             var oldMembers = members.apply(forwarded);
             for (var entry : newMembers.entrySet()) {

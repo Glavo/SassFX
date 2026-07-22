@@ -82,6 +82,7 @@ import org.jetbrains.annotations.Unmodifiable;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -246,7 +247,8 @@ public final class SassEvaluator implements
                 module.mixins(),
                 cssStylesheet,
                 module.upstream(),
-                module.configurableVariables()
+                module.configurableVariables(),
+                module.forwardedModules()
         );
     }
 
@@ -352,7 +354,8 @@ public final class SassEvaluator implements
                     environment.publicGlobalMixins(),
                     Objects.requireNonNull(cssStylesheet, "css"),
                     environment.allModules(),
-                    environment.configurableVariables()
+                    environment.configurableVariables(),
+                    environment.forwardedModules()
             );
         } catch (RuntimeException failure) {
             environment = previousEnvironment;
@@ -430,6 +433,51 @@ public final class SassEvaluator implements
         return ModuleConfiguration.explicit(values);
     }
 
+    /// Evaluates configuration owned by one forward rule.
+    ///
+    /// Guarded values yield to non-null outer configuration. Hard values always
+    /// replace the downstream copy without consuming a same-named outer value.
+    ///
+    /// @param statement the forward rule
+    /// @param adjusted  the outer configuration projected through the rule
+    /// @return the fresh configuration used to load the forwarded module
+    private ModuleConfiguration evaluateForwardConfiguration(
+            ForwardRule statement,
+            ModuleConfiguration adjusted
+    ) {
+        var configuration = ModuleConfiguration.forForward(adjusted);
+        var names = new LinkedHashSet<String>();
+        for (var variable : statement.configuration()) {
+            if (!names.add(variable.name())) {
+                throw new EvaluationException(
+                        "The same variable may only be configured once.",
+                        variable.nameSpan()
+                );
+            }
+
+            if (variable.guarded()) {
+                @Nullable ConfiguredValue outer = adjusted.consume(
+                        variable.name()
+                );
+                if (outer != null && outer.value() != SassNull.NULL) {
+                    configuration.put(variable.name(), outer);
+                    continue;
+                }
+            }
+
+            var value = evaluate(variable.expression()).withoutSlash();
+            configuration.put(
+                    variable.name(),
+                    new ConfiguredValue(
+                            value,
+                            variable.span(),
+                            expressionOrigin(variable.expression())
+                    )
+            );
+        }
+        return configuration;
+    }
+
     /// Fails when an explicit use configuration contains an unused value.
     ///
     /// @param configuration the configuration to inspect
@@ -493,15 +541,48 @@ public final class SassEvaluator implements
                     statement.span()
             );
         }
+        var adjusted = currentConfiguration.throughForward(statement);
         try {
-            var module = moduleRegistry.load(
-                    statement.url(),
-                    currentUrl,
-                    statement.span(),
-                    this,
-                    currentConfiguration
-            );
-            environment.forwardModule(module, statement.span());
+            if (statement.configuration().isEmpty()) {
+                var module = moduleRegistry.load(
+                        statement.url(),
+                        currentUrl,
+                        statement.span(),
+                        this,
+                        adjusted
+                );
+                environment.forwardModule(module, statement);
+            } else {
+                var configuration = evaluateForwardConfiguration(
+                        statement,
+                        adjusted
+                );
+                var module = moduleRegistry.load(
+                        statement.url(),
+                        currentUrl,
+                        statement.span(),
+                        this,
+                        configuration
+                );
+                environment.forwardModule(module, statement);
+
+                var configuredNames = new LinkedHashSet<String>();
+                var hardNames = new LinkedHashSet<String>();
+                for (var variable : statement.configuration()) {
+                    configuredNames.add(variable.name());
+                    if (!variable.guarded()) {
+                        hardNames.add(variable.name());
+                    }
+                }
+                for (var name : adjusted.names()) {
+                    if (!hardNames.contains(name)
+                            && !configuration.contains(name)) {
+                        adjusted.consume(name);
+                    }
+                }
+                configuration.retainOnly(configuredNames);
+                assertConfigurationConsumed(configuration);
+            }
         } catch (SassValueException cause) {
             throw new EvaluationException(
                     Objects.requireNonNull(
