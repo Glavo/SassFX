@@ -1,0 +1,43 @@
+{
+  "format": 1,
+  "archives": [
+    {
+      "path": "curated.hrx",
+      "cases": [
+        {
+          "directory": "core/basic",
+          "action": "run",
+          "category": "CORE",
+          "loadedUrls": ["input.scss"]
+        },
+        {
+          "directory": "modules/forward-prefix",
+          "action": "run",
+          "category": "MODULES",
+          "loadedUrls": ["input.scss", "_facade.scss", "_tokens.scss"]
+        },
+        {
+          "directory": "diagnostics/deprecations",
+          "action": "run",
+          "category": "DIAGNOSTICS",
+          "loadedUrls": ["input.scss"],
+          "diagnostics": [
+            {"severity": "DEPRECATION", "code": "new-global"},
+            {"severity": "DEPRECATION", "code": "slash-div"}
+          ]
+        },
+        {
+          "directory": "errors/undefined-variable",
+          "action": "run",
+          "category": "ERRORS"
+        },
+        {
+          "directory": "syntax/indented",
+          "action": "skip",
+          "category": "UNSUPPORTED_SYNTAX",
+          "reason": "Indented Sass syntax is not implemented."
+        }
+      ]
+    }
+  ]
+}

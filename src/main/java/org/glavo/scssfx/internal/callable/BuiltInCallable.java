@@ -180,6 +180,16 @@ public final class BuiltInCallable implements Callable {
         return minArgs;
     }
 
+    /// Returns an equivalent callable exposed under a different normalized name.
+    ///
+    /// The returned callable retains this function's parameter contract and
+    /// callback, so only name-based lookup and argument diagnostics change.
+    ///
+    /// @param name the replacement normalized name
+    /// @return an equivalent callable with the replacement name
+    public BuiltInCallable withName(String name) {
+        return new BuiltInCallable(name, parameters, restParameter, minArgs, callback);
+    }
     /// Invokes this function with already-bound positional values.
     ///
     /// @param bound the bound argument values

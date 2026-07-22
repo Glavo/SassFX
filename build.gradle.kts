@@ -40,7 +40,24 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 tasks.test {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags("sass-spec")
+    }
+}
+
+val sassSpec by tasks.registering(Test::class) {
+    group = LifecycleBasePlugin.VERIFICATION_GROUP
+    description = "Runs the curated Sass specification compatibility fixtures."
+    dependsOn(tasks.testClasses)
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform {
+        includeTags("sass-spec")
+    }
+
+    val reportDirectory = layout.buildDirectory.dir("reports/sass-spec")
+    systemProperty("scssfx.sassSpecReportDir", reportDirectory.get().asFile.absolutePath)
+    outputs.dir(reportDirectory)
 }
 
 tasks.withType<Javadoc>().configureEach {
@@ -235,4 +252,5 @@ tasks.check {
     dependsOn(verifyShadedJar)
     dependsOn(verifyReferenceIsolation)
     dependsOn(smokeTestShadedCli)
+    dependsOn(sassSpec)
 }

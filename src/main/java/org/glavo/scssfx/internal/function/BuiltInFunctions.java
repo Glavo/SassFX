@@ -23,9 +23,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 
-/// Registers the built-in global Sass functions.
+/// Registers built-in Sass functions for global and module namespaces.
 @ApiStatus.Internal
 @NotNullByDefault
 public final class BuiltInFunctions {
@@ -198,6 +199,88 @@ public final class BuiltInFunctions {
         return Map.copyOf(functions);
     }
 
+    /// Returns the functions exported by the {@code sass:math} module.
+    ///
+    /// The module reuses global implementations where their behavior and
+    /// parameter contract match the module API, while assigning module-local
+    /// callable names for lookup and diagnostics.
+    ///
+    /// @return an immutable math function table
+    public static @Unmodifiable Map<String, BuiltInCallable> mathModule() {
+        var global = global();
+        var functions = new LinkedHashMap<String, BuiltInCallable>();
+        moduleFunction(functions, global, "abs", "abs");
+        moduleFunction(functions, global, "ceil", "ceil");
+        moduleFunction(functions, global, "floor", "floor");
+        moduleFunction(functions, global, "max", "max");
+        moduleFunction(functions, global, "min", "min");
+        moduleFunction(functions, global, "percentage", "percentage");
+        moduleFunction(functions, global, "round", "round");
+        moduleFunction(functions, global, "unit", "unit");
+        moduleFunction(functions, global, "comparable", "compatible");
+        register(functions, BuiltInCallable.of(
+                "div",
+                List.of("number1", "number2"),
+                BuiltInFunctions::div
+        ));
+        register(functions, BuiltInCallable.of(
+                "is-unitless",
+                List.of("number"),
+                BuiltInFunctions::isUnitless
+        ));
+        return Map.copyOf(functions);
+    }
+
+    /// Returns the functions exported by the {@code sass:list} module.
+    ///
+    /// @return an immutable list function table
+    public static @Unmodifiable Map<String, BuiltInCallable> listModule() {
+        var global = global();
+        var functions = new LinkedHashMap<String, BuiltInCallable>();
+        moduleFunction(functions, global, "append", "append");
+        moduleFunction(functions, global, "index", "index");
+        moduleFunction(functions, global, "is-bracketed", "is-bracketed");
+        moduleFunction(functions, global, "join", "join");
+        moduleFunction(functions, global, "length", "length");
+        moduleFunction(functions, global, "nth", "nth");
+        moduleFunction(functions, global, "list-separator", "separator");
+        moduleFunction(functions, global, "set-nth", "set-nth");
+        moduleFunction(functions, global, "zip", "zip");
+        return Map.copyOf(functions);
+    }
+
+    /// Returns the functions exported by the {@code sass:map} module.
+    ///
+    /// @return an immutable map function table
+    public static @Unmodifiable Map<String, BuiltInCallable> mapModule() {
+        var global = global();
+        var functions = new LinkedHashMap<String, BuiltInCallable>();
+        moduleFunction(functions, global, "map-get", "get");
+        moduleFunction(functions, global, "map-has-key", "has-key");
+        moduleFunction(functions, global, "map-keys", "keys");
+        moduleFunction(functions, global, "map-merge", "merge");
+        moduleFunction(functions, global, "map-values", "values");
+        return Map.copyOf(functions);
+    }
+
+    /// Adds a global callable to a module map under its module-local name.
+    ///
+    /// @param destination the module function map
+    /// @param global the global function table
+    /// @param globalName the source global function name
+    /// @param moduleName the exported module function name
+    private static void moduleFunction(
+            LinkedHashMap<String, BuiltInCallable> destination,
+            Map<String, BuiltInCallable> global,
+            String globalName,
+            String moduleName
+    ) {
+        @Nullable BuiltInCallable callable = global.get(globalName);
+        if (callable == null) {
+            throw new AssertionError("missing registered global function: " + globalName);
+        }
+        destination.put(moduleName, callable.withName(moduleName));
+    }
     private static void register(
             LinkedHashMap<String, BuiltInCallable> functions,
             BuiltInCallable callable
@@ -338,6 +421,21 @@ public final class BuiltInFunctions {
         return SassNumber.of(args.get(0).assertNumber().assertNoUnits().value() * 100.0, "%");
     }
 
+    /// Divides two numbers for the {@code sass:math} module.
+    ///
+    /// @param args the bound number arguments
+    /// @return the unit-aware quotient
+    private static SassValue div(List<SassValue> args) {
+        return args.get(0).assertNumber().dividedBy(args.get(1).assertNumber());
+    }
+
+    /// Reports whether one number has no numerator or denominator units.
+    ///
+    /// @param args the bound number argument
+    /// @return a Sass boolean describing unitlessness
+    private static SassValue isUnitless(List<SassValue> args) {
+        return SassBoolean.of(args.get(0).assertNumber().isUnitless());
+    }
     private static SassValue abs(List<SassValue> args) {
         var number = args.get(0).assertNumber();
         return SassNumber.withUnits(

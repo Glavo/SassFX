@@ -1,0 +1,52 @@
+<===> core/basic/input.scss
+$accent: #036;
+
+.card {
+  color: $accent;
+  &:hover {
+    color: #069;
+  }
+}
+<===> core/basic/output.css
+.card {
+  color: #036;
+}
+.card:hover {
+  color: #069;
+}
+<===> modules/forward-prefix/input.scss
+@use "facade" as theme;
+
+.button {
+  color: theme.$palette-color;
+}
+<===> modules/forward-prefix/_facade.scss
+@forward "tokens" as palette-*;
+<===> modules/forward-prefix/_tokens.scss
+$color: #c30;
+<===> modules/forward-prefix/output.css
+.button {
+  color: #c30;
+}
+<===> diagnostics/deprecations/input.scss
+a {
+  $value: 1 !global;
+  width: (1/2);
+}
+<===> diagnostics/deprecations/output.css
+a {
+  width: 0.5;
+}
+<===> errors/undefined-variable/input.scss
+.failure {
+  color: $missing;
+}
+<===> errors/undefined-variable/error
+Error: Undefined variable.
+<===> syntax/indented/input.sass
+.item
+  color: red
+<===> syntax/indented/output.css
+.item {
+  color: red;
+}
