@@ -13,6 +13,7 @@ import org.glavo.scssfx.internal.ast.EachRule;
 import org.glavo.scssfx.internal.ast.ElseClause;
 import org.glavo.scssfx.internal.ast.ExpressionInterpolationPart;
 import org.glavo.scssfx.internal.ast.ForRule;
+import org.glavo.scssfx.internal.ast.ForwardRule;
 import org.glavo.scssfx.internal.ast.ArgumentList;
 import org.glavo.scssfx.internal.ast.ContentRule;
 import org.glavo.scssfx.internal.ast.FunctionExpression;
@@ -33,8 +34,10 @@ import org.glavo.scssfx.internal.ast.ParenthesizedExpression;
 import org.glavo.scssfx.internal.ast.ReturnRule;
 import org.glavo.scssfx.internal.ast.UseRule;
 import org.glavo.scssfx.internal.ast.SassExpression;
+import org.glavo.scssfx.internal.module.ConfiguredValue;
 import org.glavo.scssfx.internal.module.LoadedModule;
 import org.glavo.scssfx.internal.module.ModuleCss;
+import org.glavo.scssfx.internal.module.ModuleConfiguration;
 import org.glavo.scssfx.internal.module.ModuleRegistry;
 import org.glavo.scssfx.internal.ast.SassExpressionVisitor;
 import org.glavo.scssfx.internal.ast.SassStatement;
@@ -132,6 +135,9 @@ public final class SassEvaluator implements
     /// Contains the canonical URL of the stylesheet currently being executed.
     private @Nullable URI currentUrl;
 
+    /// Contains configuration values available to the active module.
+    private ModuleConfiguration currentConfiguration;
+
     /// Records whether a stylesheet execution is active.
     private boolean stylesheetActive;
 
@@ -168,6 +174,7 @@ public final class SassEvaluator implements
         this.environment = Objects.requireNonNull(environment, "environment");
         this.moduleRegistry = moduleRegistry;
         this.diagnostics = new ArrayList<>();
+        this.currentConfiguration = ModuleConfiguration.empty();
     }
 
     /// Returns the environment used by this evaluator.
@@ -224,7 +231,12 @@ public final class SassEvaluator implements
         if (moduleRegistry != null) {
             moduleRegistry.recordRoot(url);
         }
-        var module = executeModuleBody(stylesheet, url, true);
+        var module = executeModuleBody(
+                stylesheet,
+                url,
+                ModuleConfiguration.empty(),
+                true
+        );
         cssStylesheet = ModuleCss.combine(module);
         cssParent = cssStylesheet;
         return new LoadedModule(
@@ -233,7 +245,8 @@ public final class SassEvaluator implements
                 module.functions(),
                 module.mixins(),
                 cssStylesheet,
-                module.upstream()
+                module.upstream(),
+                module.configurableVariables()
         );
     }
 
@@ -247,18 +260,44 @@ public final class SassEvaluator implements
     /// @return the loaded module
     /// @throws EvaluationException if evaluation fails
     public LoadedModule executeAsModule(Stylesheet stylesheet, @Nullable URI url) {
-        return executeModuleBody(stylesheet, url, false);
+        return executeAsModule(
+                stylesheet,
+                url,
+                ModuleConfiguration.empty()
+        );
+    }
+
+    /// Executes a stylesheet as a module with values for root defaults.
+    ///
+    /// @param stylesheet   the stylesheet to execute
+    /// @param url          the canonical module URL, or {@code null}
+    /// @param configuration values available to root {@code !default} declarations
+    /// @return the loaded module
+    /// @throws EvaluationException if evaluation fails
+    public LoadedModule executeAsModule(
+            Stylesheet stylesheet,
+            @Nullable URI url,
+            ModuleConfiguration configuration
+    ) {
+        return executeModuleBody(
+                stylesheet,
+                url,
+                Objects.requireNonNull(configuration, "configuration"),
+                false
+        );
     }
 
     /// Executes one stylesheet body, optionally retaining the resulting state.
     ///
     /// @param stylesheet the stylesheet to execute
     /// @param url        the canonical module URL, or {@code null}
+    /// @param configuration values available to root defaults
     /// @param retainState whether to keep this module's environment installed
     /// @return the loaded module
     private LoadedModule executeModuleBody(
             Stylesheet stylesheet,
             @Nullable URI url,
+            ModuleConfiguration configuration,
             boolean retainState
     ) {
         Objects.requireNonNull(stylesheet, "stylesheet");
@@ -269,6 +308,7 @@ public final class SassEvaluator implements
         var previousStyleRule = styleRule;
         var previousDeclarationName = declarationName;
         var previousUrl = currentUrl;
+        var previousConfiguration = currentConfiguration;
         var previousActive = stylesheetActive;
         var previousStyleRuleDepth = styleRuleDepth;
         var previousNestedDepth = nestedDeclarationDepth;
@@ -280,6 +320,10 @@ public final class SassEvaluator implements
         styleRule = null;
         declarationName = null;
         currentUrl = url;
+        currentConfiguration = Objects.requireNonNull(
+                configuration,
+                "configuration"
+        );
         stylesheetActive = true;
         styleRuleDepth = 0;
         nestedDeclarationDepth = 0;
@@ -307,7 +351,8 @@ public final class SassEvaluator implements
                     environment.publicGlobalFunctions(),
                     environment.publicGlobalMixins(),
                     Objects.requireNonNull(cssStylesheet, "css"),
-                    environment.allModules()
+                    environment.allModules(),
+                    environment.configurableVariables()
             );
         } catch (RuntimeException failure) {
             environment = previousEnvironment;
@@ -317,6 +362,7 @@ public final class SassEvaluator implements
             styleRule = previousStyleRule;
             declarationName = previousDeclarationName;
             currentUrl = previousUrl;
+            currentConfiguration = previousConfiguration;
             stylesheetActive = previousActive;
             styleRuleDepth = previousStyleRuleDepth;
             nestedDeclarationDepth = previousNestedDepth;
@@ -330,6 +376,7 @@ public final class SassEvaluator implements
                 styleRule = previousStyleRule;
                 declarationName = previousDeclarationName;
                 currentUrl = previousUrl;
+                currentConfiguration = previousConfiguration;
                 stylesheetActive = previousActive;
                 styleRuleDepth = previousStyleRuleDepth;
                 nestedDeclarationDepth = previousNestedDepth;
@@ -353,6 +400,53 @@ public final class SassEvaluator implements
         return StatementResult.CONTINUE;
     }
 
+    /// Evaluates values supplied by one module use rule.
+    ///
+    /// @param statement the use rule whose expressions are evaluated
+    /// @return an empty implicit configuration or a new explicit configuration
+    private ModuleConfiguration evaluateUseConfiguration(UseRule statement) {
+        if (statement.configuration().isEmpty()) {
+            return ModuleConfiguration.empty();
+        }
+        var values = new LinkedHashMap<String, ConfiguredValue>();
+        for (var variable : statement.configuration()) {
+            var value = evaluate(variable.expression()).withoutSlash();
+            var configured = new ConfiguredValue(
+                    value,
+                    variable.span(),
+                    expressionOrigin(variable.expression())
+            );
+            @Nullable ConfiguredValue previous = values.put(
+                    variable.name(),
+                    configured
+            );
+            if (previous != null) {
+                throw new EvaluationException(
+                        "The same variable may only be configured once.",
+                        variable.nameSpan()
+                );
+            }
+        }
+        return ModuleConfiguration.explicit(values);
+    }
+
+    /// Fails when an explicit use configuration contains an unused value.
+    ///
+    /// @param configuration the configuration to inspect
+    /// @throws EvaluationException if an explicit value remains unconsumed
+    private static void assertConfigurationConsumed(
+            ModuleConfiguration configuration
+    ) {
+        @Nullable ConfiguredValue unused = configuration.firstUnused();
+        if (unused != null && configuration.isExplicit()) {
+            throw new EvaluationException(
+                    "This variable was not declared with !default in the "
+                            + "@used module.",
+                    unused.configurationSpan()
+            );
+        }
+    }
+
     /// Loads another module and registers it in the current environment.
     ///
     /// @param statement the use rule
@@ -365,17 +459,55 @@ public final class SassEvaluator implements
                     statement.span()
             );
         }
+        var configuration = evaluateUseConfiguration(statement);
         try {
             var module = moduleRegistry.load(
                     statement.url(),
                     currentUrl,
                     statement.span(),
-                    this
+                    this,
+                    configuration
             );
             environment.addModule(module, statement.namespace(), statement.span());
+            assertConfigurationConsumed(configuration);
         } catch (SassValueException cause) {
             throw new EvaluationException(
                     Objects.requireNonNull(cause.getMessage(), "module failure message"),
+                    statement.span(),
+                    List.of(),
+                    cause
+            );
+        }
+        return StatementResult.CONTINUE;
+    }
+
+    /// Loads and re-exports another module without adding a local namespace.
+    ///
+    /// @param statement the forward rule
+    /// @return the continue result
+    @Override
+    public StatementResult visitForwardRule(ForwardRule statement) {
+        if (moduleRegistry == null) {
+            throw new EvaluationException(
+                    "Module loading isn't available.",
+                    statement.span()
+            );
+        }
+        try {
+            var module = moduleRegistry.load(
+                    statement.url(),
+                    currentUrl,
+                    statement.span(),
+                    this,
+                    currentConfiguration
+            );
+            environment.forwardModule(module, statement.span());
+        } catch (SassValueException cause) {
+            throw new EvaluationException(
+                    Objects.requireNonNull(
+                            cause.getMessage(),
+                            "module failure message"
+                    ),
                     statement.span(),
                     List.of(),
                     cause
@@ -538,6 +670,24 @@ public final class SassEvaluator implements
     @Override
     public StatementResult visitVariableDeclaration(VariableDeclaration statement) {
         if (statement.isGuarded()) {
+            if (statement.namespace() == null && environment.atRoot()) {
+                environment.markVariableConfigurable(statement.name());
+                @Nullable ConfiguredValue override =
+                        currentConfiguration.consume(statement.name());
+                if (override != null && override.value() != SassNull.NULL) {
+                    valueOperation(statement.span(), () -> {
+                        environment.setVariable(
+                                statement.name(),
+                                override.value(),
+                                override.originSpan(),
+                                null,
+                                true
+                        );
+                        return StatementResult.CONTINUE;
+                    });
+                    return StatementResult.CONTINUE;
+                }
+            }
             @Nullable VariableBinding existing = nullableValueOperation(
                     statement.span(),
                     () -> environment.findVariable(statement.name(), statement.namespace())

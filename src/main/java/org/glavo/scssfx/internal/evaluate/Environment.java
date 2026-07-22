@@ -18,9 +18,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /// Stores Sass lexical bindings and their dynamic assignment semantics.
@@ -53,6 +56,12 @@ public final class Environment {
     /// Contains every module added to this environment in source order.
     private final ArrayList<LoadedModule> allModules;
 
+    /// Contains modules whose public members are re-exported downstream.
+    private final ArrayList<LoadedModule> forwardedModules;
+
+    /// Contains root variables declared with {@code !default}.
+    private final LinkedHashSet<String> configurableVariables;
+
     /// Contains active scope handles in last-opened-first order.
     private final Deque<Scope> activeScopes;
 
@@ -71,6 +80,8 @@ public final class Environment {
         this.modules = new LinkedHashMap<>();
         this.globalModules = new ArrayList<>();
         this.allModules = new ArrayList<>();
+        this.forwardedModules = new ArrayList<>();
+        this.configurableVariables = new LinkedHashSet<>();
         this.activeScopes = new ArrayDeque<>();
         this.inSemiGlobalScope = true;
     }
@@ -83,7 +94,9 @@ public final class Environment {
             @Nullable UserDefinedCallable content,
             LinkedHashMap<String, LoadedModule> modules,
             ArrayList<LoadedModule> globalModules,
-            ArrayList<LoadedModule> allModules
+            ArrayList<LoadedModule> allModules,
+            ArrayList<LoadedModule> forwardedModules,
+            LinkedHashSet<String> configurableVariables
     ) {
         this.variableFrames = new ArrayList<>(variableFrames);
         this.functionFrames = new ArrayList<>(functionFrames);
@@ -92,6 +105,8 @@ public final class Environment {
         this.modules = modules;
         this.globalModules = globalModules;
         this.allModules = allModules;
+        this.forwardedModules = forwardedModules;
+        this.configurableVariables = configurableVariables;
         this.activeScopes = new ArrayDeque<>();
         this.inSemiGlobalScope = true;
     }
@@ -111,7 +126,9 @@ public final class Environment {
                 content,
                 modules,
                 globalModules,
-                allModules
+                allModules,
+                forwardedModules,
+                configurableVariables
         );
     }
 
@@ -328,6 +345,39 @@ public final class Environment {
         allModules.add(module);
     }
 
+    /// Re-exports a module without making its members visible in this module.
+    ///
+    /// The original module is also added to the CSS dependency graph. Two
+    /// different forwarded definitions of the same member kind and name are
+    /// rejected, while a diamond that preserves member identity is accepted.
+    ///
+    /// @param module      the module to forward
+    /// @param forwardSpan the source span of the forwarding rule
+    /// @throws SassValueException if another forwarded module exposes a
+    /// conflicting member
+    public void forwardModule(LoadedModule module, SourceSpan forwardSpan) {
+        Objects.requireNonNull(module, "module");
+        Objects.requireNonNull(forwardSpan, "forwardSpan");
+        assertNoForwardConflicts(
+                module,
+                "variable",
+                LoadedModule::variables
+        );
+        assertNoForwardConflicts(
+                module,
+                "function",
+                LoadedModule::functions
+        );
+        assertNoForwardConflicts(
+                module,
+                "mixin",
+                LoadedModule::mixins
+        );
+        forwardedModules.add(module);
+        configurableVariables.addAll(module.configurableVariables());
+        allModules.add(module);
+    }
+
     /// Returns modules added to this environment in source order.
     ///
     /// @return the upstream modules
@@ -340,6 +390,9 @@ public final class Environment {
     /// @return the public global variable bindings
     public @Unmodifiable Map<String, VariableBinding> publicGlobalVariables() {
         var result = new LinkedHashMap<String, VariableBinding>();
+        for (var module : forwardedModules) {
+            result.putAll(module.variables());
+        }
         for (var entry : variableFrames.get(0).entrySet()) {
             if (MemberNames.isPublic(entry.getKey())) {
                 result.put(entry.getKey(), entry.getValue());
@@ -353,6 +406,9 @@ public final class Environment {
     /// @return the public global functions
     public @Unmodifiable Map<String, Callable> publicGlobalFunctions() {
         var result = new LinkedHashMap<String, Callable>();
+        for (var module : forwardedModules) {
+            result.putAll(module.functions());
+        }
         for (var entry : functionFrames.get(0).entrySet()) {
             if (MemberNames.isPublic(entry.getKey())) {
                 result.put(entry.getKey(), entry.getValue());
@@ -366,12 +422,63 @@ public final class Environment {
     /// @return the public global mixins
     public @Unmodifiable Map<String, Callable> publicGlobalMixins() {
         var result = new LinkedHashMap<String, Callable>();
+        for (var module : forwardedModules) {
+            result.putAll(module.mixins());
+        }
         for (var entry : mixinFrames.get(0).entrySet()) {
             if (MemberNames.isPublic(entry.getKey())) {
                 result.put(entry.getKey(), entry.getValue());
             }
         }
         return Collections.unmodifiableMap(result);
+    }
+
+    /// Records that a root variable could be configured by a module load.
+    ///
+    /// @param name the normalized variable name
+    public void markVariableConfigurable(String name) {
+        validateName(name);
+        configurableVariables.add(name);
+    }
+
+    /// Returns root variables declared with {@code !default}.
+    ///
+    /// @return an immutable declaration-order snapshot
+    public @Unmodifiable Set<String> configurableVariables() {
+        return Collections.unmodifiableSet(
+                new LinkedHashSet<>(configurableVariables)
+        );
+    }
+
+    /// Rejects conflicts between a new forward and existing forwarded modules.
+    ///
+    /// @param module  the prospective forwarded module
+    /// @param kind    the member kind used in diagnostics
+    /// @param members the member-map accessor for that kind
+    /// @param <T>     the member identity type
+    /// @throws SassValueException if different member identities share a name
+    private <T> void assertNoForwardConflicts(
+            LoadedModule module,
+            String kind,
+            Function<LoadedModule, Map<String, T>> members
+    ) {
+        var newMembers = members.apply(module);
+        for (var forwarded : forwardedModules) {
+            var oldMembers = members.apply(forwarded);
+            for (var entry : newMembers.entrySet()) {
+                @Nullable T oldMember = oldMembers.get(entry.getKey());
+                if (oldMember == null || oldMember == entry.getValue()) {
+                    continue;
+                }
+                var displayName = "variable".equals(kind)
+                        ? "$" + entry.getKey()
+                        : entry.getKey();
+                throw new SassValueException(
+                        "Two forwarded modules both define a " + kind
+                                + " named " + displayName + "."
+                );
+            }
+        }
     }
 
     /// Returns a namespaced module or fails.

@@ -5,11 +5,13 @@ import org.glavo.scssfx.Diagnostic;
 import org.glavo.scssfx.DiagnosticSeverity;
 import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.ast.ArgumentList;
+import org.glavo.scssfx.internal.ast.ConfiguredVariable;
 import org.glavo.scssfx.internal.ast.ContentBlock;
 import org.glavo.scssfx.internal.ast.ContentRule;
 import org.glavo.scssfx.internal.ast.Declaration;
 import org.glavo.scssfx.internal.ast.EachRule;
 import org.glavo.scssfx.internal.ast.ElseClause;
+import org.glavo.scssfx.internal.ast.ForwardRule;
 import org.glavo.scssfx.internal.ast.ForRule;
 import org.glavo.scssfx.internal.ast.FunctionRule;
 import org.glavo.scssfx.internal.ast.IfClause;
@@ -37,11 +39,12 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 
 /// Parses SCSS stylesheets containing declarations, nested properties, style rules,
-/// control-flow at-rules, mixins, functions, and comments.
+/// control-flow at-rules, module directives, mixins, functions, and comments.
 @NotNullByDefault
 final class ScssParser extends SassExpressionParser {
     /// Identifies the statement forms allowed inside a braced block.
@@ -68,8 +71,8 @@ final class ScssParser extends SassExpressionParser {
     /// Records whether the parser is inside a mixin declaration body.
     private boolean inMixin;
 
-    /// Records whether `@use` rules are still allowed at the stylesheet root.
-    private boolean useAllowed = true;
+    /// Records whether module directives are still allowed at the stylesheet root.
+    private boolean moduleDirectivesAllowed = true;
 
     /// Creates a parser for an indexed SCSS source.
     ///
@@ -124,19 +127,21 @@ final class ScssParser extends SassExpressionParser {
                     whitespaceWithoutComments(true);
                 }
                 case '$' -> {
-                    useAllowed = false;
                     statements.add(variableDeclarationWithoutNamespace());
                 }
                 case '@' -> {
-                    var rule = atRule(StatementContext.ROOT);
-                    if (!(rule instanceof UseRule)) {
-                        useAllowed = false;
+                    var rule = atRule(StatementContext.ROOT, true);
+                    if (!(rule instanceof UseRule) && !(rule instanceof ForwardRule)) {
+                        moduleDirectivesAllowed = false;
                     }
                     statements.add(rule);
                 }
                 default -> {
-                    useAllowed = false;
-                    statements.add(variableDeclarationOrStyleRule());
+                    var statement = variableDeclarationOrStyleRule();
+                    if (!(statement instanceof VariableDeclaration)) {
+                        moduleDirectivesAllowed = false;
+                    }
+                    statements.add(statement);
                 }
             }
         }
@@ -351,7 +356,7 @@ final class ScssParser extends SassExpressionParser {
                     return children;
                 }
                 case '$' -> children.add(variableDeclarationWithoutNamespace());
-                case '@' -> children.add(atRule(context));
+                case '@' -> children.add(atRule(context, false));
                 default -> {
                     children.add(blockChild(context));
                     whitespaceWithoutComments(true);
@@ -376,9 +381,10 @@ final class ScssParser extends SassExpressionParser {
     /// Dispatches a plain `@`-rule after consuming the leading `@`.
     ///
     /// @param context the statement forms permitted in the rule body
+    /// @param atStylesheetRoot whether the rule is a direct stylesheet child
     /// @return the parsed at-rule statement
     /// @throws ParseException if the at-rule is unknown or malformed
-    private SassStatement atRule(StatementContext context) {
+    private SassStatement atRule(StatementContext context, boolean atStylesheetRoot) {
         var start = scanner.state();
         scanner.expect('@');
         var name = identifier(false, false);
@@ -392,7 +398,8 @@ final class ScssParser extends SassExpressionParser {
             case "include" -> includeRule(start, context);
             case "content" -> contentRule(start, context);
             case "return" -> returnRule(start, context);
-            case "use" -> useRule(start, context);
+            case "use" -> useRule(start, context, atStylesheetRoot);
+            case "forward" -> forwardRule(start, context, atStylesheetRoot);
             case "else" -> throw scanner.error(
                     "This at-rule is not allowed here.",
                     start.position(),
@@ -709,18 +716,23 @@ final class ScssParser extends SassExpressionParser {
     ///
     /// @param start   the scanner state at the leading `@`
     /// @param context the surrounding statement context
+    /// @param atStylesheetRoot whether the rule is a direct stylesheet child
     /// @return the use rule
-    private UseRule useRule(ScannerState start, StatementContext context) {
-        if (context != StatementContext.ROOT) {
+    private UseRule useRule(
+            ScannerState start,
+            StatementContext context,
+            boolean atStylesheetRoot
+    ) {
+        if (context != StatementContext.ROOT || !atStylesheetRoot) {
             throw scanner.error("@use rules must be at the root of the stylesheet.");
         }
-        if (!useAllowed) {
+        if (!moduleDirectivesAllowed) {
             throw scanner.error("@use rules must be written before any other rules.");
         }
         whitespace(true);
         var url = string();
         whitespace(true);
-        @Nullable String namespace = defaultNamespace(url);
+        @Nullable String namespace;
         if (scanIdentifier("as")) {
             whitespace(true);
             if (scanner.scan('*')) {
@@ -729,14 +741,99 @@ final class ScssParser extends SassExpressionParser {
                 namespace = identifier(false, false);
             }
             whitespace(true);
+        } else {
+            namespace = defaultNamespace(url);
         }
+        List<ConfiguredVariable> configuration = List.of();
         if (scanIdentifier("with")) {
-            throw scanner.error("Module configuration isn't supported yet.");
+            whitespace(true);
+            configuration = configuredVariables();
+            whitespace(true);
         }
         expectStatementSeparator();
         var span = scanner.spanFrom(start);
         whitespaceWithoutComments(false);
-        return new UseRule(url, namespace, span);
+        return new UseRule(url, namespace, configuration, span);
+    }
+
+    /// Parses a plain `@forward` rule.
+    ///
+    /// Prefixes, member filters, and configuration clauses are recognized and
+    /// rejected explicitly until their AST representations are implemented.
+    ///
+    /// @param start   the scanner state at the leading `@`
+    /// @param context the surrounding statement context
+    /// @param atStylesheetRoot whether the rule is a direct stylesheet child
+    /// @return the forward rule
+    private ForwardRule forwardRule(
+            ScannerState start,
+            StatementContext context,
+            boolean atStylesheetRoot
+    ) {
+        if (context != StatementContext.ROOT || !atStylesheetRoot) {
+            throw scanner.error("@forward rules must be at the root of the stylesheet.");
+        }
+        if (!moduleDirectivesAllowed) {
+            throw scanner.error("@forward rules must be written before any other rules.");
+        }
+        whitespace(true);
+        var url = string();
+        whitespace(true);
+        if (scanIdentifier("as")) {
+            throw scanner.error("@forward prefixes aren't supported yet.");
+        }
+        if (scanIdentifier("show") || scanIdentifier("hide")) {
+            throw scanner.error("@forward member filters aren't supported yet.");
+        }
+        if (scanIdentifier("with")) {
+            throw scanner.error("@forward configuration isn't supported yet.");
+        }
+        expectStatementSeparator();
+        var span = scanner.spanFrom(start);
+        whitespaceWithoutComments(false);
+        return new ForwardRule(url, span);
+    }
+
+    /// Parses the configured variables in a `@use ... with (...)` clause.
+    ///
+    /// @return configured variables in source order
+    private ArrayList<ConfiguredVariable> configuredVariables() {
+        scanner.expect('(');
+        whitespace(true);
+        var variables = new ArrayList<ConfiguredVariable>();
+        var names = new HashSet<String>();
+        while (true) {
+            var variableStart = scanner.state();
+            var nameStart = scanner.state();
+            var name = variableName();
+            var nameSpan = scanner.spanFrom(nameStart);
+            if (!names.add(name)) {
+                throw scanner.error(
+                        "The same variable may only be configured once.",
+                        nameSpan.start().offset(),
+                        nameSpan.text().length()
+                );
+            }
+            whitespace(true);
+            scanner.expect(':');
+            whitespace(true);
+            var expression = expressionUntilComma();
+            var variableSpan = scanner.source().span(
+                    variableStart.position(),
+                    expression.span().end().offset()
+            );
+            variables.add(new ConfiguredVariable(name, expression, nameSpan, variableSpan));
+            whitespace(true);
+            if (!scanner.scan(',')) {
+                break;
+            }
+            whitespace(true);
+            if (scanner.peek() == ')') {
+                break;
+            }
+        }
+        scanner.expect(')');
+        return variables;
     }
 
     /// Derives the default namespace from an unresolved module URL.
@@ -752,17 +849,18 @@ final class ScssParser extends SassExpressionParser {
         if (path.startsWith("_")) {
             path = path.substring(1);
         }
-        var dot = path.lastIndexOf('.');
+        var dot = path.indexOf('.');
         if (dot > 0) {
             path = path.substring(0, dot);
         }
-        if (path.isEmpty() || !Character.isLetter(path.charAt(0)) && path.charAt(0) != '_') {
+        try {
+            return CssIdentifierParser.parse(path, true, false);
+        } catch (ParseException ignored) {
             throw scanner.error(
                     "The default namespace \"" + path + "\" is not a valid CSS identifier.\n\n"
                             + "Recommendation: add an \"as\" clause to define an explicit namespace."
             );
         }
-        return path.replace('_', '-');
     }
 
     /// Parses a parenthesized parameter list.

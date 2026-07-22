@@ -105,4 +105,10 @@ public interface SassStatementVisitor<R> {
     /// @param statement the statement to visit
     /// @return the visit result
     R visitUseRule(UseRule statement);
+
+    /// Visits an `@forward` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitForwardRule(ForwardRule statement);
 }

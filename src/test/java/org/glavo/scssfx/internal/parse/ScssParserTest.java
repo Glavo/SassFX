@@ -9,6 +9,7 @@ import org.glavo.scssfx.internal.ast.BinaryOperator;
 import org.glavo.scssfx.internal.ast.ColorExpression;
 import org.glavo.scssfx.internal.ast.Declaration;
 import org.glavo.scssfx.internal.ast.ExpressionInterpolationPart;
+import org.glavo.scssfx.internal.ast.ForwardRule;
 import org.glavo.scssfx.internal.ast.FunctionExpression;
 import org.glavo.scssfx.internal.ast.ListExpression;
 import org.glavo.scssfx.internal.ast.LoudComment;
@@ -19,6 +20,7 @@ import org.glavo.scssfx.internal.ast.SilentComment;
 import org.glavo.scssfx.internal.ast.StringExpression;
 import org.glavo.scssfx.internal.ast.StyleRule;
 import org.glavo.scssfx.internal.ast.Stylesheet;
+import org.glavo.scssfx.internal.ast.UseRule;
 import org.glavo.scssfx.internal.ast.VariableDeclaration;
 import org.glavo.scssfx.internal.ast.VariableExpression;
 import org.glavo.scssfx.internal.source.SourceFile;
@@ -1078,6 +1080,152 @@ final class ScssParserTest {
                 () -> parse("a { width: 1px height: 2px; }")
         );
         assertEquals(":", missingSeparator.span().text());
+    }
+
+    /// Verifies module directives may be interleaved with root variables and comments.
+    @Test
+    void parsesModuleDirectivesAndUseConfiguration() {
+        var source = """
+                $theme: blue;
+                /* before */
+                @use "foo.test.scss" with (
+                  $primary_color: $theme,
+                  $gap: 1px + 2px,
+                );
+                foo.$after: 1;
+                // between
+                @forward "bridge";
+                @use "other" as *;
+                """;
+        var stylesheet = parse(source);
+
+        assertEquals(7, stylesheet.children().size());
+        assertInstanceOf(VariableDeclaration.class, stylesheet.children().get(0));
+        assertInstanceOf(LoudComment.class, stylesheet.children().get(1));
+
+        var use = assertInstanceOf(UseRule.class, stylesheet.children().get(2));
+        assertEquals("foo.test.scss", use.url());
+        assertEquals("foo", use.namespace());
+        assertEquals(2, use.configuration().size());
+        var primary = use.configuration().get(0);
+        assertEquals("primary-color", primary.name());
+        assertEquals("$primary_color", primary.nameSpan().text());
+        assertEquals("$primary_color: $theme", primary.span().text());
+        var primaryValue = assertInstanceOf(VariableExpression.class, primary.expression());
+        assertEquals("theme", primaryValue.name());
+        var gap = use.configuration().get(1);
+        assertEquals("gap", gap.name());
+        assertEquals("$gap: 1px + 2px", gap.span().text());
+        assertInstanceOf(BinaryOperationExpression.class, gap.expression());
+        assertThrows(UnsupportedOperationException.class, () -> use.configuration().clear());
+
+        assertInstanceOf(VariableDeclaration.class, stylesheet.children().get(3));
+        assertInstanceOf(SilentComment.class, stylesheet.children().get(4));
+        var forward = assertInstanceOf(ForwardRule.class, stylesheet.children().get(5));
+        assertEquals("bridge", forward.url());
+        assertEquals("@forward \"bridge\"", forward.span().text());
+        var globalUse = assertInstanceOf(UseRule.class, stylesheet.children().get(6));
+        assertNull(globalUse.namespace());
+        assertTrue(globalUse.configuration().isEmpty());
+    }
+
+    /// Verifies ordinary rules close the module-directive window at the stylesheet root.
+    @Test
+    void rejectsLateAndNestedModuleDirectives() {
+        var lateForward = assertThrows(
+                ParseException.class,
+                () -> parse("@use \"a\"; a {} $x: 1; /* comment */ @forward \"b\";")
+        );
+        assertEquals(
+                "@forward rules must be written before any other rules.",
+                lateForward.getMessage()
+        );
+
+        var lateUse = assertThrows(
+                ParseException.class,
+                () -> parse("@forward \"a\"; a {} $x: 1; @use \"b\";")
+        );
+        assertEquals("@use rules must be written before any other rules.", lateUse.getMessage());
+
+        var nestedUse = assertThrows(
+                ParseException.class,
+                () -> parse("@if true { @use \"a\"; }")
+        );
+        assertEquals(
+                "@use rules must be at the root of the stylesheet.",
+                nestedUse.getMessage()
+        );
+
+        var nestedForward = assertThrows(
+                ParseException.class,
+                () -> parse("@if true { @forward \"a\"; }")
+        );
+        assertEquals(
+                "@forward rules must be at the root of the stylesheet.",
+                nestedForward.getMessage()
+        );
+    }
+
+    /// Verifies unsupported advanced forward clauses produce feature-specific failures.
+    @Test
+    void rejectsAdvancedForwardClauses() {
+        var prefix = assertThrows(
+                ParseException.class,
+                () -> parse("@forward \"a\" as prefix-*;")
+        );
+        assertEquals("@forward prefixes aren't supported yet.", prefix.getMessage());
+
+        var show = assertThrows(
+                ParseException.class,
+                () -> parse("@forward \"a\" show member;")
+        );
+        assertEquals("@forward member filters aren't supported yet.", show.getMessage());
+
+        var hide = assertThrows(
+                ParseException.class,
+                () -> parse("@forward \"a\" hide $member;")
+        );
+        assertEquals("@forward member filters aren't supported yet.", hide.getMessage());
+
+        var configuration = assertThrows(
+                ParseException.class,
+                () -> parse("@forward \"a\" with ($member: 1);")
+        );
+        assertEquals("@forward configuration isn't supported yet.", configuration.getMessage());
+    }
+
+    /// Verifies configuration names and default module namespaces are normalized and validated.
+    @Test
+    void validatesUseConfigurationAndDefaultNamespaces() {
+        var duplicate = assertThrows(
+                ParseException.class,
+                () -> parse("@use \"a\" with ($foo_bar: 1, $foo-bar: 2);")
+        );
+        assertEquals(
+                "The same variable may only be configured once.",
+                duplicate.getMessage()
+        );
+        assertEquals("$foo-bar", duplicate.span().text());
+
+        var dotted = assertInstanceOf(
+                UseRule.class,
+                parse("@use \"foo.test.scss\";").children().get(0)
+        );
+        assertEquals("foo", dotted.namespace());
+
+        var explicit = assertInstanceOf(
+                UseRule.class,
+                parse("@use \"foo+.scss\" as valid;").children().get(0)
+        );
+        assertEquals("valid", explicit.namespace());
+
+        var invalid = assertThrows(
+                ParseException.class,
+                () -> parse("@use \"foo+.scss\";")
+        );
+        assertTrue(invalid.getMessage().contains(
+                "The default namespace \"foo+\" is not a valid CSS identifier."
+        ));
     }
 
     /// Verifies malformed and unavailable statement productions fail precisely.

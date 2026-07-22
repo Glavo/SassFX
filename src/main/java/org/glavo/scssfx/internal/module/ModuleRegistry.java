@@ -14,6 +14,7 @@ import org.jetbrains.annotations.Unmodifiable;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -30,6 +31,10 @@ public final class ModuleRegistry {
     /// Contains fully loaded modules keyed by canonical URL.
     private final LinkedHashMap<URI, LoadedModule> loaded = new LinkedHashMap<>();
 
+    /// Contains the configuration origin used for each fully loaded module.
+    private final LinkedHashMap<URI, ModuleConfiguration> loadedConfigurations =
+            new LinkedHashMap<>();
+
     /// Contains modules currently being loaded, for cycle detection.
     private final LinkedHashMap<URI, SourceSpan> active = new LinkedHashMap<>();
 
@@ -45,21 +50,24 @@ public final class ModuleRegistry {
 
     /// Loads a module URL, reusing a previously loaded instance when present.
     ///
-    /// @param url       the unresolved module URL
-    /// @param baseUrl   the containing stylesheet URL, or {@code null}
-    /// @param loadSpan  the `@use` span
-    /// @param evaluator the evaluator used to execute newly loaded modules
+    /// @param url           the unresolved module URL
+    /// @param baseUrl       the containing stylesheet URL, or {@code null}
+    /// @param loadSpan      the module directive span
+    /// @param evaluator     the evaluator used to execute newly loaded modules
+    /// @param configuration values available to root {@code !default} declarations
     /// @return the loaded module
     /// @throws EvaluationException if loading or evaluation fails
     public LoadedModule load(
             String url,
             @Nullable URI baseUrl,
             SourceSpan loadSpan,
-            SassEvaluator evaluator
+            SassEvaluator evaluator,
+            ModuleConfiguration configuration
     ) {
         Objects.requireNonNull(url, "url");
         Objects.requireNonNull(loadSpan, "loadSpan");
         Objects.requireNonNull(evaluator, "evaluator");
+        Objects.requireNonNull(configuration, "configuration");
         ImportResult imported;
         try {
             imported = importer.canonicalizeAndLoad(url, baseUrl);
@@ -79,6 +87,19 @@ public final class ModuleRegistry {
         loadedUrls.add(canonical);
         @Nullable LoadedModule existing = loaded.get(canonical);
         if (existing != null) {
+            var originalConfiguration = Objects.requireNonNull(
+                    loadedConfigurations.get(canonical),
+                    "loaded module configuration"
+            );
+            if (configuration.isExplicit()
+                    && !originalConfiguration.sameOriginal(configuration)
+                    && existing.couldHaveBeenConfigured(configuration.names())) {
+                throw new EvaluationException(
+                        "This module was already loaded, so it can't be "
+                                + "configured using \"with\".",
+                        loadSpan
+                );
+            }
             return existing;
         }
         if (active.containsKey(canonical)) {
@@ -91,8 +112,13 @@ public final class ModuleRegistry {
         active.put(canonical, loadSpan);
         try {
             Stylesheet stylesheet = StylesheetParser.parse(imported.source(), imported.syntax());
-            var module = evaluator.executeAsModule(stylesheet, canonical);
+            var module = evaluator.executeAsModule(
+                    stylesheet,
+                    canonical,
+                    configuration
+            );
             loaded.put(canonical, module);
+            loadedConfigurations.put(canonical, configuration);
             return module;
         } finally {
             active.remove(canonical);
@@ -112,6 +138,6 @@ public final class ModuleRegistry {
     ///
     /// @return the loaded URLs in first-seen order
     public @Unmodifiable Set<URI> loadedUrls() {
-        return Set.copyOf(loadedUrls);
+        return Collections.unmodifiableSet(new LinkedHashSet<>(loadedUrls));
     }
 }
