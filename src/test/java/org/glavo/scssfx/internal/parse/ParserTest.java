@@ -171,6 +171,33 @@ final class ParserTest {
         assertFalse(variable.lookingAtIdentifier());
     }
 
+    /// Verifies required whitespace accepts comments and rejects other tokens.
+    @Test
+    void requiresWhitespaceOrComments() {
+        var whitespace = parser(" \tname");
+        whitespace.expectWhitespace(false);
+        assertEquals('n', whitespace.scanner.peek());
+
+        var comment = parser("/* comment */name");
+        comment.expectWhitespace(false);
+        assertEquals('n', comment.scanner.peek());
+
+        assertThrows(ParseException.class, () -> parser("name").expectWhitespace(false));
+    }
+
+    /// Verifies CSS number-prefix detection without consuming input.
+    @Test
+    void detectsNumberPrefixes() {
+        for (var text : new String[]{"0", ".5", "+1", "-1", "+.5", "-.5"}) {
+            var parser = parser(text);
+            assertTrue(parser.lookingAtNumber(), text);
+            assertEquals(0, parser.scanner.position(), text);
+        }
+        for (var text : new String[]{".", "+", "-", "+.x", "name"}) {
+            assertFalse(parser(text).lookingAtNumber(), text);
+        }
+    }
+
     /// Verifies complete identifier matching, escape handling, and restoration.
     @Test
     void scansCompleteIdentifiers() {
@@ -189,6 +216,16 @@ final class ParserTest {
         var wrongCase = parser("URL(");
         assertFalse(wrongCase.scanIdentifier("url", true));
         assertEquals(0, wrongCase.scanner.position());
+
+        var lookahead = parser(".name");
+        assertTrue(lookahead.lookingAtIdentifier(1));
+        assertEquals(0, lookahead.scanner.position());
+
+        var matching = parser("u\\72l(");
+        assertTrue(matching.matchesIdentifier("url"));
+        assertEquals(0, matching.scanner.position());
+        matching.expectIdentifier("url");
+        assertEquals('(', matching.scanner.peek());
     }
 
     /// Verifies declaration terminators and balanced nested delimiters.
@@ -255,6 +292,7 @@ final class ParserTest {
 
         assertEquals("\\31 foo", parser.declarationValue());
         assertEquals(';', parser.scanner.peek());
+        assertEquals("\uD800", parser("\\d800;").declarationValue());
     }
 
     /// Creates a parser for source text without a stable URL.

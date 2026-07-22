@@ -7,6 +7,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayDeque;
 import java.util.Objects;
+import java.util.function.IntPredicate;
 
 /// Provides token-level operations shared by Sass parser variants.
 ///
@@ -53,6 +54,18 @@ class Parser {
         while (CssCharacters.isSpaceOrTab(scanner.peek())) {
             scanner.read();
         }
+    }
+
+    /// Consumes whitespace and requires at least one whitespace unit or comment.
+    ///
+    /// @param consumeNewlines whether an indented parser may consume newlines
+    /// @throws ParseException if no whitespace or comment begins here
+    protected void expectWhitespace(boolean consumeNewlines) {
+        if (scanner.isDone()
+                || !(CssCharacters.isWhitespace(scanner.peek()) || scanComment())) {
+            throw scanner.error("Expected whitespace.");
+        }
+        whitespace(consumeNewlines);
     }
 
     /// Consumes one comment when the scanner is positioned before one.
@@ -127,7 +140,16 @@ class Parser {
     ///
     /// @return whether an identifier begins here
     protected boolean lookingAtIdentifier() {
-        return CssIdentifierParser.lookingAtIdentifier(scanner);
+        return lookingAtIdentifier(0);
+    }
+
+    /// Returns whether a plain CSS identifier begins at a future position.
+    ///
+    /// @param forward the nonnegative number of UTF-16 code units to look ahead
+    /// @return whether an identifier begins at the selected position
+    /// @throws IllegalArgumentException if {@code forward} is negative
+    protected boolean lookingAtIdentifier(int forward) {
+        return CssIdentifierParser.lookingAtIdentifier(scanner, forward);
     }
 
     /// Returns whether an identifier-body code unit begins at the current position.
@@ -175,6 +197,60 @@ class Parser {
             return false;
         }
         return true;
+    }
+
+    /// Tests whether an identifier equals the expected text without consuming it.
+    ///
+    /// Matching ignores ASCII case and accepts escapes in the source identifier.
+    ///
+    /// @param text the expected identifier value
+    /// @return whether the complete identifier matches
+    protected boolean matchesIdentifier(String text) {
+        return matchesIdentifier(text, false);
+    }
+
+    /// Tests whether an identifier equals the expected text without consuming it.
+    ///
+    /// @param text the expected identifier value
+    /// @param caseSensitive whether ASCII case differences are significant
+    /// @return whether the complete identifier matches
+    protected boolean matchesIdentifier(String text, boolean caseSensitive) {
+        var start = scanner.state();
+        var result = scanIdentifier(text, caseSensitive);
+        scanner.restore(start);
+        return result;
+    }
+
+    /// Consumes and requires an identifier with the expected value.
+    ///
+    /// @param text the expected identifier value
+    /// @throws ParseException if the complete identifier does not match
+    protected void expectIdentifier(String text) {
+        expectIdentifier(text, "\"" + text + "\"", false);
+    }
+
+    /// Consumes and requires an identifier with the expected value.
+    ///
+    /// @param text the expected identifier value
+    /// @param name the diagnostic name, including any desired quotation marks
+    /// @param caseSensitive whether ASCII case differences are significant
+    /// @throws ParseException if the complete identifier does not match
+    protected void expectIdentifier(
+            String text,
+            String name,
+            boolean caseSensitive
+    ) {
+        Objects.requireNonNull(text, "text");
+        Objects.requireNonNull(name, "name");
+        var start = scanner.position();
+        for (var index = 0; index < text.length(); index++) {
+            if (!scanIdentChar(text.charAt(index), caseSensitive)) {
+                throw expectedIdentifierError(name, start);
+            }
+        }
+        if (lookingAtIdentifierBody()) {
+            throw expectedIdentifierError(name, start);
+        }
     }
 
     /// Consumes one identifier code unit when it equals an expected value.
@@ -269,6 +345,44 @@ class Parser {
             result = result * 10 + scanner.read() - '0';
         }
         return result;
+    }
+
+    /// Returns whether a CSS number begins at the current position.
+    ///
+    /// @return whether the next code units match the CSS number prefix grammar
+    protected boolean lookingAtNumber() {
+        var first = scanner.peek();
+        if (CssCharacters.isDigit(first)) {
+            return true;
+        }
+        if (first == '.') {
+            return CssCharacters.isDigit(scanner.peek(1));
+        }
+        if (first != '+' && first != '-') {
+            return false;
+        }
+
+        var second = scanner.peek(1);
+        return CssCharacters.isDigit(second)
+                || second == '.' && CssCharacters.isDigit(scanner.peek(2));
+    }
+
+    /// Consumes the next code unit when it satisfies a predicate.
+    ///
+    /// The predicate receives [CssCharacters#END_OF_INPUT] when the scanner is
+    /// at end of input.
+    ///
+    /// @param condition the predicate to test
+    /// @return whether a code unit was consumed
+    /// @throws ParseException if the predicate accepts the end-of-input sentinel
+    protected boolean scanCharIf(IntPredicate condition) {
+        Objects.requireNonNull(condition, "condition");
+        var next = scanner.peek();
+        if (!condition.test(next)) {
+            return false;
+        }
+        scanner.read();
+        return true;
     }
 
     /// Consumes a raw declaration value until a top-level terminator.
@@ -497,7 +611,7 @@ class Parser {
     /// @param opening an opening bracket
     /// @return the corresponding closing bracket
     /// @throws IllegalArgumentException if {@code opening} is not an opening bracket
-    private static int opposite(int opening) {
+    protected static int opposite(int opening) {
         return switch (opening) {
             case '(' -> ')';
             case '{' -> '}';
@@ -527,5 +641,15 @@ class Parser {
         }
         var upperExpected = expected & ~0x20;
         return upperExpected >= 'A' && upperExpected <= 'Z';
+    }
+
+    /// Creates a diagnostic for an expected identifier at a captured position.
+    ///
+    /// @param name the identifier name used in the message
+    /// @param start the identifier start offset
+    /// @return the parse failure
+    private ParseException expectedIdentifierError(String name, int start) {
+        var length = start == scanner.source().length() ? 0 : 1;
+        return scanner.error("Expected " + name + ".", start, length);
     }
 }

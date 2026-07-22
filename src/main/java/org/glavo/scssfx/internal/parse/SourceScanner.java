@@ -67,6 +67,15 @@ final class SourceScanner {
         return position == source.length();
     }
 
+    /// Requires the scanner to be at end of input.
+    ///
+    /// @throws ParseException if an unconsumed code unit remains
+    void expectDone() {
+        if (!isDone()) {
+            throw error("Expected end of input.");
+        }
+    }
+
     /// Returns the next UTF-16 code unit without consuming it.
     ///
     /// @return the next code unit, or [CssCharacters#END_OF_INPUT]

@@ -91,7 +91,17 @@ final class CssIdentifierParser {
     /// @param scanner the source scanner
     /// @return whether a plain CSS identifier begins here
     static boolean lookingAtIdentifier(SourceScanner scanner) {
-        var first = scanner.peek();
+        return lookingAtIdentifier(scanner, 0);
+    }
+
+    /// Returns whether an identifier begins at a future scanner position.
+    ///
+    /// @param scanner the source scanner
+    /// @param forward the nonnegative number of UTF-16 code units to look ahead
+    /// @return whether a plain CSS identifier begins at the selected position
+    /// @throws IllegalArgumentException if {@code forward} is negative
+    static boolean lookingAtIdentifier(SourceScanner scanner, int forward) {
+        var first = scanner.peek(forward);
         if (CssCharacters.isNameStart(first) || first == '\\') {
             return true;
         }
@@ -99,7 +109,7 @@ final class CssIdentifierParser {
             return false;
         }
 
-        var second = scanner.peek(1);
+        var second = scanner.peek(forward + 1);
         return CssCharacters.isNameStart(second) || second == '\\' || second == '-';
     }
 
@@ -190,7 +200,9 @@ final class CssIdentifierParser {
                         scanner.position() - start
                 );
             }
-            return new String(Character.toChars(value));
+            return value <= Character.MAX_VALUE
+                    ? Character.toString((char) value)
+                    : new String(Character.toChars(value));
         }
 
         if (value <= 0x1F || value == 0x7F

@@ -39,6 +39,7 @@ final class CssIdentifierParserTest {
         assertEquals("\\31 foo", CssIdentifierParser.parse("\\31 foo"));
         assertEquals("foo\\.bar", CssIdentifierParser.parse("foo\\2e bar"));
         assertEquals("foo\\.bar", CssIdentifierParser.parse("foo\\.bar"));
+        assertEquals("\uD800", CssIdentifierParser.parse("\\d800"));
     }
 
     /// Verifies identifier detection without exposing parse failures.
