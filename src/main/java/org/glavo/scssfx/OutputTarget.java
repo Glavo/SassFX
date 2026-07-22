@@ -7,5 +7,5 @@ import org.jetbrains.annotations.NotNullByDefault;
 ///
 /// @param <T> the type produced for this target
 @NotNullByDefault
-public sealed interface OutputTarget<T> permits CssTarget, JavaFxCssTarget, BssTarget {
+public sealed interface OutputTarget<T> permits CssTarget, JavaFXCssTarget, BssTarget {
 }

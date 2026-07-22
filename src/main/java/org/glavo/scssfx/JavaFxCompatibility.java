@@ -5,7 +5,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 /// Selects a JavaFX CSS and binary stylesheet compatibility level.
 @NotNullByDefault
-public enum JavaFxCompatibility {
+public enum JavaFXCompatibility {
     /// Targets the binary stylesheet format used by JavaFX 17.
     JAVA_FX_17(6),
 
@@ -18,7 +18,7 @@ public enum JavaFxCompatibility {
     /// Creates a compatibility level for the given binary stylesheet version.
     ///
     /// @param bssVersion the binary stylesheet format version
-    JavaFxCompatibility(int bssVersion) {
+    JavaFXCompatibility(int bssVersion) {
         this.bssVersion = bssVersion;
     }
 

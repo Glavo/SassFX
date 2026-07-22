@@ -14,10 +14,10 @@ import java.util.Objects;
 ///
 /// @param compatibility the JavaFX compatibility level that determines the BSS version
 @NotNullByDefault
-public record BssTarget(JavaFxCompatibility compatibility)
+public record BssTarget(JavaFXCompatibility compatibility)
         implements OutputTarget<@Unmodifiable ByteBuffer> {
     /// The default target compatible with JavaFX 17 BSS version 6.
-    public static final BssTarget DEFAULT = new BssTarget(JavaFxCompatibility.JAVA_FX_17);
+    public static final BssTarget DEFAULT = new BssTarget(JavaFXCompatibility.JAVA_FX_17);
 
     /// Creates a binary stylesheet output target.
     public BssTarget {

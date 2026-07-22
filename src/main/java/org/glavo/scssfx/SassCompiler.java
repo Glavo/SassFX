@@ -158,7 +158,7 @@ public final class SassCompiler {
     /// @param target the unsupported target
     /// @return the compilation exception
     private static SassCompilationException unsupportedTarget(OutputTarget<?> target) {
-        var label = target instanceof JavaFxCssTarget
+        var label = target instanceof JavaFXCssTarget
                 ? "JavaFX CSS"
                 : target instanceof BssTarget ? "BSS" : "CSS";
         return compilationFailure(label + " output isn't supported.", null);

@@ -25,10 +25,10 @@ final class OutputTargetTest {
 
     /// Verifies the JavaFX target defaults.
     @Test
-    void providesJavaFxDefaults() {
-        var target = JavaFxCssTarget.DEFAULT;
+    void providesJavaFXDefaults() {
+        var target = JavaFXCssTarget.DEFAULT;
 
-        assertEquals(JavaFxCompatibility.JAVA_FX_17, target.compatibility());
+        assertEquals(JavaFXCompatibility.JAVA_FX_17, target.compatibility());
         assertEquals(OutputStyle.EXPANDED, target.style());
     }
 
@@ -39,7 +39,7 @@ final class OutputTargetTest {
         var bss = assertInstanceOf(BssTarget.class, target);
 
         assertEquals(6, bss.version());
-        assertEquals(9, new BssTarget(JavaFxCompatibility.JAVA_FX_27).version());
+        assertEquals(9, new BssTarget(JavaFXCompatibility.JAVA_FX_27).version());
     }
 
     /// Verifies that required target components reject null.
@@ -49,11 +49,11 @@ final class OutputTargetTest {
         assertThrows(NullPointerException.class, () -> new CssTarget(null, true));
         assertThrows(
                 NullPointerException.class,
-                () -> new JavaFxCssTarget(null, OutputStyle.EXPANDED)
+                () -> new JavaFXCssTarget(null, OutputStyle.EXPANDED)
         );
         assertThrows(
                 NullPointerException.class,
-                () -> new JavaFxCssTarget(JavaFxCompatibility.JAVA_FX_17, null)
+                () -> new JavaFXCssTarget(JavaFXCompatibility.JAVA_FX_17, null)
         );
         assertThrows(NullPointerException.class, () -> new BssTarget(null));
     }

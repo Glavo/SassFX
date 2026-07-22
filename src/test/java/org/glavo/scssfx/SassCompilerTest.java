@@ -194,7 +194,7 @@ final class SassCompilerTest {
                 "JavaFX CSS output isn't supported.",
                 assertThrows(
                         SassCompilationException.class,
-                        () -> compiler.compile(source, JavaFxCssTarget.DEFAULT)
+                        () -> compiler.compile(source, JavaFXCssTarget.DEFAULT)
                 ).getMessage()
         );
         assertEquals(

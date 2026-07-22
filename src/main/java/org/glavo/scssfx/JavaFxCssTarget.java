@@ -10,16 +10,16 @@ import java.util.Objects;
 /// @param compatibility the JavaFX compatibility level
 /// @param style the formatting style applied to the generated stylesheet
 @NotNullByDefault
-public record JavaFxCssTarget(
-        JavaFxCompatibility compatibility,
+public record JavaFXCssTarget(
+        JavaFXCompatibility compatibility,
         OutputStyle style
 ) implements OutputTarget<String> {
     /// The default expanded target compatible with JavaFX 17.
-    public static final JavaFxCssTarget DEFAULT =
-            new JavaFxCssTarget(JavaFxCompatibility.JAVA_FX_17, OutputStyle.EXPANDED);
+    public static final JavaFXCssTarget DEFAULT =
+            new JavaFXCssTarget(JavaFXCompatibility.JAVA_FX_17, OutputStyle.EXPANDED);
 
     /// Creates a JavaFX CSS output target.
-    public JavaFxCssTarget {
+    public JavaFXCssTarget {
         Objects.requireNonNull(compatibility, "compatibility");
         Objects.requireNonNull(style, "style");
     }
