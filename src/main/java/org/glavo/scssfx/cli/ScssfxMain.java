@@ -1,14 +1,25 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.cli;
 
+import org.glavo.scssfx.CompileResult;
+import org.glavo.scssfx.CssTarget;
+import org.glavo.scssfx.DiagnosticSeverity;
+import org.glavo.scssfx.SassCompilationException;
+import org.glavo.scssfx.SassCompiler;
+import org.glavo.scssfx.SassFileSource;
+import org.glavo.scssfx.Syntax;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 import picocli.CommandLine.Spec;
 import picocli.CommandLine.Model.CommandSpec;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,9 +45,17 @@ public final class ScssfxMain implements Callable<Integer> {
     @Parameters(
             arity = "0..*",
             paramLabel = "INPUT",
-            description = "A stylesheet file or directory to compile."
+            description = "A stylesheet file to compile, optionally followed by an output CSS path."
     )
     private final List<Path> inputs = new ArrayList<>();
+
+    /// The optional output path selected with {@code -o}/{@code --output}.
+    @Option(
+            names = {"-o", "--output"},
+            paramLabel = "FILE",
+            description = "Write CSS to FILE instead of stdout."
+    )
+    private @Nullable Path output;
 
     /// The command specification injected by Picocli before invocation.
     @Spec
@@ -46,22 +65,80 @@ public final class ScssfxMain implements Callable<Integer> {
     public ScssfxMain() {
     }
 
-    /// Validates the initial command invocation.
+    /// Compiles one SCSS file to stdout or an output path.
     ///
-    /// @return status {@code 2} when no input is supplied, or status {@code 1}
-    /// while the compilation engine is unavailable
+    /// @return status {@code 0} on success, {@code 2} for usage errors, or
+    /// {@code 1} for compilation and IO failures
     @Override
     public Integer call() {
         var commandLine = commandLine();
+        var err = commandLine.getErr();
+        var out = commandLine.getOut();
+
         if (inputs.isEmpty()) {
-            commandLine.usage(commandLine.getOut());
+            commandLine.usage(out);
+            return USAGE_EXIT_STATUS;
+        }
+        if (inputs.size() > 2) {
+            err.println("scssfx: only one input and one optional output path are supported");
+            return USAGE_EXIT_STATUS;
+        }
+        if (inputs.size() == 2 && output != null) {
+            err.println("scssfx: cannot combine a positional output path with -o/--output");
             return USAGE_EXIT_STATUS;
         }
 
-        commandLine.getErr().println(
-                "scssfx: the Sass compilation engine is not available in this build"
-        );
-        return FAILURE_EXIT_STATUS;
+        var input = inputs.get(0);
+        @Nullable Path destination = output != null
+                ? output
+                : inputs.size() == 2 ? inputs.get(1) : null;
+
+        try {
+            if (!Files.isRegularFile(input)) {
+                err.println("scssfx: input is not a file: " + input);
+                return FAILURE_EXIT_STATUS;
+            }
+            @Nullable Syntax syntax = Syntax.forPath(input);
+            if (syntax != Syntax.SCSS) {
+                err.println("scssfx: only .scss input is supported in this build");
+                return FAILURE_EXIT_STATUS;
+            }
+
+            CompileResult<String> result = new SassCompiler().compile(
+                    new SassFileSource(input, Syntax.SCSS),
+                    CssTarget.DEFAULT
+            );
+            for (var diagnostic : result.diagnostics()) {
+                if (diagnostic.severity() != DiagnosticSeverity.ERROR) {
+                    err.println(DiagnosticPrinter.format(diagnostic));
+                }
+            }
+
+            var css = result.output();
+            if (destination == null) {
+                out.print(css);
+                if (!css.isEmpty() && !css.endsWith("\n")) {
+                    out.println();
+                }
+            } else {
+                @Nullable Path parent = destination.getParent();
+                if (parent != null) {
+                    Files.createDirectories(parent);
+                }
+                var text = css.endsWith("\n") || css.isEmpty() ? css : css + "\n";
+                Files.writeString(destination, text, StandardCharsets.UTF_8);
+            }
+            return 0;
+        } catch (SassCompilationException failure) {
+            err.println(DiagnosticPrinter.format(failure));
+            return FAILURE_EXIT_STATUS;
+        } catch (IOException failure) {
+            err.println("scssfx: " + Objects.requireNonNullElse(
+                    failure.getMessage(),
+                    failure.getClass().getSimpleName()
+            ));
+            return FAILURE_EXIT_STATUS;
+        }
     }
 
     /// Executes the command and terminates the process with its status.

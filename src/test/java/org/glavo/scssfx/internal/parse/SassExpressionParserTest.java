@@ -503,7 +503,7 @@ final class SassExpressionParserTest {
         assertFailure("#12", "");
         assertFailure("#12g", "g");
         assertFailure("#12345", "");
-        assertFailure("if(true: red; else: blue)", "if");
+        assertFailure("if(true: red; else: blue)", ":");
         assertFailure("red.$value", "$");
     }
 

@@ -76,6 +76,12 @@ public interface SassExpressionVisitor<R> {
     /// @return the visit result
     R visitInterpolatedFunctionExpression(InterpolatedFunctionExpression expression);
 
+    /// Visits a short-circuiting legacy `if()` expression.
+    ///
+    /// @param expression the expression to visit
+    /// @return the visit result
+    R visitLegacyIfExpression(LegacyIfExpression expression);
+
     /// Visits a map expression.
     ///
     /// @param expression the expression to visit

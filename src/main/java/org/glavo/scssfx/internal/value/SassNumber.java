@@ -196,6 +196,72 @@ public final class SassNumber implements SassValue {
         return integer;
     }
 
+    /// Returns this number when it has no units.
+    ///
+    /// @return this unitless number
+    /// @throws SassValueException if this number has units
+    public SassNumber assertNoUnits() {
+        if (!isUnitless()) {
+            throw new SassValueException("Expected " + this + " to have no units.");
+        }
+        return this;
+    }
+
+    /// Returns the unit string used by Sass math functions.
+    ///
+    /// @return the unit text, or the empty string when unitless
+    public String unitString() {
+        if (isUnitless()) {
+            return "";
+        }
+        if (numeratorUnits.size() == 1 && denominatorUnits.isEmpty()) {
+            return numeratorUnits.get(0);
+        }
+        var result = new StringBuilder();
+        for (var index = 0; index < numeratorUnits.size(); index++) {
+            if (index > 0) {
+                result.append('*');
+            }
+            result.append(numeratorUnits.get(index));
+        }
+        for (var unit : denominatorUnits) {
+            result.append('/').append(unit);
+        }
+        return result.toString();
+    }
+
+    /// Returns whether this number is unit-compatible with another number.
+    ///
+    /// @param other the other number
+    /// @return whether the numbers may participate in the same math operation
+    public boolean isComparableTo(SassNumber other) {
+        Objects.requireNonNull(other, "other");
+        if (isUnitless() || other.isUnitless()) {
+            return true;
+        }
+        try {
+            coerceValueTo(other, numeratorUnits, denominatorUnits);
+            return true;
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
+    }
+
+    /// Returns this magnitude converted into another number's units when needed.
+    ///
+    /// @param other the number providing target units for comparison or min/max
+    /// @return the magnitude expressed in {@code other}'s units when both are unitful
+    public double valueInUnitsOf(SassNumber other) {
+        if (isUnitless() || other.isUnitless()) {
+            return value;
+        }
+        try {
+            return coerceValueTo(this, other.numeratorUnits, other.denominatorUnits);
+        } catch (IllegalArgumentException ignored) {
+            throw new SassValueException(this + " and " + other + " have incompatible units.");
+        }
+    }
+
     /// Returns this number coerced into the requested unit structure.
     ///
     /// A unitless number adopts the target units without changing magnitude.

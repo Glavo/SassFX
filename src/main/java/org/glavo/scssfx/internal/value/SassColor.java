@@ -113,6 +113,14 @@ public final class SassColor implements SassValue {
         );
     }
 
+    /// Returns this color.
+    ///
+    /// @return this color
+    @Override
+    public SassColor assertColor() {
+        return this;
+    }
+
     /// Returns the red channel.
     ///
     /// @return the un-clamped channel value

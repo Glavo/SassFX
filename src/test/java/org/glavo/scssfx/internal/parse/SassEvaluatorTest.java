@@ -354,15 +354,11 @@ final class SassEvaluatorTest {
         assertEquals("$later", diagnosticSpan(failure.primaryDiagnostic().span()).text());
     }
 
-    /// Verifies unsupported callable evaluation fails explicitly at the call span.
+    /// Verifies unknown functions fall back to plain-CSS serialization.
     @Test
-    void rejectsUnsupportedFunctionCalls() {
-        assertExpressionFailure("fn(1)", "Function calls aren't supported.", "fn(1)");
-        assertExpressionFailure(
-                "f#{n}(1)",
-                "Function calls aren't supported.",
-                "f#{n}(1)"
-        );
+    void serializesUnknownFunctionCallsAsPlainCss() {
+        assertEquals(new SassString("fn(1)", false), evaluate("fn(1)"));
+        assertEquals(new SassString("fn(1)", false), evaluate("f#{n}(1)"));
     }
 
     /// Parses and evaluates a standalone Sass expression.

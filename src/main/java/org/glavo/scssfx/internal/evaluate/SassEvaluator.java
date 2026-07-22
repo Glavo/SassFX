@@ -13,10 +13,12 @@ import org.glavo.scssfx.internal.ast.EachRule;
 import org.glavo.scssfx.internal.ast.ElseClause;
 import org.glavo.scssfx.internal.ast.ExpressionInterpolationPart;
 import org.glavo.scssfx.internal.ast.ForRule;
+import org.glavo.scssfx.internal.ast.ArgumentList;
 import org.glavo.scssfx.internal.ast.FunctionExpression;
 import org.glavo.scssfx.internal.ast.IfRule;
 import org.glavo.scssfx.internal.ast.InterpolatedFunctionExpression;
 import org.glavo.scssfx.internal.ast.Interpolation;
+import org.glavo.scssfx.internal.ast.LegacyIfExpression;
 import org.glavo.scssfx.internal.ast.ListExpression;
 import org.glavo.scssfx.internal.ast.LoudComment;
 import org.glavo.scssfx.internal.ast.MapExpression;
@@ -36,7 +38,11 @@ import org.glavo.scssfx.internal.ast.UnaryOperationExpression;
 import org.glavo.scssfx.internal.ast.VariableDeclaration;
 import org.glavo.scssfx.internal.ast.VariableExpression;
 import org.glavo.scssfx.internal.ast.WhileRule;
+import org.glavo.scssfx.internal.callable.BuiltInCallable;
+import org.glavo.scssfx.internal.callable.Callable;
+import org.glavo.scssfx.internal.callable.PlainCssCallable;
 import org.glavo.scssfx.internal.css.CssComment;
+import org.glavo.scssfx.internal.function.BuiltInFunctions;
 import org.glavo.scssfx.internal.css.CssDeclaration;
 import org.glavo.scssfx.internal.css.CssNode;
 import org.glavo.scssfx.internal.css.CssParentNode;
@@ -60,6 +66,7 @@ import org.jetbrains.annotations.Unmodifiable;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
 
@@ -79,6 +86,10 @@ public final class SassEvaluator implements
 
     /// Contains the stable deprecation identifier for slash division.
     private static final String SLASH_DIV_CODE = "slash-div";
+
+    /// Contains the global built-in function table.
+    private static final Map<String, BuiltInCallable> BUILT_IN_FUNCTIONS =
+            BuiltInFunctions.global();
 
     /// Contains variable bindings for this evaluation.
     private final Environment environment;
@@ -659,26 +670,66 @@ public final class SassEvaluator implements
         return new SassList(contents, expression.separator(), expression.hasBrackets());
     }
 
-    /// Rejects static function calls because this evaluator has no callable environment.
+    /// Resolves and invokes a statically named function.
+    ///
+    /// Built-in functions are consulted first. Unknown un-namespaced functions
+    /// fall back to plain-CSS serialization. Namespaced lookups fail because
+    /// this evaluator has no module registry.
     ///
     /// @param expression the function expression
-    /// @return no value
-    /// @throws EvaluationException always
+    /// @return the function result
+    /// @throws EvaluationException if invocation fails
     @Override
     public SassValue visitFunctionExpression(FunctionExpression expression) {
-        throw new EvaluationException("Function calls aren't supported.", expression.span());
+        if (expression.namespace() != null) {
+            throw new EvaluationException(
+                    "There is no module with the namespace \"" + expression.namespace() + "\".",
+                    expression.span()
+            );
+        }
+        @Nullable Callable callable = BUILT_IN_FUNCTIONS.get(expression.name());
+        if (callable == null) {
+            callable = new PlainCssCallable(expression.originalName());
+        }
+        return runCallable(callable, expression.arguments(), expression.span());
     }
 
-    /// Rejects interpolated function calls because this evaluator has no callable environment.
+    /// Serializes an interpolated function call as plain CSS text.
     ///
     /// @param expression the interpolated function expression
-    /// @return no value
-    /// @throws EvaluationException always
+    /// @return an unquoted CSS function string
     @Override
     public SassValue visitInterpolatedFunctionExpression(
             InterpolatedFunctionExpression expression
     ) {
-        throw new EvaluationException("Function calls aren't supported.", expression.span());
+        var name = performInterpolation(expression.name());
+        return runCallable(
+                new PlainCssCallable(name),
+                expression.arguments(),
+                expression.span()
+        );
+    }
+
+    /// Evaluates the short-circuiting legacy `if()` expression.
+    ///
+    /// @param expression the if expression
+    /// @return the selected branch value
+    @Override
+    public SassValue visitLegacyIfExpression(LegacyIfExpression expression) {
+        var arguments = expression.arguments();
+        if (!arguments.named().isEmpty()
+                || arguments.rest() != null
+                || arguments.positional().size() != 3) {
+            throw new EvaluationException(
+                    "Only 3 positional arguments are allowed in if().",
+                    expression.span()
+            );
+        }
+        var condition = evaluate(arguments.positional().get(0));
+        var selected = condition.isTruthy()
+                ? arguments.positional().get(1)
+                : arguments.positional().get(2);
+        return evaluate(selected);
     }
 
     /// Evaluates map entries and rejects duplicate semantic keys.
@@ -866,6 +917,60 @@ public final class SassEvaluator implements
     /// @return whether the list view is empty
     private static boolean isEmptyList(SassValue value) {
         return value.asList().isEmpty();
+    }
+
+    /// Evaluates arguments and invokes a callable.
+    ///
+    /// @param callable  the callable to invoke
+    /// @param arguments the unevaluated argument list
+    /// @param span      the invocation span
+    /// @return the callable result
+    private SassValue runCallable(
+            Callable callable,
+            ArgumentList arguments,
+            SourceSpan span
+    ) {
+        if (!arguments.named().isEmpty() || arguments.keywordRest() != null) {
+            throw new EvaluationException(
+                    "Named arguments aren't supported.",
+                    span
+            );
+        }
+
+        var positional = new ArrayList<SassValue>();
+        for (var argument : arguments.positional()) {
+            positional.add(evaluate(argument).withoutSlash());
+        }
+        if (arguments.rest() != null) {
+            var rest = evaluate(arguments.rest()).withoutSlash();
+            positional.addAll(rest.asList());
+        }
+
+        if (callable instanceof BuiltInCallable builtIn) {
+            return valueOperation(span, () -> builtIn.invoke(List.copyOf(positional)));
+        }
+        if (callable instanceof PlainCssCallable plainCss) {
+            return valueOperation(span, () -> serializePlainCss(plainCss.name(), positional));
+        }
+        throw new IllegalStateException("unsupported callable: " + callable.getClass().getName());
+    }
+
+    /// Serializes a plain-CSS function call.
+    ///
+    /// @param name       the function name
+    /// @param positional the evaluated arguments
+    /// @return an unquoted CSS function string
+    /// @throws SassValueException if an argument cannot be represented in CSS
+    private static SassString serializePlainCss(String name, List<SassValue> positional) {
+        var result = new StringBuilder(name).append('(');
+        for (var index = 0; index < positional.size(); index++) {
+            if (index > 0) {
+                result.append(", ");
+            }
+            result.append(positional.get(index).toCssString());
+        }
+        result.append(')');
+        return new SassString(result.toString(), false);
     }
 
     /// Executes children inside a flow-control scope.

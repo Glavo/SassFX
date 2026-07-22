@@ -29,6 +29,14 @@ public record SassString(String text, boolean hasQuotes) implements SassValue {
         return !hasQuotes && text.isEmpty();
     }
 
+    /// Returns this string.
+    ///
+    /// @return this string
+    @Override
+    public SassString assertString() {
+        return this;
+    }
+
     /// Concatenates another value while retaining this string's quote style.
     ///
     /// @param other the appended value

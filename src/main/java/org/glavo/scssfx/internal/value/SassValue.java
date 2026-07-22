@@ -241,6 +241,51 @@ public sealed interface SassValue permits
         throw new SassValueException(this + " is not a number.");
     }
 
+    /// Returns this value when it is a Sass string.
+    ///
+    /// @return this string
+    /// @throws SassValueException if this value is not a string
+    default SassString assertString() {
+        throw new SassValueException(this + " is not a string.");
+    }
+
+    /// Returns this value when it is a Sass color.
+    ///
+    /// @return this color
+    /// @throws SassValueException if this value is not a color
+    default SassColor assertColor() {
+        throw new SassValueException(this + " is not a color.");
+    }
+
+    /// Converts a Sass list index into a zero-based Java list index.
+    ///
+    /// Positive indexes start at one. Negative indexes count from the end.
+    ///
+    /// @param sassIndex the Sass index value
+    /// @param length    the list length
+    /// @return the zero-based index
+    /// @throws SassValueException if the index is invalid
+    default int sassIndexToListIndex(SassValue sassIndex, int length) {
+        var index = sassIndex.assertNumber().assertInt();
+        if (index == 0) {
+            throw new SassValueException("List index may not be 0.");
+        }
+        if (index > 0) {
+            if (index > length) {
+                throw new SassValueException(
+                        "Invalid index " + index + " for a list with " + length + " elements."
+                );
+            }
+            return index - 1;
+        }
+        if (index < -length) {
+            throw new SassValueException(
+                    "Invalid index " + index + " for a list with " + length + " elements."
+            );
+        }
+        return length + index;
+    }
+
     /// Creates the standard undefined-operation failure for two operands.
     ///
     /// @param operator the Sass operator spelling

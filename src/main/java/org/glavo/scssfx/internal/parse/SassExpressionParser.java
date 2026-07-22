@@ -13,6 +13,7 @@ import org.glavo.scssfx.internal.ast.FunctionExpression;
 import org.glavo.scssfx.internal.ast.Interpolation;
 import org.glavo.scssfx.internal.ast.InterpolationBuffer;
 import org.glavo.scssfx.internal.ast.InterpolatedFunctionExpression;
+import org.glavo.scssfx.internal.ast.LegacyIfExpression;
 import org.glavo.scssfx.internal.ast.ListExpression;
 import org.glavo.scssfx.internal.ast.MapEntry;
 import org.glavo.scssfx.internal.ast.MapExpression;
@@ -1020,11 +1021,10 @@ class SassExpressionParser extends Parser {
 
         @Nullable String lower = null;
         if (plain != null) {
-            if (plain.equalsIgnoreCase("if") && scanner.peek() == '(') {
-                throw scanner.error(
-                        "If expressions are not available.",
-                        identifier.span().start().offset(),
-                        identifier.span().text().length()
+            if (plain.equals("if") && scanner.peek() == '(') {
+                return new LegacyIfExpression(
+                        argumentInvocation(false),
+                        scanner.spanFrom(start)
                 );
             }
             if (plain.equals("not")) {
