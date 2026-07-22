@@ -48,6 +48,42 @@ $theme: map.set((size: 4px), size, math.div(12px, 3));
   slash: 1px / 2px;
   round: -2;
 }
+<===> modules/standard-built-ins/input.scss
+@use "sass:color";
+@use "sass:map";
+@use "sass:meta";
+@use "sass:string";
+
+@function keyword-map($args...) {
+  @return meta.keywords($args);
+}
+
+@function argument-list-type($args...) {
+  $keywords: meta.keywords($args);
+  @return meta.type-of($args);
+}
+
+$values: keyword-map($tone: #123456);
+
+.item {
+  text: string.slice("abcd", 2, -2);
+  inserted: string.insert("abcd", "X", -2);
+  split: string.split("a,b,c", ",", 1);
+  tone: map.get($values, tone);
+  kind: argument-list-type($flag: true);
+  alpha: color.alpha(rgba(0, 0, 0, 0.5));
+  same: color.same(#123, #112233);
+}
+<===> modules/standard-built-ins/output.css
+.item {
+  text: "bc";
+  inserted: "abcXd";
+  split: ["a", "b,c"];
+  tone: #123456;
+  kind: arglist;
+  alpha: 0.5;
+  same: true;
+}
 <===> diagnostics/deprecations/input.scss
 a {
   $value: 1 !global;

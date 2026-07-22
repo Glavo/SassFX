@@ -88,6 +88,95 @@ final class BuiltInModuleTest {
         assertEquals(Set.of(), result.loadedUrls());
     }
 
+    /// Evaluates the first string, legacy color, and static meta module APIs.
+    @Test
+    void evaluatesStandardBuiltInModuleApisWithoutLoadingStylesheets() throws Exception {
+        var result = compile(
+                """
+                        @use "sass:color";
+                        @use "sass:map";
+                        @use "sass:meta";
+                        @use "sass:string";
+
+                        @function collect($args...) {
+                          @return meta.keywords($args);
+                        }
+
+                        @function argument-type($args...) {
+                          $ignored: meta.keywords($args);
+                          @return meta.type-of($args);
+                        }
+
+                        $values: collect($tone: #123456, $gap: 2px);
+
+                        .card {
+                          inserted: string.insert("A\uD83D\uDE00B", "X", 3);
+                          negative: string.insert("ab", "X", -2);
+                          slice: string.slice("A\uD83D\uDE00B", -2, -1);
+                          zero-start: string.length(string.slice("abc", 0));
+                          past-end: string.length(string.slice("abc", 6));
+                          position: string.index("A\uD83D\uDE00B", "\uD83D\uDE00");
+                          split: string.split("a,b,c", ",", 1);
+                          tone: map.get($values, tone);
+                          gap: map.get($values, gap);
+                          arglist: argument-type($unused: true);
+                          inspected: meta.inspect($values);
+                          red: color.red(map.get($values, tone));
+                          alpha: color.alpha(rgba(0, 0, 0, 0.25));
+                          same: color.same(#123, #112233);
+                          filter: color.opacity(0.5);
+                        }
+                        """
+        );
+
+        assertEquals(
+                """
+                        @charset "UTF-8";
+                        .card {
+                          inserted: "A\uD83D\uDE00XB";
+                          negative: "aXb";
+                          slice: "\uD83D\uDE00B";
+                          zero-start: 3;
+                          past-end: 0;
+                          position: 2;
+                          split: ["a", "b,c"];
+                          tone: #123456;
+                          gap: 2px;
+                          arglist: arglist;
+                          inspected: (tone: #123456, gap: 2px);
+                          red: 18;
+                          alpha: 0.25;
+                          same: true;
+                          filter: opacity(0.5);
+                        }""",
+                result.output()
+        );
+        assertEquals(Set.of(), result.loadedUrls());
+    }
+
+    /// Reports invalid static meta and string module arguments precisely.
+    @Test
+    void rejectsInvalidStandardBuiltInModuleArguments() {
+        assertEquals(
+                "$args: 1 is not an argument list.",
+                assertThrows(
+                        SassCompilationException.class,
+                        () -> compile(
+                                "@use \"sass:meta\"; a { value: meta.keywords(1); }"
+                        )
+                ).getMessage()
+        );
+        assertEquals(
+                "$limit: Must be 1 or greater, was 0.",
+                assertThrows(
+                        SassCompilationException.class,
+                        () -> compile(
+                                "@use \"sass:string\"; a { value: string.split(\"a\", \"\", 0); }"
+                        )
+                ).getMessage()
+        );
+    }
+
     /// Forwards filtered built-in functions while excluding built-in URLs from the load result.
     @Test
     void forwardsBuiltInModulesWithoutAddingBuiltInUrls(@TempDir Path directory) throws Exception {

@@ -23,6 +23,12 @@
           "loadedUrls": ["input.scss"]
         },
         {
+          "directory": "modules/standard-built-ins",
+          "action": "run",
+          "category": "BUILT_IN_MODULES",
+          "loadedUrls": ["input.scss"]
+        },
+        {
           "directory": "diagnostics/deprecations",
           "action": "run",
           "category": "DIAGNOSTICS",

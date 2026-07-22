@@ -37,6 +37,15 @@ public final class BuiltInModules {
     /// Identifies the canonical map module URL.
     private static final URI MAP_URL = URI.create("sass:map");
 
+    /// Identifies the canonical string module URL.
+    private static final URI STRING_URL = URI.create("sass:string");
+
+    /// Identifies the canonical color module URL.
+    private static final URI COLOR_URL = URI.create("sass:color");
+
+    /// Identifies the canonical meta module URL.
+    private static final URI META_URL = URI.create("sass:meta");
+
     /// Identifies the shared zero-length source location for synthetic modules.
     private static final SourceLocation ORIGIN = new SourceLocation(0, 0, 0);
 
@@ -49,6 +58,9 @@ public final class BuiltInModules {
         catalog.put(MATH_URL, createMathModule());
         catalog.put(LIST_URL, createModule(LIST_URL, Map.of(), BuiltInFunctions.listModule()));
         catalog.put(MAP_URL, createModule(MAP_URL, Map.of(), BuiltInFunctions.mapModule()));
+        catalog.put(STRING_URL, createModule(STRING_URL, Map.of(), BuiltInFunctions.stringModule()));
+        catalog.put(COLOR_URL, createModule(COLOR_URL, Map.of(), BuiltInFunctions.colorModule()));
+        catalog.put(META_URL, createModule(META_URL, Map.of(), BuiltInFunctions.metaModule()));
         modules = Collections.unmodifiableMap(catalog);
     }
 

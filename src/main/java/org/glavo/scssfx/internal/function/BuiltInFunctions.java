@@ -311,6 +311,79 @@ public final class BuiltInFunctions {
         return freeze(functions);
     }
 
+    /// Returns the functions exported by the {@code sass:string} module.
+    ///
+    /// @return an immutable string function table
+    public static @Unmodifiable Map<String, BuiltInCallable> stringModule() {
+        var global = global();
+        var functions = new LinkedHashMap<String, BuiltInCallable>();
+        moduleFunction(functions, global, "quote", "quote");
+        moduleFunction(functions, global, "unquote", "unquote");
+        moduleFunction(functions, global, "str-length", "length");
+        moduleFunction(functions, global, "str-index", "index");
+        moduleFunction(functions, global, "str-slice", "slice");
+        moduleFunction(functions, global, "to-upper-case", "to-upper-case");
+        moduleFunction(functions, global, "to-lower-case", "to-lower-case");
+        moduleFunction(functions, global, "unique-id", "unique-id");
+        register(functions, BuiltInCallable.of(
+                "insert",
+                List.of("string", "insert", "index"),
+                BuiltInFunctions::strInsert
+        ));
+        register(functions, BuiltInCallable.of(
+                "split",
+                List.of(
+                        Param.required("string"),
+                        Param.required("separator"),
+                        Param.optional("limit", SassNull.NULL)
+                ),
+                2,
+                BuiltInFunctions::strSplit
+        ));
+        return freeze(functions);
+    }
+
+    /// Returns the legacy RGB functions exported by the {@code sass:color} module.
+    ///
+    /// The current color value model represents only legacy RGB colors, so this
+    /// table intentionally excludes APIs that require additional color spaces.
+    ///
+    /// @return an immutable legacy color function table
+    public static @Unmodifiable Map<String, BuiltInCallable> colorModule() {
+        var global = global();
+        var functions = new LinkedHashMap<String, BuiltInCallable>();
+        moduleFunction(functions, global, "red", "red");
+        moduleFunction(functions, global, "green", "green");
+        moduleFunction(functions, global, "blue", "blue");
+        moduleFunction(functions, global, "alpha", "alpha");
+        moduleFunction(functions, global, "opacity", "opacity");
+        register(functions, BuiltInCallable.of(
+                "same",
+                List.of("color1", "color2"),
+                BuiltInFunctions::colorSame
+        ));
+        return freeze(functions);
+    }
+
+    /// Returns the static introspection functions exported by {@code sass:meta}.
+    ///
+    /// Functions that need evaluator state are intentionally not exported until
+    /// the callable model can provide that context.
+    ///
+    /// @return an immutable static meta function table
+    public static @Unmodifiable Map<String, BuiltInCallable> metaModule() {
+        var global = global();
+        var functions = new LinkedHashMap<String, BuiltInCallable>();
+        moduleFunction(functions, global, "inspect", "inspect");
+        moduleFunction(functions, global, "type-of", "type-of");
+        register(functions, BuiltInCallable.of(
+                "keywords",
+                List.of("args"),
+                BuiltInFunctions::keywords
+        ));
+        return freeze(functions);
+    }
+
     /// Adds a global callable to a module map under its module-local name.
     ///
     /// @param destination the module function map
@@ -477,6 +550,10 @@ public final class BuiltInFunctions {
         };
     }
 
+    /// Returns the Sass type name for one value.
+    ///
+    /// @param args the one bound value argument
+    /// @return an unquoted Sass type name
     private static SassValue typeOf(List<SassValue> args) {
         var value = args.get(0);
         String type;
@@ -492,7 +569,9 @@ public final class BuiltInFunctions {
             type = "color";
         } else if (value instanceof SassMap) {
             type = "map";
-        } else if (value instanceof SassList || value instanceof SassArgumentList) {
+        } else if (value instanceof SassArgumentList) {
+            type = "arglist";
+        } else if (value instanceof SassList) {
             type = "list";
         } else {
             throw new AssertionError("unexpected value type: " + value.getClass().getName());
@@ -500,6 +579,10 @@ public final class BuiltInFunctions {
         return new SassString(type, false);
     }
 
+    /// Returns the inspect serialization for one value.
+    ///
+    /// @param args the one bound value argument
+    /// @return an unquoted string containing the value representation
     private static SassValue inspect(List<SassValue> args) {
         return new SassString(args.get(0).toString(), false);
     }
@@ -803,28 +886,132 @@ public final class BuiltInFunctions {
                 : SassNumber.of(text.codePointCount(0, index) + 1, null);
     }
 
+    /// Inserts one string at a Sass string index.
+    ///
+    /// Positive indexes insert before the indexed code point. Negative indexes
+    /// insert after the indexed code point counted from the end.
+    ///
+    /// @param args the string, inserted string, and unitless integer index
+    /// @return the combined string with the original quote state
+    private static SassValue strInsert(List<SassValue> args) {
+        var string = args.get(0).assertString();
+        var inserted = args.get(1).assertString();
+        var text = string.text();
+        var length = text.codePointCount(0, text.length());
+        var index = args.get(2).assertNumber().assertNoUnits().assertInt();
+        var codePointIndex = index < 0
+                ? Math.max(length + index + 1, 0)
+                : index == 0 ? 0 : Math.min(index - 1, length);
+        var offset = text.offsetByCodePoints(0, codePointIndex);
+        return new SassString(
+                text.substring(0, offset) + inserted.text() + text.substring(offset),
+                string.hasQuotes()
+        );
+    }
+
+    /// Splits one string into a bracketed comma-separated list.
+    ///
+    /// @param args the string, separator string, and optional split limit
+    /// @return a bracketed list that retains the source string quote state
+    private static SassValue strSplit(List<SassValue> args) {
+        var string = args.get(0).assertString();
+        var separator = args.get(1).assertString();
+        @Nullable Integer limit = splitLimit(args.get(2));
+        var text = string.text();
+        if (text.isEmpty()) {
+            return new SassList(List.of(), ListSeparator.COMMA, true);
+        }
+
+        var contents = new ArrayList<SassValue>();
+        if (separator.text().isEmpty()) {
+            for (var offset = 0; offset < text.length(); ) {
+                var codePoint = text.codePointAt(offset);
+                contents.add(new SassString(
+                        new String(Character.toChars(codePoint)),
+                        string.hasQuotes()
+                ));
+                offset += Character.charCount(codePoint);
+            }
+            return new SassList(contents, ListSeparator.COMMA, true);
+        }
+
+        var start = 0;
+        var splits = 0;
+        while (limit == null || splits < limit) {
+            var match = text.indexOf(separator.text(), start);
+            if (match < 0) {
+                break;
+            }
+            contents.add(new SassString(text.substring(start, match), string.hasQuotes()));
+            start = match + separator.text().length();
+            splits++;
+        }
+        contents.add(new SassString(text.substring(start), string.hasQuotes()));
+        return new SassList(contents, ListSeparator.COMMA, true);
+    }
+
+    /// Validates the optional split limit.
+    ///
+    /// @param value the bound optional limit argument
+    /// @return the maximum separator count, or {@code null} when unlimited
+    private static @Nullable Integer splitLimit(SassValue value) {
+        if (value instanceof SassNull) {
+            return null;
+        }
+        var number = value.assertNumber().assertNoUnits();
+        var limit = number.assertInt();
+        if (limit < 1) {
+            throw new SassValueException(
+                    "$limit: Must be 1 or greater, was " + number + "."
+            );
+        }
+        return limit;
+    }
+
+    /// Extracts an inclusive Sass string slice using code-point indexes.
+    ///
+    /// @param args the string, start index, and optional inclusive end index
+    /// @return a string retaining the source quote state
     private static SassValue strSlice(List<SassValue> args) {
         var string = args.get(0).assertString();
         var text = string.text();
         var length = text.codePointCount(0, text.length());
-        var start = normalizeStringIndex(args.get(1).assertNumber().assertInt(), length);
-        var end = normalizeStringIndex(args.get(2).assertNumber().assertInt(), length);
-        if (end < start || start > length || end < 1) {
+        var start = stringCodePointIndex(
+                args.get(1).assertNumber().assertNoUnits().assertInt(),
+                length,
+                false
+        );
+        var endArgument = args.get(2).assertNumber().assertNoUnits().assertInt();
+        if (endArgument == 0) {
             return new SassString("", string.hasQuotes());
         }
-        var startOffset = text.offsetByCodePoints(0, start - 1);
-        var endOffset = text.offsetByCodePoints(0, end);
+        var end = stringCodePointIndex(endArgument, length, true);
+        if (end == length) {
+            end--;
+        }
+        if (end < start) {
+            return new SassString("", string.hasQuotes());
+        }
+        var startOffset = text.offsetByCodePoints(0, start);
+        var endOffset = text.offsetByCodePoints(0, end + 1);
         return new SassString(text.substring(startOffset, endOffset), string.hasQuotes());
     }
 
-    private static int normalizeStringIndex(int index, int length) {
+    /// Converts a one-based Sass index to a zero-based code-point index.
+    ///
+    /// @param index the Sass integer index
+    /// @param length the number of code points in the source string
+    /// @param allowNegative whether a negative result may be retained
+    /// @return a zero-based code-point index
+    private static int stringCodePointIndex(int index, int length, boolean allowNegative) {
         if (index == 0) {
             return 0;
         }
         if (index > 0) {
-            return Math.min(index, length);
+            return Math.min(index - 1, length);
         }
-        return Math.max(length + index + 1, 0);
+        var result = length + index;
+        return result < 0 && !allowNegative ? 0 : result;
     }
 
     private static SassValue toUpperCase(List<SassValue> args) {
@@ -931,5 +1118,32 @@ public final class BuiltInFunctions {
             return new SassString("opacity(" + number.toCssString() + ")", false);
         }
         return SassNumber.of(value.assertColor().alpha(), null);
+    }
+
+    /// Compares two legacy RGB colors using Sass value equality.
+    ///
+    /// @param args the two color arguments
+    /// @return whether all color channels are Sass-equal
+    private static SassValue colorSame(List<SassValue> args) {
+        return SassBoolean.of(
+                args.get(0).assertColor().equals(args.get(1).assertColor())
+        );
+    }
+
+    /// Returns the keyword map carried by an argument list.
+    ///
+    /// @param args the one argument-list value
+    /// @return a Sass map keyed by unquoted keyword names
+    /// @throws SassValueException if the value is not an argument list
+    private static SassValue keywords(List<SassValue> args) {
+        var value = args.get(0);
+        if (!(value instanceof SassArgumentList argumentList)) {
+            throw new SassValueException("$args: " + value + " is not an argument list.");
+        }
+        var contents = new LinkedHashMap<SassValue, SassValue>();
+        for (var entry : argumentList.keywords().entrySet()) {
+            contents.put(new SassString(entry.getKey(), false), entry.getValue());
+        }
+        return new SassMap(contents);
     }
 }
