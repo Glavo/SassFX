@@ -302,6 +302,34 @@ final class SassExpressionParserTest {
                 TextInterpolationPart.class,
                 expression.text().parts().get(2)
         ).text());
+
+        var hyphenated = assertInstanceOf(StringExpression.class, parse("-#{value}"));
+        assertEquals("-#{value}", hyphenated.text().toString());
+        assertFalse(hyphenated.hasQuotes());
+    }
+
+    /// Verifies {@code !important} spelling, trivia, escapes, and list behavior.
+    @Test
+    void parsesImportantExpressions() {
+        var uppercase = assertInstanceOf(StringExpression.class, parse("!IMPORTANT"));
+        assertFalse(uppercase.hasQuotes());
+        assertEquals("!important", uppercase.text().asPlain());
+        assertSpan(uppercase.span(), 0, 10, "!IMPORTANT");
+
+        var escaped = assertInstanceOf(
+                StringExpression.class,
+                parse("! /* comment */ \\69 mportant")
+        );
+        assertEquals("!important", escaped.text().asPlain());
+
+        var list = assertInstanceOf(ListExpression.class, parse("1px !important"));
+        assertEquals(ListSeparator.SPACE, list.separator());
+        assertEquals("!important", assertInstanceOf(
+                StringExpression.class,
+                list.contents().get(1)
+        ).text().asPlain());
+
+        assertFailure("!urgent", "!");
     }
 
     /// Verifies invalid expressions report source-local parse failures.

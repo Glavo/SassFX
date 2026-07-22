@@ -486,7 +486,7 @@ class SassExpressionParser extends Parser {
             case '%' -> percentExpression();
             case '.' -> numberExpression();
             case '&' -> throw scanner.error("Selector expressions are not available.");
-            case '!' -> throw scanner.error("Important expressions are not available.");
+            case '!' -> importantExpression();
             default -> {
                 if (CssCharacters.isDigit(next)) {
                     yield numberExpression();
@@ -497,6 +497,20 @@ class SassExpressionParser extends Parser {
                 throw scanner.error("Expected expression.");
             }
         };
+    }
+
+    /// Parses an {@code !important} expression as a plain unquoted string.
+    ///
+    /// Whitespace and comments between the exclamation mark and identifier are
+    /// accepted, while the resulting value uses the canonical spelling.
+    ///
+    /// @return the canonical {@code !important} string expression
+    private StringExpression importantExpression() {
+        var start = scanner.state();
+        scanner.expect('!');
+        whitespace(true);
+        expectIdentifier("important");
+        return StringExpression.plain("!important", scanner.spanFrom(start));
     }
 
     /// Parses a parenthesized expression or an empty parenthesized list.
@@ -916,7 +930,7 @@ class SassExpressionParser extends Parser {
     /// Parses an identifier whose body may contain any number of interpolations.
     ///
     /// @return the parsed identifier interpolation
-    private Interpolation interpolatedIdentifier() {
+    protected final Interpolation interpolatedIdentifier() {
         var start = scanner.state();
         var buffer = new InterpolationBuffer();
 
@@ -980,9 +994,12 @@ class SassExpressionParser extends Parser {
     /// Returns whether an identifier, including interpolation, begins here.
     ///
     /// @return whether an interpolated identifier begins at the scanner position
-    private boolean lookingAtInterpolatedIdentifier() {
+    protected final boolean lookingAtInterpolatedIdentifier() {
         return lookingAtIdentifier()
-                || scanner.peek() == '#' && scanner.peek(1) == '{';
+                || scanner.peek() == '#' && scanner.peek(1) == '{'
+                || scanner.peek() == '-'
+                && scanner.peek(1) == '#'
+                && scanner.peek(2) == '{';
     }
 
     /// Returns whether any supported single expression begins here.
@@ -991,7 +1008,14 @@ class SassExpressionParser extends Parser {
     private boolean lookingAtExpression() {
         var next = scanner.peek();
         return switch (next) {
-            case '(', '[', '$', '\'', '"', '#', '+', '-', '/', '%', '&', '!' -> true;
+            case '(', '[', '$', '\'', '"', '#', '+', '-', '/', '%', '&' -> true;
+            case '!' -> {
+                var following = scanner.peek(1);
+                yield following == CssCharacters.END_OF_INPUT
+                        || following == 'i'
+                        || following == 'I'
+                        || CssCharacters.isWhitespace(following);
+            }
             case '.' -> scanner.peek(1) != '.';
             default -> CssCharacters.isDigit(next) || lookingAtInterpolatedIdentifier();
         };
