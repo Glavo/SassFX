@@ -37,7 +37,7 @@ final class InterpolationModelTest {
     @Test
     void representsExpressionInterpolations() {
         var source = new SourceFile("a#{x}b", null);
-        var expression = new TestExpression(source.span(3, 4));
+        var expression = StringExpression.plain("x", source.span(3, 4));
         var expressionPart = new ExpressionInterpolationPart(
                 expression,
                 source.span(1, 5)
@@ -84,7 +84,7 @@ final class InterpolationModelTest {
     @Test
     void buildsInterpolationsIncrementally() {
         var source = new SourceFile("ab#{x}cd", null);
-        var expression = new TestExpression(source.span(4, 5));
+        var expression = StringExpression.plain("x", source.span(4, 5));
         var imported = new Interpolation(
                 List.of(
                         new TextInterpolationPart("b"),
@@ -146,19 +146,5 @@ final class InterpolationModelTest {
     /// @return the complete source span
     private static SourceSpan span(String text) {
         return new SourceFile(text, null).span(0, text.length());
-    }
-
-    /// Provides one expression node for interpolation model tests.
-    ///
-    /// @param span the expression source range
-    @NotNullByDefault
-    private record TestExpression(SourceSpan span) implements SassExpression {
-        /// Returns the expression source representation.
-        ///
-        /// @return the fixed expression text
-        @Override
-        public String toString() {
-            return "x";
-        }
     }
 }

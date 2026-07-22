@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.parse;
 
+import org.glavo.scssfx.internal.ast.ExpressionInterpolationPart;
 import org.glavo.scssfx.internal.ast.LoudComment;
 import org.glavo.scssfx.internal.ast.SilentComment;
 import org.glavo.scssfx.internal.ast.StyleRule;
@@ -15,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies SCSS roots, plain style rules, and statement-level comments.
+/// Verifies SCSS roots, interpolated style rules, and statement-level comments.
 @NotNullByDefault
 final class ScssParserTest {
     /// Verifies empty input, a leading BOM, whitespace, and empty statements.
@@ -113,29 +114,48 @@ final class ScssParserTest {
         assertEquals("a:url(\"foo\") ", fallback.selector().asPlain());
     }
 
+    /// Verifies selectors, selector strings, raw URLs, and loud comments retain interpolation.
+    @Test
+    void parsesStylesheetInterpolations() {
+        var selector = assertInstanceOf(
+                StyleRule.class,
+                parse("a#{1 + 2}[x=\"#{value}\"]:url(#{path}) {}").children().get(0)
+        ).selector();
+
+        assertFalse(selector.isPlain());
+        assertEquals(7, selector.parts().size());
+        assertEquals(3, selector.parts().stream()
+                .filter(ExpressionInterpolationPart.class::isInstance)
+                .count());
+        var first = assertInstanceOf(ExpressionInterpolationPart.class, selector.parts().get(1));
+        assertEquals("#{1 + 2}", first.interpolationSpan().text());
+
+        var comment = assertInstanceOf(
+                LoudComment.class,
+                parse("/* value: #{1 + 2} */").children().get(0)
+        );
+        assertFalse(comment.text().isPlain());
+        var commentExpression = assertInstanceOf(
+                ExpressionInterpolationPart.class,
+                comment.text().parts().get(1)
+        );
+        assertEquals("#{1 + 2}", commentExpression.interpolationSpan().text());
+    }
+
     /// Verifies malformed and unavailable statement productions fail precisely.
     @Test
     void rejectsUnsupportedOrMalformedStatements() {
         var unterminated = assertThrows(ParseException.class, () -> parse("/* comment"));
         assertEquals("", unterminated.span().text());
 
-        var interpolation = assertThrows(
-                ParseException.class,
-                () -> parse("/* #{value} */")
-        );
-        assertEquals("#{", interpolation.span().text());
+        var interpolation = assertThrows(ParseException.class, () -> parse("/* #{} */"));
+        assertEquals("}", interpolation.span().text());
 
-        var selectorInterpolation = assertThrows(
+        var colorInterpolation = assertThrows(
                 ParseException.class,
-                () -> parse("#{name} {}")
+                () -> parse("a#{red} {}")
         );
-        assertEquals("#{", selectorInterpolation.span().text());
-
-        var stringInterpolation = assertThrows(
-                ParseException.class,
-                () -> parse("[title=\"#{name}\"] {}")
-        );
-        assertEquals("#{", stringInterpolation.span().text());
+        assertEquals("red", colorInterpolation.span().text());
 
         var atRule = assertThrows(ParseException.class, () -> parse("@media {}"));
         assertEquals("@", atRule.span().text());

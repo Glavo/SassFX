@@ -7,5 +7,14 @@ import org.jetbrains.annotations.NotNullByDefault;
 /// Represents a SassScript expression in an unevaluated syntax tree.
 @ApiStatus.Internal
 @NotNullByDefault
-public non-sealed interface SassExpression extends SassNode {
+public sealed interface SassExpression extends SassNode permits
+        StringExpression,
+        NumberExpression,
+        BooleanExpression,
+        NullExpression,
+        VariableExpression,
+        ParenthesizedExpression,
+        UnaryOperationExpression,
+        BinaryOperationExpression,
+        ListExpression {
 }

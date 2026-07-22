@@ -2,6 +2,7 @@
 package org.glavo.scssfx.internal.parse;
 
 import org.glavo.scssfx.internal.ast.Interpolation;
+import org.glavo.scssfx.internal.ast.InterpolationBuffer;
 import org.glavo.scssfx.internal.ast.LoudComment;
 import org.glavo.scssfx.internal.ast.SassStatement;
 import org.glavo.scssfx.internal.ast.SilentComment;
@@ -14,9 +15,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 
-/// Parses SCSS stylesheet roots, plain style rules, and statement comments.
+/// Parses SCSS stylesheet roots, interpolated style rules, and statement comments.
 @NotNullByDefault
-final class ScssParser extends Parser {
+final class ScssParser extends SassExpressionParser {
     /// Creates a parser for an indexed SCSS source.
     ///
     /// @param source the SCSS source to parse
@@ -72,22 +73,17 @@ final class ScssParser extends Parser {
         return statements;
     }
 
-    /// Parses a style rule whose selector contains no Sass interpolation.
+    /// Parses a style rule whose selector may contain Sass interpolation.
     ///
     /// @return the style rule node
     /// @throws ParseException if the selector or child block is malformed or
     /// the block contains an unsupported child statement
     private StyleRule styleRule() {
         var start = scanner.state();
-        var selectorStart = scanner.state();
-        var selectorText = plainStyleRuleSelector();
-        if (selectorText.isEmpty()) {
+        var selector = styleRuleSelector();
+        if (selector.parts().isEmpty()) {
             throw scanner.error("Expected selector.");
         }
-        var selector = Interpolation.plain(
-                selectorText,
-                scanner.spanFrom(selectorStart)
-        );
         var children = styleRuleChildren();
         var span = scanner.spanFrom(start);
         whitespaceWithoutComments(false);
@@ -100,8 +96,9 @@ final class ScssParser extends Parser {
     /// are normalized because the selector will be parsed after evaluation.
     ///
     /// @return the selector source preceding the child block
-    private String plainStyleRuleSelector() {
-        var result = new StringBuilder();
+    private Interpolation styleRuleSelector() {
+        var start = scanner.state();
+        var result = new InterpolationBuffer();
         var brackets = new ArrayDeque<Integer>();
 
         selector:
@@ -115,7 +112,7 @@ final class ScssParser extends Parser {
                     result.append((char) scanner.read());
                     result.append((char) scanner.read());
                 }
-                case '\'', '"' -> result.append(rawSelectorStringToken());
+                case '\'', '"' -> result.add(interpolatedStringToken());
                 case '/' -> {
                     if (scanner.peek(1) == '*') {
                         result.append(rawText(this::loudComment));
@@ -127,13 +124,10 @@ final class ScssParser extends Parser {
                 }
                 case '#' -> {
                     if (scanner.peek(1) == '{') {
-                        throw scanner.error(
-                                "Selector interpolation is not available.",
-                                scanner.position(),
-                                2
-                        );
+                        singleInterpolation(result);
+                    } else {
+                        result.append((char) scanner.read());
                     }
-                    result.append((char) scanner.read());
                 }
                 case '(', '[' -> {
                     var opening = scanner.read();
@@ -173,60 +167,14 @@ final class ScssParser extends Parser {
                 }
             }
         }
-        return result.toString();
-    }
-
-    /// Consumes a quoted selector string token without resolving its escapes.
-    ///
-    /// Backslash-newline continuations preserve their complete source spelling,
-    /// including both code units of a CRLF sequence.
-    ///
-    /// @return the exact consumed string token
-    /// @throws ParseException if the string is malformed or contains Sass interpolation
-    private String rawSelectorStringToken() {
-        var quotePosition = scanner.position();
-        var quote = scanner.read();
-        if (quote != '\'' && quote != '"') {
-            throw scanner.error("Expected string.", quotePosition, 1);
-        }
-
-        var result = new StringBuilder().append((char) quote);
-        while (true) {
-            var next = scanner.peek();
-            if (next == quote) {
-                result.append((char) scanner.read());
-                return result.toString();
-            }
-            if (next == CssCharacters.END_OF_INPUT || CssCharacters.isNewline(next)) {
-                throw scanner.error("Expected " + (char) quote + ".");
-            }
-            if (next == '\\') {
-                var second = scanner.peek(1);
-                if (CssCharacters.isNewline(second)) {
-                    result.append((char) scanner.read());
-                    result.append((char) scanner.read());
-                    if (second == '\r' && scanner.scan('\n')) {
-                        result.append('\n');
-                    }
-                } else {
-                    result.append(rawText(this::escapeCharacter));
-                }
-            } else if (next == '#' && scanner.peek(1) == '{') {
-                throw scanner.error(
-                        "Selector interpolation is not available.",
-                        scanner.position(),
-                        2
-                );
-            } else {
-                result.append((char) scanner.read());
-            }
-        }
+        return result.interpolation(scanner.spanFrom(start));
     }
 
     /// Attempts to consume raw URL contents after an already-consumed name.
     ///
-    /// On ordinary grammar failure, the scanner is restored to its position
-    /// immediately after the name. Sass interpolation is rejected explicitly.
+    /// On ordinary grammar failure or interpolation, the scanner is restored
+    /// to its position immediately after the name so the caller can parse the
+    /// contents as ordinary interpolated selector text.
     ///
     /// @param name the normalized, case-sensitive function name
     /// @return the normalized URL token, or {@code null} after restoring input
@@ -248,11 +196,8 @@ final class ScssParser extends Parser {
                 continue;
             }
             if (next == '#' && scanner.peek(1) == '{') {
-                throw scanner.error(
-                        "Selector interpolation is not available.",
-                        scanner.position(),
-                        2
-                );
+                scanner.restore(beginningOfContents);
+                return null;
             }
             if (next == '!' || next == '%' || next == '&' || next == '#'
                     || next >= '*' && next <= '~'
@@ -342,12 +287,13 @@ final class ScssParser extends Parser {
     /// Parses one CSS-style loud comment and normalizes its line endings.
     ///
     /// @return the loud comment node
-    /// @throws ParseException if the comment is unterminated or contains an
-    /// expression interpolation
+    /// @throws ParseException if the comment is unterminated or an embedded
+    /// expression is malformed
     private LoudComment loudCommentStatement() {
         var start = scanner.state();
         scanner.expect("/*");
-        var text = new StringBuilder("/*");
+        var text = new InterpolationBuffer();
+        text.append("/*");
 
         while (true) {
             var next = scanner.peek();
@@ -356,20 +302,17 @@ final class ScssParser extends Parser {
                         throw scanner.error("Unexpected end of input.");
                 case '#' -> {
                     if (scanner.peek(1) == '{') {
-                        throw scanner.error(
-                                "Loud-comment interpolation is not available.",
-                                scanner.position(),
-                                2
-                        );
+                        singleInterpolation(text);
+                    } else {
+                        text.append((char) scanner.read());
                     }
-                    text.append((char) scanner.read());
                 }
                 case '*' -> {
                     text.append((char) scanner.read());
                     if (scanner.peek() == '/') {
                         text.append((char) scanner.read());
                         var span = scanner.spanFrom(start);
-                        return new LoudComment(Interpolation.plain(text.toString(), span));
+                        return new LoudComment(text.interpolation(span));
                     }
                 }
                 case '\r' -> {
