@@ -103,6 +103,22 @@ final class CssIdentifierParser {
         return CssCharacters.isNameStart(second) || second == '\\' || second == '-';
     }
 
+    /// Parses one or more identifier-body code units.
+    ///
+    /// @param scanner the source scanner
+    /// @param normalize whether underscores are normalized to hyphens
+    /// @param unit whether a hyphen before a dot or digit ends the identifier
+    /// @return the parsed identifier-body representation
+    /// @throws ParseException if no identifier-body text begins at the current position
+    static String parseBody(SourceScanner scanner, boolean normalize, boolean unit) {
+        var text = new StringBuilder();
+        appendBody(scanner, text, normalize, unit);
+        if (text.length() == 0) {
+            throw scanner.error("Expected identifier body.");
+        }
+        return text.toString();
+    }
+
     /// Appends the identifier body at the current scanner position.
     ///
     /// @param scanner the source scanner
@@ -142,7 +158,7 @@ final class CssIdentifierParser {
     /// @param identifierStart whether the escape occurs at the identifier start
     /// @return the normalized escaped text
     /// @throws ParseException if the escape is incomplete or contains an invalid code point
-    private static String escape(SourceScanner scanner, boolean identifierStart) {
+    static String escape(SourceScanner scanner, boolean identifierStart) {
         var start = scanner.position();
         scanner.expect('\\');
 

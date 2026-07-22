@@ -48,5 +48,14 @@ final class SourceModelTest {
                 IllegalArgumentException.class,
                 () -> new SourceSpan(null, start, new SourceLocation(0, 4, 4), "x")
         );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new SourceSpan(
+                        null,
+                        new SourceLocation(1, 0, 1),
+                        new SourceLocation(0, 2, 2),
+                        "x"
+                )
+        );
     }
 }

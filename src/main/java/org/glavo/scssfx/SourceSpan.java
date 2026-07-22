@@ -33,6 +33,12 @@ public record SourceSpan(
         if (length < 0) {
             throw new IllegalArgumentException("end must not precede start");
         }
+        if (end.line() < start.line()
+                || end.line() == start.line() && end.column() < start.column()) {
+            throw new IllegalArgumentException(
+                    "end line and column must not precede start line and column"
+            );
+        }
         if (text.length() != length) {
             throw new IllegalArgumentException(
                     "text length must equal the difference between end and start offsets"

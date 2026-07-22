@@ -3,6 +3,7 @@ package org.glavo.scssfx.internal.source;
 
 import org.glavo.scssfx.SourceLocation;
 import org.glavo.scssfx.SourceSpan;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
@@ -15,6 +16,10 @@ import java.util.Objects;
 ///
 /// Line boundaries recognize LF, CRLF, and lone CR terminators. All offsets
 /// and columns use UTF-16 code units.
+///
+/// This type is shared across internal packages and is not a supported public
+/// extension point.
+@ApiStatus.Internal
 @NotNullByDefault
 public final class SourceFile {
     /// The complete source text.

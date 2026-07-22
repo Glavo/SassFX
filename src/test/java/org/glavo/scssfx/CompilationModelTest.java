@@ -82,4 +82,18 @@ final class CompilationModelTest {
         assertThrows(UnsupportedOperationException.class, () -> result.loadedUrls().clear());
         assertThrows(UnsupportedOperationException.class, () -> result.diagnostics().clear());
     }
+
+    /// Verifies that source-map data is one version 3 JSON object.
+    @Test
+    void validatesSourceMapJson() {
+        assertEquals("{\"version\":3}", new SourceMap("{\"version\":3}").json());
+        assertThrows(IllegalArgumentException.class, () -> new SourceMap("not json"));
+        assertThrows(IllegalArgumentException.class, () -> new SourceMap("[]"));
+        assertThrows(IllegalArgumentException.class, () -> new SourceMap("{}"));
+        assertThrows(IllegalArgumentException.class, () -> new SourceMap("{\"version\":4}"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new SourceMap("{\"version\":3}{\"version\":3}")
+        );
+    }
 }

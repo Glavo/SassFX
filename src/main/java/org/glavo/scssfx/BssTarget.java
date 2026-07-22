@@ -2,15 +2,20 @@
 package org.glavo.scssfx;
 
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Unmodifiable;
 
 import java.nio.ByteBuffer;
 import java.util.Objects;
 
 /// Configures JavaFX binary stylesheet output.
 ///
+/// A successful compilation produces a read-only buffer whose position is zero
+/// and whose remaining bytes contain one complete BSS document.
+///
 /// @param compatibility the JavaFX compatibility level that determines the BSS version
 @NotNullByDefault
-public record BssTarget(JavaFxCompatibility compatibility) implements OutputTarget<ByteBuffer> {
+public record BssTarget(JavaFxCompatibility compatibility)
+        implements OutputTarget<@Unmodifiable ByteBuffer> {
     /// The default target compatible with JavaFX 17 BSS version 6.
     public static final BssTarget DEFAULT = new BssTarget(JavaFxCompatibility.JAVA_FX_17);
 
