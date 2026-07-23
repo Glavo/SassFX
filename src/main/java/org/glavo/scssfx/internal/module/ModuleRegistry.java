@@ -56,6 +56,16 @@ public final class ModuleRegistry {
         this.builtInModules = new BuiltInModules();
     }
 
+    /// Returns the number of user modules fully loaded so far.
+    ///
+    /// Built-in modules are not counted. Callers compare this value before and
+    /// after [#load] to detect a first-time load.
+    ///
+    /// @return the loaded user-module count
+    public int loadedModuleCount() {
+        return loaded.size();
+    }
+
     /// Loads a module URL, reusing a previously loaded instance when present.
     ///
     /// @param url                 the unresolved module URL

@@ -2,6 +2,7 @@
 package org.glavo.scssfx.internal.module;
 
 import org.glavo.scssfx.internal.callable.Callable;
+import org.glavo.scssfx.internal.css.CssComment;
 import org.glavo.scssfx.internal.css.CssStylesheet;
 import org.glavo.scssfx.internal.evaluate.VariableBinding;
 import org.jetbrains.annotations.ApiStatus;
@@ -11,6 +12,7 @@ import org.jetbrains.annotations.Unmodifiable;
 
 import java.net.URI;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -32,6 +34,7 @@ import java.util.Set;
 /// @param configurableVariables variables declared at the module root with
 ///                              {@code !default}
 /// @param forwardedModules      forwarded export views used for configuration reachability
+/// @param preModuleComments     loud comments that must precede each upstream module's CSS
 @ApiStatus.Internal
 @NotNullByDefault
 public record LoadedModule(
@@ -42,7 +45,8 @@ public record LoadedModule(
         CssStylesheet css,
         @Unmodifiable List<LoadedModule> upstream,
         @Unmodifiable Set<String> configurableVariables,
-        @Unmodifiable List<ForwardedModuleView> forwardedModules
+        @Unmodifiable List<ForwardedModuleView> forwardedModules,
+        @Unmodifiable Map<LoadedModule, List<CssComment>> preModuleComments
 ) {
     /// Creates a loaded module while retaining variable-binding identities.
     public LoadedModule {
@@ -53,6 +57,7 @@ public record LoadedModule(
         Objects.requireNonNull(upstream, "upstream");
         Objects.requireNonNull(configurableVariables, "configurableVariables");
         Objects.requireNonNull(forwardedModules, "forwardedModules");
+        Objects.requireNonNull(preModuleComments, "preModuleComments");
         variables = Collections.unmodifiableMap(new LinkedHashMap<>(variables));
         functions = Collections.unmodifiableMap(new LinkedHashMap<>(functions));
         mixins = Collections.unmodifiableMap(new LinkedHashMap<>(mixins));
@@ -61,6 +66,59 @@ public record LoadedModule(
                 new LinkedHashSet<>(configurableVariables)
         );
         forwardedModules = List.copyOf(forwardedModules);
+        var comments = new IdentityHashMap<LoadedModule, List<CssComment>>();
+        for (var entry : preModuleComments.entrySet()) {
+            comments.put(entry.getKey(), List.copyOf(entry.getValue()));
+        }
+        preModuleComments = Collections.unmodifiableMap(comments);
+    }
+
+    /// Creates a loaded module with no pre-module comments.
+    ///
+    /// @param url                   the canonical module URL, or {@code null}
+    /// @param variables             public variables
+    /// @param functions             public functions
+    /// @param mixins                public mixins
+    /// @param css                   the module's CSS IR
+    /// @param upstream              modules loaded by this module
+    /// @param configurableVariables root {@code !default} variable names
+    /// @param forwardedModules      forwarded export views
+    public LoadedModule(
+            @Nullable URI url,
+            Map<String, VariableBinding> variables,
+            Map<String, Callable> functions,
+            Map<String, Callable> mixins,
+            CssStylesheet css,
+            List<LoadedModule> upstream,
+            Set<String> configurableVariables,
+            List<ForwardedModuleView> forwardedModules
+    ) {
+        this(
+                url,
+                variables,
+                functions,
+                mixins,
+                css,
+                upstream,
+                configurableVariables,
+                forwardedModules,
+                Map.of()
+        );
+    }
+
+    /// Returns whether this module or any upstream module emits CSS.
+    ///
+    /// @return whether combining this module can produce CSS text
+    public boolean transitivelyContainsCss() {
+        if (!css.children().isEmpty()) {
+            return true;
+        }
+        for (var module : upstream) {
+            if (module.transitivelyContainsCss()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// Returns whether any supplied name could configure this module.

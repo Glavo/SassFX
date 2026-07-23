@@ -170,7 +170,7 @@ public record ComplexSelector(
                 result.append(' ');
             }
             for (var simple : component.selector().components()) {
-                if (simple.containsParentSelector()) {
+                if (simple.hasUnresolvedParentReference()) {
                     throw new SassValueException(
                             "Parent selectors aren't allowed here."
                     );

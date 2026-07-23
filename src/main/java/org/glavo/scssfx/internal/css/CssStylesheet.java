@@ -93,6 +93,35 @@ public final class CssStylesheet implements CssParentNode {
         children.add(child);
     }
 
+    /// Removes every top-level comment and returns them in source order.
+    ///
+    /// Non-comment children remain in place with refreshed parent indexes.
+    ///
+    /// @return the removed comments
+    public List<CssComment> takeComments() {
+        var comments = new ArrayList<CssComment>();
+        var remaining = new ArrayList<CssNode>(children.size());
+        for (var child : children) {
+            if (child instanceof CssComment comment) {
+                comments.add(comment);
+            } else {
+                remaining.add(child);
+            }
+        }
+        if (comments.isEmpty()) {
+            return List.of();
+        }
+        children.clear();
+        for (var index = 0; index < remaining.size(); index++) {
+            var child = remaining.get(index);
+            if (child instanceof AbstractCssNode node) {
+                node.attach(this, index);
+            }
+            children.add(child);
+        }
+        return List.copyOf(comments);
+    }
+
     /// Inserts a top-level import after the initial imports and comments.
     ///
     /// Imports evaluated after ordinary CSS are moved into the CSS import

@@ -1790,12 +1790,6 @@ final class ScssParser extends SassExpressionParser {
         if (declaration != null) {
             return declaration;
         }
-        if (plainCss && plainCssStyleRuleDepth > 0) {
-            throw scanner.error(
-                    "Nested style rules aren't supported in plain CSS.",
-                    scanner.spanFrom(start)
-            );
-        }
         return styleRule(selectorPrefix, start);
     }
 

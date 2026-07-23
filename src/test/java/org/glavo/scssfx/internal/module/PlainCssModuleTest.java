@@ -183,7 +183,7 @@ final class PlainCssModuleTest {
         );
     }
 
-    /// Rejects Sass-only expressions, rules, imports, declarations, and nesting.
+    /// Rejects Sass-only expressions, rules, imports, and nested declarations.
     @Test
     void rejectsSassOnlyPlainCssSyntax() {
         for (var source : new String[]{
@@ -196,7 +196,6 @@ final class PlainCssModuleTest {
                 ".item { color: unit(1px); }",
                 "@import \"a.css\", \"b.css\";",
                 ".item { font: { size: 1rem; } }",
-                ".parent { .child { color: red; } }",
                 "%placeholder { color: red; }"
         }) {
             assertThrows(
@@ -207,6 +206,78 @@ final class PlainCssModuleTest {
                     )
             );
         }
+    }
+
+    /// Retains native CSS nesting and parent selectors without Sass flattening.
+    @Test
+    void compilesNativeCssNesting() throws Exception {
+        var css = new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                .parent {
+                                  color: blue;
+                                  .child {
+                                    color: red;
+                                    @media screen {
+                                      opacity: 0.5;
+                                    }
+                                  }
+                                  &:hover {
+                                    color: green;
+                                  }
+                                }
+                                """,
+                        Syntax.CSS
+                ),
+                CssTarget.DEFAULT
+        ).output();
+        assertEquals(
+                """
+                        .parent {
+                          color: blue;
+                          .child {
+                            color: red;
+                            @media screen {
+                              opacity: 0.5;
+                            }
+                          }
+                          &:hover {
+                            color: green;
+                          }
+                        }""",
+                css
+        );
+    }
+
+    /// Emits comments that precede `@use` before the loaded module's CSS.
+    @Test
+    void emitsCommentsBeforeUsedModuleCss(@TempDir Path directory) throws Exception {
+        Files.writeString(directory.resolve("theme.css"), ".theme { color: red; }");
+        Files.writeString(
+                directory.resolve("main.scss"),
+                """
+                        /* before */
+                        @use "theme.css";
+                        .main { color: blue; }
+                        """
+        );
+
+        var css = new SassCompiler().compile(
+                SassSource.fromFile(directory.resolve("main.scss")),
+                CssTarget.DEFAULT
+        ).output();
+        assertEquals(
+                """
+                        /* before */
+                        .theme {
+                          color: red;
+                        }
+
+                        .main {
+                          color: blue;
+                        }""",
+                css
+        );
     }
 
     /// Preserves custom function at-rules and dollar signs that are string data.

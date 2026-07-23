@@ -19,6 +19,9 @@ public final class CssStyleRule extends AbstractCssNode implements CssParentNode
     /// Contains the evaluated selector list and its source span.
     private final CssValue<SelectorList> selector;
 
+    /// Records whether this rule originated from plain CSS rather than Sass nesting.
+    private final boolean fromPlainCss;
+
     /// Contains child statements in evaluation order.
     private final ArrayList<CssNode> children;
 
@@ -30,8 +33,18 @@ public final class CssStyleRule extends AbstractCssNode implements CssParentNode
     /// @param selector the resolved selector list
     /// @param span     the source range of the originating Sass style rule
     public CssStyleRule(CssValue<SelectorList> selector, SourceSpan span) {
+        this(selector, span, false);
+    }
+
+    /// Creates an empty style rule with an explicit plain-CSS origin flag.
+    ///
+    /// @param selector      the resolved selector list
+    /// @param span          the source range of the originating style rule
+    /// @param fromPlainCss  whether the rule came from plain CSS nesting
+    public CssStyleRule(CssValue<SelectorList> selector, SourceSpan span, boolean fromPlainCss) {
         super(span);
         this.selector = Objects.requireNonNull(selector, "selector");
+        this.fromPlainCss = fromPlainCss;
         this.children = new ArrayList<>();
         this.childrenView = Collections.unmodifiableList(children);
     }
@@ -41,6 +54,16 @@ public final class CssStyleRule extends AbstractCssNode implements CssParentNode
     /// @return the selector value
     public CssValue<SelectorList> selector() {
         return selector;
+    }
+
+    /// Returns whether this rule originated from plain CSS.
+    ///
+    /// Plain-CSS rules keep native nesting and do not participate in Sass
+    /// selector flattening or style-rule bubbling.
+    ///
+    /// @return whether the rule is plain CSS
+    public boolean fromPlainCss() {
+        return fromPlainCss;
     }
 
     /// Returns whether every child is invisible.
@@ -107,6 +130,6 @@ public final class CssStyleRule extends AbstractCssNode implements CssParentNode
     /// @return the empty copy
     @Override
     public CssStyleRule copyWithoutChildren() {
-        return new CssStyleRule(selector, span());
+        return new CssStyleRule(selector, span(), fromPlainCss);
     }
 }

@@ -202,6 +202,10 @@ public final class SassEvaluator implements
     /// Contains the number of active nested-property declarations.
     private int nestedDeclarationDepth;
 
+    /// Maps upstream modules to loud comments that must precede their CSS.
+    private final IdentityHashMap<LoadedModule, List<CssComment>> preModuleComments =
+            new IdentityHashMap<>();
+
     /// Creates an evaluator with an empty environment and no module loader.
     public SassEvaluator() {
         this(new Environment(), null);
@@ -303,7 +307,8 @@ public final class SassEvaluator implements
                 cssStylesheet,
                 module.upstream(),
                 module.configurableVariables(),
-                module.forwardedModules()
+                module.forwardedModules(),
+                module.preModuleComments()
         );
     }
 
@@ -427,6 +432,8 @@ public final class SassEvaluator implements
         var previousActive = stylesheetActive;
         var previousStyleRuleDepth = styleRuleDepth;
         var previousNestedDepth = nestedDeclarationDepth;
+        var previousPreModuleComments =
+                new IdentityHashMap<>(preModuleComments);
 
         environment = new Environment();
         this.stylesheet = stylesheet;
@@ -445,6 +452,7 @@ public final class SassEvaluator implements
         stylesheetActive = true;
         styleRuleDepth = 0;
         nestedDeclarationDepth = 0;
+        preModuleComments.clear();
         diagnostics.addAll(stylesheet.parseTimeWarnings());
 
         try {
@@ -471,7 +479,8 @@ public final class SassEvaluator implements
                     Objects.requireNonNull(cssStylesheet, "css"),
                     environment.allModules(),
                     environment.configurableVariables(),
-                    environment.forwardedModules()
+                    environment.forwardedModules(),
+                    Map.copyOf(preModuleComments)
             );
         } catch (RuntimeException failure) {
             environment = previousEnvironment;
@@ -488,6 +497,8 @@ public final class SassEvaluator implements
             stylesheetActive = previousActive;
             styleRuleDepth = previousStyleRuleDepth;
             nestedDeclarationDepth = previousNestedDepth;
+            preModuleComments.clear();
+            preModuleComments.putAll(previousPreModuleComments);
             throw failure;
         } finally {
             if (!retainState) {
@@ -505,6 +516,8 @@ public final class SassEvaluator implements
                 stylesheetActive = previousActive;
                 styleRuleDepth = previousStyleRuleDepth;
                 nestedDeclarationDepth = previousNestedDepth;
+                preModuleComments.clear();
+                preModuleComments.putAll(previousPreModuleComments);
             }
         }
     }
@@ -704,6 +717,7 @@ public final class SassEvaluator implements
         }
         var configuration = evaluateUseConfiguration(statement);
         try {
+            var loadedBefore = moduleRegistry.loadedModuleCount();
             var module = moduleRegistry.load(
                     statement.url(),
                     currentUrl,
@@ -712,6 +726,9 @@ public final class SassEvaluator implements
                     configuration,
                     !statement.configuration().isEmpty()
             );
+            if (moduleRegistry.loadedModuleCount() > loadedBefore) {
+                registerCommentsForModule(module);
+            }
             environment.addModule(module, statement.namespace(), statement.span());
             assertConfigurationConsumed(configuration);
         } catch (SassValueException cause) {
@@ -723,6 +740,22 @@ public final class SassEvaluator implements
             );
         }
         return StatementResult.CONTINUE;
+    }
+
+    /// Moves top-level loud comments in front of an upstream module's CSS.
+    ///
+    /// @param module the newly loaded upstream module
+    private void registerCommentsForModule(LoadedModule module) {
+        if (cssStylesheet == null || !module.transitivelyContainsCss()) {
+            return;
+        }
+        var comments = cssStylesheet.takeComments();
+        if (comments.isEmpty()) {
+            return;
+        }
+        preModuleComments
+                .computeIfAbsent(module, ignored -> new ArrayList<>())
+                .addAll(comments);
     }
 
     /// Loads and re-exports another module without adding a local namespace.
@@ -841,7 +874,8 @@ public final class SassEvaluator implements
     ///
     /// Compatible nested queries are merged and bubbled through their source
     /// media rules. Queries whose intersection cannot be expressed by one CSS
-    /// query list remain structurally nested.
+    /// query list remain structurally nested. Once native CSS nesting is active,
+    /// the rule stays in place without merge or bubbling.
     ///
     /// @param statement the media rule
     /// @return the continue result, [StatementResult#CONTINUE]
@@ -870,6 +904,21 @@ public final class SassEvaluator implements
                     List.of(),
                     cause
             );
+        }
+
+        if (hasCssNesting()) {
+            var nestedRule = new CssMediaRule(queries, statement.span());
+            addCssChild(nestedRule, false);
+            var previousParent = requireCssParent();
+            cssParent = nestedRule;
+            try {
+                for (var child : statement.children()) {
+                    child.accept(this);
+                }
+            } finally {
+                cssParent = previousParent;
+            }
+            return StatementResult.CONTINUE;
         }
 
         @Nullable List<CssMediaQuery> mergedQueries = mediaQueries == null
@@ -946,7 +995,8 @@ public final class SassEvaluator implements
     ///
     /// The rule bubbles through enclosing style rules but remains inside other
     /// conditional rules. This preserves CSS conditional nesting while allowing
-    /// nested Sass declarations to be emitted through a style-rule wrapper.
+    /// nested Sass declarations to be emitted through a style-rule wrapper. Once
+    /// native CSS nesting is active, the rule stays in place without bubbling.
     ///
     /// @param statement the supports rule
     /// @return the continue result, [StatementResult#CONTINUE]
@@ -971,6 +1021,21 @@ public final class SassEvaluator implements
                     "Expected supports condition.",
                     statement.condition().span()
             );
+        }
+
+        if (hasCssNesting()) {
+            var nestedRule = new CssSupportsRule(condition, statement.span());
+            addCssChild(nestedRule, false);
+            var previousParent = requireCssParent();
+            cssParent = nestedRule;
+            try {
+                for (var child : statement.children()) {
+                    child.accept(this);
+                }
+            } finally {
+                cssParent = previousParent;
+            }
+            return StatementResult.CONTINUE;
         }
 
         var rule = new CssSupportsRule(condition, statement.span());
@@ -1016,6 +1081,10 @@ public final class SassEvaluator implements
 
     /// Emits an opaque plain-CSS at-rule and evaluates its optional block.
     ///
+    /// The rule remains under the current CSS parent so nested plain-CSS and
+    /// unknown at-rules keep source order. Native CSS nesting already places the
+    /// parent correctly; SCSS style-rule bubbling is handled by style rules.
+    ///
     /// @param statement the opaque at-rule
     /// @return the continue result
     @Override
@@ -1046,8 +1115,9 @@ public final class SassEvaluator implements
 
     /// Evaluates a selector, emits a CSS style rule, and executes its children.
     ///
-    /// Nested style rules bubble through existing style-rule parents so the CSS
-    /// IR remains a flat sequence of resolved rules under the stylesheet root.
+    /// Nested Sass style rules bubble through existing style-rule parents so the
+    /// CSS IR remains a flat sequence of resolved rules. Plain-CSS nesting keeps
+    /// nested rules in place and may leave parent selectors unexpanded.
     ///
     /// @param statement the style rule
     /// @return the continue result, [StatementResult#CONTINUE]
@@ -1084,11 +1154,27 @@ public final class SassEvaluator implements
                     statement.selector().span()
             );
         }
+
+        boolean merge;
+        if (styleRule == null) {
+            merge = true;
+        } else if (styleRule.fromPlainCss()) {
+            merge = false;
+        } else {
+            merge = !(isPlainCss() && parsed.containsParentSelector());
+        }
+
         @Nullable SelectorList parentSelector =
                 styleRule == null ? null : styleRule.selector().value();
         SelectorList nestedSelector;
         try {
-            nestedSelector = parsed.nestWithin(parentSelector);
+            if (!merge) {
+                nestedSelector = parsed;
+            } else if (isPlainCss() && parentSelector == null) {
+                nestedSelector = parsed;
+            } else {
+                nestedSelector = parsed.nestWithin(parentSelector);
+            }
         } catch (SassValueException cause) {
             throw new EvaluationException(
                     Objects.requireNonNull(cause.getMessage(), "selector failure message"),
@@ -1099,9 +1185,10 @@ public final class SassEvaluator implements
         }
         var rule = new CssStyleRule(
                 new CssValue<>(nestedSelector, statement.selector().span()),
-                statement.span()
+                statement.span(),
+                isPlainCss()
         );
-        addCssChild(rule, true);
+        addCssChild(rule, merge);
 
         var previousParent = requireCssParent();
         var previousStyleRule = styleRule;
@@ -1130,6 +1217,24 @@ public final class SassEvaluator implements
             previousParent.children().get(previousParent.children().size() - 1).setGroupEnd(true);
         }
         return StatementResult.CONTINUE;
+    }
+
+    /// Returns whether the active CSS position already uses native nesting.
+    ///
+    /// Native nesting is active once a style rule is nested inside another style
+    /// rule, possibly through intervening conditional parents.
+    ///
+    /// @return whether merge and bubbling should be skipped
+    private boolean hasCssNesting() {
+        @Nullable CssParentNode current = styleRule;
+        while (current != null) {
+            @Nullable CssParentNode parent = current.parent();
+            if (parent instanceof CssStyleRule) {
+                return true;
+            }
+            current = parent;
+        }
+        return false;
     }
 
     /// Returns whether a selector list contains a Sass placeholder selector.

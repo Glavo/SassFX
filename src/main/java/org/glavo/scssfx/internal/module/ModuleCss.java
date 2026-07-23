@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.module;
 
+import org.glavo.scssfx.internal.css.CssComment;
 import org.glavo.scssfx.internal.css.CssImport;
 import org.glavo.scssfx.internal.css.CssNode;
 import org.glavo.scssfx.internal.css.CssStylesheet;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Objects;
 
 /// Combines module CSS trees in dependency order.
@@ -20,7 +23,9 @@ public final class ModuleCss {
 
     /// Builds one stylesheet containing each module's CSS exactly once.
     ///
-    /// Upstream modules are emitted before their dependents.
+    /// Upstream modules are emitted before their dependents. Loud comments
+    /// captured before each `@use` are inserted immediately before the used
+    /// module's CSS.
     ///
     /// @param root the entry module
     /// @return the combined CSS stylesheet
@@ -42,7 +47,16 @@ public final class ModuleCss {
             return;
         }
         for (var upstream : module.upstream()) {
-            append(upstream, result, seen);
+            if (upstream.transitivelyContainsCss()) {
+                @Nullable List<CssComment> comments =
+                        module.preModuleComments().get(upstream);
+                if (comments != null) {
+                    for (var comment : comments) {
+                        result.addChild(comment);
+                    }
+                }
+                append(upstream, result, seen);
+            }
         }
         for (CssNode child : module.css().children()) {
             if (child instanceof CssImport importRule) {
