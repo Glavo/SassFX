@@ -46,6 +46,9 @@ public final class BuiltInModules {
     /// Identifies the canonical meta module URL.
     private static final URI META_URL = URI.create("sass:meta");
 
+    /// Identifies the canonical selector module URL.
+    private static final URI SELECTOR_URL = URI.create("sass:selector");
+
     /// Identifies the shared zero-length source location for synthetic modules.
     private static final SourceLocation ORIGIN = new SourceLocation(0, 0, 0);
 
@@ -60,7 +63,19 @@ public final class BuiltInModules {
         catalog.put(MAP_URL, createModule(MAP_URL, Map.of(), BuiltInFunctions.mapModule()));
         catalog.put(STRING_URL, createModule(STRING_URL, Map.of(), BuiltInFunctions.stringModule()));
         catalog.put(COLOR_URL, createModule(COLOR_URL, Map.of(), BuiltInFunctions.colorModule()));
-        catalog.put(META_URL, createModule(META_URL, Map.of(), BuiltInFunctions.metaModule()));
+        catalog.put(
+                META_URL,
+                createModule(
+                        META_URL,
+                        Map.of(),
+                        BuiltInFunctions.metaModule(),
+                        BuiltInFunctions.metaMixins()
+                )
+        );
+        catalog.put(
+                SELECTOR_URL,
+                createModule(SELECTOR_URL, Map.of(), BuiltInFunctions.selectorModule())
+        );
         modules = Collections.unmodifiableMap(catalog);
     }
 
@@ -113,19 +128,37 @@ public final class BuiltInModules {
     /// @param url the canonical module URL
     /// @param variables the public variable bindings
     /// @param functions the public callable table
-    /// @return a module with no CSS, upstream modules, or configurable variables
+    /// @return a module with no CSS, upstream modules, configurable variables, or mixins
     private static LoadedModule createModule(
             URI url,
             Map<String, VariableBinding> variables,
             Map<String, ? extends Callable> functions
     ) {
-        var callableExports = new LinkedHashMap<String, Callable>();
-        callableExports.putAll(functions);
+        return createModule(url, variables, functions, Map.of());
+    }
+
+    /// Creates an empty-CSS module from exported variables, functions, and mixins.
+    ///
+    /// @param url the canonical module URL
+    /// @param variables the public variable bindings
+    /// @param functions the public function table
+    /// @param mixins the public mixin table
+    /// @return a module with no CSS, upstream modules, or configurable variables
+    private static LoadedModule createModule(
+            URI url,
+            Map<String, VariableBinding> variables,
+            Map<String, ? extends Callable> functions,
+            Map<String, ? extends Callable> mixins
+    ) {
+        var functionExports = new LinkedHashMap<String, Callable>();
+        functionExports.putAll(functions);
+        var mixinExports = new LinkedHashMap<String, Callable>();
+        mixinExports.putAll(mixins);
         return new LoadedModule(
                 url,
                 variables,
-                callableExports,
-                Map.of(),
+                functionExports,
+                mixinExports,
                 new CssStylesheet(syntheticSpan(url)),
                 List.of(),
                 Set.of(),

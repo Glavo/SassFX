@@ -191,7 +191,7 @@ final class SassSpecRunnerTest {
     ///
     /// @param resolved the parsed archive and selected fixture
     /// @param caseRoot the isolated on-disk fixture directory
-    /// @return the materialized {@code input.scss} file
+    /// @return the materialized {@code input.scss} or {@code input.sass} file
     /// @throws IOException if a source file cannot be materialized
     private static Path materializeSources(ResolvedFixture resolved, Path caseRoot) throws IOException {
         String prefix = resolved.fixture().directory() + "/";
@@ -215,15 +215,20 @@ final class SassSpecRunnerTest {
                 Files.createDirectories(parent);
             }
             Files.writeString(target, entry.getValue(), StandardCharsets.UTF_8);
-            hasInput |= relativePath.equals("input.scss");
+            hasInput |= relativePath.equals("input.scss") || relativePath.equals("input.sass");
         }
 
-        if (!hasInput) {
+        Path scssInput = caseRoot.resolve("input.scss");
+        Path sassInput = caseRoot.resolve("input.sass");
+        boolean hasScssInput = Files.isRegularFile(scssInput);
+        boolean hasSassInput = Files.isRegularFile(sassInput);
+        if (!hasInput || hasScssInput == hasSassInput) {
             throw new IllegalArgumentException(
-                    "Executable sass-spec fixtures must provide input.scss: " + resolved.displayName()
+                    "Executable sass-spec fixtures must provide exactly one input.scss or input.sass: " +
+                            resolved.displayName()
             );
         }
-        return caseRoot.resolve("input.scss");
+        return hasScssInput ? scssInput : sassInput;
     }
 
     /// Determines whether a virtual file is metadata or a compiler expectation rather than source input.

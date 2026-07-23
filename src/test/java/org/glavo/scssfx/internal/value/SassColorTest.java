@@ -63,6 +63,81 @@ final class SassColorTest {
         );
     }
 
+    /// Verifies legacy mixing accounts for alpha differences and discards source format.
+    @Test
+    void mixesLegacyRgbColorsWithAlphaAwareWeights() {
+        var source = new SourceFile("red", null);
+        var formattedRed = SassColor.rgb(
+                255,
+                0,
+                0,
+                1,
+                new SpanColorFormat(source.span(0, 3))
+        );
+        var midpoint = formattedRed.mixedWith(SassColor.rgb(0, 0, 255, 1, null), 0.5);
+
+        assertEquals(127.5, midpoint.red());
+        assertEquals(0.0, midpoint.green());
+        assertEquals(127.5, midpoint.blue());
+        assertEquals(1.0, midpoint.alpha());
+        assertNull(midpoint.format());
+
+        var alphaAware = SassColor.rgb(255, 0, 0, 0.25, null)
+                .mixedWith(SassColor.rgb(0, 0, 255, 0.75, null), 0.5);
+        assertEquals(63.75, alphaAware.red());
+        assertEquals(0.0, alphaAware.green());
+        assertEquals(191.25, alphaAware.blue());
+        assertEquals(0.5, alphaAware.alpha());
+
+        var transparentMix = SassColor.rgb(0, 0, 0, 0, null)
+                .mixedWith(SassColor.rgb(255, 0, 0, 1, null), 0.5);
+        assertEquals(255.0, transparentMix.red());
+        assertEquals(0.0, transparentMix.green());
+        assertEquals(0.0, transparentMix.blue());
+        assertEquals(0.5, transparentMix.alpha());
+
+        var transparentEndpoint = SassColor.rgb(255, 0, 0, 0, null)
+                .mixedWith(SassColor.rgb(0, 0, 255, 1, null), 1.0);
+        assertEquals(255.0, transparentEndpoint.red());
+        assertEquals(0.0, transparentEndpoint.green());
+        assertEquals(0.0, transparentEndpoint.blue());
+        assertEquals(0.0, transparentEndpoint.alpha());
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> formattedRed.mixedWith(midpoint, -0.01)
+        );
+    }
+
+    /// Verifies inversion and HSL-derived legacy transforms preserve the expected channels.
+    @Test
+    void transformsLegacyRgbColorsThroughHslWithoutPreservingFormats() {
+        var source = new SourceFile("#123", null);
+        var input = SassColor.rgb(17, 34, 51, 0.4, new SpanColorFormat(source.span(0, 4)));
+        var inverted = input.inverted();
+
+        assertEquals(238.0, inverted.red());
+        assertEquals(221.0, inverted.green());
+        assertEquals(204.0, inverted.blue());
+        assertEquals(0.4, inverted.alpha());
+        assertNull(inverted.format());
+
+        var red = SassColor.rgb(255, 0, 0, 1, null);
+        assertEquals(0.0, red.hue());
+        assertEquals(100.0, red.saturation());
+        assertEquals(50.0, red.lightness());
+
+        var grayscale = red.grayscale();
+        assertEquals(127.5, grayscale.red());
+        assertEquals(127.5, grayscale.green());
+        assertEquals(127.5, grayscale.blue());
+        assertEquals(1.0, grayscale.alpha());
+
+        var complement = red.complemented();
+        assertEquals(0.0, complement.red());
+        assertEquals(255.0, complement.green());
+        assertEquals(255.0, complement.blue());
+    }
+
     /// Verifies channel equality and hashing use the same Sass fuzzy buckets
     /// and ignore source format.
     @Test

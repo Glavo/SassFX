@@ -1,17 +1,26 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.cli;
 
+import org.glavo.scssfx.BssTarget;
+import org.glavo.scssfx.JavaFXCompatibility;
+import org.glavo.scssfx.SassCompiler;
+import org.glavo.scssfx.SassFileSource;
+import org.glavo.scssfx.Syntax;
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Unmodifiable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Verifies the command-line compilation contract.
@@ -67,6 +76,32 @@ final class ScssfxMainTest {
         );
     }
 
+    /// Compiles a single indented Sass file to stdout.
+    @Test
+    void compilesIndentedSassFileToStdout(@TempDir Path directory) throws Exception {
+        var input = directory.resolve("style.sass");
+        Files.writeString(
+                input,
+                """
+                        a
+                          color: red
+                        """
+        );
+
+        var output = new StringWriter();
+        var commandLine = commandLine(output, new StringWriter());
+
+        assertEquals(0, commandLine.execute(input.toString()));
+        assertEquals(
+                """
+                        a {
+                          color: red;
+                        }
+                        """.replace("\r\n", "\n"),
+                output.toString().replace("\r\n", "\n")
+        );
+    }
+
     /// Compiles a single SCSS file to an output path.
     @Test
     void compilesFileToOutputPath(@TempDir Path directory) throws Exception {
@@ -84,6 +119,150 @@ final class ScssfxMainTest {
                         """.replace("\r\n", "\n"),
                 Files.readString(destination).replace("\r\n", "\n")
         );
+    }
+
+    /// Compiles compressed JavaFX CSS to stdout.
+    @Test
+    void compilesCompressedJavaFxCssToStdout(@TempDir Path directory) throws Exception {
+        var input = directory.resolve("style.scss");
+        Files.writeString(input, "a { -fx-text-fill: red; }");
+
+        var output = new StringWriter();
+        var commandLine = commandLine(output, new StringWriter());
+
+        assertEquals(
+                0,
+                commandLine.execute(
+                        "--target",
+                        "javafx-css",
+                        "--javafx-compatibility",
+                        "27",
+                        "--style",
+                        "compressed",
+                        input.toString()
+                )
+        );
+        assertEquals(
+                "a{-fx-text-fill:red}\n".replace("\r\n", "\n"),
+                output.toString().replace("\r\n", "\n")
+        );
+    }
+
+    /// Compiles JavaFX 27 BSS to an explicitly selected binary output file.
+    @Test
+    void compilesBssToOutputPath(@TempDir Path directory) throws Exception {
+        var input = directory.resolve("style.scss");
+        var destination = directory.resolve("out").resolve("style.bss");
+        Files.writeString(input, "Pane { -fx-opacity: 0.5; }");
+
+        var output = new StringWriter();
+        var commandLine = commandLine(output, new StringWriter());
+
+        assertEquals(
+                0,
+                commandLine.execute(
+                        "--target",
+                        "bss",
+                        "--javafx-compatibility",
+                        "27",
+                        "-o",
+                        destination.toString(),
+                        input.toString()
+                )
+        );
+
+        var expected = remainingBytes(new SassCompiler().compile(
+                new SassFileSource(input, Syntax.SCSS),
+                new BssTarget(JavaFXCompatibility.JAVA_FX_27)
+        ).output());
+        var actual = Files.readAllBytes(destination);
+        assertArrayEquals(expected, actual);
+        assertEquals(9, Short.toUnsignedInt(ByteBuffer.wrap(actual).getShort()));
+        assertEquals("", output.toString());
+    }
+
+    /// Rejects BSS output directed to standard output.
+    @Test
+    void rejectsBssOutputWithoutFile(@TempDir Path directory) throws Exception {
+        var input = directory.resolve("style.scss");
+        Files.writeString(input, "Pane { -fx-opacity: 0.5; }");
+
+        var output = new StringWriter();
+        var error = new StringWriter();
+        var commandLine = commandLine(output, error);
+
+        assertEquals(2, commandLine.execute("--target", "bss", input.toString()));
+        assertEquals("", output.toString());
+        assertTrue(error.toString().contains("BSS output requires an output path"));
+    }
+
+    /// Leaves the BSS destination absent when serialization rejects the stylesheet.
+    @Test
+    void leavesNoBssOutputForCompilationFailure(@TempDir Path directory) throws Exception {
+        var input = directory.resolve("unsupported.scss");
+        var destination = directory.resolve("out").resolve("style.bss");
+        Files.writeString(input, "Pane + .button { -fx-opacity: 0.5; }");
+
+        var error = new StringWriter();
+        var commandLine = commandLine(new StringWriter(), error);
+
+        assertEquals(
+                1,
+                commandLine.execute(
+                        "--target",
+                        "bss",
+                        "-o",
+                        destination.toString(),
+                        input.toString()
+                )
+        );
+        assertFalse(Files.exists(destination));
+        assertTrue(error.toString().contains("BSS output supports only descendant and child"));
+    }
+    /// Rejects text-only and JavaFX-only options when their targets do not support them.
+    @Test
+    void rejectsTargetIncompatibleOptions(@TempDir Path directory) throws Exception {
+        var input = directory.resolve("style.scss");
+        var destination = directory.resolve("style.bss");
+        Files.writeString(input, "Pane { -fx-opacity: 0.5; }");
+
+        var bssError = new StringWriter();
+        var bssCommand = commandLine(new StringWriter(), bssError);
+        assertEquals(
+                2,
+                bssCommand.execute(
+                        "--target",
+                        "bss",
+                        "--style",
+                        "compressed",
+                        "-o",
+                        destination.toString(),
+                        input.toString()
+                )
+        );
+        assertTrue(bssError.toString().contains("--style is supported only"));
+        assertFalse(Files.exists(destination));
+
+        var cssError = new StringWriter();
+        var cssCommand = commandLine(new StringWriter(), cssError);
+        assertEquals(
+                2,
+                cssCommand.execute("--javafx-compatibility", "27", input.toString())
+        );
+        assertTrue(cssError.toString().contains("--javafx-compatibility is supported only"));
+    }
+
+    /// Reports unsupported output option values as usage errors.
+    @Test
+    void rejectsUnsupportedOutputOptions(@TempDir Path directory) throws Exception {
+        var input = directory.resolve("style.scss");
+        Files.writeString(input, "a { color: red; }");
+
+        var error = new StringWriter();
+        var commandLine = commandLine(new StringWriter(), error);
+
+        assertEquals(2, commandLine.execute("--style", "dense", input.toString()));
+        assertTrue(error.toString().contains("unsupported output style 'dense'"));
     }
 
     /// Reports structured compilation failures on stderr.
@@ -120,5 +299,16 @@ final class ScssfxMainTest {
         return new CommandLine(new ScssfxMain())
                 .setOut(new PrintWriter(output, true))
                 .setErr(new PrintWriter(error, true));
+    }
+
+    /// Copies the remaining binary document bytes without changing the supplied buffer.
+    ///
+    /// @param buffer the read-only BSS buffer
+    /// @return a newly allocated byte array containing the remaining bytes
+    private static byte[] remainingBytes(@Unmodifiable ByteBuffer buffer) {
+        var copy = buffer.duplicate();
+        var bytes = new byte[copy.remaining()];
+        copy.get(bytes);
+        return bytes;
     }
 }

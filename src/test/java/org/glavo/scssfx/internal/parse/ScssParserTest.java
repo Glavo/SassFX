@@ -12,6 +12,7 @@ import org.glavo.scssfx.internal.ast.ExpressionInterpolationPart;
 import org.glavo.scssfx.internal.ast.ForwardRule;
 import org.glavo.scssfx.internal.ast.FunctionExpression;
 import org.glavo.scssfx.internal.ast.ListExpression;
+import org.glavo.scssfx.internal.ast.MediaRule;
 import org.glavo.scssfx.internal.ast.LoudComment;
 import org.glavo.scssfx.internal.ast.NumberExpression;
 import org.glavo.scssfx.internal.ast.ParenthesizedExpression;
@@ -1324,8 +1325,11 @@ final class ScssParserTest {
         ).expression();
         assertInstanceOf(ColorExpression.class, colorExpression);
 
-        var atRule = assertThrows(ParseException.class, () -> parse("@media {}"));
-        assertEquals("@media", atRule.span().text());
+        var media = assertInstanceOf(
+                MediaRule.class,
+                parse("@media screen {}").children().get(0)
+        );
+        assertEquals("@media screen {}", media.span().text());
 
         var unmatchedBracket = assertThrows(ParseException.class, () -> parse("a) {}"));
         assertEquals(")", unmatchedBracket.span().text());

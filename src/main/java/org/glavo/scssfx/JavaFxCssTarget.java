@@ -5,9 +5,12 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 import java.util.Objects;
 
-/// Configures JavaFX-compatible textual CSS output.
+/// Configures textual CSS intended for JavaFX stylesheet consumers.
 ///
-/// @param compatibility the JavaFX compatibility level
+/// This target does not load JavaFX classes. Current textual serialization does
+/// not vary by [#compatibility()].
+///
+/// @param compatibility the JavaFX stylesheet compatibility metadata
 /// @param style the formatting style applied to the generated stylesheet
 @NotNullByDefault
 public record JavaFXCssTarget(

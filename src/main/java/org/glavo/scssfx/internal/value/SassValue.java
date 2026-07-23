@@ -23,6 +23,8 @@ public sealed interface SassValue permits
         SassList,
         SassArgumentList,
         SassMap,
+        SassFunction,
+        SassMixin,
         SassColor {
     /// Returns this value's separator when viewed as a Sass list.
     ///
@@ -249,6 +251,22 @@ public sealed interface SassValue permits
     /// @throws SassValueException if this value is not a string
     default SassString assertString() {
         throw new SassValueException(this + " is not a string.");
+    }
+
+    /// Returns this value when it is a Sass function reference.
+    ///
+    /// @return this function reference
+    /// @throws SassValueException if this value is not a function reference
+    default SassFunction assertFunction() {
+        throw new SassValueException(this + " is not a function reference.");
+    }
+
+    /// Returns this value when it is a Sass mixin reference.
+    ///
+    /// @return this mixin reference
+    /// @throws SassValueException if this value is not a mixin reference
+    default SassMixin assertMixin() {
+        throw new SassValueException(this + " is not a mixin reference.");
     }
 
     /// Returns this value when it is a Sass color.

@@ -49,6 +49,9 @@ public final class Environment {
     /// Contains the active content block callable, or {@code null}.
     private @Nullable UserDefinedCallable content;
 
+    /// Records whether the current dynamic execution is within a mixin body.
+    private boolean inMixin;
+
     /// Contains modules loaded with an explicit namespace.
     private final LinkedHashMap<String, LoadedModule> modules;
 
@@ -79,6 +82,7 @@ public final class Environment {
         this.mixinFrames = new ArrayList<>();
         this.mixinFrames.add(new LinkedHashMap<>());
         this.content = null;
+        this.inMixin = false;
         this.modules = new LinkedHashMap<>();
         this.globalModules = new ArrayList<>();
         this.allModules = new ArrayList<>();
@@ -94,6 +98,7 @@ public final class Environment {
             List<LinkedHashMap<String, Callable>> functionFrames,
             List<LinkedHashMap<String, Callable>> mixinFrames,
             @Nullable UserDefinedCallable content,
+            boolean inMixin,
             LinkedHashMap<String, LoadedModule> modules,
             ArrayList<LoadedModule> globalModules,
             ArrayList<LoadedModule> allModules,
@@ -104,6 +109,7 @@ public final class Environment {
         this.functionFrames = new ArrayList<>(functionFrames);
         this.mixinFrames = new ArrayList<>(mixinFrames);
         this.content = content;
+        this.inMixin = inMixin;
         this.modules = modules;
         this.globalModules = globalModules;
         this.allModules = allModules;
@@ -126,6 +132,7 @@ public final class Environment {
                 functionFrames,
                 mixinFrames,
                 content,
+                inMixin,
                 modules,
                 globalModules,
                 allModules,
@@ -146,7 +153,7 @@ public final class Environment {
     /// @param name      the normalized variable name without a dollar sign
     /// @param namespace the module namespace, or {@code null} for lexical lookup
     /// @return the nearest binding, or {@code null} when no lexical binding exists
-    /// @throws SassValueException if a namespace is supplied
+    /// @throws SassValueException if a supplied namespace is not loaded
     public @Nullable VariableBinding findVariable(
             String name,
             @Nullable String namespace
@@ -161,7 +168,7 @@ public final class Environment {
                 return binding;
             }
         }
-        return fromOneGlobalModule(name, LoadedModule::variables);
+        return fromOneGlobalModule(name, "variable", LoadedModule::variables);
     }
 
     /// Returns the value of a visible variable.
@@ -169,7 +176,7 @@ public final class Environment {
     /// @param name      the normalized variable name without a dollar sign
     /// @param namespace the module namespace, or {@code null} for lexical lookup
     /// @return the value, or {@code null} when no lexical binding exists
-    /// @throws SassValueException if a namespace is supplied
+    /// @throws SassValueException if a supplied namespace is not loaded
     public @Nullable SassValue getVariable(String name, @Nullable String namespace) {
         @Nullable VariableBinding binding = findVariable(name, namespace);
         return binding == null ? null : binding.value();
@@ -180,23 +187,24 @@ public final class Environment {
     /// @param name      the normalized variable name without a dollar sign
     /// @param namespace the module namespace, or {@code null} for lexical lookup
     /// @return whether lookup finds a binding, including one whose value is Sass null
-    /// @throws SassValueException if a namespace is supplied
+    /// @throws SassValueException if a supplied namespace is not loaded
     public boolean variableExists(String name, @Nullable String namespace) {
         return findVariable(name, namespace) != null;
     }
 
-    /// Returns whether a variable exists in the global frame.
+    /// Returns whether a global variable exists in the root frame or a module.
     ///
     /// @param name      the normalized variable name without a dollar sign
-    /// @param namespace the module namespace, or {@code null} for this environment
-    /// @return whether the global binding exists, including Sass null
-    /// @throws SassValueException if a namespace is supplied
+    /// @param namespace the module namespace, or {@code null} for the root frame and global modules
+    /// @return whether the requested global binding exists, including Sass null
+    /// @throws SassValueException if {@code namespace} does not identify a loaded module
     public boolean globalVariableExists(String name, @Nullable String namespace) {
         validateName(name);
         if (namespace != null) {
-            throw missingModule(namespace);
+            return requireModule(namespace).variables().containsKey(name);
         }
-        return variableFrames.get(0).containsKey(name);
+        return variableFrames.get(0).containsKey(name)
+                || fromOneGlobalModule(name, "variable", LoadedModule::variables) != null;
     }
 
     /// Assigns a variable according to lexical, semi-global, and explicit-global rules.
@@ -274,7 +282,7 @@ public final class Environment {
     /// @param name      the normalized function name
     /// @param namespace the module namespace, or {@code null}
     /// @return the function, or {@code null} when absent
-    /// @throws SassValueException if a namespace is supplied
+    /// @throws SassValueException if a supplied namespace is not loaded
     public @Nullable Callable getFunction(String name, @Nullable String namespace) {
         validateName(name);
         if (namespace != null) {
@@ -286,7 +294,7 @@ public final class Environment {
                 return callable;
             }
         }
-        return fromOneGlobalModule(name, LoadedModule::functions);
+        return fromOneGlobalModule(name, "function", LoadedModule::functions);
     }
 
     /// Finds a visible mixin.
@@ -294,7 +302,7 @@ public final class Environment {
     /// @param name      the normalized mixin name
     /// @param namespace the module namespace, or {@code null}
     /// @return the mixin, or {@code null} when absent
-    /// @throws SassValueException if a namespace is supplied
+    /// @throws SassValueException if a supplied namespace is not loaded
     public @Nullable Callable getMixin(String name, @Nullable String namespace) {
         validateName(name);
         if (namespace != null) {
@@ -306,7 +314,7 @@ public final class Environment {
                 return callable;
             }
         }
-        return fromOneGlobalModule(name, LoadedModule::mixins);
+        return fromOneGlobalModule(name, "mixin", LoadedModule::mixins);
     }
 
     /// Adds a loaded module to this environment.
@@ -489,8 +497,20 @@ public final class Environment {
         }
     }
 
+    /// Returns one module loaded with an explicit namespace.
+    ///
+    /// Modules loaded using {@code as *} are not addressable through this method.
+    ///
+    /// @param namespace the module namespace
+    /// @return the loaded module's immutable public exports
+    /// @throws SassValueException if no explicitly named module has this namespace
+    public LoadedModule module(String namespace) {
+        return requireModule(namespace);
+    }
+
     /// Returns a namespaced module or fails.
     private LoadedModule requireModule(String namespace) {
+        Objects.requireNonNull(namespace, "namespace");
         @Nullable LoadedModule module = modules.get(namespace);
         if (module == null) {
             throw missingModule(namespace);
@@ -498,9 +518,17 @@ public final class Environment {
         return module;
     }
 
-    /// Looks up a member across {@code as *} modules.
+    /// Looks up one member across {@code as *} modules.
+    ///
+    /// @param name   the normalized member name
+    /// @param kind   the singular member kind used in ambiguity diagnostics
+    /// @param getter reads members of the requested kind from one module
+    /// @param <T>    the member value type
+    /// @return the sole matching member, or {@code null} when no module exports it
+    /// @throws SassValueException if multiple modules export the requested member
     private <T> @Nullable T fromOneGlobalModule(
             String name,
+            String kind,
             java.util.function.Function<LoadedModule, Map<String, T>> getter
     ) {
         @Nullable T found = null;
@@ -509,13 +537,39 @@ public final class Environment {
             if (value != null) {
                 if (found != null) {
                     throw new SassValueException(
-                            "This variable is available from multiple global modules."
+                            "This " + kind + " is available from multiple global modules."
                     );
                 }
                 found = value;
             }
         }
         return found;
+    }
+
+    /// Returns whether the current dynamic execution is within a mixin body.
+    ///
+    /// @return whether a mixin body is active
+    public boolean inMixin() {
+        return inMixin;
+    }
+
+    /// Runs a body while marking this environment as executing a mixin.
+    ///
+    /// Nested calls restore the preceding dynamic state even when the body
+    /// throws.
+    ///
+    /// @param body the body to run
+    /// @param <T>  the result type
+    /// @return the body result
+    public <T> T withMixin(Supplier<T> body) {
+        Objects.requireNonNull(body, "body");
+        var previous = inMixin;
+        inMixin = true;
+        try {
+            return body.get();
+        } finally {
+            inMixin = previous;
+        }
     }
 
     /// Returns the active content block callable.
@@ -609,9 +663,6 @@ public final class Environment {
     /// @param namespace the missing namespace
     /// @return the span-free value-layer failure
     private static SassValueException missingModule(String namespace) {
-        if (namespace.isEmpty()) {
-            throw new IllegalArgumentException("namespace must not be empty");
-        }
         return new SassValueException(
                 "There is no module with the namespace \"" + namespace + "\"."
         );

@@ -84,6 +84,235 @@ $values: keyword-map($tone: #123456);
   alpha: 0.5;
   same: true;
 }
+<===> modules/meta-runtime-queries/input.scss
+@use "sass:map";
+@use "sass:math";
+@use "sass:meta";
+
+$root_value: root;
+$null_value: null;
+
+@function local_function() {
+  @return 1;
+}
+
+@mixin local_mixin() {}
+
+.example {
+  root-variable: meta.variable-exists("root_value");
+  null-global: meta.global-variable-exists("null_value");
+  module-variable: meta.global-variable-exists("pi", "math");
+  builtin-function: meta.function-exists("round");
+  local-function: meta.function-exists("local_function");
+  module-function: meta.function-exists("round", "math");
+  absent-function: meta.function-exists("not-a-sass-function");
+  local-mixin: meta.mixin-exists("local_mixin");
+  absent-mixin: meta.mixin-exists("not-a-sass-mixin");
+  math-pi: map.get(meta.module-variables("math"), "pi");
+}
+<===> modules/meta-runtime-queries/output.css
+.example {
+  root-variable: true;
+  null-global: true;
+  module-variable: true;
+  builtin-function: true;
+  local-function: true;
+  module-function: true;
+  absent-function: false;
+  local-mixin: true;
+  absent-mixin: false;
+  math-pi: 3.141592653589793;
+}
+<===> modules/meta-function-values/input.scss
+@use "sass:map";
+@use "sass:math";
+@use "sass:meta";
+
+$offset: 4;
+
+@function sum-value($value, $factor: 2) {
+  @return $value * $factor + $offset;
+}
+
+@function forward($args...) {
+  @return meta.call(meta.get-function("sum_value"), $args...);
+}
+
+$local: meta.get-function("sum_value");
+$module: meta.get-function("round", $module: "math");
+$css: meta.get-function("var", $css: true);
+$functions: meta.module-functions("math");
+
+.example {
+  type: meta.type-of($local);
+  inspected: meta.inspect($local);
+  direct: meta.call($local, 3);
+  keyword: meta.call($local, $value: 3, $factor: 4);
+  forwarded: forward($value: 3, $factor: 3);
+  module: meta.call($module, -1.5);
+  module-map: meta.call(map.get($functions, "round"), -1.5);
+  css: meta.call($css, unquote("--theme"), 10px);
+}
+<===> modules/meta-function-values/output.css
+.example {
+  type: function;
+  inspected: get-function("sum-value");
+  direct: 10;
+  keyword: 16;
+  forwarded: 13;
+  module: -2;
+  module-map: -2;
+  css: var(--theme, 10px);
+}
+<===> modules/meta-mixin-values/input.scss
+@use "sass:map";
+@use "sass:meta";
+@use "library";
+
+@mixin banner($color) {
+  color: $color;
+  has-content: meta.content-exists();
+  @content(3);
+}
+
+$banner: meta.get-mixin("banner");
+$library-mixins: meta.module-mixins("library");
+
+.example {
+  type: meta.type-of($banner);
+  inspected: meta.inspect($banner);
+  library-type: meta.type-of(map.get($library-mixins, "frame"));
+  apply-accepts: meta.accepts-content(meta.get-mixin("apply", "meta"));
+  @include meta.apply($banner, red) using ($size) {
+    width: $size * 1px;
+  }
+  @include meta.apply(map.get($library-mixins, "frame"), 2px);
+}
+<===> modules/meta-mixin-values/_library.scss
+@mixin frame($width) {
+  border-width: $width;
+}
+<===> modules/meta-mixin-values/output.css
+.example {
+  type: mixin;
+  inspected: get-mixin("banner");
+  library-type: mixin;
+  apply-accepts: true;
+  color: red;
+  has-content: true;
+  width: 3px;
+  border-width: 2px;
+}
+<===> modules/color-transforms/input.scss
+@use "sass:color";
+
+.example {
+  midpoint: color.mix(#000, #fff);
+  named: color.mix($color2: #fff, $color1: #000, $weight: 25%);
+  alpha-mix: color.mix(rgba(255, 0, 0, 0.25), rgba(0, 0, 255, 0.75));
+  transparent-mix: color.mix(transparent, red);
+  inverted: color.invert(#123);
+  partial-invert: color.invert(#123, 25%);
+  css-invert: color.invert(0.5);
+  css-grayscale: color.grayscale(0.25);
+  rounded-channel: color.red(color.mix(#000, #fff));
+  hue: color.hue(red);
+  saturation: color.saturation(red);
+  lightness: color.lightness(red);
+  grayscale: color.grayscale(red);
+  complement: color.complement(red);
+}
+<===> modules/color-transforms/output.css
+.example {
+  midpoint: rgb(127.5, 127.5, 127.5);
+  named: rgb(191.25, 191.25, 191.25);
+  alpha-mix: rgba(63.75, 0, 191.25, 0.5);
+  transparent-mix: rgba(255, 0, 0, 0.5);
+  inverted: #eeddcc;
+  partial-invert: rgb(72.25, 80.75, 89.25);
+  css-invert: invert(0.5);
+  css-grayscale: grayscale(0.25);
+  rounded-channel: 128;
+  hue: 0deg;
+  saturation: 100%;
+  lightness: 50%;
+  grayscale: rgb(127.5, 127.5, 127.5);
+  complement: aqua;
+}
+<===> modules/selectors/input.scss
+@use "sass:selector";
+
+$parsed: selector.parse((".menu" ">" ".item", ".button:hover"));
+$nested: selector.nest(".menu, .toolbar", "&:hover", "> .item");
+$appended: selector.append(".button, .link", ".active", ":hover");
+$simples: selector.simple-selectors("button.primary#main:hover");
+
+.example {
+  parsed: $parsed;
+  nested: $nested;
+  appended: $appended;
+  simples: $simples;
+}
+<===> modules/selectors/output.css
+.example {
+  parsed: .menu > .item, .button:hover;
+  nested: .menu:hover > .item, .toolbar:hover > .item;
+  appended: .button.active:hover, .link.active:hover;
+  simples: button, .primary, #main, :hover;
+}
+<===> modules/selector-algebra/input.scss
+@use "sass:selector";
+
+$unified: selector.unify(".badge, .tag", ".selected");
+$weaved: selector.unify(".a .b", ".c .b");
+$super: selector.is-superselector(".a .b", ".a > .b");
+$extended: selector.extend(".info .title", ".info", ".alert");
+$replaced: selector.replace(".info .title", ".info", ".alert");
+$namespace-unified: selector.unify("*|a", "svg|*");
+$namespace-super: selector.is-superselector("*|a", "svg|a");
+$namespace-replaced: selector.replace("svg|a.item", "svg|*", ".selected");
+$pseudo-unified: selector.unify(":is(.choice)", ".active");
+$pseudo-super: selector.is-superselector(".choice", ":is(.choice)");
+$pseudo-extended: selector.extend(":is(.choice)", ".choice", ".selected");
+$pseudo-replaced: selector.replace(".card::before", "::before", ".generated");
+
+.example {
+  unified: $unified;
+  weaved: $weaved;
+  super: $super;
+  extended: $extended;
+  replaced: $replaced;
+  namespace-unified: $namespace-unified;
+  namespace-super: $namespace-super;
+  namespace-replaced: $namespace-replaced;
+  pseudo-unified: $pseudo-unified;
+  pseudo-super: $pseudo-super;
+  pseudo-extended: $pseudo-extended;
+  pseudo-replaced: $pseudo-replaced;
+}
+<===> modules/selector-algebra/output.css
+.example {
+  unified: .badge.selected, .tag.selected;
+  weaved: .a .c .b, .c .a .b;
+  super: true;
+  extended: .info .title, .alert .title;
+  replaced: .alert .title;
+  namespace-unified: svg|a;
+  namespace-super: true;
+  namespace-replaced: svg|a.item.selected;
+  pseudo-unified: .active:is(.choice);
+  pseudo-super: true;
+  pseudo-extended: :is(.choice, .selected);
+  pseudo-replaced: .card.generated;
+}
+<===> errors/selector-algebra-opaque/input.scss
+@use "sass:selector";
+
+.example {
+  value: selector.unify("&", ".a");
+}
+<===> errors/selector-algebra-opaque/error
+Error: $selector1: Parent selectors aren't allowed here.
 <===> diagnostics/deprecations/input.scss
 a {
   $value: 1 !global;

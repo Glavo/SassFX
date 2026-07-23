@@ -10,6 +10,11 @@ import org.glavo.scssfx.internal.ast.BinaryOperationExpression;
 import org.glavo.scssfx.internal.ast.EachRule;
 import org.glavo.scssfx.internal.ast.ForRule;
 import org.glavo.scssfx.internal.ast.IfRule;
+import org.glavo.scssfx.internal.ast.MediaRule;
+import org.glavo.scssfx.internal.ast.SupportsRule;
+import org.glavo.scssfx.internal.ast.SupportsAnything;
+import org.glavo.scssfx.internal.ast.SupportsDeclaration;
+import org.glavo.scssfx.internal.ast.SupportsNegation;
 import org.glavo.scssfx.internal.ast.StyleRule;
 import org.glavo.scssfx.internal.ast.Stylesheet;
 import org.glavo.scssfx.internal.ast.WhileRule;
@@ -105,11 +110,48 @@ final class ControlFlowTest {
         assertEquals(1, nested.children().size());
     }
 
-    /// Verifies unknown and bare else at-rules remain structured failures.
+    /// Verifies media and supports rules retain their conditions and children.
     @Test
-    void rejectsUnknownAndBareElseAtRules() {
-        var media = assertThrows(ParseException.class, () -> parse("@media {}"));
-        assertEquals("This stylesheet statement is not available.", media.getMessage());
+    void parsesConditionalRulesAndRejectsUnknownAndBareElseAtRules() {
+        var media = assertInstanceOf(
+                MediaRule.class,
+                parse("@media screen { Pane { color: red; } }").children().get(0)
+        );
+        assertEquals(
+                "screen",
+                Objects.requireNonNull(media.query().asPlain()).strip()
+        );
+        assertEquals(1, media.children().size());
+
+        var supports = assertInstanceOf(
+                SupportsRule.class,
+                parse("@supports not (display: grid) { Pane { color: red; } }")
+                        .children().get(0)
+        );
+        var negation = assertInstanceOf(
+                SupportsNegation.class,
+                supports.condition()
+        );
+        var declaration = assertInstanceOf(
+                SupportsDeclaration.class,
+                negation.condition()
+        );
+        assertEquals("display", declaration.name().toString());
+        assertEquals("grid", declaration.value().toString());
+
+        var general = assertInstanceOf(
+                SupportsAnything.class,
+                assertInstanceOf(
+                        SupportsRule.class,
+                        parse("@supports (font-tech(color-COLRv1)) { Pane {} }")
+                                .children().get(0)
+                ).condition()
+        );
+        assertEquals("font-tech(color-COLRv1)", general.contents().asPlain());
+        assertEquals(1, supports.children().size());
+
+        var unknown = assertThrows(ParseException.class, () -> parse("@unknown {}"));
+        assertEquals("This stylesheet statement is not available.", unknown.getMessage());
 
         var bareElse = assertThrows(ParseException.class, () -> parse("@else {}"));
         assertEquals("This at-rule is not allowed here.", bareElse.getMessage());

@@ -230,6 +230,24 @@ final class SassValueTest {
         assertEquals("calc(NaN)", SassNumber.of(Double.NaN, null).toCssString());
     }
 
+    /// Verifies fuzzy numeric range checks normalize endpoint-adjacent values.
+    @Test
+    void validatesFuzzyNumberRanges() {
+        assertEquals(0.0, SassNumber.of(-0.000000000001, "%").valueInRange(0, 100));
+        assertEquals(100.0, SassNumber.of(100.000000000001, "%").valueInRange(0, 100));
+        assertEquals(
+                "Expected 101% to be within 0% and 100%.",
+                assertThrows(
+                        SassValueException.class,
+                        () -> SassNumber.of(101, "%").valueInRange(0, 100)
+                ).getMessage()
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> SassNumber.of(1, null).valueInRange(2, 1)
+        );
+    }
+
     /// Verifies equality and hashing across canonical length and time units.
     @Test
     void comparesConvertibleNumbersCanonically() {

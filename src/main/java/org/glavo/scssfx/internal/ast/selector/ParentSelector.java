@@ -9,28 +9,29 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
-/// The parent selector `&`, optionally followed by a suffix.
+/// The parent selector {@code &}, optionally followed by an identifier suffix.
 ///
-/// @param suffix the identifier suffix after `&`, or {@code null}
+/// @param suffix the identifier suffix after {@code &}, or {@code null}
 /// @param span   the source span
 @ApiStatus.Internal
 @NotNullByDefault
-public record ParentSelector(@Nullable String suffix, SourceSpan span) implements SimpleSelector {
+public record ParentSelector(
+        @Nullable CssIdentifier suffix,
+        SourceSpan span
+) implements SimpleSelector {
     /// Creates a parent selector.
     public ParentSelector {
-        if (suffix != null && suffix.isEmpty()) {
-            throw new IllegalArgumentException("suffix must not be empty");
-        }
         Objects.requireNonNull(span, "span");
     }
 
     @Override
     public String toCssString() {
-        return suffix == null ? "&" : "&" + suffix;
+        return suffix == null ? "&" : "&" + suffix.toCssString();
     }
 
     @Override
-    public SimpleSelector addSuffix(String extra) {
+    public SimpleSelector addSuffix(CssIdentifier extra) {
+        Objects.requireNonNull(extra, "extra");
         throw new SassValueException("Parent selector can't have an additional suffix.");
     }
 }

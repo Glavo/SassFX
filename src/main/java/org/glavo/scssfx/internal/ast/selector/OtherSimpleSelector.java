@@ -8,10 +8,11 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 import java.util.Objects;
 
-/// An opaque simple selector retained as CSS text.
+/// Retains a legacy simple selector that has not been structurally modeled.
 ///
-/// This first implementation uses opaque text for pseudo-classes, attributes,
-/// placeholders, and namespaced forms that are not modeled explicitly yet.
+/// The selector parser no longer creates this type for attributes, pseudo
+/// selectors, placeholders, or namespaces. It remains available to preserve
+/// compatibility with AST values created before those forms were modeled.
 ///
 /// @param css  the CSS spelling
 /// @param span the source span
@@ -33,11 +34,11 @@ public record OtherSimpleSelector(String css, SourceSpan span) implements Simple
     }
 
     @Override
-    public SimpleSelector addSuffix(String suffix) {
+    public SimpleSelector addSuffix(CssIdentifier suffix) {
         Objects.requireNonNull(suffix, "suffix");
         if (css.startsWith(":") || css.startsWith("[") || css.startsWith("%")) {
             throw new SassValueException("Selector " + css + " can't have a suffix.");
         }
-        return new OtherSimpleSelector(css + suffix, span);
+        return new OtherSimpleSelector(css + suffix.toCssString(), span);
     }
 }

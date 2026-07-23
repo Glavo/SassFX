@@ -29,6 +29,47 @@
           "loadedUrls": ["input.scss"]
         },
         {
+          "directory": "modules/meta-runtime-queries",
+          "action": "run",
+          "category": "META",
+          "loadedUrls": ["input.scss"]
+        },
+        {
+          "directory": "modules/meta-function-values",
+          "action": "run",
+          "category": "META",
+          "loadedUrls": ["input.scss"]
+        },
+        {
+          "directory": "modules/meta-mixin-values",
+          "action": "run",
+          "category": "META",
+          "loadedUrls": ["input.scss", "_library.scss"]
+        },
+        {
+          "directory": "modules/color-transforms",
+          "action": "run",
+          "category": "COLOR",
+          "loadedUrls": ["input.scss"]
+        },
+        {
+          "directory": "modules/selectors",
+          "action": "run",
+          "category": "SELECTORS",
+          "loadedUrls": ["input.scss"]
+        },
+        {
+          "directory": "modules/selector-algebra",
+          "action": "run",
+          "category": "SELECTORS",
+          "loadedUrls": ["input.scss"]
+        },
+        {
+          "directory": "errors/selector-algebra-opaque",
+          "action": "run",
+          "category": "SELECTORS"
+        },
+        {
           "directory": "diagnostics/deprecations",
           "action": "run",
           "category": "DIAGNOSTICS",
@@ -45,9 +86,9 @@
         },
         {
           "directory": "syntax/indented",
-          "action": "skip",
-          "category": "UNSUPPORTED_SYNTAX",
-          "reason": "Indented Sass syntax is not implemented."
+          "action": "run",
+          "category": "SYNTAX",
+          "loadedUrls": ["input.sass"]
         }
       ]
     }

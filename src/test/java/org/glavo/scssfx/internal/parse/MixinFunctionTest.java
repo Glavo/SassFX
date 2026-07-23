@@ -6,17 +6,21 @@ import org.glavo.scssfx.SassCompilationException;
 import org.glavo.scssfx.SassCompiler;
 import org.glavo.scssfx.SassSource;
 import org.glavo.scssfx.Syntax;
+import org.glavo.scssfx.internal.ast.ContentBlock;
+import org.glavo.scssfx.internal.ast.ContentRule;
 import org.glavo.scssfx.internal.ast.FunctionRule;
 import org.glavo.scssfx.internal.ast.IncludeRule;
 import org.glavo.scssfx.internal.ast.MixinRule;
 import org.glavo.scssfx.internal.ast.ReturnRule;
 import org.glavo.scssfx.internal.source.SourceFile;
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -87,6 +91,53 @@ final class MixinFunctionTest {
                                 }
                                 @include wrapper {
                                   color: red;
+                                }
+                                """
+                )
+        );
+    }
+
+    /// Parses and compiles content block parameters passed by {@code @content}.
+    @Test
+    void parsesAndCompilesContentParameters() throws Exception {
+        var stylesheet = parse(
+                """
+                        @mixin wrapper {
+                          @content(2, $tone: blue);
+                        }
+                        @include wrapper using ($value, $tone) {
+                          a {
+                            width: $value * 1px;
+                            color: $tone;
+                          }
+                        }
+                        """
+        );
+        var mixin = assertInstanceOf(MixinRule.class, stylesheet.children().get(0));
+        assertInstanceOf(ContentRule.class, mixin.children().get(0));
+        var include = assertInstanceOf(IncludeRule.class, stylesheet.children().get(1));
+        @Nullable ContentBlock content = include.content();
+        assertNotNull(content);
+        assertEquals(2, content.parameters().parameters().size());
+        assertEquals("value", content.parameters().parameters().get(0).name());
+        assertEquals("tone", content.parameters().parameters().get(1).name());
+
+        assertEquals(
+                """
+                        a {
+                          width: 2px;
+                          color: blue;
+                        }""",
+                compile(
+                        """
+                                @mixin wrapper {
+                                  @content(2, $tone: blue);
+                                }
+                                @include wrapper using ($value, $tone) {
+                                  a {
+                                    width: $value * 1px;
+                                    color: $tone;
+                                  }
                                 }
                                 """
                 )
@@ -196,6 +247,8 @@ final class MixinFunctionTest {
         assertThrows(ParseException.class, () -> parse("@content;"));
         assertThrows(ParseException.class, () -> parse("@return 1;"));
         assertThrows(ParseException.class, () -> parse("@function f() { a { b: c; } }"));
+        assertThrows(ParseException.class, () -> parse("@include target { @mixin nested {} }"));
+        assertThrows(ParseException.class, () -> parse("@include target { @function nested() {} }"));
     }
 
     /// Compiles SCSS source to expanded CSS text.

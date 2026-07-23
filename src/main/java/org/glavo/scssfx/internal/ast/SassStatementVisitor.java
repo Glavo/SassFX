@@ -22,6 +22,24 @@ public interface SassStatementVisitor<R> {
     /// @return the visit result
     R visitStyleRule(StyleRule statement);
 
+    /// Visits a {@code @font-face} rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitFontFaceRule(FontFaceRule statement);
+
+    /// Visits a {@code @media} rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitMediaRule(MediaRule statement);
+
+    /// Visits an {@code @supports} rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitSupportsRule(SupportsRule statement);
+
     /// Visits a property declaration.
     ///
     /// @param statement the statement to visit

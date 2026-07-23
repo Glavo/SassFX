@@ -108,6 +108,40 @@ final class UseModuleTest {
         );
     }
 
+    /// Loads an indented Sass module through a namespaced {@code @use}.
+    @Test
+    void compilesIndentedSassModule(@TempDir Path directory) throws Exception {
+        Files.writeString(
+                directory.resolve("_theme.sass"),
+                """
+                        $color: red
+                        =accent
+                          color: $color
+                        """
+        );
+        Files.writeString(
+                directory.resolve("main.scss"),
+                """
+                        @use "theme" as t;
+                        .item {
+                          @include t.accent;
+                        }
+                        """
+        );
+
+        var result = new SassCompiler().compile(
+                SassSource.fromFile(directory.resolve("main.scss")),
+                CssTarget.DEFAULT
+        );
+        assertEquals(
+                """
+                        .item {
+                          color: red;
+                        }""",
+                result.output()
+        );
+    }
+
     /// Resolves modules through compile options load paths.
     @Test
     void resolvesLoadPaths(@TempDir Path directory) throws Exception {

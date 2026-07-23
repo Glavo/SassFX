@@ -10,7 +10,10 @@ import java.util.Objects;
 /// Configures JavaFX binary stylesheet output.
 ///
 /// A successful compilation produces a read-only buffer whose position is zero
-/// and whose remaining bytes contain one complete BSS document.
+/// and whose remaining bytes contain one complete BSS document. The compiler
+/// writes the format directly without loading JavaFX classes. Compilation may
+/// fail with [SassCompilationException] when evaluated CSS requires a BSS
+/// construct outside the supported subset.
 ///
 /// @param compatibility the JavaFX compatibility level that determines the BSS version
 @NotNullByDefault

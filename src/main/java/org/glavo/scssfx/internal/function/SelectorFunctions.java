@@ -1,0 +1,443 @@
+// SPDX-License-Identifier: MPL-2.0
+package org.glavo.scssfx.internal.function;
+
+import org.glavo.scssfx.SourceLocation;
+import org.glavo.scssfx.SourceSpan;
+import org.glavo.scssfx.internal.ast.selector.ComplexSelector;
+import org.glavo.scssfx.internal.ast.selector.ComplexSelectorComponent;
+import org.glavo.scssfx.internal.ast.selector.CompoundSelector;
+import org.glavo.scssfx.internal.ast.selector.ParentSelector;
+import org.glavo.scssfx.internal.ast.selector.SelectorAlgebra;
+import org.glavo.scssfx.internal.ast.selector.SelectorList;
+import org.glavo.scssfx.internal.ast.selector.SimpleSelector;
+import org.glavo.scssfx.internal.ast.selector.TypeSelector;
+import org.glavo.scssfx.internal.ast.selector.UniversalSelector;
+import org.glavo.scssfx.internal.callable.BuiltInCallable;
+import org.glavo.scssfx.internal.value.ListSeparator;
+import org.glavo.scssfx.internal.value.SassArgumentList;
+import org.glavo.scssfx.internal.value.SassBoolean;
+import org.glavo.scssfx.internal.value.SassList;
+import org.glavo.scssfx.internal.value.SassNull;
+import org.glavo.scssfx.internal.value.SassString;
+import org.glavo.scssfx.internal.value.SassValue;
+import org.glavo.scssfx.internal.value.SassValueException;
+import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
+
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/// Implements the pure selector functions exported by {@code sass:selector}.
+///
+/// The functions convert Sass's nested selector-list value representation to
+/// the compiler's selector AST, perform operations using that AST, and convert
+/// the result back to ordinary Sass strings and lists.
+@ApiStatus.Internal
+@NotNullByDefault
+public final class SelectorFunctions {
+    /// Identifies the synthetic source location used for function-created selectors.
+    private static final SourceLocation ORIGIN = new SourceLocation(0, 0, 0);
+
+    /// Prevents instantiation.
+    private SelectorFunctions() {
+    }
+
+    /// Returns the selector functions supported by the current selector AST.
+    ///
+    /// @return an immutable selector function table
+    public static @Unmodifiable Map<String, BuiltInCallable> module() {
+        var functions = new LinkedHashMap<String, BuiltInCallable>();
+        register(functions, BuiltInCallable.of(
+                "parse",
+                List.of("selector"),
+                SelectorFunctions::parse
+        ));
+        register(functions, BuiltInCallable.of(
+                "simple-selectors",
+                List.of("selector"),
+                SelectorFunctions::simpleSelectors
+        ));
+        register(functions, BuiltInCallable.withRest(
+                "nest",
+                List.of(),
+                "selectors",
+                SelectorFunctions::nest
+        ));
+        register(functions, BuiltInCallable.withRest(
+                "append",
+                List.of(),
+                "selectors",
+                SelectorFunctions::append
+        ));
+        register(functions, BuiltInCallable.of(
+                "unify",
+                List.of("selector1", "selector2"),
+                SelectorFunctions::unify
+        ));
+        register(functions, BuiltInCallable.of(
+                "is-superselector",
+                List.of("super", "sub"),
+                SelectorFunctions::isSuperselector
+        ));
+        register(functions, BuiltInCallable.of(
+                "extend",
+                List.of("selector", "extendee", "extender"),
+                SelectorFunctions::extend
+        ));
+        register(functions, BuiltInCallable.of(
+                "replace",
+                List.of("selector", "original", "replacement"),
+                SelectorFunctions::replace
+        ));
+        return Collections.unmodifiableMap(new LinkedHashMap<>(functions));
+    }
+
+    /// Registers one callable under its normalized name.
+    ///
+    /// @param functions the mutable function table
+    /// @param callable the callable to register
+    private static void register(
+            LinkedHashMap<String, BuiltInCallable> functions,
+            BuiltInCallable callable
+    ) {
+        functions.put(callable.name(), callable);
+    }
+
+    /// Parses one selector value and returns its structural Sass list form.
+    ///
+    /// @param args the one selector argument
+    /// @return the parsed selector list represented as Sass lists
+    private static SassValue parse(List<SassValue> args) {
+        return asSassList(parseSelector(args.get(0), "selector", false));
+    }
+
+    /// Returns the simple selectors in one compound selector.
+    ///
+    /// @param args the one compound-selector argument
+    /// @return a comma-separated list of unquoted simple selector strings
+    private static SassValue simpleSelectors(List<SassValue> args) {
+        var value = args.get(0);
+        var selector = parseSelector(value, "selector", false);
+        if (selector.components().size() != 1) {
+            throw notCompoundSelector(value);
+        }
+        var complex = selector.components().get(0);
+        if (!complex.leadingCombinators().isEmpty() || complex.components().size() != 1) {
+            throw notCompoundSelector(value);
+        }
+        var component = complex.components().get(0);
+        if (!component.combinators().isEmpty()) {
+            throw notCompoundSelector(value);
+        }
+
+        var result = new ArrayList<SassValue>();
+        for (var simple : component.selector().components()) {
+            result.add(new SassString(simple.toCssString(), false));
+        }
+        return new SassList(result, ListSeparator.COMMA, false);
+    }
+
+    /// Nests every selector argument within the preceding argument.
+    ///
+    /// @param args the rest argument list containing one or more selectors
+    /// @return the resulting selector list represented as Sass lists
+    private static SassValue nest(List<SassValue> args) {
+        var values = restValues(args);
+        if (values.isEmpty()) {
+            throw new SassValueException("$selectors: At least one selector must be passed.");
+        }
+        var result = parseSelector(values.get(0), "selectors", true);
+        rejectTopLevelParentSuffix(result);
+        for (var index = 1; index < values.size(); index++) {
+            result = parseSelector(values.get(index), "selectors", true).nestWithin(result);
+        }
+        return asSassList(result);
+    }
+
+    /// Appends every selector argument to the preceding argument's last compound.
+    ///
+    /// @param args the rest argument list containing one or more selectors
+    /// @return the resulting selector list represented as Sass lists
+    private static SassValue append(List<SassValue> args) {
+        var values = restValues(args);
+        if (values.isEmpty()) {
+            throw new SassValueException("$selectors: At least one selector must be passed.");
+        }
+        var result = parseSelector(values.get(0), "selectors", false);
+        for (var index = 1; index < values.size(); index++) {
+            result = appendSelector(result, parseSelector(values.get(index), "selectors", false));
+        }
+        return asSassList(result);
+    }
+
+    /// Returns the selector intersection of two selector-list values.
+    ///
+    /// @param args the two selector arguments
+    /// @return the unified selector list, or Sass {@code null}
+    private static SassValue unify(List<SassValue> args) {
+        @Nullable SelectorList unified = SelectorAlgebra.unify(
+                parseSelector(args.get(0), "selector1", false),
+                parseSelector(args.get(1), "selector2", false)
+        );
+        return unified == null ? SassNull.NULL : asSassList(unified);
+    }
+
+    /// Returns whether one selector-list value is a superselector of another.
+    ///
+    /// @param args the superselector and subselector arguments
+    /// @return the Sass boolean result
+    private static SassValue isSuperselector(List<SassValue> args) {
+        return SassBoolean.of(SelectorAlgebra.isSuperselector(
+                parseSelector(args.get(0), "super", false),
+                parseSelector(args.get(1), "sub", false)
+        ));
+    }
+
+    /// Extends selector-list values while retaining the original alternatives.
+    ///
+    /// @param args the selector, extendee, and extender arguments
+    /// @return the extended selector list
+    private static SassValue extend(List<SassValue> args) {
+        return asSassList(SelectorAlgebra.extend(
+                parseSelector(args.get(0), "selector", false),
+                parseSelector(args.get(1), "extendee", false),
+                parseSelector(args.get(2), "extender", false)
+        ));
+    }
+
+    /// Replaces selector-list values without retaining matched originals.
+    ///
+    /// @param args the selector, original, and replacement arguments
+    /// @return the transformed selector list
+    private static SassValue replace(List<SassValue> args) {
+        return asSassList(SelectorAlgebra.replace(
+                parseSelector(args.get(0), "selector", false),
+                parseSelector(args.get(1), "original", false),
+                parseSelector(args.get(2), "replacement", false)
+        ));
+    }
+
+    /// Returns the positional selector arguments bound to a rest parameter.
+    ///
+    /// @param args the bound built-in arguments
+    /// @return the immutable positional selector values
+    private static @Unmodifiable List<SassValue> restValues(List<SassValue> args) {
+        if (args.size() == 1 && args.get(0) instanceof SassArgumentList argumentList) {
+            return argumentList.asList();
+        }
+        throw new AssertionError("selector rest arguments were not bound as an argument list");
+    }
+
+    /// Parses a Sass value as a selector list.
+    ///
+    /// @param value the Sass selector value
+    /// @param name the argument name for diagnostics
+    /// @param allowParent whether parent selectors are permitted
+    /// @return the parsed selector list
+    private static SelectorList parseSelector(
+            SassValue value,
+            String name,
+            boolean allowParent
+    ) {
+        var text = selectorText(value, name);
+
+        var selector = SelectorList.parse(text, syntheticSpan(text));
+        if (selector.hasUnresolvedParentReference()) {
+            throw new SassValueException(
+                    "$" + name
+                            + ": Parent selectors in non-selector pseudo arguments aren't supported."
+            );
+        }
+        if (!allowParent && selector.parentSelectorCount() != 0) {
+            throw new SassValueException("$" + name + ": Parent selectors aren't allowed here.");
+        }
+        return selector;
+    }
+
+    /// Rejects top-level parent selectors that carry an unresolved suffix.
+    ///
+    /// @param selector the first selector passed to {@code selector.nest()}
+    private static void rejectTopLevelParentSuffix(SelectorList selector) {
+        if (selector.hasParentSelectorSuffix()) {
+                        throw new SassValueException(
+                                "A top-level selector may not contain a parent selector with a suffix."
+                        );
+                    }
+                }
+
+    /// Converts a selector value to source text accepted by the selector parser.
+    ///
+    /// @param value the Sass selector value
+    /// @param name the argument name for diagnostics
+    /// @return the selector source text
+    /// @throws SassValueException if the value is not a selector string or list structure
+    private static String selectorText(SassValue value, String name) {
+        if (value instanceof SassString string) {
+            return string.text();
+        }
+        if (value instanceof SassList list) {
+            return selectorText(list, name);
+        }
+        throw invalidSelector(value, name);
+    }
+
+    /// Converts a selector-list Sass list to source text.
+    ///
+    /// @param list the Sass list representation
+    /// @param name the argument name for diagnostics
+    /// @return the selector source text
+    private static String selectorText(SassList list, String name) {
+        if (list.contents().isEmpty() || list.separator() == ListSeparator.SLASH) {
+            throw invalidSelector(list, name);
+        }
+        if (list.separator() == ListSeparator.COMMA) {
+            var complexes = new ArrayList<String>();
+            for (var complex : list.contents()) {
+                if (complex instanceof SassString string) {
+                    complexes.add(string.text());
+                } else if (complex instanceof SassList nested
+                        && nested.separator() == ListSeparator.SPACE) {
+                    complexes.add(selectorText(nested, name));
+                } else {
+                    throw invalidSelector(list, name);
+                }
+            }
+            return String.join(", ", complexes);
+        }
+
+        var compounds = new ArrayList<String>();
+        for (var compound : list.contents()) {
+            if (!(compound instanceof SassString string)) {
+                throw invalidSelector(list, name);
+            }
+            compounds.add(string.text());
+        }
+        return String.join(" ", compounds);
+    }
+
+    /// Creates an invalid-selector diagnostic.
+    ///
+    /// @param value the rejected Sass value
+    /// @param name the argument name for diagnostics
+    /// @return the value exception to throw
+    private static SassValueException invalidSelector(SassValue value, String name) {
+        return new SassValueException(
+                "$" + name + ": " + value + " is not a valid selector: it must be a string,\n"
+                        + "a list of strings, or a list of lists of strings."
+        );
+    }
+
+    /// Creates a non-compound-selector diagnostic.
+    ///
+    /// @param value the rejected selector value
+    /// @return the value exception to throw
+    private static SassValueException notCompoundSelector(SassValue value) {
+        return new SassValueException(
+                "$selector: " + value + " is not a compound selector."
+        );
+    }
+
+    /// Returns a selector list that appends {@code child} to every {@code parent} selector.
+    ///
+    /// @param parent the already accumulated selector list
+    /// @param child the selector list to append
+    /// @return the appended selector list
+    private static SelectorList appendSelector(SelectorList parent, SelectorList child) {
+        var transformed = new ArrayList<ComplexSelector>();
+        for (var complex : child.components()) {
+            transformed.add(prependParent(complex, parent));
+        }
+        return new SelectorList(transformed, child.span()).nestWithin(parent);
+    }
+
+    /// Makes one child complex selector explicit about the parent it will append to.
+    ///
+    /// @param child the parsed child complex selector
+    /// @param parent the parent list used only for diagnostics
+    /// @return a complex selector beginning with a parent selector
+    /// @throws SassValueException if the child cannot be appended
+    private static ComplexSelector prependParent(ComplexSelector child, SelectorList parent) {
+        if (!child.leadingCombinators().isEmpty() || child.components().isEmpty()) {
+            throw cannotAppend(child, parent);
+        }
+        var firstComponent = child.components().get(0);
+        var compound = firstComponent.selector();
+        var simples = compound.components();
+        var first = simples.get(0);
+        if (first instanceof UniversalSelector
+                || first instanceof TypeSelector type && !type.name().isUnqualified()) {
+            throw cannotAppend(child, parent);
+        }
+
+        var transformedSimples = new ArrayList<SimpleSelector>();
+        if (first instanceof TypeSelector type) {
+            transformedSimples.add(new ParentSelector(type.name().name(), type.span()));
+            transformedSimples.addAll(simples.subList(1, simples.size()));
+        } else {
+            transformedSimples.add(new ParentSelector(null, first.span()));
+            transformedSimples.addAll(simples);
+        }
+
+        var transformedComponents = new ArrayList<ComplexSelectorComponent>();
+        transformedComponents.add(new ComplexSelectorComponent(
+                new CompoundSelector(transformedSimples, compound.span()),
+                firstComponent.combinators(),
+                firstComponent.span()
+        ));
+        transformedComponents.addAll(child.components().subList(1, child.components().size()));
+        return new ComplexSelector(List.of(), transformedComponents, child.span());
+    }
+
+
+    /// Creates an append-operation diagnostic.
+    ///
+    /// @param child the selector that cannot be appended
+    /// @param parent the selector list being appended to
+    /// @return the value exception to throw
+    private static SassValueException cannotAppend(ComplexSelector child, SelectorList parent) {
+        return new SassValueException(
+                "Can't append " + child.toCssString() + " to " + parent.toCssString() + "."
+        );
+    }
+
+    /// Converts a selector AST to Sass's nested selector-list value representation.
+    ///
+    /// @param selector the selector AST to convert
+    /// @return a comma-separated list of space-separated complex-selector lists
+    private static SassList asSassList(SelectorList selector) {
+        var complexes = new ArrayList<SassValue>();
+        for (var complex : selector.components()) {
+            var parts = new ArrayList<SassValue>();
+            for (var combinator : complex.leadingCombinators()) {
+                parts.add(new SassString(combinator.css(), false));
+            }
+            for (var component : complex.components()) {
+                parts.add(new SassString(component.selector().toCssString(), false));
+                for (var combinator : component.combinators()) {
+                    parts.add(new SassString(combinator.css(), false));
+                }
+            }
+            complexes.add(new SassList(parts, ListSeparator.SPACE, false));
+        }
+        return new SassList(complexes, ListSeparator.COMMA, false);
+    }
+
+    /// Creates a zero-length-base synthetic span for one selector source string.
+    ///
+    /// @param text the exact selector text
+    /// @return a span covering that text
+    private static SourceSpan syntheticSpan(String text) {
+        return new SourceSpan(
+                URI.create("sass:selector"),
+                ORIGIN,
+                new SourceLocation(0, text.length(), text.length()),
+                text
+        );
+    }
+}

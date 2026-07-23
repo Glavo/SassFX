@@ -2,6 +2,7 @@
 package org.glavo.scssfx.internal.css;
 
 import org.glavo.scssfx.CssTarget;
+import org.glavo.scssfx.JavaFXCssTarget;
 import org.glavo.scssfx.OutputStyle;
 import org.glavo.scssfx.internal.value.SassString;
 import org.glavo.scssfx.internal.value.SassValueException;
@@ -11,10 +12,10 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
-/// Converts CSS IR into plain CSS text.
+/// Converts CSS IR into plain or JavaFX-targeted CSS text.
 ///
-/// This first implementation supports expanded output only. Compressed style is
-/// rejected by the public compiler until a dedicated serializer path exists.
+/// The JavaFX path serializes the same CSS IR without loading JavaFX classes at
+/// runtime.
 @ApiStatus.Internal
 @NotNullByDefault
 public final class CssSerializer {
@@ -25,34 +26,57 @@ public final class CssSerializer {
     private CssSerializer() {
     }
 
-    /// Serializes a stylesheet according to the CSS target options.
+    /// Serializes a stylesheet according to the standard CSS target options.
     ///
     /// @param stylesheet the evaluated CSS IR root
     /// @param target     the public CSS output options
     /// @return the generated CSS text
     /// @throws CssSerializeException if a value cannot be represented in CSS
-    /// @throws IllegalArgumentException if {@code target} requests compressed style
     public static String serialize(CssStylesheet stylesheet, CssTarget target) {
-        Objects.requireNonNull(stylesheet, "stylesheet");
         Objects.requireNonNull(target, "target");
-        if (target.style() != OutputStyle.EXPANDED) {
-            throw new IllegalArgumentException("compressed CSS output is not supported");
-        }
-
-        var buffer = new StringBuilder();
-        writeStylesheet(stylesheet, buffer);
-        var css = buffer.toString();
-        if (target.charset() && containsNonAscii(css)) {
+        var css = serialize(stylesheet, target.style());
+        if (target.charset() && target.style() == OutputStyle.EXPANDED && containsNonAscii(css)) {
             return "@charset \"UTF-8\";\n" + css;
         }
         return css;
     }
 
-    /// Writes the top-level stylesheet children.
+    /// Serializes a stylesheet according to the JavaFX CSS target options.
+    ///
+    /// The compatibility level is accepted by the public target but does not
+    /// alter textual CSS IR serialization.
+    ///
+    /// @param stylesheet the evaluated CSS IR root
+    /// @param target     the public JavaFX CSS output options
+    /// @return the generated CSS text
+    /// @throws CssSerializeException if a value cannot be represented in CSS
+    public static String serialize(CssStylesheet stylesheet, JavaFXCssTarget target) {
+        Objects.requireNonNull(target, "target");
+        return serialize(stylesheet, target.style());
+    }
+
+    /// Serializes a stylesheet with the selected layout style.
+    ///
+    /// @param stylesheet the evaluated CSS IR root
+    /// @param style      the output layout style
+    /// @return the generated CSS text
+    /// @throws CssSerializeException if a value cannot be represented in CSS
+    private static String serialize(CssStylesheet stylesheet, OutputStyle style) {
+        Objects.requireNonNull(stylesheet, "stylesheet");
+        Objects.requireNonNull(style, "style");
+        var buffer = new StringBuilder();
+        switch (style) {
+            case EXPANDED -> writeExpandedStylesheet(stylesheet, buffer);
+            case COMPRESSED -> writeCompressedStylesheet(stylesheet, buffer);
+        }
+        return buffer.toString();
+    }
+
+    /// Writes the top-level stylesheet children using expanded layout.
     ///
     /// @param stylesheet the CSS root
     /// @param buffer     the output buffer
-    private static void writeStylesheet(CssStylesheet stylesheet, StringBuilder buffer) {
+    private static void writeExpandedStylesheet(CssStylesheet stylesheet, StringBuilder buffer) {
         @Nullable CssNode previous = null;
         for (var child : stylesheet.children()) {
             if (child.isInvisible()) {
@@ -67,7 +91,7 @@ public final class CssSerializer {
                     buffer.append('\n');
                 }
             }
-            writeNode(child, buffer, 0);
+            writeExpandedNode(child, buffer, 0);
             previous = child;
         }
         if (previous != null && requiresSemicolon(previous)) {
@@ -75,16 +99,22 @@ public final class CssSerializer {
         }
     }
 
-    /// Writes one CSS node at the given indentation depth.
+    /// Writes one CSS node at the given indentation depth using expanded layout.
     ///
     /// @param node        the node to write
     /// @param buffer      the output buffer
     /// @param indentation the current indentation level
-    private static void writeNode(CssNode node, StringBuilder buffer, int indentation) {
-        if (node instanceof CssStyleRule rule) {
-            writeStyleRule(rule, buffer, indentation);
+    private static void writeExpandedNode(CssNode node, StringBuilder buffer, int indentation) {
+        if (node instanceof CssMediaRule mediaRule) {
+            writeExpandedMediaRule(mediaRule, buffer, indentation);
+        } else if (node instanceof CssSupportsRule supportsRule) {
+            writeExpandedSupportsRule(supportsRule, buffer, indentation);
+        } else if (node instanceof CssFontFace fontFace) {
+            writeExpandedFontFace(fontFace, buffer, indentation);
+        } else if (node instanceof CssStyleRule rule) {
+            writeExpandedStyleRule(rule, buffer, indentation);
         } else if (node instanceof CssDeclaration declaration) {
-            writeDeclaration(declaration, buffer, indentation);
+            writeExpandedDeclaration(declaration, buffer, indentation);
         } else if (node instanceof CssComment comment) {
             writeIndentation(buffer, indentation);
             buffer.append(comment.text());
@@ -98,7 +128,7 @@ public final class CssSerializer {
     /// @param rule        the style rule
     /// @param buffer      the output buffer
     /// @param indentation the current indentation level
-    private static void writeStyleRule(
+    private static void writeExpandedStyleRule(
             CssStyleRule rule,
             StringBuilder buffer,
             int indentation
@@ -106,16 +136,68 @@ public final class CssSerializer {
         writeIndentation(buffer, indentation);
         buffer.append(rule.selector().value().toCssString());
         buffer.append(" {");
-        writeChildren(rule, buffer, indentation);
+        writeExpandedChildren(rule, buffer, indentation);
         buffer.append('}');
     }
 
-    /// Writes the braced children of a parent node.
+    /// Writes one expanded media rule.
+    ///
+    /// @param mediaRule  the rule to write
+    /// @param buffer     the destination CSS buffer
+    /// @param indentation the current indentation level
+    private static void writeExpandedMediaRule(
+            CssMediaRule mediaRule,
+            StringBuilder buffer,
+            int indentation
+    ) {
+        writeIndentation(buffer, indentation);
+        buffer.append("@media ");
+        appendMediaQueries(mediaRule, buffer, false);
+        buffer.append(" {");
+        writeExpandedChildren(mediaRule, buffer, indentation);
+        buffer.append('}');
+    }
+
+    /// Writes one expanded supports rule.
+    ///
+    /// @param supportsRule the rule to write
+    /// @param buffer       the destination CSS buffer
+    /// @param indentation  the current indentation level
+    private static void writeExpandedSupportsRule(
+            CssSupportsRule supportsRule,
+            StringBuilder buffer,
+            int indentation
+    ) {
+        writeIndentation(buffer, indentation);
+        buffer.append("@supports ");
+        buffer.append(supportsRule.condition());
+        buffer.append(" {");
+        writeExpandedChildren(supportsRule, buffer, indentation);
+        buffer.append('}');
+    }
+
+    /// Writes one expanded font-face rule.
+    ///
+    /// @param fontFace    the rule to write
+    /// @param buffer      the destination CSS buffer
+    /// @param indentation the current indentation level
+    private static void writeExpandedFontFace(
+            CssFontFace fontFace,
+            StringBuilder buffer,
+            int indentation
+    ) {
+        writeIndentation(buffer, indentation);
+        buffer.append("@font-face {");
+        writeExpandedChildren(fontFace, buffer, indentation);
+        buffer.append('}');
+    }
+
+    /// Writes the braced children of a parent node using expanded layout.
     ///
     /// @param parent      the parent whose children are written
     /// @param buffer      the output buffer
     /// @param indentation the parent indentation level
-    private static void writeChildren(
+    private static void writeExpandedChildren(
             CssParentNode parent,
             StringBuilder buffer,
             int indentation
@@ -129,7 +211,7 @@ public final class CssSerializer {
                 buffer.append(';');
             }
             buffer.append('\n');
-            writeNode(child, buffer, indentation + 1);
+            writeExpandedNode(child, buffer, indentation + 1);
             previous = child;
         }
         if (previous != null) {
@@ -146,7 +228,7 @@ public final class CssSerializer {
     /// @param declaration the declaration
     /// @param buffer      the output buffer
     /// @param indentation the current indentation level
-    private static void writeDeclaration(
+    private static void writeExpandedDeclaration(
             CssDeclaration declaration,
             StringBuilder buffer,
             int indentation
@@ -154,11 +236,144 @@ public final class CssSerializer {
         writeIndentation(buffer, indentation);
         buffer.append(declaration.name().value());
         buffer.append(':');
+        if (declaration.parsedAsSassScript()) {
+            buffer.append(' ');
+        }
+        appendDeclarationValue(declaration, buffer);
+    }
+
+    /// Writes all visible top-level nodes using compressed layout.
+    ///
+    /// @param stylesheet the CSS root
+    /// @param buffer     the output buffer
+    private static void writeCompressedStylesheet(CssStylesheet stylesheet, StringBuilder buffer) {
+        for (var child : stylesheet.children()) {
+            if (!isCompressedVisible(child)) {
+                continue;
+            }
+            writeCompressedNode(child, buffer);
+        }
+    }
+
+    /// Writes one visible CSS node using compressed layout.
+    ///
+    /// @param node   the node to write
+    /// @param buffer the output buffer
+    private static void writeCompressedNode(CssNode node, StringBuilder buffer) {
+        if (node instanceof CssMediaRule mediaRule) {
+            buffer.append("@media");
+            if (mediaRule.queries().get(0).startsWithIdentifier()) {
+                buffer.append(' ');
+            }
+            appendMediaQueries(mediaRule, buffer, true);
+            buffer.append('{');
+            writeCompressedChildren(mediaRule, buffer);
+            buffer.append('}');
+        } else if (node instanceof CssSupportsRule supportsRule) {
+            buffer.append("@supports");
+            if (!supportsRule.condition().startsWith("(")) {
+                buffer.append(' ');
+            }
+            buffer.append(supportsRule.condition());
+            buffer.append('{');
+            writeCompressedChildren(supportsRule, buffer);
+            buffer.append('}');
+        } else if (node instanceof CssFontFace fontFace) {
+            buffer.append("@font-face{");
+            writeCompressedChildren(fontFace, buffer);
+            buffer.append('}');
+        } else if (node instanceof CssStyleRule rule) {
+            buffer.append(rule.selector().value().toCssString());
+            buffer.append('{');
+            writeCompressedChildren(rule, buffer);
+            buffer.append('}');
+        } else if (node instanceof CssDeclaration declaration) {
+            writeCompressedDeclaration(declaration, buffer);
+        } else if (node instanceof CssComment comment) {
+            if (comment.isPreserved()) {
+                buffer.append(comment.text());
+            }
+        } else {
+            throw new IllegalStateException("unsupported CSS node: " + node.getClass().getName());
+        }
+    }
+
+    /// Appends a media-query list using the selected layout separators.
+    ///
+    /// @param mediaRule  the rule that owns the queries
+    /// @param buffer     the destination CSS buffer
+    /// @param compressed whether compressed query spelling is required
+    private static void appendMediaQueries(
+            CssMediaRule mediaRule,
+            StringBuilder buffer,
+            boolean compressed
+    ) {
+        for (var index = 0; index < mediaRule.queries().size(); index++) {
+            if (index > 0) {
+                buffer.append(compressed ? ',' : ", ");
+            }
+            var query = mediaRule.queries().get(index);
+            buffer.append(compressed ? query.toCompressedCss() : query.toCssString());
+        }
+    }
+
+    /// Writes visible braced children using compressed layout.
+    ///
+    /// @param parent the parent whose children are written
+    /// @param buffer the output buffer
+    private static void writeCompressedChildren(CssParentNode parent, StringBuilder buffer) {
+        boolean precedingDeclaration = false;
+        for (var child : parent.children()) {
+            if (!isCompressedVisible(child)) {
+                continue;
+            }
+            if (precedingDeclaration) {
+                buffer.append(';');
+            }
+            writeCompressedNode(child, buffer);
+            precedingDeclaration = child instanceof CssDeclaration;
+        }
+    }
+
+    /// Writes one declaration using compressed layout.
+    ///
+    /// @param declaration the declaration
+    /// @param buffer      the output buffer
+    private static void writeCompressedDeclaration(CssDeclaration declaration, StringBuilder buffer) {
+        buffer.append(declaration.name().value());
+        buffer.append(':');
+        appendDeclarationValue(declaration, buffer);
+    }
+
+    /// Returns whether a node contributes to compressed output.
+    ///
+    /// @param node the node to inspect
+    /// @return whether the node must be serialized
+    private static boolean isCompressedVisible(CssNode node) {
+        if (node instanceof CssComment comment) {
+            return comment.isPreserved();
+        }
+        if (node instanceof CssParentNode parent) {
+            for (var child : parent.children()) {
+                if (isCompressedVisible(child)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return !node.isInvisible();
+    }
+
+    /// Appends a declaration value without adding layout whitespace.
+    ///
+    /// @param declaration the declaration that owns the value
+    /// @param buffer      the output buffer
+    /// @throws CssSerializeException if a SassScript value cannot be represented in CSS
+    private static void appendDeclarationValue(CssDeclaration declaration, StringBuilder buffer) {
         if (!declaration.parsedAsSassScript()) {
             buffer.append(rawValueText(declaration));
             return;
         }
-        buffer.append(' ');
         try {
             buffer.append(declaration.value().value().toCssString());
         } catch (SassValueException cause) {

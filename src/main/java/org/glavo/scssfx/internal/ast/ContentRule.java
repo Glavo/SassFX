@@ -9,7 +9,7 @@ import java.util.Objects;
 
 /// Invokes the content block supplied by a mixin include.
 ///
-/// @param arguments the arguments passed to `@content`; this round expects emptiness
+/// @param arguments the arguments passed to {@code @content}
 /// @param span      the complete content-rule span
 @ApiStatus.Internal
 @NotNullByDefault

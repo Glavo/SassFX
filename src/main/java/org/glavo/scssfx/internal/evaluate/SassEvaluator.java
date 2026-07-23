@@ -13,6 +13,8 @@ import org.glavo.scssfx.internal.ast.EachRule;
 import org.glavo.scssfx.internal.ast.ElseClause;
 import org.glavo.scssfx.internal.ast.ExpressionInterpolationPart;
 import org.glavo.scssfx.internal.ast.ForRule;
+import org.glavo.scssfx.internal.ast.FontFaceRule;
+import org.glavo.scssfx.internal.ast.MediaRule;
 import org.glavo.scssfx.internal.ast.ForwardRule;
 import org.glavo.scssfx.internal.ast.ArgumentList;
 import org.glavo.scssfx.internal.ast.ContentRule;
@@ -45,6 +47,15 @@ import org.glavo.scssfx.internal.ast.SassStatementVisitor;
 import org.glavo.scssfx.internal.ast.SilentComment;
 import org.glavo.scssfx.internal.ast.StringExpression;
 import org.glavo.scssfx.internal.ast.StyleRule;
+import org.glavo.scssfx.internal.ast.SupportsRule;
+import org.glavo.scssfx.internal.ast.SupportsAnything;
+import org.glavo.scssfx.internal.ast.SupportsBooleanOperator;
+import org.glavo.scssfx.internal.ast.SupportsCondition;
+import org.glavo.scssfx.internal.ast.SupportsDeclaration;
+import org.glavo.scssfx.internal.ast.SupportsFunction;
+import org.glavo.scssfx.internal.ast.SupportsInterpolation;
+import org.glavo.scssfx.internal.ast.SupportsNegation;
+import org.glavo.scssfx.internal.ast.SupportsOperation;
 import org.glavo.scssfx.internal.ast.Stylesheet;
 import org.glavo.scssfx.internal.ast.TextInterpolationPart;
 import org.glavo.scssfx.internal.ast.UnaryOperationExpression;
@@ -57,6 +68,10 @@ import org.glavo.scssfx.internal.callable.PlainCssCallable;
 import org.glavo.scssfx.internal.callable.UserDefinedCallable;
 import org.glavo.scssfx.internal.ast.selector.SelectorList;
 import org.glavo.scssfx.internal.css.CssComment;
+import org.glavo.scssfx.internal.css.CssFontFace;
+import org.glavo.scssfx.internal.css.CssMediaQuery;
+import org.glavo.scssfx.internal.css.CssMediaRule;
+import org.glavo.scssfx.internal.css.CssSupportsRule;
 import org.glavo.scssfx.internal.function.BuiltInFunctions;
 import org.glavo.scssfx.internal.css.CssDeclaration;
 import org.glavo.scssfx.internal.css.CssNode;
@@ -67,6 +82,8 @@ import org.glavo.scssfx.internal.css.CssValue;
 import org.glavo.scssfx.internal.value.ListSeparator;
 import org.glavo.scssfx.internal.value.SassArgumentList;
 import org.glavo.scssfx.internal.value.SassBoolean;
+import org.glavo.scssfx.internal.value.SassFunction;
+import org.glavo.scssfx.internal.value.SassMixin;
 import org.glavo.scssfx.internal.value.SassList;
 import org.glavo.scssfx.internal.value.SassMap;
 import org.glavo.scssfx.internal.value.SassNull;
@@ -81,11 +98,13 @@ import org.jetbrains.annotations.Unmodifiable;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /// Evaluates Sass AST expressions and statements into CSS IR.
@@ -105,9 +124,13 @@ public final class SassEvaluator implements
     /// Contains the stable deprecation identifier for slash division.
     private static final String SLASH_DIV_CODE = "slash-div";
 
+
     /// Contains the global built-in function table.
-    private static final Map<String, BuiltInCallable> BUILT_IN_FUNCTIONS =
+    private static final @Unmodifiable Map<String, BuiltInCallable> BUILT_IN_FUNCTIONS =
             BuiltInFunctions.global();
+
+    /// Identifies function references created during this compilation.
+    private final Object compilationContext;
 
     /// Contains variable and callable bindings for this evaluation.
     private Environment environment;
@@ -129,6 +152,15 @@ public final class SassEvaluator implements
 
     /// Contains the innermost active style rule, or {@code null} outside rules.
     private @Nullable CssStyleRule styleRule;
+
+    /// Contains the active font-face rule, or {@code null} outside one.
+    private @Nullable CssFontFace fontFace;
+
+    /// Contains the evaluated media-query list active for nested media rules, or {@code null}.
+    private @Nullable @Unmodifiable List<CssMediaQuery> mediaQueries;
+
+    /// Contains source queries through which a merged media rule may bubble, or {@code null}.
+    private @Nullable @Unmodifiable Set<CssMediaQuery> mediaQuerySources;
 
     /// Contains the property-name prefix for nested declarations, or {@code null}.
     private @Nullable String declarationName;
@@ -172,6 +204,7 @@ public final class SassEvaluator implements
     /// @param environment    the mutable evaluation environment
     /// @param moduleRegistry the module registry, or {@code null}
     public SassEvaluator(Environment environment, @Nullable ModuleRegistry moduleRegistry) {
+        this.compilationContext = new Object();
         this.environment = Objects.requireNonNull(environment, "environment");
         this.moduleRegistry = moduleRegistry;
         this.diagnostics = new ArrayList<>();
@@ -308,6 +341,9 @@ public final class SassEvaluator implements
         var previousCss = cssStylesheet;
         var previousParent = cssParent;
         var previousStyleRule = styleRule;
+        var previousFontFace = fontFace;
+        var previousMediaQueries = mediaQueries;
+        var previousMediaQuerySources = mediaQuerySources;
         var previousDeclarationName = declarationName;
         var previousUrl = currentUrl;
         var previousConfiguration = currentConfiguration;
@@ -320,6 +356,9 @@ public final class SassEvaluator implements
         cssStylesheet = new CssStylesheet(stylesheet.span());
         cssParent = cssStylesheet;
         styleRule = null;
+        fontFace = null;
+        mediaQueries = null;
+        mediaQuerySources = null;
         declarationName = null;
         currentUrl = url;
         currentConfiguration = Objects.requireNonNull(
@@ -363,6 +402,9 @@ public final class SassEvaluator implements
             cssStylesheet = previousCss;
             cssParent = previousParent;
             styleRule = previousStyleRule;
+            fontFace = previousFontFace;
+            mediaQueries = previousMediaQueries;
+            mediaQuerySources = previousMediaQuerySources;
             declarationName = previousDeclarationName;
             currentUrl = previousUrl;
             currentConfiguration = previousConfiguration;
@@ -377,6 +419,9 @@ public final class SassEvaluator implements
                 cssStylesheet = previousCss;
                 cssParent = previousParent;
                 styleRule = previousStyleRule;
+                fontFace = previousFontFace;
+                mediaQueries = previousMediaQueries;
+                mediaQuerySources = previousMediaQuerySources;
                 declarationName = previousDeclarationName;
                 currentUrl = previousUrl;
                 currentConfiguration = previousConfiguration;
@@ -600,6 +645,225 @@ public final class SassEvaluator implements
         return StatementResult.CONTINUE;
     }
 
+    /// Evaluates a top-level font-face rule and executes its descriptor body.
+    ///
+    /// @param statement the font-face rule
+    /// @return the continue result, [StatementResult#CONTINUE]
+    @Override
+    public StatementResult visitFontFaceRule(FontFaceRule statement) {
+        if (!(requireCssParent() instanceof CssStylesheet)) {
+            throw new EvaluationException(
+                    "@font-face rules may only be used at the stylesheet root.",
+                    statement.span()
+            );
+        }
+
+        var rule = new CssFontFace(statement.span());
+        addCssChild(rule, false);
+        var previousParent = requireCssParent();
+        var previousFontFace = fontFace;
+        cssParent = rule;
+        fontFace = rule;
+        var scope = environment.scope(
+                ScopeSemantics.LEXICAL,
+                hasDirectDeclarations(statement.children())
+        );
+        try {
+            for (var child : statement.children()) {
+                child.accept(this);
+            }
+        } finally {
+            try {
+                scope.close();
+            } finally {
+                fontFace = previousFontFace;
+                cssParent = previousParent;
+            }
+        }
+
+        if (!previousParent.children().isEmpty()) {
+            previousParent.children().get(previousParent.children().size() - 1).setGroupEnd(true);
+        }
+        return StatementResult.CONTINUE;
+    }
+
+    /// Evaluates an {@code @media} rule and resolves nesting through CSS media queries.
+    ///
+    /// Compatible nested queries are merged and bubbled through their source
+    /// media rules. Queries whose intersection cannot be expressed by one CSS
+    /// query list remain structurally nested.
+    ///
+    /// @param statement the media rule
+    /// @return the continue result, [StatementResult#CONTINUE]
+    @Override
+    public StatementResult visitMediaRule(MediaRule statement) {
+        if (declarationName != null) {
+            throw new EvaluationException(
+                    "Media rules may not be used within nested declarations.",
+                    statement.span()
+            );
+        }
+        if (fontFace != null) {
+            throw new EvaluationException(
+                    "Media rules may not be used within @font-face rules.",
+                    statement.span()
+            );
+        }
+
+        @Unmodifiable List<CssMediaQuery> queries;
+        try {
+            queries = CssMediaQuery.parseList(performInterpolation(statement.query()));
+        } catch (SassValueException cause) {
+            throw new EvaluationException(
+                    Objects.requireNonNull(cause.getMessage(), "media query failure message"),
+                    statement.query().span(),
+                    List.of(),
+                    cause
+            );
+        }
+
+        @Nullable List<CssMediaQuery> mergedQueries = mediaQueries == null
+                ? null
+                : CssMediaQuery.mergeLists(mediaQueries, queries);
+        if (mergedQueries != null && mergedQueries.isEmpty()) {
+            return StatementResult.CONTINUE;
+        }
+        @Unmodifiable List<CssMediaQuery> effectiveQueries =
+                mergedQueries == null ? queries : mergedQueries;
+        @Unmodifiable Set<CssMediaQuery> effectiveSources;
+        if (mergedQueries == null) {
+            effectiveSources = Set.of();
+        } else {
+            var sources = new LinkedHashSet<CssMediaQuery>();
+            if (mediaQuerySources != null) {
+                sources.addAll(mediaQuerySources);
+            }
+            if (mediaQueries != null) {
+                sources.addAll(mediaQueries);
+            }
+            sources.addAll(queries);
+            effectiveSources = Set.copyOf(sources);
+        }
+
+        var rule = new CssMediaRule(effectiveQueries, statement.span());
+        addCssChild(rule, true, effectiveSources);
+        var previousParent = requireCssParent();
+        var previousMediaQueries = mediaQueries;
+        var previousMediaQuerySources = mediaQuerySources;
+        @Nullable CssStyleRule activeStyleRule = styleRule;
+        cssParent = rule;
+        mediaQueries = effectiveQueries;
+        mediaQuerySources = effectiveSources;
+        var scope = environment.scope(
+                ScopeSemantics.LEXICAL,
+                hasDirectDeclarations(statement.children())
+        );
+        try {
+            if (activeStyleRule == null) {
+                for (var child : statement.children()) {
+                    child.accept(this);
+                }
+            } else {
+                var wrapper = activeStyleRule.copyWithoutChildren();
+                rule.addChild(wrapper);
+                var mediaParent = requireCssParent();
+                cssParent = wrapper;
+                try {
+                    for (var child : statement.children()) {
+                        child.accept(this);
+                    }
+                } finally {
+                    cssParent = mediaParent;
+                }
+            }
+        } finally {
+            try {
+                scope.close();
+            } finally {
+                mediaQueries = previousMediaQueries;
+                mediaQuerySources = previousMediaQuerySources;
+                cssParent = previousParent;
+            }
+        }
+
+        if (activeStyleRule == null && !previousParent.children().isEmpty()) {
+            previousParent.children().get(previousParent.children().size() - 1).setGroupEnd(true);
+        }
+        return StatementResult.CONTINUE;
+    }
+
+    /// Evaluates an {@code @supports} rule while preserving its CSS condition.
+    ///
+    /// The rule bubbles through enclosing style rules but remains inside other
+    /// conditional rules. This preserves CSS conditional nesting while allowing
+    /// nested Sass declarations to be emitted through a style-rule wrapper.
+    ///
+    /// @param statement the supports rule
+    /// @return the continue result, [StatementResult#CONTINUE]
+    @Override
+    public StatementResult visitSupportsRule(SupportsRule statement) {
+        if (declarationName != null) {
+            throw new EvaluationException(
+                    "Supports rules may not be used within nested declarations.",
+                    statement.span()
+            );
+        }
+        if (fontFace != null) {
+            throw new EvaluationException(
+                    "Supports rules may not be used within @font-face rules.",
+                    statement.span()
+            );
+        }
+
+        var condition = evaluateSupportsCondition(statement.condition()).strip();
+        if (condition.isEmpty()) {
+            throw new EvaluationException(
+                    "Expected supports condition.",
+                    statement.condition().span()
+            );
+        }
+
+        var rule = new CssSupportsRule(condition, statement.span());
+        addCssChild(rule, true);
+        var previousParent = requireCssParent();
+        @Nullable CssStyleRule activeStyleRule = styleRule;
+        cssParent = rule;
+        var scope = environment.scope(
+                ScopeSemantics.LEXICAL,
+                hasDirectDeclarations(statement.children())
+        );
+        try {
+            if (activeStyleRule == null) {
+                for (var child : statement.children()) {
+                    child.accept(this);
+                }
+            } else {
+                var wrapper = activeStyleRule.copyWithoutChildren();
+                rule.addChild(wrapper);
+                var supportsParent = requireCssParent();
+                cssParent = wrapper;
+                try {
+                    for (var child : statement.children()) {
+                        child.accept(this);
+                    }
+                } finally {
+                    cssParent = supportsParent;
+                }
+            }
+        } finally {
+            try {
+                scope.close();
+            } finally {
+                cssParent = previousParent;
+            }
+        }
+
+        if (activeStyleRule == null && !previousParent.children().isEmpty()) {
+            previousParent.children().get(previousParent.children().size() - 1).setGroupEnd(true);
+        }
+        return StatementResult.CONTINUE;
+    }
+
     /// Evaluates a selector, emits a CSS style rule, and executes its children.
     ///
     /// Nested style rules bubble through existing style-rule parents so the CSS
@@ -609,6 +873,12 @@ public final class SassEvaluator implements
     /// @return the continue result, [StatementResult#CONTINUE]
     @Override
     public StatementResult visitStyleRule(StyleRule statement) {
+        if (fontFace != null) {
+            throw new EvaluationException(
+                    "Style rules may not be used within @font-face rules.",
+                    statement.span()
+            );
+        }
         if (nestedDeclarationDepth > 0 || declarationName != null) {
             throw new EvaluationException(
                     "Style rules may not be used within nested declarations.",
@@ -685,9 +955,15 @@ public final class SassEvaluator implements
     /// @return the continue result, [StatementResult#CONTINUE]
     @Override
     public StatementResult visitDeclaration(Declaration statement) {
-        if (styleRule == null) {
+        if (styleRule == null && fontFace == null) {
             throw new EvaluationException(
-                    "Declarations may only be used within style rules.",
+                    "Declarations may only be used within style rules or @font-face rules.",
+                    statement.span()
+            );
+        }
+        if (fontFace != null && statement.hasChildren()) {
+            throw new EvaluationException(
+                    "@font-face descriptor declarations may not be nested.",
                     statement.span()
             );
         }
@@ -1005,17 +1281,8 @@ public final class SassEvaluator implements
                     cause
             );
         }
-        if (!(mixin instanceof UserDefinedCallable userMixin)) {
-            throw new EvaluationException("Undefined mixin.", statement.span());
-        }
         @Nullable UserDefinedCallable contentCallable = null;
         if (statement.content() != null) {
-            if (!userMixin.acceptsContent()) {
-                throw new EvaluationException(
-                        "Mixin doesn't accept a content block.",
-                        statement.span()
-                );
-            }
             contentCallable = new UserDefinedCallable(
                     "@content",
                     statement.content().parameters(),
@@ -1025,7 +1292,7 @@ public final class SassEvaluator implements
                     false
             );
         }
-        runUserDefinedMixin(userMixin, statement.arguments(), contentCallable, statement.span());
+        runMixinCallable(mixin, statement.arguments(), contentCallable, statement.span());
         return StatementResult.CONTINUE;
     }
 
@@ -1039,13 +1306,7 @@ public final class SassEvaluator implements
         if (content == null) {
             return StatementResult.CONTINUE;
         }
-        if (!statement.arguments().isEmpty()) {
-            throw new EvaluationException(
-                    "Content arguments aren't supported.",
-                    statement.span()
-            );
-        }
-        runUserDefinedMixin(content, statement.arguments(), null, statement.span());
+        runContentBlock(content, statement.arguments(), statement.span());
         return StatementResult.CONTINUE;
     }
 
@@ -1213,8 +1474,9 @@ public final class SassEvaluator implements
 
     /// Resolves and invokes a statically named function.
     ///
-    /// Resolution order is user-defined, then built-in, then plain-CSS fallback.
-    /// Namespaced lookups fail because this evaluator has no module registry.
+    /// Unqualified resolution checks lexical and {@code as *} functions, then
+    /// global built-ins, and finally falls back to plain CSS. A namespaced call
+    /// resolves only the explicitly loaded module with that namespace.
     ///
     /// @param expression the function expression
     /// @return the function result
@@ -1367,6 +1629,78 @@ public final class SassEvaluator implements
                 && !(expression instanceof InterpolatedFunctionExpression);
     }
 
+    /// Evaluates a structured supports condition to canonical CSS text.
+    ///
+    /// @param condition the parsed supports condition
+    /// @return the evaluated CSS condition
+    private String evaluateSupportsCondition(SupportsCondition condition) {
+        return evaluateSupportsCondition(condition, null);
+    }
+
+    /// Evaluates a supports condition with the operator context of its parent.
+    ///
+    /// @param condition the parsed supports condition
+    /// @param parentOperator the enclosing boolean operator, or null
+    /// @return the evaluated CSS condition
+    private String evaluateSupportsCondition(
+            SupportsCondition condition,
+            @Nullable SupportsBooleanOperator parentOperator
+    ) {
+        if (condition instanceof SupportsDeclaration declaration) {
+            var name = evaluateSupportsValue(declaration.name());
+            var value = evaluateSupportsValue(declaration.value());
+            return "(" + name
+                    + (declaration.customProperty() ? ":" : ": ")
+                    + value + ")";
+        }
+        if (condition instanceof SupportsFunction function) {
+            return performInterpolation(function.name())
+                    + "(" + performInterpolation(function.arguments()) + ")";
+        }
+        if (condition instanceof SupportsAnything anything) {
+            return "(" + performInterpolation(anything.contents()) + ")";
+        }
+        if (condition instanceof SupportsInterpolation interpolation) {
+            return evaluateSupportsValue(interpolation.expression());
+        }
+        if (condition instanceof SupportsNegation negation) {
+            return "not " + parenthesizeSupportsCondition(negation.condition(), null);
+        }
+        if (condition instanceof SupportsOperation operation) {
+            var operator = operation.operator();
+            return parenthesizeSupportsCondition(operation.left(), operator)
+                    + " " + operator.cssText() + " "
+                    + parenthesizeSupportsCondition(operation.right(), operator);
+        }
+        throw new AssertionError("unknown supports condition: " + condition);
+    }
+
+    /// Adds parentheses required to preserve supports boolean semantics.
+    ///
+    /// @param condition the child condition
+    /// @param parentOperator the enclosing operator, or null
+    /// @return the condition with canonical parentheses
+    private String parenthesizeSupportsCondition(
+            SupportsCondition condition,
+            @Nullable SupportsBooleanOperator parentOperator
+    ) {
+        boolean parenthesize = condition instanceof SupportsNegation
+                || condition instanceof SupportsOperation operation
+                && (parentOperator == null
+                || operation.operator() != parentOperator);
+        var text = evaluateSupportsCondition(condition, parentOperator);
+        return parenthesize ? "(" + text + ")" : text;
+    }
+
+    /// Evaluates a SassScript value for supports condition serialization.
+    ///
+    /// @param expression the expression producing the value
+    /// @return the unquoted CSS representation
+    private String evaluateSupportsValue(SassExpression expression) {
+        var value = evaluate(expression);
+        return valueOperation(expression.span(), () -> value.toCssString(false));
+    }
+
     /// Evaluates interpolation parts to their unquoted textual representation.
     ///
     /// @param interpolation the interpolation to evaluate
@@ -1392,59 +1726,116 @@ public final class SassEvaluator implements
         return result.toString();
     }
 
-    /// Adds a CSS child, bubbling through style-rule parents when requested.
+    /// Adds a CSS child, optionally bubbling through active structural parents.
     ///
-    /// @param node                 the child to append
+    /// @param node              the child to append
     /// @param throughStyleRules whether style-rule parents should be skipped
     private void addCssChild(CssNode node, boolean throughStyleRules) {
+        addCssChild(node, throughStyleRules, Set.of());
+    }
+
+    /// Adds a CSS child while allowing a merged media rule to bubble through its sources.
+    ///
+    /// @param node              the child to append
+    /// @param throughStyleRules whether style-rule parents should be skipped
+    /// @param mediaQuerySources queries owned by media ancestors that may be skipped
+    private void addCssChild(
+            CssNode node,
+            boolean throughStyleRules,
+            Set<CssMediaQuery> mediaQuerySources
+    ) {
+        Objects.requireNonNull(node, "node");
+        Objects.requireNonNull(mediaQuerySources, "mediaQuerySources");
         var parent = requireCssParent();
-        if (throughStyleRules) {
-            while (parent instanceof CssStyleRule) {
-                @Nullable CssParentNode grandparent = parent.parent();
-                if (grandparent == null) {
-                    throw new IllegalStateException("style rule escaped the CSS root");
-                }
-                parent = grandparent;
+        while (shouldBubbleThrough(parent, throughStyleRules, mediaQuerySources)) {
+            @Nullable CssParentNode grandparent = parent.parent();
+            if (grandparent == null) {
+                throw new IllegalStateException("bubbled CSS parent escaped the root");
             }
-            if (parent.hasFollowingSibling()) {
-                @Nullable CssParentNode grandparent = parent.parent();
-                if (grandparent == null) {
-                    throw new IllegalStateException("CSS parent escaped the tree");
-                }
-                var siblings = grandparent.children();
-                var last = siblings.get(siblings.size() - 1);
-                if (parent.equalsIgnoringChildren(last) && last instanceof CssParentNode lastParent) {
-                    parent = lastParent;
-                } else {
-                    var copy = parent.copyWithoutChildren();
-                    grandparent.addChild(copy);
-                    parent = copy;
-                }
+            parent = grandparent;
+        }
+        if ((throughStyleRules || !mediaQuerySources.isEmpty()) && parent.hasFollowingSibling()) {
+            @Nullable CssParentNode grandparent = parent.parent();
+            if (grandparent == null) {
+                throw new IllegalStateException("CSS parent escaped the tree");
+            }
+            var siblings = grandparent.children();
+            var last = siblings.get(siblings.size() - 1);
+            if (parent.equalsIgnoringChildren(last) && last instanceof CssParentNode lastParent) {
+                parent = lastParent;
+            } else {
+                var copy = parent.copyWithoutChildren();
+                grandparent.addChild(copy);
+                parent = copy;
             }
         }
         parent.addChild(node);
     }
 
-    /// Copies the current CSS parent after a later sibling when needed.
+    /// Returns whether a CSS parent must be skipped while bubbling one child.
     ///
-    /// After a nested style rule bubbles beside the active rule, later
-    /// declarations must attach to a fresh copy of that rule rather than reopen
-    /// the earlier sibling.
+    /// @param parent            the candidate parent
+    /// @param throughStyleRules whether style-rule parents should be skipped
+    /// @param mediaQuerySources queries that identify mergeable media ancestors
+    /// @return whether the child should be attached above {@code parent}
+    private static boolean shouldBubbleThrough(
+            CssParentNode parent,
+            boolean throughStyleRules,
+            Set<CssMediaQuery> mediaQuerySources
+    ) {
+        if (throughStyleRules && parent instanceof CssStyleRule) {
+            return true;
+        }
+        return parent instanceof CssMediaRule mediaRule
+                && !mediaQuerySources.isEmpty()
+                && mediaRule.queries().stream().allMatch(mediaQuerySources::contains);
+    }
+
+    /// Copies the active CSS ancestor path after any visible later sibling.
+    ///
+    /// A nested conditional rule may bubble outside several active parents.
+    /// Later declarations must resume in copies of every affected ancestor so
+    /// their source order remains after the bubbled rule.
     private void copyParentAfterSibling() {
-        var parent = requireCssParent();
-        @Nullable CssParentNode grandparent = parent.parent();
-        if (grandparent == null) {
+        var path = new ArrayList<CssParentNode>();
+        var current = requireCssParent();
+        while (true) {
+            path.add(current);
+            @Nullable CssParentNode parent = current.parent();
+            if (parent == null) {
+                break;
+            }
+            current = parent;
+        }
+
+        var copyStart = -1;
+        for (var index = 0; index < path.size() - 1; index++) {
+            if (path.get(index).hasFollowingSibling()) {
+                copyStart = index;
+            }
+        }
+        if (copyStart < 0) {
             return;
         }
-        var siblings = grandparent.children();
-        if (siblings.isEmpty() || siblings.get(siblings.size() - 1) == parent) {
-            return;
+
+        var copiedParent = path.get(copyStart).copyWithoutChildren();
+        var copies = new IdentityHashMap<CssParentNode, CssParentNode>();
+        copies.put(path.get(copyStart), copiedParent);
+        path.get(copyStart + 1).addChild(copiedParent);
+        CssParentNode copiedLeaf = copiedParent;
+        for (var index = copyStart - 1; index >= 0; index--) {
+            var childCopy = path.get(index).copyWithoutChildren();
+            copies.put(path.get(index), childCopy);
+            copiedLeaf.addChild(childCopy);
+            copiedLeaf = childCopy;
         }
-        var copy = parent.copyWithoutChildren();
-        grandparent.addChild(copy);
-        cssParent = copy;
-        if (parent instanceof CssStyleRule && styleRule == parent) {
-            styleRule = (CssStyleRule) copy;
+
+        cssParent = copiedLeaf;
+        if (styleRule != null) {
+            @Nullable CssParentNode copiedStyleRule = copies.get(styleRule);
+            if (copiedStyleRule instanceof CssStyleRule rule) {
+                styleRule = rule;
+            }
         }
     }
 
@@ -1480,11 +1871,38 @@ public final class SassEvaluator implements
             ArgumentList arguments,
             SourceSpan span
     ) {
-        var evaluated = evaluateArguments(arguments, span);
+        return runCallable(callable, evaluateArguments(arguments, span), span);
+    }
+
+    /// Invokes a callable with arguments that have already been evaluated.
+    ///
+    /// @param callable  the callable to invoke
+    /// @param evaluated the evaluated positional and keyword arguments
+    /// @param span      the invocation span
+    /// @return the callable result
+    private SassValue runCallable(
+            Callable callable,
+            EvaluatedArguments evaluated,
+            SourceSpan span
+    ) {
         if (callable instanceof BuiltInCallable builtIn) {
             return valueOperation(span, () -> {
                 var bound = bindForBuiltin(builtIn, evaluated, span);
-                return builtIn.invoke(bound);
+                var result = builtIn.invoke(
+                        new BuiltInCallable.Context(
+                                environment,
+                                BUILT_IN_FUNCTIONS,
+                                currentUrl,
+                                span,
+                                compilationContext,
+                                this::runFunctionValue,
+                                this::runMixinValue,
+                                this::reportDeprecation
+                        ),
+                        bound.values()
+                );
+                checkUnusedKeywords(bound.rest(), span);
+                return result;
             });
         }
         if (callable instanceof PlainCssCallable plainCss) {
@@ -1503,6 +1921,63 @@ public final class SassEvaluator implements
             return runUserDefinedFunction(userDefined, evaluated, span);
         }
         throw new IllegalStateException("unsupported callable: " + callable.getClass().getName());
+    }
+
+    /// Invokes a first-class function reference with preserved evaluated arguments.
+    ///
+    /// @param function  the function reference to invoke
+    /// @param arguments the positional and keyword arguments to forward
+    /// @param span      the dynamic invocation span
+    /// @return the callable result
+    private SassValue runFunctionValue(
+            SassFunction function,
+            SassArgumentList arguments,
+            SourceSpan span
+    ) {
+        function.assertCompilationContext(compilationContext);
+        return runCallable(
+                function.callable(),
+                new EvaluatedArguments(
+                        List.copyOf(arguments.asList()),
+                        new LinkedHashMap<>(arguments.keywords()),
+                        arguments.separator()
+                ),
+                span
+        );
+    }
+
+    /// Includes a first-class mixin reference with preserved evaluated arguments.
+    ///
+    /// @param mixin     the mixin reference to include
+    /// @param arguments the positional and keyword arguments to forward
+    /// @param content   the direct content block, or {@code null}
+    /// @param span      the dynamic include span
+    private void runMixinValue(
+            SassMixin mixin,
+            SassArgumentList arguments,
+            @Nullable UserDefinedCallable content,
+            SourceSpan span
+    ) {
+        mixin.assertCompilationContext(compilationContext);
+        runMixinCallable(
+                mixin.callable(),
+                new EvaluatedArguments(
+                        List.copyOf(arguments.asList()),
+                        new LinkedHashMap<>(arguments.keywords()),
+                        arguments.separator()
+                ),
+                content,
+                span
+        );
+    }
+
+    /// Records a deprecation raised by a contextual built-in function.
+    ///
+    /// @param message the caller-facing deprecation message
+    /// @param code    the stable deprecation identifier
+    /// @param span    the source span that triggered the deprecation
+    private void reportDeprecation(String message, String code, SourceSpan span) {
+        diagnostics.add(new Diagnostic(DiagnosticSeverity.DEPRECATION, message, span, code));
     }
 
     /// Executes a user-defined function body and returns its `@return` value.
@@ -1539,21 +2014,100 @@ public final class SassEvaluator implements
         });
     }
 
-    /// Executes a user-defined mixin body.
+    /// Includes a mixin with unevaluated call-site arguments.
     ///
-    /// @param mixin      the mixin or content callable
-    /// @param arguments  the unevaluated arguments
-    /// @param content    the optional content block
-    /// @param span       the include or content span
+    /// @param mixin     the resolved mixin, or {@code null}
+    /// @param arguments the unevaluated invocation arguments
+    /// @param content   the direct content block, or {@code null}
+    /// @param span      the include span
+    private void runMixinCallable(
+            @Nullable Callable mixin,
+            ArgumentList arguments,
+            @Nullable UserDefinedCallable content,
+            SourceSpan span
+    ) {
+        if (mixin == null) {
+            throw new EvaluationException("Undefined mixin.", span);
+        }
+        runMixinCallable(mixin, evaluateArguments(arguments, span), content, span);
+    }
+
+    /// Includes a mixin with already-evaluated arguments.
+    ///
+    /// @param mixin     the resolved mixin
+    /// @param evaluated the evaluated invocation arguments
+    /// @param content   the direct content block, or {@code null}
+    /// @param span      the include span
+    private void runMixinCallable(
+            Callable mixin,
+            EvaluatedArguments evaluated,
+            @Nullable UserDefinedCallable content,
+            SourceSpan span
+    ) {
+        if (mixin instanceof UserDefinedCallable userMixin) {
+            if (content != null && !userMixin.acceptsContent()) {
+                throw new EvaluationException("Mixin doesn't accept a content block.", span);
+            }
+            runUserDefinedMixin(userMixin, evaluated, content, span);
+            return;
+        }
+        if (mixin instanceof BuiltInCallable builtIn) {
+            if (content != null && !builtIn.acceptsContent()) {
+                throw new EvaluationException("Mixin doesn't accept a content block.", span);
+            }
+            runBuiltInMixin(builtIn, evaluated, content, span);
+            return;
+        }
+        throw new EvaluationException("Undefined mixin.", span);
+    }
+
+    /// Executes a built-in mixin body with its direct content binding.
+    ///
+    /// @param mixin     the built-in mixin
+    /// @param evaluated the evaluated invocation arguments
+    /// @param content   the direct content block, or {@code null}
+    /// @param span      the include span
+    private void runBuiltInMixin(
+            BuiltInCallable mixin,
+            EvaluatedArguments evaluated,
+            @Nullable UserDefinedCallable content,
+            SourceSpan span
+    ) {
+        environment.withContent(content, () -> environment.withMixin(() -> {
+            runCallable(mixin, evaluated, span);
+            return null;
+        }));
+    }
+
+    /// Executes a user-defined mixin body with unevaluated call-site arguments.
+    ///
+    /// @param mixin     the user-defined mixin
+    /// @param arguments the unevaluated invocation arguments
+    /// @param content   the direct content block, or {@code null}
+    /// @param span      the include span
     private void runUserDefinedMixin(
             UserDefinedCallable mixin,
             ArgumentList arguments,
             @Nullable UserDefinedCallable content,
             SourceSpan span
     ) {
-        var evaluated = evaluateArguments(arguments, span);
+        runUserDefinedMixin(mixin, evaluateArguments(arguments, span), content, span);
+    }
+
+    /// Executes a user-defined mixin body with already-evaluated arguments.
+    ///
+    /// @param mixin     the user-defined mixin
+    /// @param evaluated the evaluated invocation arguments
+    /// @param content   the direct content block, or {@code null}
+    /// @param span      the include span
+    private void runUserDefinedMixin(
+            UserDefinedCallable mixin,
+            EvaluatedArguments evaluated,
+            @Nullable UserDefinedCallable content,
+            SourceSpan span
+    ) {
         withEnvironment(mixin.environment().closure(), () -> {
-            environment.withContent(content, () -> {
+            environment.withContent(content, () -> environment.withMixin(() -> {
                 var scope = environment.scope(ScopeSemantics.LEXICAL, true);
                 try {
                     @Nullable SassArgumentList rest = bindParameters(
@@ -1562,6 +2116,49 @@ public final class SassEvaluator implements
                             span
                     );
                     executeChildren(mixin.children());
+                    checkUnusedKeywords(rest, span);
+                    return null;
+                } finally {
+                    scope.close();
+                }
+            }));
+            return null;
+        });
+    }
+
+    /// Executes a content block without masking its captured outer content.
+    ///
+    /// @param content   the content block captured at the include site
+    /// @param arguments the unevaluated arguments passed by {@code @content}
+    /// @param span      the content invocation span
+    private void runContentBlock(
+            UserDefinedCallable content,
+            ArgumentList arguments,
+            SourceSpan span
+    ) {
+        runContentBlock(content, evaluateArguments(arguments, span), span);
+    }
+
+    /// Executes a content block with already-evaluated arguments.
+    ///
+    /// @param content   the content block captured at the include site
+    /// @param evaluated the evaluated arguments passed by {@code @content}
+    /// @param span      the content invocation span
+    private void runContentBlock(
+            UserDefinedCallable content,
+            EvaluatedArguments evaluated,
+            SourceSpan span
+    ) {
+        withEnvironment(content.environment().closure(), () -> {
+            environment.withMixin(() -> {
+                var scope = environment.scope(ScopeSemantics.LEXICAL, true);
+                try {
+                    @Nullable SassArgumentList rest = bindParameters(
+                            content.parameters(),
+                            evaluated,
+                            span
+                    );
+                    executeChildren(content.children());
                     checkUnusedKeywords(rest, span);
                     return null;
                 } finally {
@@ -1594,7 +2191,7 @@ public final class SassEvaluator implements
             } else if (rest instanceof SassArgumentList argumentList) {
                 positional.addAll(argumentList.asList());
                 separator = argumentList.separator();
-                named.putAll(argumentList.keywordsWithoutMarking());
+                named.putAll(argumentList.keywords());
             } else if (rest instanceof SassList list) {
                 positional.addAll(list.contents());
                 separator = list.separator();
@@ -1612,7 +2209,7 @@ public final class SassEvaluator implements
             }
             addRestMap(named, map, span);
         }
-        return new EvaluatedArguments(positional, named, separator);
+        return new EvaluatedArguments(List.copyOf(positional), named, separator);
     }
 
     /// Merges a rest map into the named-argument table.
@@ -1716,8 +2313,8 @@ public final class SassEvaluator implements
         return rest;
     }
 
-    /// Converts evaluated arguments into a positional list for a built-in callable.
-    private List<SassValue> bindForBuiltin(
+    /// Converts evaluated arguments into bound values for a built-in callable.
+    private BoundBuiltInArguments bindForBuiltin(
             BuiltInCallable builtIn,
             EvaluatedArguments evaluated,
             SourceSpan span
@@ -1769,7 +2366,7 @@ public final class SassEvaluator implements
             if (!named.isEmpty()) {
                 throw unknownNamed(named.keySet(), span);
             }
-            return bound;
+            return new BoundBuiltInArguments(List.copyOf(bound), null);
         }
 
         var restPositional = positional.size() > params.size()
@@ -1780,12 +2377,7 @@ public final class SassEvaluator implements
                 : evaluated.separator();
         var rest = new SassArgumentList(restPositional, separator, named);
         bound.add(rest);
-        // Built-ins that accept rest are assumed to consume keywords by reading
-        // the argument list as a plain list; unused named keywords error here.
-        if (!named.isEmpty()) {
-            throw unknownNamed(named.keySet(), span);
-        }
-        return bound;
+        return new BoundBuiltInArguments(List.copyOf(bound), rest);
     }
 
     /// Throws when leftover named arguments remain.
@@ -1811,9 +2403,25 @@ public final class SassEvaluator implements
         throw unknownNamed(rest.keywordsWithoutMarking().keySet(), span);
     }
 
+    /// Contains bound values and an optional rest argument list for one built-in call.
+    ///
+    /// @param values the immutable values passed to the built-in callback
+    /// @param rest   the rest argument list whose keywords must be consumed, or {@code null}
+    @NotNullByDefault
+    private record BoundBuiltInArguments(
+            @Unmodifiable List<SassValue> values,
+            @Nullable SassArgumentList rest
+    ) {
+    }
+
     /// Contains evaluated invocation arguments.
+    ///
+    /// @param positional the evaluated positional arguments
+    /// @param named      the evaluated keyword arguments by normalized name
+    /// @param separator  the separator preserved from a spread argument list
+    @NotNullByDefault
     private record EvaluatedArguments(
-            List<SassValue> positional,
+            @Unmodifiable List<SassValue> positional,
             LinkedHashMap<String, SassValue> named,
             ListSeparator separator
     ) {

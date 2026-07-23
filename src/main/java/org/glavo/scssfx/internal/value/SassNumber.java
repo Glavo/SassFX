@@ -207,6 +207,37 @@ public final class SassNumber implements SassValue {
         return this;
     }
 
+    /// Returns this magnitude after validating a fuzzy-inclusive range.
+    ///
+    /// Values that are Sass-fuzzy-equal to either endpoint are normalized to
+    /// that endpoint. The number's units are not converted or otherwise
+    /// validated by this method.
+    ///
+    /// @param minimum the inclusive lower bound
+    /// @param maximum the inclusive upper bound
+    /// @return this magnitude, or a normalized endpoint
+    /// @throws IllegalArgumentException if the supplied bounds are unordered or non-finite
+    /// @throws SassValueException if this magnitude lies outside the range
+    public double valueInRange(double minimum, double maximum) {
+        if (!(Double.isFinite(minimum) && Double.isFinite(maximum) && minimum <= maximum)) {
+            throw new IllegalArgumentException("range bounds must be finite and ordered");
+        }
+        if (SassFuzzy.equals(value, minimum)) {
+            return minimum;
+        }
+        if (SassFuzzy.equals(value, maximum)) {
+            return maximum;
+        }
+        if (value > minimum && value < maximum) {
+            return value;
+        }
+        var unit = unitString();
+        throw new SassValueException(
+                "Expected " + this + " to be within " + formatNumber(minimum) + unit
+                        + " and " + formatNumber(maximum) + unit + "."
+        );
+    }
+
     /// Returns the unit string used by Sass math functions.
     ///
     /// @return the unit text, or the empty string when unitless

@@ -13,6 +13,7 @@ import org.glavo.scssfx.internal.ast.EachRule;
 import org.glavo.scssfx.internal.ast.ElseClause;
 import org.glavo.scssfx.internal.ast.ForwardRule;
 import org.glavo.scssfx.internal.ast.ForRule;
+import org.glavo.scssfx.internal.ast.FontFaceRule;
 import org.glavo.scssfx.internal.ast.FunctionRule;
 import org.glavo.scssfx.internal.ast.IfClause;
 import org.glavo.scssfx.internal.ast.IfRule;
@@ -21,6 +22,16 @@ import org.glavo.scssfx.internal.ast.Interpolation;
 import org.glavo.scssfx.internal.ast.InterpolationBuffer;
 import org.glavo.scssfx.internal.ast.LoudComment;
 import org.glavo.scssfx.internal.ast.MixinRule;
+import org.glavo.scssfx.internal.ast.MediaRule;
+import org.glavo.scssfx.internal.ast.SupportsRule;
+import org.glavo.scssfx.internal.ast.SupportsAnything;
+import org.glavo.scssfx.internal.ast.SupportsBooleanOperator;
+import org.glavo.scssfx.internal.ast.SupportsCondition;
+import org.glavo.scssfx.internal.ast.SupportsDeclaration;
+import org.glavo.scssfx.internal.ast.SupportsFunction;
+import org.glavo.scssfx.internal.ast.SupportsInterpolation;
+import org.glavo.scssfx.internal.ast.SupportsNegation;
+import org.glavo.scssfx.internal.ast.SupportsOperation;
 import org.glavo.scssfx.internal.ast.Parameter;
 import org.glavo.scssfx.internal.ast.ParameterList;
 import org.glavo.scssfx.internal.ast.ReturnRule;
@@ -61,6 +72,9 @@ final class ScssParser extends SassExpressionParser {
         /// Nested-property children that reject nested style rules.
         DECLARATION,
 
+        /// Font-face bodies that accept only declarations and control flow.
+        FONT_FACE,
+
         /// Function bodies that accept only variables, control flow, and `@return`.
         FUNCTION
     }
@@ -73,6 +87,9 @@ final class ScssParser extends SassExpressionParser {
 
     /// Records whether the parser is inside a mixin declaration body.
     private boolean inMixin;
+
+    /// Records whether the parser is inside an include content block.
+    private boolean inContentBlock;
 
     /// Records whether module directives are still allowed at the stylesheet root.
     private boolean moduleDirectivesAllowed = true;
@@ -376,7 +393,7 @@ final class ScssParser extends SassExpressionParser {
         return switch (context) {
             case ROOT -> variableDeclarationOrStyleRule();
             case STYLE_RULE -> declarationOrStyleRule();
-            case DECLARATION -> declarationChild();
+            case DECLARATION, FONT_FACE -> declarationChild();
             case FUNCTION -> throw scanner.error("Expected @return rule or variable declaration.");
         };
     }
@@ -395,6 +412,9 @@ final class ScssParser extends SassExpressionParser {
             case "if" -> ifRule(start, context);
             case "each" -> eachRule(start, context);
             case "for" -> forRule(start, context);
+            case "font-face" -> fontFaceRule(start, context);
+            case "media" -> mediaRule(start, context);
+            case "supports" -> supportsRule(start, context);
             case "while" -> whileRule(start, context);
             case "mixin" -> mixinRule(start, context);
             case "function" -> functionRule(start, context);
@@ -418,10 +438,256 @@ final class ScssParser extends SassExpressionParser {
         };
     }
 
-    /// Parses an `@if` rule and its trailing `@else if` / `@else` branches.
+    /// Parses a top-level `@font-face` rule.
     ///
     /// @param start   the scanner state at the leading `@`
-    /// @param context the statement forms permitted in branch bodies
+    /// @param context the enclosing statement context
+    /// @return the font-face rule
+    /// @throws ParseException if the rule is nested or its body is malformed
+    private FontFaceRule fontFaceRule(ScannerState start, StatementContext context) {
+        if (context != StatementContext.ROOT) {
+            throw scanner.error(
+                    "This at-rule may only be used at the stylesheet root.",
+                    start.position(),
+                    scanner.position() - start.position()
+            );
+        }
+        whitespace(true);
+        var children = statementBlock(StatementContext.FONT_FACE);
+        var span = scanner.spanFrom(start);
+        whitespaceWithoutComments(false);
+        return new FontFaceRule(children, span);
+    }
+
+    /// Parses an {@code @media} rule in a stylesheet or style-rule context.
+    ///
+    /// @param start   the scanner state at the leading {@code @}
+    /// @param context the enclosing statement context
+    /// @return the parsed media rule
+    /// @throws ParseException if the query is missing or the rule is disallowed here
+    private MediaRule mediaRule(ScannerState start, StatementContext context) {
+        switch (context) {
+            case DECLARATION -> throw scanner.error(
+                    "Media rules may not be used within nested declarations.",
+                    start.position(),
+                    scanner.position() - start.position()
+            );
+            case FONT_FACE -> throw scanner.error(
+                    "Media rules may not be used within @font-face rules.",
+                    start.position(),
+                    scanner.position() - start.position()
+            );
+            case FUNCTION -> throw scanner.error(
+                    "Media rules may not be used within functions.",
+                    start.position(),
+                    scanner.position() - start.position()
+            );
+            default -> {
+            }
+        }
+
+        whitespace(true);
+        var query = styleRuleSelector();
+        @Nullable String plainQuery = query.asPlain();
+        if (plainQuery != null && plainQuery.isBlank()) {
+            throw scanner.error("Expected media query.");
+        }
+        var children = statementBlock(context);
+        var span = scanner.spanFrom(start);
+        whitespaceWithoutComments(false);
+        return new MediaRule(query, children, span);
+    }
+
+    /// Parses an {@code @supports} rule in a stylesheet or style-rule context.
+    ///
+    /// @param start   the scanner state at the leading {@code @}
+    /// @param context the enclosing statement context
+    /// @return the parsed supports rule
+    /// @throws ParseException if the condition is missing or the rule is disallowed here
+    private SupportsRule supportsRule(ScannerState start, StatementContext context) {
+        switch (context) {
+            case DECLARATION -> throw scanner.error(
+                    "Supports rules may not be used within nested declarations.",
+                    start.position(),
+                    scanner.position() - start.position()
+            );
+            case FONT_FACE -> throw scanner.error(
+                    "Supports rules may not be used within @font-face rules.",
+                    start.position(),
+                    scanner.position() - start.position()
+            );
+            case FUNCTION -> throw scanner.error(
+                    "Supports rules may not be used within functions.",
+                    start.position(),
+                    scanner.position() - start.position()
+            );
+            default -> {
+            }
+        }
+
+        whitespace(true);
+        var condition = supportsCondition();
+        whitespace(true);
+        var children = statementBlock(context);
+        var span = scanner.spanFrom(start);
+        whitespaceWithoutComments(false);
+        return new SupportsRule(condition, children, span);
+    }
+
+    /// Parses the boolean expression at the start of a supports condition.
+    ///
+    /// @return the parsed supports condition
+    private SupportsCondition supportsCondition() {
+        var start = scanner.state();
+        whitespace(true);
+        var result = supportsConditionOperand();
+        while (true) {
+            whitespace(true);
+            var operatorStart = scanner.state();
+            SupportsBooleanOperator operator;
+            if (scanIdentifier("or")) {
+                operator = SupportsBooleanOperator.OR;
+            } else if (scanIdentifier("and")) {
+                operator = SupportsBooleanOperator.AND;
+            } else {
+                scanner.restore(operatorStart);
+                break;
+            }
+            whitespace(true);
+            var right = supportsConditionOperand();
+            result = new SupportsOperation(
+                    result,
+                    right,
+                    operator,
+                    scanner.spanFrom(start)
+            );
+        }
+        return result;
+    }
+
+    /// Parses one optionally negated supports operand.
+    ///
+    /// @return the parsed operand
+    private SupportsCondition supportsConditionOperand() {
+        var start = scanner.state();
+        if (scanIdentifier("not")) {
+            whitespace(true);
+            var condition = supportsConditionInParens();
+            return new SupportsNegation(condition, scanner.spanFrom(start));
+        }
+        return supportsConditionInParens();
+    }
+
+    /// Parses a parenthesized declaration, function, opaque condition, or
+    /// interpolated condition.
+    ///
+    /// @return the parsed condition
+    private SupportsCondition supportsConditionInParens() {
+        var start = scanner.state();
+        if (lookingAtInterpolatedIdentifier()) {
+            var nameStart = scanner.state();
+            var name = interpolatedIdentifier();
+            whitespace(true);
+            if (scanner.scan('(')) {
+                var arguments = interpolatedDeclarationValue(true, true);
+                scanner.expect(')');
+                return new SupportsFunction(name, arguments, scanner.spanFrom(start));
+            }
+
+            scanner.restore(nameStart);
+            if (scanner.peek() == '#' && scanner.peek(1) == '{') {
+                return supportsInterpolationCondition();
+            }
+            throw scanner.error("Expected supports condition.");
+        }
+
+        scanner.expect('(');
+        whitespace(true);
+        if (scanIdentifier("not")) {
+            whitespace(true);
+            var condition = supportsConditionInParens();
+            scanner.expect(')');
+            return new SupportsNegation(condition, scanner.spanFrom(start));
+        }
+        if (scanner.peek() == '(') {
+            var condition = supportsCondition();
+            whitespace(true);
+            scanner.expect(')');
+            return condition;
+        }
+        return supportsDeclarationOrAnything(start);
+    }
+
+    /// Parses one complete SassScript interpolation as a supports condition.
+    ///
+    /// @return the interpolated condition
+    private SupportsInterpolation supportsInterpolationCondition() {
+        var start = scanner.state();
+        scanner.expect("#{");
+        whitespace(true);
+        var expression = expression();
+        scanner.expect('}');
+        return new SupportsInterpolation(expression, scanner.spanFrom(start));
+    }
+
+    /// Parses a declaration condition and falls back to an opaque condition
+    /// when the contents do not contain a declaration colon.
+    ///
+    /// @param start the source position before the opening parenthesis
+    /// @return the parsed condition
+    private SupportsCondition supportsDeclarationOrAnything(ScannerState start) {
+        var contentsStart = scanner.state();
+        var colonConsumed = false;
+        try {
+            var name = expression();
+            whitespace(true);
+            if (!scanner.scan(':')) {
+                throw scanner.error("Expected \":\".");
+            }
+            colonConsumed = true;
+            whitespace(true);
+
+            boolean customProperty = name instanceof StringExpression string
+                    && isPlainCustomPropertyName(string);
+            SassExpression value;
+            if (customProperty) {
+                var rawValue = interpolatedDeclarationValue(true, true);
+                value = new StringExpression(rawValue, false);
+            } else {
+                value = expression();
+            }
+            whitespace(true);
+            scanner.expect(')');
+            return new SupportsDeclaration(
+                    name,
+                    value,
+                    customProperty,
+                    scanner.spanFrom(start)
+            );
+        } catch (ParseException failure) {
+            scanner.restore(contentsStart);
+            if (colonConsumed) {
+                throw failure;
+            }
+            var contents = interpolatedDeclarationValue(true, true);
+            scanner.expect(')');
+            return new SupportsAnything(contents, scanner.spanFrom(start));
+        }
+    }
+
+    /// Returns whether a parsed name is a custom-property name.
+    ///
+    /// @param expression the parsed name expression
+    /// @return whether its plain text begins with two hyphens
+    private static boolean isPlainCustomPropertyName(StringExpression expression) {
+        @Nullable String plain = expression.text().asPlain();
+        return plain != null && plain.startsWith("--");
+    }
+
+    /// Parses an {@code @if} rule and its trailing {@code @else if} / {@code @else} branches.
+    ///
+    /// @param start   the scanner state at the leading {@code @}
+    /// @param context the enclosing statement context
     /// @return the if rule
     private IfRule ifRule(ScannerState start, StatementContext context) {
         whitespace(true);
@@ -563,8 +829,8 @@ final class ScssParser extends SassExpressionParser {
         if (context == StatementContext.FUNCTION || context == StatementContext.DECLARATION) {
             throw scanner.error("Mixins may not be declared here.");
         }
-        if (inMixin) {
-            throw scanner.error("Mixins may not be declared within a mixin.");
+        if (inMixin || inContentBlock) {
+            throw scanner.error("Mixins may not be declared within a mixin or content block.");
         }
         whitespace(true);
         var originalName = identifier(false, false);
@@ -576,6 +842,7 @@ final class ScssParser extends SassExpressionParser {
                 ? parameterList()
                 : ParameterList.empty(scanner.source().span(scanner.position(), scanner.position()));
         whitespace(true);
+        var previousInMixin = inMixin;
         inMixin = true;
         ArrayList<SassStatement> children;
         try {
@@ -583,7 +850,7 @@ final class ScssParser extends SassExpressionParser {
             // applied when the mixin is included inside a style rule.
             children = statementBlock(StatementContext.STYLE_RULE);
         } finally {
-            inMixin = false;
+            inMixin = previousInMixin;
         }
         var span = scanner.spanFrom(start);
         whitespaceWithoutComments(false);
@@ -599,8 +866,8 @@ final class ScssParser extends SassExpressionParser {
         if (context == StatementContext.FUNCTION || context == StatementContext.DECLARATION) {
             throw scanner.error("Functions may not be declared here.");
         }
-        if (inMixin) {
-            throw scanner.error("Functions may not be declared within a mixin.");
+        if (inMixin || inContentBlock) {
+            throw scanner.error("Functions may not be declared within a mixin or content block.");
         }
         whitespace(true);
         var originalName = identifier(false, false);
@@ -643,24 +910,40 @@ final class ScssParser extends SassExpressionParser {
                     scanner.source().span(scanner.position(), scanner.position())
             );
         }
+        @Nullable ParameterList contentParameters = null;
         if (scanIdentifier("using")) {
-            throw scanner.error("Content block parameters aren't supported.");
+            whitespace(true);
+            contentParameters = parameterList();
+            whitespace(true);
         }
         @Nullable ContentBlock content = null;
         if (scanner.peek() == '{') {
             var contentStart = scanner.state();
-            // Content blocks accept style-rule children even when the include is
-            // written at the stylesheet root.
-            var children = statementBlock(StatementContext.STYLE_RULE);
-            content = new ContentBlock(
-                    ParameterList.empty(scanner.source().span(
+            var parameters = contentParameters == null
+                    ? ParameterList.empty(scanner.source().span(
                             contentStart.position(),
                             contentStart.position()
-                    )),
+                    ))
+                    : contentParameters;
+            // Content blocks accept style-rule children even when the include is
+            // written at the stylesheet root.
+            var previousInContentBlock = inContentBlock;
+            inContentBlock = true;
+            ArrayList<SassStatement> children;
+            try {
+                children = statementBlock(StatementContext.STYLE_RULE);
+            } finally {
+                inContentBlock = previousInContentBlock;
+            }
+            content = new ContentBlock(
+                    parameters,
                     children,
                     scanner.spanFrom(contentStart)
             );
         } else {
+            if (contentParameters != null) {
+                throw scanner.error("Expected a content block after using().");
+            }
             expectStatementSeparator();
         }
         var span = scanner.spanFrom(start);
@@ -684,9 +967,6 @@ final class ScssParser extends SassExpressionParser {
         ArgumentList arguments;
         if (scanner.peek() == '(') {
             arguments = argumentInvocation(false);
-            if (!arguments.isEmpty()) {
-                throw scanner.error("Content arguments aren't supported.");
-            }
         } else {
             arguments = ArgumentList.empty(
                     scanner.source().span(scanner.position(), scanner.position())

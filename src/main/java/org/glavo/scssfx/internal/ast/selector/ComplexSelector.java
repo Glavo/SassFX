@@ -37,11 +37,66 @@ public record ComplexSelector(
 
     /// Returns whether this complex selector contains a parent selector.
     ///
-    /// @return whether `&` is present
+    /// @return whether {@code &} is present directly or in a recursive pseudo argument
     public boolean containsParentSelector() {
         for (var component : components) {
             for (var simple : component.selector().components()) {
+                if (simple.containsParentSelector()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /// Returns whether this complex selector contains a direct parent selector.
+    ///
+    /// @return whether one compound directly contains {@code &}
+    public boolean containsDirectParentSelector() {
+        for (var component : components) {
+            for (var simple : component.selector().components()) {
                 if (simple instanceof ParentSelector) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /// Returns the number of structurally represented parent selectors.
+    ///
+    /// @return the recursive parent-selector count
+    public int parentSelectorCount() {
+        var count = 0;
+        for (var component : components) {
+            for (var simple : component.selector().components()) {
+                count += simple.parentSelectorCount();
+            }
+        }
+        return count;
+    }
+
+    /// Returns whether a parent selector in this complex selector has a suffix.
+    ///
+    /// @return whether a direct or recursive parent selector has a suffix
+    public boolean hasParentSelectorSuffix() {
+        for (var component : components) {
+            for (var simple : component.selector().components()) {
+                if (simple.hasParentSelectorSuffix()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /// Returns whether a parent reference cannot be replaced structurally.
+    ///
+    /// @return whether an opaque pseudo argument contains {@code &}
+    public boolean hasUnresolvedParentReference() {
+        for (var component : components) {
+            for (var simple : component.selector().components()) {
+                if (simple.hasUnresolvedParentReference()) {
                     return true;
                 }
             }
@@ -115,7 +170,7 @@ public record ComplexSelector(
                 result.append(' ');
             }
             for (var simple : component.selector().components()) {
-                if (simple instanceof ParentSelector) {
+                if (simple.containsParentSelector()) {
                     throw new SassValueException(
                             "Parent selectors aren't allowed here."
                     );

@@ -156,6 +156,236 @@ public final class SassColor implements SassValue {
         return format;
     }
 
+    /// Returns this color's legacy HSL hue in degrees.
+    ///
+    /// Achromatic colors return {@code 0} because the legacy RGB model has no
+    /// separate missing-hue state.
+    ///
+    /// @return the normalized hue between zero inclusive and 360 exclusive
+    public double hue() {
+        var normalizedRed = red / 255.0;
+        var normalizedGreen = green / 255.0;
+        var normalizedBlue = blue / 255.0;
+        var saturation = hslSaturation(normalizedRed, normalizedGreen, normalizedBlue);
+        if (SassFuzzy.equals(saturation, 0.0)) {
+            return 0.0;
+        }
+        var hue = hslHue(normalizedRed, normalizedGreen, normalizedBlue);
+        if (saturation < 0.0) {
+            hue += 180.0;
+        }
+        return normalizeHue(hue);
+    }
+
+    /// Returns this color's legacy HSL saturation as a percentage.
+    ///
+    /// @return the non-negative saturation percentage
+    public double saturation() {
+        return Math.abs(hslSaturation(red / 255.0, green / 255.0, blue / 255.0) * 100.0);
+    }
+
+    /// Returns this color's legacy HSL lightness as a percentage.
+    ///
+    /// @return the lightness percentage
+    public double lightness() {
+        return hslLightness(red / 255.0, green / 255.0, blue / 255.0) * 100.0;
+    }
+
+    /// Mixes this color with another legacy RGB color.
+    ///
+    /// The resulting RGB channel weights account for the alpha difference,
+    /// while alpha itself is interpolated directly using {@code firstWeight}.
+    /// Source serialization metadata is not retained.
+    ///
+    /// @param other the second color
+    /// @param firstWeight the contribution of this color between zero and one
+    /// @return the mixed color
+    /// @throws IllegalArgumentException if {@code firstWeight} is outside its range
+    public SassColor mixedWith(SassColor other, double firstWeight) {
+        Objects.requireNonNull(other, "other");
+        if (!(firstWeight >= 0.0 && firstWeight <= 1.0)) {
+            throw new IllegalArgumentException("firstWeight must be between 0 and 1");
+        }
+
+        var normalizedWeight = firstWeight * 2.0 - 1.0;
+        var alphaDistance = alpha - other.alpha;
+        var combinedWeight = normalizedWeight * alphaDistance == -1.0
+                ? normalizedWeight
+                : (normalizedWeight + alphaDistance)
+                / (1.0 + normalizedWeight * alphaDistance);
+        var weight1 = (combinedWeight + 1.0) / 2.0;
+        var weight2 = 1.0 - weight1;
+        return rgb(
+                red * weight1 + other.red * weight2,
+                green * weight1 + other.green * weight2,
+                blue * weight1 + other.blue * weight2,
+                alpha * firstWeight + other.alpha * (1.0 - firstWeight),
+                null
+        );
+    }
+
+    /// Returns the RGB complement of this color without preserving source format.
+    ///
+    /// @return the color with every RGB channel subtracted from 255
+    public SassColor inverted() {
+        return rgb(255.0 - red, 255.0 - green, 255.0 - blue, alpha, null);
+    }
+
+    /// Returns this color with zero legacy HSL saturation.
+    ///
+    /// @return the grayscale color without source serialization metadata
+    public SassColor grayscale() {
+        return fromHsl(hue(), 0.0, lightness(), alpha);
+    }
+
+    /// Returns the legacy HSL complement of this color.
+    ///
+    /// @return the color with its hue rotated by 180 degrees
+    public SassColor complemented() {
+        return fromHsl(hue() + 180.0, saturation(), lightness(), alpha);
+    }
+
+    /// Converts legacy HSL channels to an RGB color.
+    ///
+    /// @param hue the hue in degrees
+    /// @param saturation the saturation percentage
+    /// @param lightness the lightness percentage
+    /// @param alpha the alpha channel
+    /// @return a format-free RGB color
+    private static SassColor fromHsl(
+            double hue,
+            double saturation,
+            double lightness,
+            double alpha
+    ) {
+        var normalizedHue = normalizeHue(hue) / 360.0;
+        var normalizedSaturation = saturation / 100.0;
+        var normalizedLightness = lightness / 100.0;
+        var secondMultiplier = normalizedLightness <= 0.5
+                ? normalizedLightness * (normalizedSaturation + 1.0)
+                : normalizedLightness + normalizedSaturation
+                - normalizedLightness * normalizedSaturation;
+        var firstMultiplier = normalizedLightness * 2.0 - secondMultiplier;
+        return rgb(
+                normalizeRgbEndpoint(
+                        hslHueToRgb(firstMultiplier, secondMultiplier, normalizedHue + 1.0 / 3.0)
+                                * 255.0
+                ),
+                normalizeRgbEndpoint(hslHueToRgb(firstMultiplier, secondMultiplier, normalizedHue) * 255.0),
+                normalizeRgbEndpoint(
+                        hslHueToRgb(firstMultiplier, secondMultiplier, normalizedHue - 1.0 / 3.0)
+                                * 255.0
+                ),
+                alpha,
+                null
+        );
+    }
+
+    /// Returns the legacy HSL hue computed from normalized RGB channels.
+    ///
+    /// @param red the normalized red channel
+    /// @param green the normalized green channel
+    /// @param blue the normalized blue channel
+    /// @return the unnormalized hue in degrees
+    private static double hslHue(double red, double green, double blue) {
+        var maximum = Math.max(Math.max(red, green), blue);
+        var minimum = Math.min(Math.min(red, green), blue);
+        var delta = maximum - minimum;
+        if (delta == 0.0) {
+            return 0.0;
+        }
+        if (maximum == red) {
+            return 60.0 * (green - blue) / delta + 360.0;
+        }
+        if (maximum == green) {
+            return 60.0 * (blue - red) / delta + 120.0;
+        }
+        return 60.0 * (red - green) / delta + 240.0;
+    }
+
+    /// Returns the legacy HSL saturation computed from normalized RGB channels.
+    ///
+    /// @param red the normalized red channel
+    /// @param green the normalized green channel
+    /// @param blue the normalized blue channel
+    /// @return the signed saturation fraction
+    private static double hslSaturation(double red, double green, double blue) {
+        var maximum = Math.max(Math.max(red, green), blue);
+        var minimum = Math.min(Math.min(red, green), blue);
+        var lightness = (minimum + maximum) / 2.0;
+        if (lightness == 0.0 || lightness == 1.0) {
+            return 0.0;
+        }
+        return (maximum - lightness) / Math.min(lightness, 1.0 - lightness);
+    }
+
+    /// Returns the legacy HSL lightness computed from normalized RGB channels.
+    ///
+    /// @param red the normalized red channel
+    /// @param green the normalized green channel
+    /// @param blue the normalized blue channel
+    /// @return the lightness fraction
+    private static double hslLightness(double red, double green, double blue) {
+        return (Math.min(Math.min(red, green), blue)
+                + Math.max(Math.max(red, green), blue)) / 2.0;
+    }
+
+    /// Normalizes one hue to the half-open legacy HSL degree range.
+    ///
+    /// @param hue the hue to normalize
+    /// @return a hue between zero inclusive and 360 exclusive
+    private static double normalizeHue(double hue) {
+        var normalized = hue % 360.0;
+        if (normalized < 0.0) {
+            normalized += 360.0;
+        }
+        return normalized == 0.0 ? 0.0 : normalized;
+    }
+
+    /// Converts one normalized hue position to a normalized RGB channel.
+    ///
+    /// @param firstMultiplier the lower HSL conversion multiplier
+    /// @param secondMultiplier the upper HSL conversion multiplier
+    /// @param hue the normalized hue position
+    /// @return the normalized RGB channel
+    private static double hslHueToRgb(
+            double firstMultiplier,
+            double secondMultiplier,
+            double hue
+    ) {
+        if (hue < 0.0) {
+            hue += 1.0;
+        }
+        if (hue > 1.0) {
+            hue -= 1.0;
+        }
+        if (hue < 1.0 / 6.0) {
+            return firstMultiplier + (secondMultiplier - firstMultiplier) * hue * 6.0;
+        }
+        if (hue < 1.0 / 2.0) {
+            return secondMultiplier;
+        }
+        if (hue < 2.0 / 3.0) {
+            return firstMultiplier + (secondMultiplier - firstMultiplier)
+                    * (2.0 / 3.0 - hue) * 6.0;
+        }
+        return firstMultiplier;
+    }
+
+    /// Normalizes RGB endpoints that differ only by Sass numeric fuzziness.
+    ///
+    /// @param channel the computed RGB channel
+    /// @return zero or 255 for a fuzzy-equal endpoint, otherwise {@code channel}
+    private static double normalizeRgbEndpoint(double channel) {
+        if (SassFuzzy.equals(channel, 0.0)) {
+            return 0.0;
+        }
+        if (SassFuzzy.equals(channel, 255.0)) {
+            return 255.0;
+        }
+        return channel;
+    }
+
     /// Compares semantic channels using Sass numeric fuzzy equality while
     /// ignoring source format.
     ///

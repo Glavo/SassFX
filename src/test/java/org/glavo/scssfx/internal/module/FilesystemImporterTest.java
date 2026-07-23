@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.module;
 
+import org.glavo.scssfx.Syntax;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -34,6 +35,23 @@ final class FilesystemImporterTest {
         assertEquals("relative", result.source().content());
         assertEquals(relativeModule.toRealPath().toUri(), result.canonicalUrl());
         assertEquals(result.canonicalUrl(), result.source().url());
+    }
+
+    /// Loads an indented Sass partial selected by an extensionless module URL.
+    @Test
+    void loadsIndentedSassModules(@TempDir Path directory) throws Exception {
+        var containingFile = Files.writeString(directory.resolve("main.scss"), "");
+        var module = Files.writeString(directory.resolve("_theme.sass"), "body\n  color: red\n");
+        var importer = new FilesystemImporter(List.of());
+
+        var result = Objects.requireNonNull(importer.canonicalizeAndLoad(
+                "theme",
+                containingFile.toRealPath().toUri()
+        ));
+
+        assertEquals("body\n  color: red\n", result.source().content());
+        assertEquals(Syntax.SASS, result.syntax());
+        assertEquals(module.toRealPath().toUri(), result.canonicalUrl());
     }
 
     /// Selects the first load path containing a matching module.

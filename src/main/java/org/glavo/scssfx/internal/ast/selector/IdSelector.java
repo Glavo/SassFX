@@ -7,30 +7,37 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 import java.util.Objects;
 
-/// An ID selector such as `#foo`.
+/// An ID selector such as {@code #foo}.
 ///
-/// @param name the ID name without the leading hash
+/// @param name the ID identifier without the leading hash
 /// @param span the source span
 @ApiStatus.Internal
 @NotNullByDefault
-public record IdSelector(String name, SourceSpan span) implements SimpleSelector {
+public record IdSelector(CssIdentifier name, SourceSpan span) implements SimpleSelector {
     /// Creates an ID selector.
     public IdSelector {
         Objects.requireNonNull(name, "name");
-        if (name.isEmpty()) {
-            throw new IllegalArgumentException("name must not be empty");
-        }
         Objects.requireNonNull(span, "span");
+    }
+
+    /// Creates an ID selector from a decoded identifier.
+    ///
+    /// @param name the decoded ID name
+    /// @param span the source span
+    public IdSelector(String name, SourceSpan span) {
+        this(CssIdentifier.of(name), span);
     }
 
     @Override
     public String toCssString() {
-        return "#" + name;
+        return "#" + name.toCssString();
     }
 
     @Override
-    public IdSelector addSuffix(String suffix) {
-        Objects.requireNonNull(suffix, "suffix");
-        return new IdSelector(name + suffix, span);
+    public IdSelector addSuffix(CssIdentifier suffix) {
+        return new IdSelector(
+                name.append(Objects.requireNonNull(suffix, "suffix")),
+                span
+        );
     }
 }

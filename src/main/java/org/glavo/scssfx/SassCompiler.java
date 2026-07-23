@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx;
 
+import org.glavo.scssfx.internal.bss.BssSerializeException;
+import org.glavo.scssfx.internal.bss.BssSerializer;
 import org.glavo.scssfx.internal.css.CssSerializeException;
 import org.glavo.scssfx.internal.css.CssSerializer;
 import org.glavo.scssfx.internal.evaluate.EvaluationException;
@@ -25,7 +27,8 @@ import java.util.Set;
 ///
 /// Instances are stateless, thread-safe, and reusable. One compilation reads
 /// its root source, parses and evaluates the currently supported language
-/// subset, and serializes CSS IR for [CssTarget] requests.
+/// subset, and serializes CSS IR for [CssTarget], [JavaFXCssTarget], and the
+/// supported [BssTarget] subset.
 @NotNullByDefault
 public final class SassCompiler {
     /// Creates a reusable compiler.
@@ -64,15 +67,6 @@ public final class SassCompiler {
         Objects.requireNonNull(target, "target");
         Objects.requireNonNull(options, "options");
 
-        if (!(target instanceof CssTarget cssTarget)) {
-            throw unsupportedTarget(target);
-        }
-        if (cssTarget.style() != OutputStyle.EXPANDED) {
-            throw compilationFailure(
-                    "Compressed CSS output isn't supported.",
-                    null
-            );
-        }
         if (options.sourceMap()) {
             throw compilationFailure(
                     "Source map generation isn't supported.",
@@ -86,11 +80,20 @@ public final class SassCompiler {
             var registry = new ModuleRegistry(options.loadPaths());
             var evaluator = new SassEvaluator(registry);
             var root = evaluator.executeRoot(stylesheet, loaded.file().url());
-            var text = CssSerializer.serialize(root.css(), cssTarget);
+            T output;
+            if (target instanceof CssTarget cssTarget) {
+                output = (T) CssSerializer.serialize(root.css(), cssTarget);
+            } else if (target instanceof JavaFXCssTarget javaFXCssTarget) {
+                output = (T) CssSerializer.serialize(root.css(), javaFXCssTarget);
+            } else if (target instanceof BssTarget bssTarget) {
+                output = (T) BssSerializer.serialize(root.css(), bssTarget);
+            } else {
+                throw unsupportedTarget(target);
+            }
             var urls = new LinkedHashSet<>(registry.loadedUrls());
             urls.addAll(loaded.loadedUrls());
-            return (CompileResult<T>) new CompileResult<>(
-                    text,
+            return new CompileResult<>(
+                    output,
                     null,
                     urls,
                     evaluator.diagnostics()
@@ -112,6 +115,12 @@ public final class SassCompiler {
                     failure
             );
         } catch (CssSerializeException failure) {
+            throw new SassCompilationException(
+                    List.of(failure.primaryDiagnostic()),
+                    failure.sassTrace(),
+                    failure
+            );
+        } catch (BssSerializeException failure) {
             throw new SassCompilationException(
                     List.of(failure.primaryDiagnostic()),
                     failure.sassTrace(),

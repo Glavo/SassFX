@@ -11,7 +11,7 @@ import java.util.Objects;
 
 /// Contains the content block passed to a mixin include.
 ///
-/// @param parameters the content parameters; this round always uses an empty list
+/// @param parameters the parameters bound when the enclosing mixin invokes {@code @content}
 /// @param children   the content statements
 /// @param span       the complete content-block span
 @ApiStatus.Internal

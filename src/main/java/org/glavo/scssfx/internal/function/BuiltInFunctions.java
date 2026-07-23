@@ -3,10 +3,13 @@ package org.glavo.scssfx.internal.function;
 
 import org.glavo.scssfx.internal.callable.BuiltInCallable;
 import org.glavo.scssfx.internal.callable.BuiltInCallable.Param;
+import org.glavo.scssfx.internal.callable.UserDefinedCallable;
 import org.glavo.scssfx.internal.value.ListSeparator;
 import org.glavo.scssfx.internal.value.SassArgumentList;
 import org.glavo.scssfx.internal.value.SassBoolean;
 import org.glavo.scssfx.internal.value.SassColor;
+import org.glavo.scssfx.internal.value.SassFunction;
+import org.glavo.scssfx.internal.value.SassMixin;
 import org.glavo.scssfx.internal.value.SassList;
 import org.glavo.scssfx.internal.value.SassMap;
 import org.glavo.scssfx.internal.value.SassNull;
@@ -32,6 +35,14 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class BuiltInFunctions {
     /// Generates unique IDs within the current process.
     private static final AtomicLong UNIQUE_ID = new AtomicLong(1);
+
+    /// Contains the stable deprecation identifier for string-based {@code meta.call()}.
+    private static final String CALL_STRING_CODE = "call-string";
+
+    /// Contains the caller guidance for string-based {@code meta.call()}.
+    private static final String CALL_STRING_DEPRECATION_MESSAGE =
+            "Passing a string to call() is deprecated and will be illegal in Dart Sass 2.0.0.\n\n"
+                    + "Recommendation: call(get-function($function))";
 
     /// Prevents instantiation.
     private BuiltInFunctions() {
@@ -345,8 +356,12 @@ public final class BuiltInFunctions {
 
     /// Returns the legacy RGB functions exported by the {@code sass:color} module.
     ///
-    /// The current color value model represents only legacy RGB colors, so this
-    /// table intentionally excludes APIs that require additional color spaces.
+    /// The current color value model represents only legacy RGB colors.
+    /// Color-valued APIs that accept Color 4 interpolation methods or output
+    /// spaces expose their parameter for signature compatibility, but reject
+    /// non-null values rather than silently applying an incorrect color-space
+    /// algorithm. Compatible plain-CSS number filters retain native CSS
+    /// invocation behavior.
     ///
     /// @return an immutable legacy color function table
     public static @Unmodifiable Map<String, BuiltInCallable> colorModule() {
@@ -358,6 +373,52 @@ public final class BuiltInFunctions {
         moduleFunction(functions, global, "alpha", "alpha");
         moduleFunction(functions, global, "opacity", "opacity");
         register(functions, BuiltInCallable.of(
+                "mix",
+                List.of(
+                        Param.required("color1"),
+                        Param.required("color2"),
+                        Param.optional("weight", SassNumber.of(50, "%")),
+                        Param.optional("method", SassNull.NULL)
+                ),
+                2,
+                BuiltInFunctions::colorMix
+        ));
+        register(functions, BuiltInCallable.of(
+                "invert",
+                List.of(
+                        Param.required("color"),
+                        Param.optional("weight", SassNumber.of(100, "%")),
+                        Param.optional("space", SassNull.NULL)
+                ),
+                1,
+                BuiltInFunctions::colorInvert
+        ));
+        register(functions, BuiltInCallable.of("hue", List.of("color"), BuiltInFunctions::colorHue));
+        register(functions, BuiltInCallable.of(
+                "saturation",
+                List.of("color"),
+                BuiltInFunctions::colorSaturation
+        ));
+        register(functions, BuiltInCallable.of(
+                "lightness",
+                List.of("color"),
+                BuiltInFunctions::colorLightness
+        ));
+        register(functions, BuiltInCallable.of(
+                "grayscale",
+                List.of("color"),
+                BuiltInFunctions::colorGrayscale
+        ));
+        register(functions, BuiltInCallable.of(
+                "complement",
+                List.of(
+                        Param.required("color"),
+                        Param.optional("space", SassNull.NULL)
+                ),
+                1,
+                BuiltInFunctions::colorComplement
+        ));
+        register(functions, BuiltInCallable.of(
                 "same",
                 List.of("color1", "color2"),
                 BuiltInFunctions::colorSame
@@ -365,12 +426,14 @@ public final class BuiltInFunctions {
         return freeze(functions);
     }
 
-    /// Returns the static introspection functions exported by {@code sass:meta}.
+    /// Returns the introspection functions exported by {@code sass:meta}.
     ///
-    /// Functions that need evaluator state are intentionally not exported until
-    /// the callable model can provide that context.
+    /// Functions that inspect the active lexical or module environment receive
+    /// a limited invocation context. First-class function and mixin references
+    /// use controlled evaluator bridges; stylesheet loading remains outside this
+    /// context-aware surface.
     ///
-    /// @return an immutable static meta function table
+    /// @return an immutable meta function table
     public static @Unmodifiable Map<String, BuiltInCallable> metaModule() {
         var global = global();
         var functions = new LinkedHashMap<String, BuiltInCallable>();
@@ -381,7 +444,118 @@ public final class BuiltInFunctions {
                 List.of("args"),
                 BuiltInFunctions::keywords
         ));
+        register(functions, BuiltInCallable.contextual(
+                "content-exists",
+                List.of(),
+                0,
+                BuiltInFunctions::metaContentExists
+        ));
+        register(functions, BuiltInCallable.contextual(
+                "variable-exists",
+                List.of(Param.required("name")),
+                1,
+                BuiltInFunctions::metaVariableExists
+        ));
+        register(functions, BuiltInCallable.contextual(
+                "global-variable-exists",
+                List.of(
+                        Param.required("name"),
+                        Param.optional("module", SassNull.NULL)
+                ),
+                1,
+                BuiltInFunctions::metaGlobalVariableExists
+        ));
+        register(functions, BuiltInCallable.contextual(
+                "function-exists",
+                List.of(
+                        Param.required("name"),
+                        Param.optional("module", SassNull.NULL)
+                ),
+                1,
+                BuiltInFunctions::metaFunctionExists
+        ));
+        register(functions, BuiltInCallable.contextual(
+                "mixin-exists",
+                List.of(
+                        Param.required("name"),
+                        Param.optional("module", SassNull.NULL)
+                ),
+                1,
+                BuiltInFunctions::metaMixinExists
+        ));
+        register(functions, BuiltInCallable.contextual(
+                "module-variables",
+                List.of(Param.required("module")),
+                1,
+                BuiltInFunctions::metaModuleVariables
+        ));
+        register(functions, BuiltInCallable.contextual(
+                "get-function",
+                List.of(
+                        Param.required("name"),
+                        Param.optional("css", SassBoolean.FALSE),
+                        Param.optional("module", SassNull.NULL)
+                ),
+                1,
+                BuiltInFunctions::metaGetFunction
+        ));
+        register(functions, BuiltInCallable.contextual(
+                "module-functions",
+                List.of(Param.required("module")),
+                1,
+                BuiltInFunctions::metaModuleFunctions
+        ));
+        register(functions, BuiltInCallable.contextual(
+                "get-mixin",
+                List.of(
+                        Param.required("name"),
+                        Param.optional("module", SassNull.NULL)
+                ),
+                1,
+                BuiltInFunctions::metaGetMixin
+        ));
+        register(functions, BuiltInCallable.contextual(
+                "module-mixins",
+                List.of(Param.required("module")),
+                1,
+                BuiltInFunctions::metaModuleMixins
+        ));
+        register(functions, BuiltInCallable.contextual(
+                "accepts-content",
+                List.of(Param.required("mixin")),
+                1,
+                BuiltInFunctions::metaAcceptsContent
+        ));
+        register(functions, BuiltInCallable.contextualWithRest(
+                "call",
+                List.of(Param.required("function")),
+                "args",
+                1,
+                BuiltInFunctions::metaCall
+        ));
         return freeze(functions);
+    }
+
+    /// Returns the mixins exported by {@code sass:meta}.
+    ///
+    /// @return an immutable meta mixin table
+    public static @Unmodifiable Map<String, BuiltInCallable> metaMixins() {
+        var mixins = new LinkedHashMap<String, BuiltInCallable>();
+        register(mixins, BuiltInCallable.contextualMixinWithRest(
+                "apply",
+                List.of(Param.required("mixin")),
+                "args",
+                1,
+                BuiltInFunctions::metaApply
+        ));
+        return freeze(mixins);
+    }
+
+    /// Returns the selector functions exported by {@code sass:selector}.
+    ///
+    /// @return an immutable selector function table
+    public static @Unmodifiable Map<String, BuiltInCallable> selectorModule() {
+        return SelectorFunctions.module();
     }
 
     /// Adds a global callable to a module map under its module-local name.
@@ -403,10 +577,10 @@ public final class BuiltInFunctions {
         destination.put(moduleName, callable.withName(moduleName));
     }
 
-    /// Returns an insertion-ordered immutable view of a function table.
+    /// Returns an insertion-ordered immutable view of a callable table.
     ///
     /// @param functions the mutable table to snapshot
-    /// @return an immutable insertion-ordered function table
+    /// @return an immutable insertion-ordered callable table
     private static @Unmodifiable Map<String, BuiltInCallable> freeze(
             LinkedHashMap<String, BuiltInCallable> functions
     ) {
@@ -567,6 +741,10 @@ public final class BuiltInFunctions {
             type = "string";
         } else if (value instanceof SassColor) {
             type = "color";
+        } else if (value instanceof SassFunction) {
+            type = "function";
+        } else if (value instanceof SassMixin) {
+            type = "mixin";
         } else if (value instanceof SassMap) {
             type = "map";
         } else if (value instanceof SassArgumentList) {
@@ -585,6 +763,286 @@ public final class BuiltInFunctions {
     /// @return an unquoted string containing the value representation
     private static SassValue inspect(List<SassValue> args) {
         return new SassString(args.get(0).toString(), false);
+    }
+
+    /// Returns whether the current mixin invocation received a content block.
+    ///
+    /// @param context the active built-in invocation context
+    /// @param args    the empty bound argument list
+    /// @return whether a direct content block is available
+    /// @throws SassValueException outside mixin execution
+    private static SassValue metaContentExists(
+            BuiltInCallable.Context context,
+            @Unmodifiable List<SassValue> args
+    ) {
+        return SassBoolean.of(context.contentExists());
+    }
+
+    /// Returns whether a name resolves to a visible lexical variable.
+    ///
+    /// @param context the active built-in invocation context
+    /// @param args    the one bound name argument
+    /// @return whether the named variable is visible, including Sass null bindings
+    /// @throws SassValueException if {@code $name} is not a string
+    private static SassValue metaVariableExists(
+            BuiltInCallable.Context context,
+            @Unmodifiable List<SassValue> args
+    ) {
+        return SassBoolean.of(context.variableExists(metaName(args.get(0), "name")));
+    }
+
+    /// Returns whether a root or namespaced-module variable exists.
+    ///
+    /// @param context the active built-in invocation context
+    /// @param args    the name and optional module arguments
+    /// @return whether the requested global binding exists, including Sass null bindings
+    /// @throws SassValueException if a string argument is invalid or the module is absent
+    private static SassValue metaGlobalVariableExists(
+            BuiltInCallable.Context context,
+            @Unmodifiable List<SassValue> args
+    ) {
+        return SassBoolean.of(context.globalVariableExists(
+                metaName(args.get(0), "name"),
+                metaModuleName(args.get(1))
+        ));
+    }
+
+    /// Returns whether a function resolves in the active environment or built-ins.
+    ///
+    /// @param context the active built-in invocation context
+    /// @param args    the name and optional module arguments
+    /// @return whether the requested function exists
+    /// @throws SassValueException if a string argument is invalid or the module is absent
+    private static SassValue metaFunctionExists(
+            BuiltInCallable.Context context,
+            @Unmodifiable List<SassValue> args
+    ) {
+        return SassBoolean.of(context.functionExists(
+                metaName(args.get(0), "name"),
+                metaModuleName(args.get(1))
+        ));
+    }
+
+    /// Returns whether a mixin resolves in the active environment.
+    ///
+    /// @param context the active built-in invocation context
+    /// @param args    the name and optional module arguments
+    /// @return whether the requested mixin exists
+    /// @throws SassValueException if a string argument is invalid or the module is absent
+    private static SassValue metaMixinExists(
+            BuiltInCallable.Context context,
+            @Unmodifiable List<SassValue> args
+    ) {
+        return SassBoolean.of(context.mixinExists(
+                metaName(args.get(0), "name"),
+                metaModuleName(args.get(1))
+        ));
+    }
+
+    /// Returns one named module's public variables as a Sass map.
+    ///
+    /// @param context the active built-in invocation context
+    /// @param args    the one bound module argument
+    /// @return a map with quoted public variable-name keys and their values
+    /// @throws SassValueException if {@code $module} is not a string or is not loaded by name
+    private static SassValue metaModuleVariables(
+            BuiltInCallable.Context context,
+            @Unmodifiable List<SassValue> args
+    ) {
+        var values = new LinkedHashMap<SassValue, SassValue>();
+        for (var entry : context.moduleVariables(metaStringArgument(args.get(0), "module")).entrySet()) {
+            values.put(new SassString(entry.getKey(), true), entry.getValue());
+        }
+        return new SassMap(values);
+    }
+
+    /// Returns a first-class function reference selected by name.
+    ///
+    /// @param context the active built-in invocation context
+    /// @param args    the name, CSS selector, and optional module arguments
+    /// @return the resolved Sass or plain-CSS function reference
+    /// @throws SassValueException if an argument is invalid, the requested module is absent, or no Sass function matches
+    private static SassValue metaGetFunction(
+            BuiltInCallable.Context context,
+            @Unmodifiable List<SassValue> args
+    ) {
+        var nameArgument = args.get(0);
+        var name = metaStringArgument(nameArgument, "name");
+        var css = args.get(1).isTruthy();
+        @Nullable String module = metaModuleName(args.get(2));
+        if (css) {
+            if (module != null) {
+                throw new SassValueException("$css and $module may not both be passed at once.");
+            }
+            return context.plainCssFunction(name);
+        }
+        @Nullable SassFunction function = context.function(metaName(nameArgument, "name"), module);
+        if (function == null) {
+            throw new SassValueException("Function not found: " + nameArgument + ".");
+        }
+        return function;
+    }
+
+    /// Returns public functions from an explicitly named module as a Sass map.
+    ///
+    /// @param context the active built-in invocation context
+    /// @param args    the one bound module argument
+    /// @return quoted public function-name keys mapped to function references
+    /// @throws SassValueException if {@code $module} is not a string or is not loaded by name
+    private static SassValue metaModuleFunctions(
+            BuiltInCallable.Context context,
+            @Unmodifiable List<SassValue> args
+    ) {
+        var values = new LinkedHashMap<SassValue, SassValue>();
+        for (var entry : context.moduleFunctions(metaStringArgument(args.get(0), "module")).entrySet()) {
+            values.put(new SassString(entry.getKey(), true), entry.getValue());
+        }
+        return new SassMap(values);
+    }
+
+    /// Returns a first-class mixin reference selected by name.
+    ///
+    /// @param context the active built-in invocation context
+    /// @param args    the name and optional module arguments
+    /// @return the resolved Sass mixin reference
+    /// @throws SassValueException if an argument is invalid, the requested module is absent, or no Sass mixin matches
+    private static SassValue metaGetMixin(
+            BuiltInCallable.Context context,
+            @Unmodifiable List<SassValue> args
+    ) {
+        var nameArgument = args.get(0);
+        @Nullable SassMixin mixin = context.mixin(
+                metaName(nameArgument, "name"),
+                metaModuleName(args.get(1))
+        );
+        if (mixin == null) {
+            throw new SassValueException("Mixin not found: " + nameArgument + ".");
+        }
+        return mixin;
+    }
+
+    /// Returns public mixins from an explicitly named module as a Sass map.
+    ///
+    /// @param context the active built-in invocation context
+    /// @param args    the one bound module argument
+    /// @return quoted public mixin-name keys mapped to mixin references
+    /// @throws SassValueException if {@code $module} is not a string or is not loaded by name
+    private static SassValue metaModuleMixins(
+            BuiltInCallable.Context context,
+            @Unmodifiable List<SassValue> args
+    ) {
+        var values = new LinkedHashMap<SassValue, SassValue>();
+        for (var entry : context.moduleMixins(metaStringArgument(args.get(0), "module")).entrySet()) {
+            values.put(new SassString(entry.getKey(), true), entry.getValue());
+        }
+        return new SassMap(values);
+    }
+
+    /// Returns whether a mixin reference accepts a direct content block.
+    ///
+    /// @param context the active built-in invocation context
+    /// @param args    the one bound mixin argument
+    /// @return whether the referenced mixin accepts content
+    /// @throws SassValueException if {@code $mixin} is not a mixin reference
+    private static SassValue metaAcceptsContent(
+            BuiltInCallable.Context context,
+            @Unmodifiable List<SassValue> args
+    ) {
+        var target = args.get(0);
+        if (!(target instanceof SassMixin mixin)) {
+            throw new SassValueException("$mixin: " + target + " is not a mixin reference.");
+        }
+        var callable = mixin.callable();
+        return SassBoolean.of(
+                callable instanceof UserDefinedCallable userMixin && userMixin.acceptsContent()
+                        || callable instanceof BuiltInCallable builtIn && builtIn.acceptsContent()
+        );
+    }
+
+    /// Includes a first-class mixin reference with a preserved argument list.
+    ///
+    /// @param context the active built-in invocation context
+    /// @param args    the mixin target followed by the rest argument list
+    /// @return Sass null after the target mixin has emitted its statements
+    /// @throws SassValueException if the target is not a mixin reference
+    private static SassValue metaApply(
+            BuiltInCallable.Context context,
+            @Unmodifiable List<SassValue> args
+    ) {
+        if (!(args.get(1) instanceof SassArgumentList arguments)) {
+            throw new AssertionError("meta.apply() did not receive a rest argument list");
+        }
+        var target = args.get(0);
+        if (!(target instanceof SassMixin mixin)) {
+            throw new SassValueException("$mixin: " + target + " is not a mixin reference.");
+        }
+        context.apply(mixin, arguments);
+        return SassNull.NULL;
+    }
+
+    /// Invokes a first-class function reference with a preserved argument list.
+    ///
+    /// String targets retain their deprecated compatibility behavior and emit a
+    /// {@code call-string} diagnostic before resolving an ordinary Sass or plain-CSS function.
+    ///
+    /// @param context the active built-in invocation context
+    /// @param args    the function target followed by the rest argument list
+    /// @return the dynamic call result
+    /// @throws SassValueException if the target is not callable or a lookup fails
+    private static SassValue metaCall(
+            BuiltInCallable.Context context,
+            @Unmodifiable List<SassValue> args
+    ) {
+        if (!(args.get(1) instanceof SassArgumentList arguments)) {
+            throw new AssertionError("meta.call() did not receive a rest argument list");
+        }
+        var target = args.get(0);
+        if (target instanceof SassFunction function) {
+            return context.call(function, arguments);
+        }
+        if (target instanceof SassString string) {
+            context.deprecate(CALL_STRING_DEPRECATION_MESSAGE, CALL_STRING_CODE);
+            @Nullable SassFunction function = context.function(metaName(string, "function"), null);
+            if (function == null) {
+                function = context.plainCssFunction(string.text());
+            }
+            return context.call(function, arguments);
+        }
+        throw new SassValueException("$function: " + target + " is not a function reference.");
+    }
+
+    /// Returns a normalized Sass identifier name from a string argument.
+    ///
+    /// Sass treats underscores and hyphens as equivalent in identifier names.
+    ///
+    /// @param value     the argument value
+    /// @param parameter the parameter name without a dollar sign
+    /// @return the hyphenated identifier name
+    /// @throws SassValueException if {@code value} is not a string
+    private static String metaName(SassValue value, String parameter) {
+        return metaStringArgument(value, parameter).replace('_', '-');
+    }
+
+    /// Returns one required string argument's text.
+    ///
+    /// @param value     the argument value
+    /// @param parameter the parameter name without a dollar sign
+    /// @return the string text without quote markers
+    /// @throws SassValueException if {@code value} is not a string
+    private static String metaStringArgument(SassValue value, String parameter) {
+        if (value instanceof SassString string) {
+            return string.text();
+        }
+        throw new SassValueException("$" + parameter + ": " + value + " is not a string.");
+    }
+
+    /// Returns the optional module namespace from a string-or-null argument.
+    ///
+    /// @param value the argument value
+    /// @return the module namespace, or {@code null} for Sass null
+    /// @throws SassValueException if {@code value} is neither a string nor Sass null
+    private static @Nullable String metaModuleName(SassValue value) {
+        return value instanceof SassNull ? null : metaStringArgument(value, "module");
     }
 
     private static SassValue unit(List<SassValue> args) {
@@ -1096,20 +1554,187 @@ public final class BuiltInFunctions {
         return new SassList(result, ListSeparator.COMMA, false);
     }
 
+    /// Returns the legacy RGB red channel rounded to Sass's nearest integer.
+    ///
+    /// @param args the one color argument
+    /// @return the rounded red channel
     private static SassValue red(List<SassValue> args) {
-        return SassNumber.of(args.get(0).assertColor().red(), null);
+        return SassNumber.of(roundSass(args.get(0).assertColor().red()), null);
     }
 
+    /// Returns the legacy RGB green channel rounded to Sass's nearest integer.
+    ///
+    /// @param args the one color argument
+    /// @return the rounded green channel
     private static SassValue green(List<SassValue> args) {
-        return SassNumber.of(args.get(0).assertColor().green(), null);
+        return SassNumber.of(roundSass(args.get(0).assertColor().green()), null);
     }
 
+    /// Returns the legacy RGB blue channel rounded to Sass's nearest integer.
+    ///
+    /// @param args the one color argument
+    /// @return the rounded blue channel
     private static SassValue blue(List<SassValue> args) {
-        return SassNumber.of(args.get(0).assertColor().blue(), null);
+        return SassNumber.of(roundSass(args.get(0).assertColor().blue()), null);
     }
 
+    /// Returns the alpha channel of one color.
+    ///
+    /// @param args the one color argument
+    /// @return the alpha channel
     private static SassValue alphaChannel(List<SassValue> args) {
         return SassNumber.of(args.get(0).assertColor().alpha(), null);
+    }
+
+    /// Mixes two colors using Sass's legacy RGB algorithm.
+    ///
+    /// @param args the two colors, legacy weight, and interpolation method
+    /// @return the mixed color
+    private static SassValue colorMix(List<SassValue> args) {
+        var first = colorArgument(args.get(0), "color1");
+        var second = colorArgument(args.get(1), "color2");
+        var weight = numberArgument(args.get(2), "weight");
+        requireLegacyRgbOnly(args.get(3), "method", "color.mix");
+        return first.mixedWith(second, legacyWeight(weight, "weight"));
+    }
+
+    /// Inverts a legacy RGB color or preserves a plain-CSS number filter.
+    ///
+    /// @param args the color or number, legacy weight, and output space
+    /// @return the inverted color or an unquoted CSS {@code invert()} function
+    private static SassValue colorInvert(List<SassValue> args) {
+        var weight = numberArgument(args.get(1), "weight");
+        var value = args.get(0);
+        if (value instanceof SassNumber number) {
+            if (!isCssFilterDefaultWeight(weight)) {
+                throw new SassValueException(
+                        "Only one argument may be passed to the plain-CSS invert() function."
+                );
+            }
+            return new SassString("invert(" + number.toCssString() + ")", false);
+        }
+        var color = colorArgument(value, "color");
+        requireLegacyRgbOnly(args.get(2), "space", "color.invert");
+        return color.inverted().mixedWith(color, legacyWeight(weight, "weight"));
+    }
+
+    /// Returns the legacy HSL hue of one RGB color.
+    ///
+    /// @param args the one color argument
+    /// @return the hue in degrees
+    private static SassValue colorHue(List<SassValue> args) {
+        return SassNumber.of(colorArgument(args.get(0), "color").hue(), "deg");
+    }
+
+    /// Returns the legacy HSL saturation of one RGB color.
+    ///
+    /// @param args the one color argument
+    /// @return the saturation percentage
+    private static SassValue colorSaturation(List<SassValue> args) {
+        return SassNumber.of(colorArgument(args.get(0), "color").saturation(), "%");
+    }
+
+    /// Returns the legacy HSL lightness of one RGB color.
+    ///
+    /// @param args the one color argument
+    /// @return the lightness percentage
+    private static SassValue colorLightness(List<SassValue> args) {
+        return SassNumber.of(colorArgument(args.get(0), "color").lightness(), "%");
+    }
+
+    /// Returns a grayscale legacy RGB color or preserves a plain-CSS number filter.
+    ///
+    /// @param args the one color or number argument
+    /// @return the grayscale color or an unquoted CSS {@code grayscale()} function
+    private static SassValue colorGrayscale(List<SassValue> args) {
+        var value = args.get(0);
+        if (value instanceof SassNumber number) {
+            return new SassString("grayscale(" + number.toCssString() + ")", false);
+        }
+        return colorArgument(value, "color").grayscale();
+    }
+
+    /// Returns the legacy HSL complement of one RGB color.
+    ///
+    /// @param args the color and optional output space
+    /// @return the complemented color
+    private static SassValue colorComplement(List<SassValue> args) {
+        var color = colorArgument(args.get(0), "color");
+        requireLegacyRgbOnly(args.get(1), "space", "color.complement");
+        return color.complemented();
+    }
+
+    /// Converts one legacy color weight to a fractional first-color contribution.
+    ///
+    /// @param number the supplied weight number
+    /// @param name the parameter name used for diagnostics
+    /// @return the weight between zero and one
+    /// @throws SassValueException if the number has unsupported units or lies outside zero to 100
+    private static double legacyWeight(SassNumber number, String name) {
+        var percent = number.numeratorUnits().equals(List.of("%"))
+                && number.denominatorUnits().isEmpty();
+        if (!number.isUnitless() && !percent) {
+            throw new SassValueException(
+                    "$" + name + ": Expected " + number + " to have unit \"%\" or no units."
+            );
+        }
+        try {
+            return number.valueInRange(0.0, 100.0) / 100.0;
+        } catch (SassValueException exception) {
+            throw new SassValueException("$" + name + ": " + exception.getMessage());
+        }
+    }
+
+    /// Returns whether a CSS filter call uses its sole supported default weight.
+    ///
+    /// @param weight the supplied filter weight
+    /// @return whether {@code weight} is exactly {@code 100%}
+    private static boolean isCssFilterDefaultWeight(SassNumber weight) {
+        return weight.value() == 100.0
+                && weight.numeratorUnits().equals(List.of("%"))
+                && weight.denominatorUnits().isEmpty();
+    }
+
+    /// Returns a color argument while identifying its Sass parameter in failures.
+    ///
+    /// @param value the supplied argument
+    /// @param name the parameter name used for diagnostics
+    /// @return the supplied color
+    /// @throws SassValueException if {@code value} is not a color
+    private static SassColor colorArgument(SassValue value, String name) {
+        try {
+            return value.assertColor();
+        } catch (SassValueException exception) {
+            throw new SassValueException("$" + name + ": " + exception.getMessage());
+        }
+    }
+
+    /// Returns a number argument while identifying its Sass parameter in failures.
+    ///
+    /// @param value the supplied argument
+    /// @param name the parameter name used for diagnostics
+    /// @return the supplied number
+    /// @throws SassValueException if {@code value} is not a number
+    private static SassNumber numberArgument(SassValue value, String name) {
+        try {
+            return value.assertNumber();
+        } catch (SassValueException exception) {
+            throw new SassValueException("$" + name + ": " + exception.getMessage());
+        }
+    }
+
+    /// Rejects Color 4-only interpolation and output-space arguments.
+    ///
+    /// @param value the optional Color 4 argument
+    /// @param name the parameter name used for diagnostics
+    /// @param function the exported color function name
+    /// @throws SassValueException if {@code value} is not {@code null}
+    private static void requireLegacyRgbOnly(SassValue value, String name, String function) {
+        if (!(value instanceof SassNull)) {
+            throw new SassValueException(
+                    "$" + name + ": " + function + "() only supports the legacy RGB algorithm."
+            );
+        }
     }
 
     private static SassValue opacity(List<SassValue> args) {

@@ -3,11 +3,13 @@ package org.glavo.scssfx.internal.ast.selector;
 
 import org.glavo.scssfx.SourceLocation;
 import org.glavo.scssfx.SourceSpan;
+import org.glavo.scssfx.internal.value.SassValueException;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /// Verifies selector parsing and parent nesting.
 @NotNullByDefault
@@ -23,6 +25,44 @@ final class SelectorNestingTest {
         assertEquals("a > b", nest("a", "> b"));
         assertEquals(".foo.bar", nest(".foo", "&.bar"));
         assertEquals("a:hover, b:hover", nest("a, b", "&:hover"));
+    }
+
+    /// Verifies parent selectors nested inside selector-taking pseudo arguments.
+    @Test
+    void nestsRecursivePseudoArguments() {
+        assertEquals(
+                ":is(.parent, .fallback)",
+                nest(".parent", ":is(&, .fallback)")
+        );
+        assertEquals(
+                ".parent:not(.parent)",
+                nest(".parent", "&:not(&)")
+        );
+        assertEquals(
+                ":is(.a, .b)",
+                nest(".a, .b", ":is(&)")
+        );
+        assertEquals(
+                ":has(> .parent)",
+                nest(".parent", ":has(> &)")
+        );
+        assertEquals(
+                ":nth-child(2n + 1 of .parent)",
+                nest(".parent", ":nth-child(2n + 1 of &)")
+        );
+    }
+
+    /// Verifies parent markers in opaque pseudo arguments fail before serialization.
+    @Test
+    void rejectsOpaquePseudoParentMarkers() {
+        var failure = assertThrows(
+                SassValueException.class,
+                () -> nest(".parent", ":lang(&)")
+        );
+        assertEquals(
+                "Parent selectors in non-selector pseudo arguments aren't supported.",
+                failure.getMessage()
+        );
     }
 
     /// Nests a child selector within an optional parent.

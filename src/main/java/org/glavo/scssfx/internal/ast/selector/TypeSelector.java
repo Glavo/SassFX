@@ -2,35 +2,47 @@
 package org.glavo.scssfx.internal.ast.selector;
 
 import org.glavo.scssfx.SourceSpan;
+import org.glavo.scssfx.internal.value.SassValueException;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import java.util.Objects;
 
-/// A type selector such as `div`.
+/// A type selector such as {@code div} or {@code svg|path}.
 ///
-/// @param name the element name
+/// @param name the qualified element name
 /// @param span the source span
 @ApiStatus.Internal
 @NotNullByDefault
-public record TypeSelector(String name, SourceSpan span) implements SimpleSelector {
+public record TypeSelector(QualifiedName name, SourceSpan span) implements SimpleSelector {
     /// Creates a type selector.
     public TypeSelector {
         Objects.requireNonNull(name, "name");
-        if (name.isEmpty()) {
-            throw new IllegalArgumentException("name must not be empty");
-        }
         Objects.requireNonNull(span, "span");
+    }
+
+    /// Creates an unqualified type selector.
+    ///
+    /// @param name the decoded element name
+    /// @param span the source span
+    public TypeSelector(String name, SourceSpan span) {
+        this(QualifiedName.unqualified(CssIdentifier.of(name)), span);
     }
 
     @Override
     public String toCssString() {
-        return name;
+        return name.toCssString();
     }
 
     @Override
-    public TypeSelector addSuffix(String suffix) {
+    public TypeSelector addSuffix(CssIdentifier suffix) {
         Objects.requireNonNull(suffix, "suffix");
-        return new TypeSelector(name + suffix, span);
+        if (!name.isUnqualified()) {
+            throw new SassValueException("Namespaced type selector can't have a suffix.");
+        }
+        return new TypeSelector(
+                QualifiedName.unqualified(name.name().append(suffix)),
+                span
+        );
     }
 }

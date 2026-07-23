@@ -44,22 +44,95 @@ public record SelectorList(
         return SelectorParser.parse(text, span);
     }
 
+    /// Returns whether this list contains a parent-selector reference.
+    ///
+    /// @return whether one selector represents or contains {@code &}
+    public boolean containsParentSelector() {
+        for (var complex : components) {
+            if (complex.containsParentSelector()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Returns the number of structurally represented parent selectors.
+    ///
+    /// @return the recursive parent-selector count
+    public int parentSelectorCount() {
+        var count = 0;
+        for (var complex : components) {
+            count += complex.parentSelectorCount();
+        }
+        return count;
+    }
+
+    /// Returns whether one parent selector has an identifier suffix.
+    ///
+    /// @return whether a direct or recursive parent selector has a suffix
+    public boolean hasParentSelectorSuffix() {
+        for (var complex : components) {
+            if (complex.hasParentSelectorSuffix()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Returns whether an opaque pseudo argument contains a parent marker.
+    ///
+    /// @return whether parent replacement must fail explicitly
+    public boolean hasUnresolvedParentReference() {
+        for (var complex : components) {
+            if (complex.hasUnresolvedParentReference()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Replaces recursively represented parent selectors with {@code parent}.
+    ///
+    /// Selector branches that do not contain a parent selector remain unchanged.
+    /// This operation never implicitly prefixes the supplied parent list.
+    ///
+    /// @param parent the selector list substituted for each {@code &}
+    /// @return a selector list with recursive parent references resolved
+    /// @throws SassValueException if an opaque argument contains {@code &}
+    public SelectorList replaceParentSelectors(SelectorList parent) {
+        Objects.requireNonNull(parent, "parent");
+        if (hasUnresolvedParentReference()) {
+            throw unresolvedParentReference();
+        }
+        if (!containsParentSelector()) {
+            return this;
+        }
+
+        var result = new ArrayList<ComplexSelector>();
+        for (var complex : components) {
+            var replaced = replaceNestedParentSelectors(complex, parent);
+            if (replaced.containsDirectParentSelector()) {
+                result.addAll(nestWithExplicitParent(parent, replaced));
+            } else {
+                result.add(replaced);
+            }
+        }
+        return new SelectorList(result, span);
+    }
+
     /// Nests this selector list within an optional parent selector list.
     ///
     /// @param parent the resolved parent selectors, or {@code null} at the root
     /// @return the nested selector list
     /// @throws SassValueException if nesting is invalid
     public SelectorList nestWithin(@Nullable SelectorList parent) {
+        if (hasUnresolvedParentReference()) {
+            throw unresolvedParentReference();
+        }
         if (parent == null) {
-            for (var complex : components) {
-                if (complex.containsParentSelector()) {
-                    // Top-level parent selectors without nesting are rejected
-                    // when they carry a suffix; bare & is still invalid CSS.
-                    throw new SassValueException(
-                            "Top-level parent selectors aren't allowed."
-                    );
+            if (containsParentSelector()) {
+                throw new SassValueException("Top-level parent selectors aren't allowed.");
                 }
-            }
             return this;
         }
 
@@ -85,6 +158,10 @@ public record SelectorList(
     }
 
     /// Nests one child complex selector within every parent complex selector.
+    ///
+    /// @param parent the parent selector list
+    /// @param child  the child complex selector
+    /// @return the nested complex selectors
     private static List<ComplexSelector> nestComplex(
             SelectorList parent,
             ComplexSelector child
@@ -96,10 +173,62 @@ public record SelectorList(
             }
             return result;
         }
-        return nestWithExplicitParent(parent, child);
+
+        var replaced = replaceNestedParentSelectors(child, parent);
+        if (!replaced.containsDirectParentSelector()) {
+            return List.of(replaced);
+        }
+        return nestWithExplicitParent(parent, replaced);
     }
 
-    /// Resolves explicit parent selectors inside one child complex selector.
+    /// Replaces parent references nested in pseudo-selector arguments.
+    ///
+    /// Direct parent selectors remain in place for explicit-parent nesting.
+    ///
+    /// @param child  the complex selector to transform
+    /// @param parent the replacement parent list
+    /// @return {@code child} with recursive pseudo arguments transformed
+    private static ComplexSelector replaceNestedParentSelectors(
+            ComplexSelector child,
+            SelectorList parent
+    ) {
+        var nextComponents = new ArrayList<ComplexSelectorComponent>(child.components().size());
+        var changed = false;
+        for (var component : child.components()) {
+            var simples = component.selector().components();
+            var nextSimples = new ArrayList<SimpleSelector>(simples.size());
+            var componentChanged = false;
+            for (var simple : simples) {
+                SimpleSelector replacement = simple;
+                if (simple instanceof PseudoSelector pseudo && pseudo.containsParentSelector()) {
+                    replacement = pseudo.replaceParentSelectors(parent);
+                    componentChanged = true;
+                }
+                nextSimples.add(replacement);
+            }
+            if (componentChanged) {
+                nextComponents.add(new ComplexSelectorComponent(
+                        new CompoundSelector(nextSimples, component.selector().span()),
+                        component.combinators(),
+                        component.span()
+                ));
+                changed = true;
+            } else {
+                nextComponents.add(component);
+            }
+        }
+        return changed ? new ComplexSelector(
+                child.leadingCombinators(),
+                nextComponents,
+                child.span()
+        ) : child;
+    }
+
+    /// Resolves explicit direct parent selectors inside one child complex selector.
+    ///
+    /// @param parent the replacement parent list
+    /// @param child  the child complex selector
+    /// @return the resolved complex selectors
     private static List<ComplexSelector> nestWithExplicitParent(
             SelectorList parent,
             ComplexSelector child
@@ -154,7 +283,9 @@ public record SelectorList(
 
     /// Nests one compound component against the parent list.
     ///
-    /// @return the resolved complexes, or {@code null} when no parent injection applies
+    /// @param parent    the replacement parent list
+    /// @param component the compound component to inspect
+    /// @return the resolved complexes, or {@code null} when no direct parent starts it
     private static @Nullable List<ComplexSelector> nestCompound(
             SelectorList parent,
             ComplexSelectorComponent component
@@ -220,6 +351,10 @@ public record SelectorList(
     }
 
     /// Appends a component to a complex selector.
+    ///
+    /// @param complex   the existing complex selector
+    /// @param component the component to append
+    /// @return the extended complex selector
     private static ComplexSelector appendComponent(
             ComplexSelector complex,
             ComplexSelectorComponent component
@@ -227,5 +362,14 @@ public record SelectorList(
         var next = new ArrayList<>(complex.components());
         next.add(component);
         return new ComplexSelector(complex.leadingCombinators(), next, complex.span());
+    }
+
+    /// Creates the diagnostic for a parent marker in opaque pseudo content.
+    ///
+    /// @return the value exception to throw
+    private static SassValueException unresolvedParentReference() {
+        return new SassValueException(
+                "Parent selectors in non-selector pseudo arguments aren't supported."
+        );
     }
 }

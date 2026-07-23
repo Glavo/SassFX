@@ -7,30 +7,37 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 import java.util.Objects;
 
-/// A class selector such as `.foo`.
+/// A class selector such as {@code .foo}.
 ///
-/// @param name the class name without the leading dot
+/// @param name the class identifier without the leading dot
 /// @param span the source span
 @ApiStatus.Internal
 @NotNullByDefault
-public record ClassSelector(String name, SourceSpan span) implements SimpleSelector {
+public record ClassSelector(CssIdentifier name, SourceSpan span) implements SimpleSelector {
     /// Creates a class selector.
     public ClassSelector {
         Objects.requireNonNull(name, "name");
-        if (name.isEmpty()) {
-            throw new IllegalArgumentException("name must not be empty");
-        }
         Objects.requireNonNull(span, "span");
+    }
+
+    /// Creates a class selector from a decoded identifier.
+    ///
+    /// @param name the decoded class name
+    /// @param span the source span
+    public ClassSelector(String name, SourceSpan span) {
+        this(CssIdentifier.of(name), span);
     }
 
     @Override
     public String toCssString() {
-        return "." + name;
+        return "." + name.toCssString();
     }
 
     @Override
-    public ClassSelector addSuffix(String suffix) {
-        Objects.requireNonNull(suffix, "suffix");
-        return new ClassSelector(name + suffix, span);
+    public ClassSelector addSuffix(CssIdentifier suffix) {
+        return new ClassSelector(
+                name.append(Objects.requireNonNull(suffix, "suffix")),
+                span
+        );
     }
 }

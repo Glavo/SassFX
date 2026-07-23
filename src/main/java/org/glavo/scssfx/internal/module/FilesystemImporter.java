@@ -17,7 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-/// Resolves and loads SCSS files from the filesystem.
+/// Resolves and loads SCSS or indented Sass files from the filesystem.
 @ApiStatus.Internal
 @NotNullByDefault
 public final class FilesystemImporter {
@@ -87,15 +87,19 @@ public final class FilesystemImporter {
     /// Loads a resolved stylesheet and derives its canonical URL from the real path.
     ///
     /// @param path the existing stylesheet path
-    /// @return the loaded SCSS source
+    /// @return the loaded Sass source
     /// @throws IOException if the real path or contents cannot be read
     private static ImportResult load(Path path) throws IOException {
         var realPath = path.toRealPath();
         var content = Files.readString(realPath, StandardCharsets.UTF_8);
         var canonical = realPath.toUri();
+        var syntax = Objects.requireNonNull(
+                Syntax.forPath(realPath),
+                "resolved stylesheet must have a recognized syntax extension"
+        );
         return new ImportResult(
                 new SourceFile(content, canonical),
-                Syntax.SCSS,
+                syntax,
                 canonical
         );
     }
@@ -114,7 +118,7 @@ public final class FilesystemImporter {
         return new IllegalStateException(message.toString().trim());
     }
 
-    /// Adds resolvable SCSS candidates for one path stem.
+    /// Adds resolvable SCSS and Sass candidates for one path stem.
     ///
     /// @param candidates the mutable destination list
     /// @param path       the path stem to inspect
@@ -125,7 +129,7 @@ public final class FilesystemImporter {
         }
         var name = fileName.toString();
         var parent = path.getParent();
-        if (name.endsWith(".scss")) {
+        if (name.endsWith(".scss") || name.endsWith(".sass")) {
             addIfRegular(candidates, path);
             if (parent != null && !name.startsWith("_")) {
                 addIfRegular(candidates, parent.resolve("_" + name));
@@ -138,12 +142,18 @@ public final class FilesystemImporter {
         if (parent == null) {
             addIfRegular(candidates, Path.of(name + ".scss"));
             addIfRegular(candidates, Path.of("_" + name + ".scss"));
+            addIfRegular(candidates, Path.of(name + ".sass"));
+            addIfRegular(candidates, Path.of("_" + name + ".sass"));
             return;
         }
         addIfRegular(candidates, parent.resolve(name + ".scss"));
         addIfRegular(candidates, parent.resolve("_" + name + ".scss"));
+        addIfRegular(candidates, parent.resolve(name + ".sass"));
+        addIfRegular(candidates, parent.resolve("_" + name + ".sass"));
         addIfRegular(candidates, parent.resolve(name).resolve("index.scss"));
         addIfRegular(candidates, parent.resolve(name).resolve("_index.scss"));
+        addIfRegular(candidates, parent.resolve(name).resolve("index.sass"));
+        addIfRegular(candidates, parent.resolve(name).resolve("_index.sass"));
     }
 
     /// Adds a path when it is an existing regular file.

@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.cli;
 
+import org.glavo.scssfx.BssTarget;
 import org.glavo.scssfx.CompileResult;
 import org.glavo.scssfx.CssTarget;
 import org.glavo.scssfx.DiagnosticSeverity;
+import org.glavo.scssfx.JavaFXCompatibility;
+import org.glavo.scssfx.JavaFXCssTarget;
+import org.glavo.scssfx.OutputStyle;
+import org.glavo.scssfx.OutputTarget;
 import org.glavo.scssfx.SassCompilationException;
 import org.glavo.scssfx.SassCompiler;
 import org.glavo.scssfx.SassFileSource;
@@ -23,13 +28,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.Callable;
 
 /// Provides the command-line entry point for SCSSFX.
 @Command(
         name = "scssfx",
-        description = "Compiles Sass stylesheets for CSS and JavaFX.",
+        description = "Compiles Sass stylesheets to CSS, JavaFX CSS, or JavaFX BSS.",
         mixinStandardHelpOptions = true,
         version = "scssfx 0.1.0-SNAPSHOT"
 )
@@ -45,7 +51,7 @@ public final class ScssfxMain implements Callable<Integer> {
     @Parameters(
             arity = "0..*",
             paramLabel = "INPUT",
-            description = "A stylesheet file to compile, optionally followed by an output CSS path."
+            description = "A stylesheet file to compile, optionally followed by an output path."
     )
     private final List<Path> inputs = new ArrayList<>();
 
@@ -53,9 +59,36 @@ public final class ScssfxMain implements Callable<Integer> {
     @Option(
             names = {"-o", "--output"},
             paramLabel = "FILE",
-            description = "Write CSS to FILE instead of stdout."
+            description = "Write output to FILE instead of stdout."
     )
     private @Nullable Path output;
+
+    /// The textual output target selected by the caller.
+    @Option(
+            names = "--target",
+            defaultValue = "css",
+            paramLabel = "TARGET",
+            description = "Select output target: css, javafx-css, or bss (default: ${DEFAULT-VALUE})."
+    )
+    private String target = "css";
+
+    /// The textual layout style selected by the caller.
+    @Option(
+            names = "--style",
+            defaultValue = "expanded",
+            paramLabel = "STYLE",
+            description = "Select CSS output style: expanded or compressed (default: ${DEFAULT-VALUE})."
+    )
+    private String style = "expanded";
+
+    /// The JavaFX compatibility level selected for JavaFX CSS and BSS targets.
+    @Option(
+            names = "--javafx-compatibility",
+            defaultValue = "17",
+            paramLabel = "VERSION",
+            description = "Select JavaFX compatibility: 17 or 27 (default: ${DEFAULT-VALUE})."
+    )
+    private String javafxCompatibility = "17";
 
     /// The command specification injected by Picocli before invocation.
     @Spec
@@ -65,7 +98,7 @@ public final class ScssfxMain implements Callable<Integer> {
     public ScssfxMain() {
     }
 
-    /// Compiles one SCSS file to stdout or an output path.
+    /// Compiles one SCSS file to its selected output target.
     ///
     /// @return status {@code 0} on success, {@code 2} for usage errors, or
     /// {@code 1} for compilation and IO failures
@@ -92,6 +125,20 @@ public final class ScssfxMain implements Callable<Integer> {
         @Nullable Path destination = output != null
                 ? output
                 : inputs.size() == 2 ? inputs.get(1) : null;
+        var targetName = target.toLowerCase(Locale.ROOT);
+        JavaFXCompatibility selectedCompatibility;
+        @Nullable OutputStyle selectedOutputStyle;
+        try {
+            validateTargetOptions(targetName, destination);
+            selectedCompatibility = selectedJavaFxCompatibility();
+            selectedOutputStyle = "bss".equals(targetName) ? null : selectedOutputStyle();
+        } catch (IllegalArgumentException failure) {
+            err.println("scssfx: " + Objects.requireNonNullElse(
+                    failure.getMessage(),
+                    "invalid output options"
+            ));
+            return USAGE_EXIT_STATUS;
+        }
 
         try {
             if (!Files.isRegularFile(input)) {
@@ -99,36 +146,41 @@ public final class ScssfxMain implements Callable<Integer> {
                 return FAILURE_EXIT_STATUS;
             }
             @Nullable Syntax syntax = Syntax.forPath(input);
-            if (syntax != Syntax.SCSS) {
-                err.println("scssfx: only .scss input is supported in this build");
+            if (syntax != Syntax.SCSS && syntax != Syntax.SASS) {
+                err.println("scssfx: only .scss and .sass input are supported in this build");
                 return FAILURE_EXIT_STATUS;
             }
+            var selectedSyntax = Objects.requireNonNull(syntax);
 
-            CompileResult<String> result = new SassCompiler().compile(
-                    new SassFileSource(input, Syntax.SCSS),
-                    CssTarget.DEFAULT
-            );
-            for (var diagnostic : result.diagnostics()) {
-                if (diagnostic.severity() != DiagnosticSeverity.ERROR) {
-                    err.println(DiagnosticPrinter.format(diagnostic));
-                }
-            }
-
-            var css = result.output();
-            if (destination == null) {
-                out.print(css);
-                if (!css.isEmpty() && !css.endsWith("\n")) {
-                    out.println();
-                }
-            } else {
-                @Nullable Path parent = destination.getParent();
-                if (parent != null) {
-                    Files.createDirectories(parent);
-                }
-                var text = css.endsWith("\n") || css.isEmpty() ? css : css + "\n";
-                Files.writeString(destination, text, StandardCharsets.UTF_8);
-            }
-            return 0;
+            return switch (targetName) {
+                case "css" -> compileText(
+                        input,
+                        selectedSyntax,
+                        destination,
+                        new CssTarget(Objects.requireNonNull(selectedOutputStyle), true),
+                        out,
+                        err
+                );
+                case "javafx-css" -> compileText(
+                        input,
+                        selectedSyntax,
+                        destination,
+                        new JavaFXCssTarget(
+                                selectedCompatibility,
+                                Objects.requireNonNull(selectedOutputStyle)
+                        ),
+                        out,
+                        err
+                );
+                case "bss" -> compileBss(
+                        input,
+                        selectedSyntax,
+                        Objects.requireNonNull(destination),
+                        new BssTarget(selectedCompatibility),
+                        err
+                );
+                default -> throw new AssertionError("Unsupported target was validated: " + targetName);
+            };
         } catch (SassCompilationException failure) {
             err.println(DiagnosticPrinter.format(failure));
             return FAILURE_EXIT_STATUS;
@@ -139,6 +191,167 @@ public final class ScssfxMain implements Callable<Integer> {
             ));
             return FAILURE_EXIT_STATUS;
         }
+    }
+
+    /// Compiles a stylesheet to one textual output target.
+    ///
+    /// @param input the existing Sass input file
+    /// @param syntax the input syntax inferred from the file extension
+    /// @param destination the optional destination file, or {@code null} for standard output
+    /// @param selectedOutputTarget the resolved textual output target
+    /// @param out the standard-output writer
+    /// @param err the standard-error writer used for non-error diagnostics
+    /// @return {@code 0} after the output has been written
+    /// @throws IOException if the destination cannot be written
+    /// @throws SassCompilationException if Sass evaluation or serialization fails
+    private static int compileText(
+            Path input,
+            Syntax syntax,
+            @Nullable Path destination,
+            OutputTarget<String> selectedOutputTarget,
+            java.io.PrintWriter out,
+            java.io.PrintWriter err
+    ) throws IOException, SassCompilationException {
+        CompileResult<String> result = new SassCompiler().compile(
+                new SassFileSource(input, syntax),
+                selectedOutputTarget
+        );
+        printNonErrorDiagnostics(result, err);
+
+        var css = result.output();
+        if (destination == null) {
+            out.print(css);
+            if (!css.isEmpty() && !css.endsWith("\n")) {
+                out.println();
+            }
+        } else {
+            @Nullable Path parent = destination.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            var text = css.endsWith("\n") || css.isEmpty() ? css : css + "\n";
+            Files.writeString(destination, text, StandardCharsets.UTF_8);
+        }
+        return 0;
+    }
+
+    /// Compiles a stylesheet to one JavaFX BSS output target.
+    ///
+    /// @param input the existing Sass input file
+    /// @param syntax the input syntax inferred from the file extension
+    /// @param destination the required BSS destination file
+    /// @param selectedOutputTarget the resolved binary output target
+    /// @param err the standard-error writer used for non-error diagnostics
+    /// @return {@code 0} after the BSS document has been written
+    /// @throws IOException if the destination cannot be written
+    /// @throws SassCompilationException if Sass evaluation or BSS serialization fails
+    private static int compileBss(
+            Path input,
+            Syntax syntax,
+            Path destination,
+            BssTarget selectedOutputTarget,
+            java.io.PrintWriter err
+    ) throws IOException, SassCompilationException {
+        var result = new SassCompiler().compile(
+                new SassFileSource(input, syntax),
+                selectedOutputTarget
+        );
+        printNonErrorDiagnostics(result, err);
+
+        var bss = result.output().duplicate();
+        var bytes = new byte[bss.remaining()];
+        bss.get(bytes);
+        @Nullable Path parent = destination.getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+        Files.write(destination, bytes);
+        return 0;
+    }
+
+    /// Writes non-error diagnostics emitted during one successful compilation.
+    ///
+    /// @param result the completed compilation result
+    /// @param err the standard-error writer
+    private static void printNonErrorDiagnostics(CompileResult<?> result, java.io.PrintWriter err) {
+        for (var diagnostic : result.diagnostics()) {
+            if (diagnostic.severity() != DiagnosticSeverity.ERROR) {
+                err.println(DiagnosticPrinter.format(diagnostic));
+            }
+        }
+    }
+
+    /// Validates options that depend on the selected output target.
+    ///
+    /// @param targetName the lower-case target name
+    /// @param destination the optional output destination
+    /// @throws IllegalArgumentException if the target or its options are unsupported
+    private void validateTargetOptions(String targetName, @Nullable Path destination) {
+        switch (targetName) {
+            case "css" -> {
+                if (isOptionSpecified("--javafx-compatibility")) {
+                    throw new IllegalArgumentException(
+                            "--javafx-compatibility is supported only for javafx-css and bss targets"
+                    );
+                }
+            }
+            case "javafx-css" -> {
+            }
+            case "bss" -> {
+                if (destination == null) {
+                    throw new IllegalArgumentException(
+                            "BSS output requires an output path; use -o/--output or a positional output path"
+                    );
+                }
+                if (isOptionSpecified("--style")) {
+                    throw new IllegalArgumentException(
+                            "--style is supported only for css and javafx-css targets"
+                    );
+                }
+            }
+            default -> throw new IllegalArgumentException(
+                    "unsupported output target '" + target
+                            + "'; expected 'css', 'javafx-css', or 'bss'"
+            );
+        }
+    }
+
+    /// Reports whether an option occurred explicitly in the command line.
+    ///
+    /// @param optionName one declared option name, including its leading dashes
+    /// @return {@code true} if the parser matched the option
+    private boolean isOptionSpecified(String optionName) {
+        return commandLine().getParseResult().hasMatchedOption(optionName);
+    }
+
+    /// Resolves the JavaFX compatibility selected by the command-line option.
+    ///
+    /// @return the selected JavaFX compatibility level
+    /// @throws IllegalArgumentException if the option value is unsupported
+    private JavaFXCompatibility selectedJavaFxCompatibility() {
+        return switch (javafxCompatibility) {
+            case "17" -> JavaFXCompatibility.JAVA_FX_17;
+            case "27" -> JavaFXCompatibility.JAVA_FX_27;
+            default -> throw new IllegalArgumentException(
+                    "unsupported JavaFX compatibility '" + javafxCompatibility
+                            + "'; expected '17' or '27'"
+            );
+        };
+    }
+
+    /// Resolves the output style selected by the command-line option.
+    ///
+    /// @return the selected output style
+    /// @throws IllegalArgumentException if the option value is unsupported
+    private OutputStyle selectedOutputStyle() {
+        return switch (style.toLowerCase(Locale.ROOT)) {
+            case "expanded" -> OutputStyle.EXPANDED;
+            case "compressed" -> OutputStyle.COMPRESSED;
+            default -> throw new IllegalArgumentException(
+                    "unsupported output style '" + style
+                            + "'; expected 'expanded' or 'compressed'"
+            );
+        };
     }
 
     /// Executes the command and terminates the process with its status.
