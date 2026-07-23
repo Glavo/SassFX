@@ -900,6 +900,102 @@ final class SassCompilerTest {
         );
     }
 
+    /// Bubbles nested unknown at-rules through style rules and resumes later declarations.
+    @Test
+    void bubblesNestedUnknownAtRulesAndResumesOuterRulesInOrder() throws Exception {
+        var result = compile(
+                """
+                        .button {
+                          color: one;
+                          @layer theme {
+                            color: two;
+                            .icon {
+                              color: nested;
+                            }
+                          }
+                          color: three;
+                          @keyframes pulse {
+                            from { opacity: 0; }
+                            to { opacity: 1; }
+                          }
+                          color: four;
+                          @supports (display: grid) {
+                            color: five;
+                          }
+                        }
+                        """
+        );
+
+        assertEquals(
+                """
+                        .button {
+                          color: one;
+                        }
+                        @layer theme {
+                          .button {
+                            color: two;
+                          }
+                          .button .icon {
+                            color: nested;
+                          }
+                        }
+                        .button {
+                          color: three;
+                        }
+                        @keyframes pulse {
+                          from {
+                            opacity: 0;
+                          }
+                          to {
+                            opacity: 1;
+                          }
+                        }
+                        .button {
+                          color: four;
+                        }
+                        @supports (display: grid) {
+                          .button {
+                            color: five;
+                          }
+                        }""",
+                result.output()
+        );
+    }
+
+    /// Keeps unknown at-rules nested once native CSS nesting is already active.
+    @Test
+    void retainsUnknownAtRulesUnderNativeCssNesting() throws Exception {
+        var result = new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                .parent {
+                                  .child {
+                                    color: red;
+                                    @layer theme {
+                                      color: blue;
+                                    }
+                                  }
+                                }
+                                """,
+                        Syntax.CSS
+                ),
+                CssTarget.DEFAULT
+        );
+
+        assertEquals(
+                """
+                        .parent {
+                          .child {
+                            color: red;
+                            @layer theme {
+                              color: blue;
+                            }
+                          }
+                        }""",
+                result.output()
+        );
+    }
+
     /// Rejects unsupported source-map generation.
     @Test
     void rejectsUnsupportedOptions() {

@@ -153,11 +153,21 @@ final class ControlFlowTest {
         assertEquals("font-tech(color-COLRv1)", general.contents().asPlain());
         assertEquals(1, supports.children().size());
 
-        var unknown = assertThrows(ParseException.class, () -> parse("@unknown {}"));
-        assertEquals("This stylesheet statement is not available.", unknown.getMessage());
+        var unknown = assertInstanceOf(
+                org.glavo.scssfx.internal.ast.UnknownAtRule.class,
+                parse("@unknown {}").children().get(0)
+        );
+        assertEquals("unknown", unknown.name());
+        assertTrue(unknown.hasChildren());
 
         var bareElse = assertThrows(ParseException.class, () -> parse("@else {}"));
         assertEquals("This at-rule is not allowed here.", bareElse.getMessage());
+
+        var missingExtend = assertThrows(ParseException.class, () -> parse("@extend .a;"));
+        assertEquals(
+                "This stylesheet statement is not available.",
+                missingExtend.getMessage()
+        );
     }
 
     /// Parses interpolation as an operand within a grouped supports operation.

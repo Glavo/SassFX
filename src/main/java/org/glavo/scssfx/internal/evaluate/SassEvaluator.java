@@ -202,6 +202,9 @@ public final class SassEvaluator implements
     /// Contains the number of active nested-property declarations.
     private int nestedDeclarationDepth;
 
+    /// Records whether evaluation is inside a {@code @keyframes} rule body.
+    private boolean inKeyframes;
+
     /// Maps upstream modules to loud comments that must precede their CSS.
     private final IdentityHashMap<LoadedModule, List<CssComment>> preModuleComments =
             new IdentityHashMap<>();
@@ -432,6 +435,7 @@ public final class SassEvaluator implements
         var previousActive = stylesheetActive;
         var previousStyleRuleDepth = styleRuleDepth;
         var previousNestedDepth = nestedDeclarationDepth;
+        var previousInKeyframes = inKeyframes;
         var previousPreModuleComments =
                 new IdentityHashMap<>(preModuleComments);
 
@@ -452,6 +456,7 @@ public final class SassEvaluator implements
         stylesheetActive = true;
         styleRuleDepth = 0;
         nestedDeclarationDepth = 0;
+        inKeyframes = false;
         preModuleComments.clear();
         diagnostics.addAll(stylesheet.parseTimeWarnings());
 
@@ -497,6 +502,7 @@ public final class SassEvaluator implements
             stylesheetActive = previousActive;
             styleRuleDepth = previousStyleRuleDepth;
             nestedDeclarationDepth = previousNestedDepth;
+            inKeyframes = previousInKeyframes;
             preModuleComments.clear();
             preModuleComments.putAll(previousPreModuleComments);
             throw failure;
@@ -516,6 +522,7 @@ public final class SassEvaluator implements
                 stylesheetActive = previousActive;
                 styleRuleDepth = previousStyleRuleDepth;
                 nestedDeclarationDepth = previousNestedDepth;
+                inKeyframes = previousInKeyframes;
                 preModuleComments.clear();
                 preModuleComments.putAll(previousPreModuleComments);
             }
@@ -1081,36 +1088,90 @@ public final class SassEvaluator implements
 
     /// Emits an opaque plain-CSS at-rule and evaluates its optional block.
     ///
-    /// The rule remains under the current CSS parent so nested plain-CSS and
-    /// unknown at-rules keep source order. Native CSS nesting already places the
-    /// parent correctly; SCSS style-rule bubbling is handled by style rules.
+    /// Childless rules stay under the current parent. Block rules bubble through
+    /// enclosing style rules unless native CSS nesting is already active. When
+    /// bubbling from a style rule, that rule is copied into the at-rule so nested
+    /// declarations keep a selector. {@code @keyframes} bodies are not wrapped.
     ///
     /// @param statement the opaque at-rule
     /// @return the continue result
     @Override
     public StatementResult visitUnknownAtRule(UnknownAtRule statement) {
+        var name = statement.name();
         var rule = new CssUnknownAtRule(
-                statement.name(),
+                name,
                 performInterpolation(statement.value()).strip(),
                 statement.hasChildren(),
                 statement.span()
         );
-        addCssChild(rule, false);
         if (statement.children() == null) {
+            copyParentAfterSibling();
+            requireCssParent().addChild(rule);
             return StatementResult.CONTINUE;
         }
 
+        var nestInPlace = hasCssNesting();
+        addCssChild(rule, !nestInPlace);
         var previousParent = requireCssParent();
+        var previousInKeyframes = inKeyframes;
+        @Nullable CssStyleRule activeStyleRule = styleRule;
+        if (isKeyframesName(name)) {
+            inKeyframes = true;
+        }
         cssParent = rule;
+        var scope = environment.scope(
+                ScopeSemantics.LEXICAL,
+                hasDirectDeclarations(statement.children())
+        );
         try {
-            for (var child : statement.children()) {
-                child.accept(this);
+            if (nestInPlace
+                    || activeStyleRule == null
+                    || inKeyframes
+                    || name.equals("font-face")) {
+                for (var child : statement.children()) {
+                    child.accept(this);
+                }
+            } else {
+                var wrapper = activeStyleRule.copyWithoutChildren();
+                rule.addChild(wrapper);
+                var atRuleParent = requireCssParent();
+                cssParent = wrapper;
+                try {
+                    for (var child : statement.children()) {
+                        child.accept(this);
+                    }
+                } finally {
+                    cssParent = atRuleParent;
+                }
             }
         } finally {
-            cssParent = previousParent;
+            try {
+                scope.close();
+            } finally {
+                inKeyframes = previousInKeyframes;
+                cssParent = previousParent;
+            }
         }
-        rule.setGroupEnd(true);
+        if (activeStyleRule == null && !previousParent.children().isEmpty()) {
+            previousParent.children().get(previousParent.children().size() - 1).setGroupEnd(true);
+        }
         return StatementResult.CONTINUE;
+    }
+
+    /// Returns whether {@code name} is {@code keyframes}, ignoring a vendor prefix.
+    ///
+    /// @param name the at-rule name without {@code @}
+    /// @return whether the rule is a keyframes rule
+    private static boolean isKeyframesName(String name) {
+        Objects.requireNonNull(name, "name");
+        if (name.equals("keyframes")) {
+            return true;
+        }
+        if (!name.startsWith("-")) {
+            return false;
+        }
+        var secondDash = name.indexOf('-', 1);
+        return secondDash > 1 && name.substring(secondDash + 1).equals("keyframes");
     }
 
     /// Evaluates a selector, emits a CSS style rule, and executes its children.
@@ -1153,6 +1214,37 @@ public final class SassEvaluator implements
                     "Placeholder selectors aren't allowed in plain CSS.",
                     statement.selector().span()
             );
+        }
+
+        if (inKeyframes) {
+            var keyframeRule = new CssStyleRule(
+                    new CssValue<>(parsed, statement.selector().span()),
+                    statement.span()
+            );
+            addCssChild(keyframeRule, true);
+            var previousParent = requireCssParent();
+            var previousStyleRule = styleRule;
+            cssParent = keyframeRule;
+            styleRule = keyframeRule;
+            styleRuleDepth++;
+            var scope = environment.scope(
+                    ScopeSemantics.LEXICAL,
+                    hasDirectDeclarations(statement.children())
+            );
+            try {
+                for (var child : statement.children()) {
+                    child.accept(this);
+                }
+            } finally {
+                try {
+                    scope.close();
+                } finally {
+                    styleRuleDepth--;
+                    styleRule = previousStyleRule;
+                    cssParent = previousParent;
+                }
+            }
+            return StatementResult.CONTINUE;
         }
 
         boolean merge;

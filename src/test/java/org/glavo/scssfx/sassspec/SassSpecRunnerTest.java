@@ -133,7 +133,9 @@ final class SassSpecRunnerTest {
     ) {
         var discovered = new TreeSet<String>();
         for (String path : archive.paths()) {
-            if (!path.endsWith("/input.scss") && !path.endsWith("/input.sass")) {
+            if (!path.endsWith("/input.scss")
+                    && !path.endsWith("/input.sass")
+                    && !path.endsWith("/input.css")) {
                 continue;
             }
             int separator = path.lastIndexOf('/');
@@ -191,7 +193,7 @@ final class SassSpecRunnerTest {
     ///
     /// @param resolved the parsed archive and selected fixture
     /// @param caseRoot the isolated on-disk fixture directory
-    /// @return the materialized {@code input.scss} or {@code input.sass} file
+    /// @return the materialized {@code input.scss}, {@code input.sass}, or {@code input.css} file
     /// @throws IOException if a source file cannot be materialized
     private static Path materializeSources(ResolvedFixture resolved, Path caseRoot) throws IOException {
         String prefix = resolved.fixture().directory() + "/";
@@ -215,20 +217,35 @@ final class SassSpecRunnerTest {
                 Files.createDirectories(parent);
             }
             Files.writeString(target, entry.getValue(), StandardCharsets.UTF_8);
-            hasInput |= relativePath.equals("input.scss") || relativePath.equals("input.sass");
+            hasInput |= relativePath.equals("input.scss")
+                    || relativePath.equals("input.sass")
+                    || relativePath.equals("input.css");
         }
 
         Path scssInput = caseRoot.resolve("input.scss");
         Path sassInput = caseRoot.resolve("input.sass");
-        boolean hasScssInput = Files.isRegularFile(scssInput);
-        boolean hasSassInput = Files.isRegularFile(sassInput);
-        if (!hasInput || hasScssInput == hasSassInput) {
+        Path cssInput = caseRoot.resolve("input.css");
+        int inputCount = 0;
+        @Nullable Path selected = null;
+        if (Files.isRegularFile(scssInput)) {
+            inputCount++;
+            selected = scssInput;
+        }
+        if (Files.isRegularFile(sassInput)) {
+            inputCount++;
+            selected = sassInput;
+        }
+        if (Files.isRegularFile(cssInput)) {
+            inputCount++;
+            selected = cssInput;
+        }
+        if (!hasInput || inputCount != 1 || selected == null) {
             throw new IllegalArgumentException(
-                    "Executable sass-spec fixtures must provide exactly one input.scss or input.sass: " +
+                    "Executable sass-spec fixtures must provide exactly one input.scss, input.sass, or input.css: " +
                             resolved.displayName()
             );
         }
-        return hasScssInput ? scssInput : sassInput;
+        return selected;
     }
 
     /// Determines whether a virtual file is metadata or a compiler expectation rather than source input.

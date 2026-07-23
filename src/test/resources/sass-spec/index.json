@@ -155,6 +155,18 @@
           "action": "run",
           "category": "AT_RULES",
           "loadedUrls": ["input.scss"]
+        },
+        {
+          "directory": "at-rules/unknown-bubble",
+          "action": "run",
+          "category": "AT_RULES",
+          "loadedUrls": ["input.scss"]
+        },
+        {
+          "directory": "css/nesting",
+          "action": "run",
+          "category": "CSS",
+          "loadedUrls": ["input.css"]
         }
       ]
     }

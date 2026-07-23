@@ -517,13 +517,14 @@ final class ScssParser extends SassExpressionParser {
                     start.position(),
                     scanner.position() - start.position()
             );
-            default -> throw scanner.error(
+            case "at-root", "extend" -> throw scanner.error(
                     context == StatementContext.ROOT
                             ? "This stylesheet statement is not available."
                             : "This block statement is not available.",
                     start.position(),
                     scanner.position() - start.position()
             );
+            default -> unknownAtRule(start, name);
         };
     }
 
