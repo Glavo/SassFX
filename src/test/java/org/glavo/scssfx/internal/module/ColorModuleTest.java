@@ -141,17 +141,45 @@ final class ColorModuleTest {
         );
     }
 
-    /// Rejects unsupported Color 4 interpolation paths and validates legacy arguments.
+    /// Exercises Color 4 mix interpolation, invert/complement spaces, and gamut mapping.
+    @Test
+    void evaluatesColorFourInterpolationAndGamutMapping() throws Exception {
+        var result = compile(
+                """
+                        @use "sass:color";
+
+                        .example {
+                          mix-rgb: color.mix(red, blue, $method: rgb);
+                          mix-oklab: color.space(color.mix(red, blue, $method: oklab));
+                          invert-hsl: color.invert(red, $space: hsl);
+                          complement-oklch: color.space(color.complement(red, $space: oklch));
+                          change-oklab: color.space(color.change(red, $lightness: 50%, $space: oklab));
+                          to-gamut: color.is-in-gamut(
+                            color.to-gamut(color.to-space(red, display-p3), $method: clip)
+                          );
+                          powerless: color.is-powerless(gray, "hue", $space: hsl);
+                        }
+                        """
+        );
+
+        assertEquals(
+                """
+                        .example {
+                          mix-rgb: rgb(127.5, 0, 127.5);
+                          mix-oklab: rgb;
+                          invert-hsl: aqua;
+                          complement-oklch: rgb;
+                          change-oklab: rgb;
+                          to-gamut: true;
+                          powerless: true;
+                        }""",
+                result.output()
+        );
+    }
+
+    /// Validates argument errors that remain after Color 4 interpolation landed.
     @Test
     void rejectsUnsupportedColorSpacesAndInvalidWeights() {
-        assertEquals(
-                "$method: color.mix() only supports the legacy RGB algorithm.",
-                failure("@use \"sass:color\"; .a { value: color.mix(red, blue, $method: rgb); }")
-        );
-        assertEquals(
-                "$space: color.invert() only supports the legacy RGB algorithm.",
-                failure("@use \"sass:color\"; .a { value: color.invert(red, $space: hsl); }")
-        );
         assertEquals(
                 "$weight: Expected 101% to be within 0% and 100%.",
                 failure("@use \"sass:color\"; .a { value: color.mix(red, blue, 101%); }")
@@ -181,8 +209,18 @@ final class ColorModuleTest {
                 failure("@use \"sass:color\"; .a { value: color.scale(red, $hue: 10%); }")
         );
         assertEquals(
-                "$space: color.adjust() only supports the legacy RGB algorithm.",
-                failure("@use \"sass:color\"; .a { value: color.adjust(red, $lightness: -10%, $space: hsl); }")
+                "$method: color.to-gamut() requires a $method argument for forwards-compatibility with changes in the CSS spec. Suggestion:\n"
+                        + "\n"
+                        + "$method: local-minde",
+                failure("@use \"sass:color\"; .a { value: color.to-gamut(red); }")
+        );
+        assertEquals(
+                "$method: Hue interpolation method \"longer hue\" may not be set for rectangular color space rgb.",
+                failure("@use \"sass:color\"; .a { value: color.mix(red, blue, $method: rgb longer hue); }")
+        );
+        assertEquals(
+                "$method: Unknown hue interpolation method sideways.",
+                failure("@use \"sass:color\"; .a { value: color.mix(red, blue, $method: oklch sideways hue); }")
         );
     }
 

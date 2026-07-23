@@ -5,6 +5,9 @@ import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.value.color.ColorChannel;
 import org.glavo.scssfx.internal.value.color.ColorConversions;
 import org.glavo.scssfx.internal.value.color.ColorSpace;
+import org.glavo.scssfx.internal.value.color.GamutMapMethod;
+import org.glavo.scssfx.internal.value.color.HueInterpolationMethod;
+import org.glavo.scssfx.internal.value.color.InterpolationMethod;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -589,6 +592,224 @@ public final class SassColor implements SassValue {
     /// @return the converted color
     public SassColor toSpace(ColorSpace dest) {
         return toSpace(dest, true);
+    }
+
+    /// Returns a copy of this color that is in-gamut for its space.
+    ///
+    /// @param method the gamut-mapping algorithm
+    /// @return this color when already in-gamut, otherwise the mapped color
+    public SassColor toGamut(GamutMapMethod method) {
+        Objects.requireNonNull(method, "method");
+        return isInGamut() ? this : method.map(this);
+    }
+
+    /// Returns whether the named channel is powerless in this color.
+    ///
+    /// @param channel the channel name
+    /// @return whether the channel is powerless
+    /// @throws SassValueException if the channel name is unknown for this space
+    public boolean isChannelPowerless(String channel) {
+        Objects.requireNonNull(channel, "channel");
+        var channels = space.channels();
+        if (channel.equals(channels.get(0).name())) {
+            return isChannel0Powerless();
+        }
+        if (channel.equals(channels.get(1).name())) {
+            return false;
+        }
+        if (channel.equals(channels.get(2).name())) {
+            return isChannel2Powerless();
+        }
+        if ("alpha".equals(channel)) {
+            return false;
+        }
+        throw new SassValueException(
+                "Color " + this + " doesn't have a channel named \"" + channel + "\"."
+        );
+    }
+
+    /// Returns whether the first channel is powerless.
+    private boolean isChannel0Powerless() {
+        return switch (space) {
+            case HSL -> SassFuzzy.equals(channel1(), 0.0);
+            case HWB -> SassFuzzy.greaterThanOrEquals(channel1() + channel2(), 100.0);
+            default -> false;
+        };
+    }
+
+    /// Returns whether the third channel is powerless.
+    private boolean isChannel2Powerless() {
+        return switch (space) {
+            case LCH, OKLCH -> SassFuzzy.equals(channel1(), 0.0);
+            default -> false;
+        };
+    }
+
+    /// Interpolates this color with {@code other} using a Color Level 4 method.
+    ///
+    /// @param other the second color
+    /// @param method the interpolation method
+    /// @param weight the contribution of this color between zero and one
+    /// @param legacyMissing whether missing channels may remain on legacy results
+    /// @return the interpolated color in this color's original space
+    /// @throws IllegalArgumentException if {@code weight} is outside its range
+    public SassColor interpolate(
+            SassColor other,
+            InterpolationMethod method,
+            double weight,
+            boolean legacyMissing
+    ) {
+        Objects.requireNonNull(other, "other");
+        Objects.requireNonNull(method, "method");
+        if (!(weight >= 0.0 && weight <= 1.0)) {
+            throw new IllegalArgumentException("weight must be between 0 and 1");
+        }
+        if (SassFuzzy.equals(weight, 0.0)) {
+            return other.toSpace(space, legacyMissing);
+        }
+        if (SassFuzzy.equals(weight, 1.0)) {
+            return this;
+        }
+
+        var color1 = toSpace(method.space());
+        var color2 = other.toSpace(method.space());
+        var missing1_0 = isAnalogousChannelMissing(this, color1, 0);
+        var missing1_1 = isAnalogousChannelMissing(this, color1, 1);
+        var missing1_2 = isAnalogousChannelMissing(this, color1, 2);
+        var missing2_0 = isAnalogousChannelMissing(other, color2, 0);
+        var missing2_1 = isAnalogousChannelMissing(other, color2, 1);
+        var missing2_2 = isAnalogousChannelMissing(other, color2, 2);
+
+        var channel1_0 = (missing1_0 ? color2 : color1).channel0();
+        var channel1_1 = (missing1_1 ? color2 : color1).channel1();
+        var channel1_2 = (missing1_2 ? color2 : color1).channel2();
+        var channel2_0 = (missing2_0 ? color1 : color2).channel0();
+        var channel2_1 = (missing2_1 ? color1 : color2).channel1();
+        var channel2_2 = (missing2_2 ? color1 : color2).channel2();
+        var alpha1 = alphaOrNull() != null ? alpha() : other.alpha();
+        var alpha2 = other.alphaOrNull() != null ? other.alpha() : alpha();
+
+        var thisMultiplier = (alphaOrNull() != null ? alpha() : 1.0) * weight;
+        var otherMultiplier = (other.alphaOrNull() != null ? other.alpha() : 1.0) * (1.0 - weight);
+        @Nullable Double mixedAlpha = isAlphaMissing() && other.isAlphaMissing()
+                ? null
+                : alpha1 * weight + alpha2 * (1.0 - weight);
+        var denominator = mixedAlpha != null ? mixedAlpha : 1.0;
+        @Nullable Double mixed0 = missing1_0 && missing2_0
+                ? null
+                : (channel1_0 * thisMultiplier + channel2_0 * otherMultiplier) / denominator;
+        @Nullable Double mixed1 = missing1_1 && missing2_1
+                ? null
+                : (channel1_1 * thisMultiplier + channel2_1 * otherMultiplier) / denominator;
+        @Nullable Double mixed2 = missing1_2 && missing2_2
+                ? null
+                : (channel1_2 * thisMultiplier + channel2_2 * otherMultiplier) / denominator;
+
+        SassColor mixed = switch (method.space()) {
+            case HSL, HWB -> forSpace(
+                    method.space(),
+                    missing1_0 && missing2_0
+                            ? null
+                            : interpolateHues(
+                            channel1_0,
+                            channel2_0,
+                            Objects.requireNonNull(method.hue(), "hue"),
+                            weight
+                    ),
+                    mixed1,
+                    mixed2,
+                    mixedAlpha
+            );
+            case LCH, OKLCH -> forSpace(
+                    method.space(),
+                    mixed0,
+                    mixed1,
+                    missing1_2 && missing2_2
+                            ? null
+                            : interpolateHues(
+                            channel1_2,
+                            channel2_2,
+                            Objects.requireNonNull(method.hue(), "hue"),
+                            weight
+                    ),
+                    mixedAlpha
+            );
+            default -> forSpace(method.space(), mixed0, mixed1, mixed2, mixedAlpha);
+        };
+        return mixed.toSpace(space, legacyMissing);
+    }
+
+    /// Returns whether alpha is missing.
+    public boolean isAlphaMissing() {
+        return alpha == null;
+    }
+
+    /// Returns whether {@code output}'s channel should be treated as missing because
+    /// an analogous channel was missing on {@code original}.
+    private static boolean isAnalogousChannelMissing(
+            SassColor original,
+            SassColor output,
+            int outputChannelIndex
+    ) {
+        @Nullable Double outputChannel = switch (outputChannelIndex) {
+            case 0 -> output.channel0OrNull();
+            case 1 -> output.channel1OrNull();
+            default -> output.channel2OrNull();
+        };
+        if (outputChannel == null) {
+            return true;
+        }
+        if (original == output) {
+            return false;
+        }
+        var outputInfo = output.space().channels().get(outputChannelIndex);
+        for (var originalChannel : original.space().channels()) {
+            if (outputInfo.isAnalogous(originalChannel)
+                    && original.isChannelMissing(originalChannel.name())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Interpolates two hues according to {@code method}.
+    private static double interpolateHues(
+            double hue1,
+            double hue2,
+            HueInterpolationMethod method,
+            double weight
+    ) {
+        var left = hue1;
+        var right = hue2;
+        switch (method) {
+            case SHORTER -> {
+                var delta = right - left;
+                if (delta > 180.0) {
+                    left += 360.0;
+                } else if (delta < -180.0) {
+                    right += 360.0;
+                }
+            }
+            case LONGER -> {
+                var delta = right - left;
+                if (delta > 0.0 && delta < 180.0) {
+                    right += 360.0;
+                } else if (delta > -180.0 && delta <= 0.0) {
+                    left += 360.0;
+                }
+            }
+            case INCREASING -> {
+                if (right < left) {
+                    right += 360.0;
+                }
+            }
+            case DECREASING -> {
+                if (left < right) {
+                    left += 360.0;
+                }
+            }
+        }
+        return left * weight + right * (1.0 - weight);
     }
 
     /// Mixes this color with another color using the legacy RGB algorithm.
