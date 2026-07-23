@@ -40,7 +40,7 @@ public record ForwardedModuleView(
         @Nullable @Unmodifiable Set<String> shownVariables,
         @Nullable @Unmodifiable Set<String> hiddenVariables
 ) {
-    /// Creates an immutable forwarded-module view.
+    /// Creates a structurally immutable view retaining live variable bindings.
     public ForwardedModuleView {
         Objects.requireNonNull(original, "original");
         Objects.requireNonNull(variables, "variables");

@@ -74,6 +74,12 @@
           ]
         },
         {
+          "directory": "modules/module-variable-write",
+          "action": "run",
+          "category": "MODULES",
+          "loadedUrls": ["input.scss", "_state.scss"]
+        },
+        {
           "directory": "errors/selector-algebra-opaque",
           "action": "run",
           "category": "SELECTORS"

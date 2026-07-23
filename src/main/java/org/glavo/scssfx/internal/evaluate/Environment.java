@@ -214,7 +214,9 @@ public final class Environment {
     /// @param originSpan the source that produced the value
     /// @param namespace  the module namespace, or {@code null} for lexical assignment
     /// @param global     whether to write frame zero explicitly
-    /// @throws SassValueException if a namespace is supplied
+    /// @throws SassValueException if a namespace is missing, the named module
+    /// does not expose the variable, the binding belongs to a built-in module,
+    /// or multiple global modules expose an unqualified global assignment
     public void setVariable(
             String name,
             SassValue value,
@@ -226,15 +228,30 @@ public final class Environment {
         Objects.requireNonNull(value, "value");
         Objects.requireNonNull(originSpan, "originSpan");
         if (namespace != null) {
-            requireModule(namespace);
-            throw new SassValueException(
-                    "Modifying module variables isn't supported yet."
-            );
+            @Nullable VariableBinding binding =
+                    requireModule(namespace).variables().get(name);
+            if (binding == null) {
+                throw new SassValueException("Undefined variable.");
+            }
+            binding.assign(value, originSpan);
+            return;
         }
 
-        var binding = new VariableBinding(value, originSpan);
         if (global || atRoot()) {
-            variableFrames.get(0).put(name, binding);
+            var root = variableFrames.get(0);
+            @Nullable VariableBinding binding = root.get(name);
+            if (binding == null) {
+                binding = fromOneGlobalModule(
+                        name,
+                        "variable",
+                        LoadedModule::variables
+                );
+            }
+            if (binding != null) {
+                binding.assign(value, originSpan);
+            } else {
+                root.put(name, new VariableBinding(value, originSpan));
+            }
             return;
         }
 
@@ -242,7 +259,13 @@ public final class Environment {
         if (index < 0 || !inSemiGlobalScope && index == 0) {
             index = variableFrames.size() - 1;
         }
-        variableFrames.get(index).put(name, binding);
+        var frame = variableFrames.get(index);
+        @Nullable VariableBinding binding = frame.get(name);
+        if (binding == null) {
+            frame.put(name, new VariableBinding(value, originSpan));
+        } else {
+            binding.assign(value, originSpan);
+        }
     }
 
     /// Assigns a variable in the current frame regardless of outer bindings.
@@ -332,8 +355,15 @@ public final class Environment {
         Objects.requireNonNull(module, "module");
         Objects.requireNonNull(useSpan, "useSpan");
         if (namespace == null) {
-            for (var name : module.variables().keySet()) {
-                if (variableExists(name, null)) {
+            for (var entry : module.variables().entrySet()) {
+                var name = entry.getKey();
+                @Nullable VariableBinding existing = fromOneGlobalModule(
+                        name,
+                        "variable",
+                        LoadedModule::variables
+                );
+                if (variableFrames.get(0).containsKey(name)
+                        || existing != null && existing != entry.getValue()) {
                     throw new SassValueException(
                             "This module and the new module both define a variable named \"$"
                                     + name + "\"."
@@ -524,7 +554,10 @@ public final class Environment {
     /// @param kind   the singular member kind used in ambiguity diagnostics
     /// @param getter reads members of the requested kind from one module
     /// @param <T>    the member value type
-    /// @return the sole matching member, or {@code null} when no module exports it
+    /// @return the sole matching member identity, or {@code null} when no
+    /// module exports it
+    ///
+    /// Repeated exports of the same member identity are treated as one match.
     /// @throws SassValueException if multiple modules export the requested member
     private <T> @Nullable T fromOneGlobalModule(
             String name,
@@ -535,7 +568,7 @@ public final class Environment {
         for (var module : globalModules) {
             @Nullable T value = getter.apply(module).get(name);
             if (value != null) {
-                if (found != null) {
+                if (found != null && found != value) {
                     throw new SassValueException(
                             "This " + kind + " is available from multiple global modules."
                     );
@@ -631,7 +664,15 @@ public final class Environment {
     ///
     /// @return the global binding snapshot
     public @Unmodifiable Map<String, VariableBinding> globalBindingsSnapshot() {
-        return Collections.unmodifiableMap(new LinkedHashMap<>(variableFrames.get(0)));
+        var result = new LinkedHashMap<String, VariableBinding>();
+        for (var entry : variableFrames.get(0).entrySet()) {
+            var binding = entry.getValue();
+            result.put(
+                    entry.getKey(),
+                    VariableBinding.readOnly(binding.value(), binding.originSpan())
+            );
+        }
+        return Collections.unmodifiableMap(result);
     }
 
     /// Returns the nearest frame containing a name.

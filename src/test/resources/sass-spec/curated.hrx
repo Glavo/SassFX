@@ -441,3 +441,47 @@ $value: dark;
     color: green;
   }
 }
+<===> modules/module-variable-write/input.scss
+@use "state" as first;
+@use "state" as second;
+
+first.$value: 3;
+first.$foo_bar: 8;
+.before {
+  direct: second.$value;
+  function: first.current();
+  derived: second.$derived;
+  normalized: second.$foo-bar;
+}
+
+@include second.bump;
+.after {
+  direct: first.$value;
+  function: second.current();
+  derived: first.$derived;
+}
+<===> modules/module-variable-write/_state.scss
+$value: 1;
+$derived: $value + 1;
+$foo-bar: 1;
+
+@function current() {
+  @return $value;
+}
+
+@mixin bump() {
+  $value: 4 !global;
+}
+<===> modules/module-variable-write/output.css
+.before {
+  direct: 3;
+  function: 3;
+  derived: 2;
+  normalized: 8;
+}
+
+.after {
+  direct: 4;
+  function: 4;
+  derived: 2;
+}

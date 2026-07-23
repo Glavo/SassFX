@@ -98,27 +98,27 @@ public final class BuiltInModules {
     private static LoadedModule createMathModule() {
         var span = syntheticSpan(MATH_URL);
         var variables = new LinkedHashMap<String, VariableBinding>();
-        variables.put("e", new VariableBinding(SassNumber.of(Math.E, null), span));
-        variables.put("pi", new VariableBinding(SassNumber.of(Math.PI, null), span));
+        variables.put("e", VariableBinding.readOnly(SassNumber.of(Math.E, null), span));
+        variables.put("pi", VariableBinding.readOnly(SassNumber.of(Math.PI, null), span));
         variables.put(
                 "epsilon",
-                new VariableBinding(SassNumber.of(2.220446049250313E-16, null), span)
+                VariableBinding.readOnly(SassNumber.of(2.220446049250313E-16, null), span)
         );
         variables.put(
                 "max-safe-integer",
-                new VariableBinding(SassNumber.of(9_007_199_254_740_991D, null), span)
+                VariableBinding.readOnly(SassNumber.of(9_007_199_254_740_991D, null), span)
         );
         variables.put(
                 "min-safe-integer",
-                new VariableBinding(SassNumber.of(-9_007_199_254_740_991D, null), span)
+                VariableBinding.readOnly(SassNumber.of(-9_007_199_254_740_991D, null), span)
         );
         variables.put(
                 "max-number",
-                new VariableBinding(SassNumber.of(Double.MAX_VALUE, null), span)
+                VariableBinding.readOnly(SassNumber.of(Double.MAX_VALUE, null), span)
         );
         variables.put(
                 "min-number",
-                new VariableBinding(SassNumber.of(Double.MIN_VALUE, null), span)
+                VariableBinding.readOnly(SassNumber.of(Double.MIN_VALUE, null), span)
         );
         return createModule(MATH_URL, variables, BuiltInFunctions.mathModule());
     }

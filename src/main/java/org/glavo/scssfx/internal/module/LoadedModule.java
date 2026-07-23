@@ -18,7 +18,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/// A fully evaluated Sass module and its public exports.
+/// Contains a fully evaluated Sass module and its public export bindings.
+///
+/// Export tables are structurally immutable. Variable bindings remain live so
+/// assignments are visible through every namespace and forwarded view.
 ///
 /// @param url                   the canonical module URL, or {@code null} for anonymous roots
 /// @param variables             public variables
@@ -41,7 +44,7 @@ public record LoadedModule(
         @Unmodifiable Set<String> configurableVariables,
         @Unmodifiable List<ForwardedModuleView> forwardedModules
 ) {
-    /// Creates a loaded module snapshot.
+    /// Creates a loaded module while retaining variable-binding identities.
     public LoadedModule {
         Objects.requireNonNull(variables, "variables");
         Objects.requireNonNull(functions, "functions");
