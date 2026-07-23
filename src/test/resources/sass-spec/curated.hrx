@@ -421,3 +421,23 @@ $output: blue;
 .after {
   color: blue;
 }
+<===> at-rules/supports-and-import/input.scss
+$display: grid;
+$name: theme;
+$value: dark;
+
+@import "theme.css" layer(theme) supports(display: $display) screen;
+
+@supports ((display: $display) and selector(.button))
+    or (not (--#{$name}: #{$value})) {
+  .supported {
+    color: green;
+  }
+}
+<===> at-rules/supports-and-import/output.css
+@import "theme.css" layer(theme) supports(display: grid) screen;
+@supports ((display: grid) and selector(.button)) or (not (--theme:dark)) {
+  .supported {
+    color: green;
+  }
+}

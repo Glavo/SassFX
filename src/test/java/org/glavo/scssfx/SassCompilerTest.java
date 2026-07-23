@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
@@ -620,8 +621,8 @@ final class SassCompilerTest {
         var result = compile(
                 """
                         $display: grid;
-                        @supports (display: $display) and selector(.button)
-                                or not ((display: flex) and (--theme: dark)) {
+                        @supports ((display: $display) and selector(.button))
+                                or (not ((display: flex) and (--theme: dark))) {
                           Pane {
                             -fx-opacity: 1;
                           }
@@ -645,10 +646,16 @@ final class SassCompilerTest {
     void serializesCustomPropertySupportsDeclarations() throws Exception {
         var result = compile(
                 """
+                        $name: theme;
                         $value: dark;
-                        @supports (--theme: #{$value}) {
+                        @supports (--#{$name}: #{$value}) {
                           Pane {
                             -fx-opacity: 1;
+                          }
+                        }
+                        @supports ("--theme": $value) {
+                          Pane {
+                            -fx-opacity: 0.5;
                           }
                         }
                         """
@@ -660,10 +667,68 @@ final class SassCompilerTest {
                           Pane {
                             -fx-opacity: 1;
                           }
+                        }
+
+                        @supports (--theme: dark) {
+                          Pane {
+                            -fx-opacity: 0.5;
+                          }
                         }""",
                 result.output()
         );
     }
+
+    /// Compiles grouped supports conditions written in indented Sass syntax.
+    @Test
+    void compilesIndentedSassSupportsConditions() throws Exception {
+        var result = new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                $display: grid
+                                @supports ((display: $display) and selector(.button)) or (not (--theme: dark))
+                                  Pane
+                                    -fx-opacity: 1
+                                """,
+                        Syntax.SASS
+                ),
+                CssTarget.DEFAULT
+        );
+
+        assertEquals(
+                """
+                        @supports ((display: grid) and selector(.button)) or (not (--theme:dark)) {
+                          Pane {
+                            -fx-opacity: 1;
+                          }
+                        }""",
+                result.output()
+        );
+    }
+
+    /// Rejects supports syntax that violates the boolean-condition grammar.
+    @Test
+    void rejectsInvalidSupportsConditionGrammar() {
+        var mixed = assertCompilationFailure(
+                "@supports (display: grid) and (color: red) or (width: 1px) {}"
+        );
+        assertEquals(
+                "Operators may not be mixed without a grouping parenthesis.",
+                mixed.getMessage()
+        );
+
+        var invalidSources = List.of(
+                "@supports (display: grid) and not (color: red) {}",
+                "@supports (display: grid) and not(color: red) {}",
+                "@supports () {}",
+                "@supports selector (.button) {}",
+                "@supports (1 + 2) {}",
+                "@supports (display +: grid) {}"
+        );
+        for (var source : invalidSources) {
+            assertCompilationFailure(source);
+        }
+    }
+
     /// Merges compatible nested media queries while preserving source order.
     @Test
     void mergesNestedMediaQueriesAndResumesOuterRulesInOrder() throws Exception {

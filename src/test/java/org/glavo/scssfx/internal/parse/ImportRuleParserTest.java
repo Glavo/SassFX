@@ -6,12 +6,16 @@ import org.glavo.scssfx.Syntax;
 import org.glavo.scssfx.internal.ast.DynamicImport;
 import org.glavo.scssfx.internal.ast.ImportRule;
 import org.glavo.scssfx.internal.ast.StaticImport;
+import org.glavo.scssfx.internal.ast.SupportsDeclaration;
 import org.glavo.scssfx.internal.source.SourceFile;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /// Verifies legacy Sass and static CSS import parsing.
@@ -36,6 +40,16 @@ final class ImportRuleParserTest {
         assertEquals("import", stylesheet.parseTimeWarnings().get(0).code());
     }
 
+    /// Ignores trailing whitespace when classifying a dynamic Sass import.
+    @Test
+    void classifiesDynamicImportBeforeTrailingWhitespace() {
+        var stylesheet = parse("@import \"tokens\" ;");
+        var rule = assertInstanceOf(ImportRule.class, stylesheet.children().get(0));
+
+        assertInstanceOf(DynamicImport.class, rule.imports().get(0));
+        assertEquals(1, stylesheet.parseTimeWarnings().size());
+    }
+
     /// Treats a quoted URL with modifiers as a static CSS import.
     @Test
     void parsesStaticImportModifiersAsOneArgument() {
@@ -45,8 +59,50 @@ final class ImportRuleParserTest {
 
         assertEquals(1, rule.imports().size());
         assertEquals("\"print\"", importRule.url().asPlain());
-        assertEquals("screen, print", importRule.modifiers().asPlain());
+        assertEquals("screen, print", importRule.modifiersBeforeSupports().asPlain());
+        assertNull(importRule.supports());
+        assertNull(importRule.modifiersAfterSupports());
         assertEquals(0, stylesheet.parseTimeWarnings().size());
+    }
+
+    /// Separates a structured supports modifier from surrounding CSS modifiers.
+    @Test
+    void parsesStructuredStaticImportSupportsModifier() {
+        var stylesheet = parse(
+                "@import \"theme.css\" layer(theme) supports(display: $display) screen;"
+        );
+        var rule = assertInstanceOf(ImportRule.class, stylesheet.children().get(0));
+        var importRule = assertInstanceOf(StaticImport.class, rule.imports().get(0));
+
+        assertEquals("layer(theme)", importRule.modifiersBeforeSupports().asPlain().strip());
+        var declaration = assertInstanceOf(SupportsDeclaration.class, importRule.supports());
+        assertEquals("display", declaration.name().toString());
+        assertEquals("$display", declaration.value().toString());
+        assertEquals("screen", importRule.modifiersAfterSupports().asPlain());
+    }
+
+    /// Rejects repeated top-level supports modifiers in one import argument.
+    @Test
+    void rejectsRepeatedStaticImportSupportsModifiers() {
+        assertThrows(
+                ParseException.class,
+                () -> parse("@import \"theme.css\" supports(display: grid) supports(color: red);")
+        );
+    }
+
+    /// Rejects malformed conditions within static-import supports modifiers.
+    @Test
+    void rejectsInvalidStaticImportSupportsConditions() {
+        var sources = List.of(
+                "@import \"theme.css\" supports();",
+                "@import \"theme.css\" supports((display: grid) and not (color: red));",
+                "@import \"theme.css\" supports((display: grid) and not(color: red));",
+                "@import \"theme.css\" supports((display: grid) and (color: red) or (width: 1px));",
+                "@import \"theme.css\" supports(selector (.button));"
+        );
+        for (var source : sources) {
+            assertThrows(ParseException.class, () -> parse(source));
+        }
     }
 
     /// Rejects dynamic imports in control directives, mixins, and declaration-only contexts.

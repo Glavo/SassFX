@@ -44,6 +44,73 @@ final class StaticImportOutputTest {
         assertEquals(0, result.diagnostics().size());
     }
 
+    /// Evaluates structured supports modifiers and preserves surrounding modifiers.
+    @Test
+    void evaluatesStaticImportSupportsModifiers() throws Exception {
+        var result = new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                $display: grid;
+                                $theme-name: theme;
+                                $theme-value: dark;
+                                @import "theme.css" layer(theme)
+                                        supports(display: $display) screen;
+                                @import "custom.css"
+                                        supports((display: $display)
+                                        and selector(.button)
+                                        and (--#{$theme-name}: #{$theme-value}));
+                                @import "quoted.css"
+                                        supports("--theme": $theme-value);
+                                """,
+                        Syntax.SCSS
+                ),
+                CssTarget.DEFAULT
+        );
+
+        assertEquals(
+                """
+                        @import "theme.css" layer(theme) supports(display: grid) screen;
+                        @import "custom.css" supports((display: grid) and selector(.button) and \
+                        (--theme:dark));
+                        @import "quoted.css" supports(--theme: dark);""",
+                result.output()
+        );
+    }
+
+    /// Evaluates static-import supports modifiers in indented Sass syntax.
+    @Test
+    void evaluatesIndentedStaticImportSupportsModifiers() throws Exception {
+        var result = new SassCompiler().compile(
+                SassSource.fromString(
+                        "$display: grid\n@import \"theme.css\" supports(display: $display)\n",
+                        Syntax.SASS
+                ),
+                CssTarget.DEFAULT
+        );
+
+        assertEquals(
+                "@import \"theme.css\" supports(display: grid);",
+                result.output()
+        );
+    }
+
+    /// Rejects a static-import supports interpolation that evaluates to empty text.
+    @Test
+    void rejectsEmptyEvaluatedStaticImportSupportsCondition() {
+        var failure = assertThrows(
+                SassCompilationException.class,
+                () -> new SassCompiler().compile(
+                        SassSource.fromString(
+                                "$condition: \"\"; @import \"theme.css\" supports(#{$condition});",
+                                Syntax.SCSS
+                        ),
+                        CssTarget.DEFAULT
+                )
+        );
+
+        assertEquals("Expected supports condition.", failure.getMessage());
+    }
+
     /// Places root imports before CSS emitted by used modules.
     @Test
     void ordersImportsBeforeModuleCss(@TempDir Path directory) throws Exception {
@@ -77,11 +144,14 @@ final class StaticImportOutputTest {
     @Test
     void serializesJavaFxCssImports() throws Exception {
         var result = new SassCompiler().compile(
-                SassSource.fromString("@import \"theme.css\" screen;", Syntax.SCSS),
+                SassSource.fromString(
+                        "$display: grid; @import \"theme.css\" supports(display: $display) screen;",
+                        Syntax.SCSS
+                ),
                 new JavaFXCssTarget(JavaFXCompatibility.JAVA_FX_17, OutputStyle.COMPRESSED)
         );
 
-        assertEquals("@import \"theme.css\" screen;", result.output());
+        assertEquals("@import \"theme.css\" supports(display: grid) screen;", result.output());
     }
 
     /// Rejects imports explicitly when the BSS backend cannot encode them.
@@ -90,7 +160,10 @@ final class StaticImportOutputTest {
         var failure = assertThrows(
                 SassCompilationException.class,
                 () -> new SassCompiler().compile(
-                        SassSource.fromString("@import \"theme.css\";", Syntax.SCSS),
+                        SassSource.fromString(
+                                "@import \"theme.css\" supports(display: grid);",
+                                Syntax.SCSS
+                        ),
                         BssTarget.DEFAULT
                 )
         );

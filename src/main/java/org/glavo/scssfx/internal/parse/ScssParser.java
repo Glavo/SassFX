@@ -554,42 +554,65 @@ final class ScssParser extends SassExpressionParser {
     private SupportsCondition supportsCondition() {
         var start = scanner.state();
         whitespace(true);
-        var result = supportsConditionOperand();
-        while (true) {
-            whitespace(true);
-            var operatorStart = scanner.state();
-            SupportsBooleanOperator operator;
-            if (scanIdentifier("or")) {
-                operator = SupportsBooleanOperator.OR;
-            } else if (scanIdentifier("and")) {
-                operator = SupportsBooleanOperator.AND;
-            } else {
-                scanner.restore(operatorStart);
-                break;
-            }
-            whitespace(true);
-            var right = supportsConditionOperand();
-            result = new SupportsOperation(
-                    result,
-                    right,
-                    operator,
-                    scanner.spanFrom(start)
-            );
-        }
-        return result;
-    }
-
-    /// Parses one optionally negated supports operand.
-    ///
-    /// @return the parsed operand
-    private SupportsCondition supportsConditionOperand() {
-        var start = scanner.state();
         if (scanIdentifier("not")) {
             whitespace(true);
             var condition = supportsConditionInParens();
             return new SupportsNegation(condition, scanner.spanFrom(start));
         }
-        return supportsConditionInParens();
+
+        return supportsOperationRest(supportsConditionInParens(), start);
+    }
+
+    /// Parses a homogeneous sequence of boolean operations after one operand.
+    ///
+    /// @param left the already parsed left operand
+    /// @param start the start of the complete condition
+    /// @return the original operand or the parsed operation tree
+    private SupportsCondition supportsOperationRest(
+            SupportsCondition left,
+            ScannerState start
+    ) {
+        whitespace(true);
+        var operatorStart = scanner.state();
+        @Nullable SupportsBooleanOperator operator = scanSupportsOperator();
+        if (operator == null) {
+            scanner.restore(operatorStart);
+            return left;
+        }
+
+        var result = left;
+        while (true) {
+            whitespace(true);
+            var right = supportsConditionInParens();
+            result = new SupportsOperation(result, right, operator, scanner.spanFrom(start));
+            whitespace(true);
+            operatorStart = scanner.state();
+            @Nullable SupportsBooleanOperator nextOperator = scanSupportsOperator();
+            if (nextOperator == null) {
+                scanner.restore(operatorStart);
+                return result;
+            }
+            if (nextOperator != operator) {
+                throw scanner.error(
+                        "Operators may not be mixed without a grouping parenthesis.",
+                        operatorStart.position(),
+                        scanner.position() - operatorStart.position()
+                );
+            }
+        }
+    }
+
+    /// Scans one supports boolean operator at the current position.
+    ///
+    /// @return the scanned operator, or {@code null} when none begins here
+    private @Nullable SupportsBooleanOperator scanSupportsOperator() {
+        if (scanIdentifier("or")) {
+            return SupportsBooleanOperator.OR;
+        }
+        if (scanIdentifier("and")) {
+            return SupportsBooleanOperator.AND;
+        }
+        return null;
     }
 
     /// Parses a parenthesized declaration, function, opaque condition, or
@@ -601,7 +624,10 @@ final class ScssParser extends SassExpressionParser {
         if (lookingAtInterpolatedIdentifier()) {
             var nameStart = scanner.state();
             var name = interpolatedIdentifier();
-            whitespace(true);
+            @Nullable String plainName = name.asPlain();
+            if (plainName != null && plainName.equalsIgnoreCase("not")) {
+                throw scanner.error("\"not\" is not a valid identifier here.", name.span());
+            }
             if (scanner.scan('(')) {
                 var arguments = interpolatedDeclarationValue(true, true);
                 scanner.expect(')');
@@ -617,6 +643,19 @@ final class ScssParser extends SassExpressionParser {
 
         scanner.expect('(');
         whitespace(true);
+        if (scanner.peek() == ')') {
+            throw scanner.error("Expected supports condition.");
+        }
+        if (scanner.peek() == '#' && scanner.peek(1) == '{') {
+            var interpolationStart = scanner.state();
+            var interpolation = supportsInterpolationCondition();
+            var result = supportsOperationRest(interpolation, start);
+            if (result != interpolation) {
+                scanner.expect(')');
+                return result;
+            }
+            scanner.restore(interpolationStart);
+        }
         if (scanIdentifier("not")) {
             whitespace(true);
             var condition = supportsConditionInParens();
@@ -683,7 +722,14 @@ final class ScssParser extends SassExpressionParser {
             if (colonConsumed) {
                 throw failure;
             }
-            var contents = interpolatedDeclarationValue(true, true);
+            var buffer = new InterpolationBuffer();
+            buffer.add(interpolatedIdentifier());
+            buffer.add(interpolatedDeclarationValue(true, true));
+            var contents = buffer.interpolation(scanner.spanFrom(contentsStart));
+            var rawText = scanner.substring(contentsStart.position(), scanner.position());
+            if (containsTopLevelColon(rawText)) {
+                throw failure;
+            }
             scanner.expect(')');
             return new SupportsAnything(contents, scanner.spanFrom(start));
         }
@@ -707,8 +753,55 @@ final class ScssParser extends SassExpressionParser {
     /// @param expression the parsed name expression
     /// @return whether its plain text begins with two hyphens
     private static boolean isPlainCustomPropertyName(StringExpression expression) {
-        @Nullable String plain = expression.text().asPlain();
-        return plain != null && plain.startsWith("--");
+        return !expression.hasQuotes()
+                && expression.text().initialPlain().startsWith("--");
+    }
+
+    /// Returns whether raw supports contents contain a colon outside nested syntax.
+    ///
+    /// @param text the source text inside the supports parentheses
+    /// @return whether a top-level declaration colon occurs
+    private static boolean containsTopLevelColon(String text) {
+        var depth = 0;
+        var quote = 0;
+        var escaped = false;
+        for (var index = 0; index < text.length(); index++) {
+            var character = text.charAt(index);
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if (character == '\\') {
+                escaped = true;
+                continue;
+            }
+            if (quote != 0) {
+                if (character == quote) {
+                    quote = 0;
+                }
+                continue;
+            }
+            if (character == '\'' || character == '"') {
+                quote = character;
+                continue;
+            }
+            switch (character) {
+                case '(', '[', '{' -> depth++;
+                case ')', ']', '}' -> {
+                    if (depth > 0) {
+                        depth--;
+                    }
+                }
+                case ':' -> {
+                    if (depth == 0) {
+                        return true;
+                    }
+                }
+                default -> {
+                }
+            }
+        }
+        return false;
     }
 
     /// Parses an {@code @if} rule and its trailing {@code @else if} / {@code @else} branches.
@@ -1093,15 +1186,7 @@ final class ScssParser extends SassExpressionParser {
                     throw scanner.error("Expected string or url().");
                 }
                 var url = importUrl(argumentStart, name);
-                whitespace(true);
-                @Nullable Interpolation modifiers = atImportArgumentEnd()
-                        ? null
-                        : interpolatedDeclarationValue(false, true);
-                imports.add(new StaticImport(
-                        url,
-                        modifiers,
-                        scanner.spanFrom(argumentStart)
-                ));
+                imports.add(staticImport(url, argumentStart));
             } else if (scanner.peek() == '\'' || scanner.peek() == '"') {
                 var urlStart = scanner.state();
                 var url = string();
@@ -1111,12 +1196,8 @@ final class ScssParser extends SassExpressionParser {
                         scanner.spanFrom(urlStart, urlEnd)
                 );
                 whitespace(true);
-                @Nullable Interpolation modifiers = atImportArgumentEnd()
-                        ? null
-                        : interpolatedDeclarationValue(false, true);
-                var argumentSpan = scanner.spanFrom(argumentStart);
-                if (modifiers != null || isPlainImportUrl(url)) {
-                    imports.add(new StaticImport(rawUrl, modifiers, argumentSpan));
+                if (!atImportArgumentEnd() || isPlainImportUrl(url)) {
+                    imports.add(staticImport(rawUrl, argumentStart));
                 } else {
                     if (controlDirectiveDepth > 0 || inMixin) {
                         throw scanner.error("This at-rule is not allowed here.");
@@ -1169,6 +1250,127 @@ final class ScssParser extends SassExpressionParser {
         scanner.expect(')');
         buffer.append(')');
         return buffer.interpolation(scanner.spanFrom(start));
+    }
+
+    /// Parses the optional modifiers following a static import URL.
+    ///
+    /// A top-level `supports()` modifier is represented structurally so its
+    /// SassScript values use the same evaluation rules as `@supports`. Other
+    /// modifiers remain raw interpolations because their CSS grammars are
+    /// backend-independent and may contain arbitrary future syntax.
+    ///
+    /// @param url the already parsed URL token
+    /// @param start the position before the complete import argument
+    /// @return the complete static import
+    private StaticImport staticImport(Interpolation url, ScannerState start) {
+        whitespace(true);
+        @Nullable Interpolation beforeSupports = null;
+        if (!atImportArgumentEnd() && !lookingAtImportSupportsModifier()) {
+            beforeSupports = interpolatedDeclarationValue(
+                    false,
+                    true,
+                    this::lookingAtImportSupportsModifier
+            );
+            whitespace(true);
+        }
+
+        @Nullable SupportsCondition supports = null;
+        if (lookingAtImportSupportsModifier()) {
+            supports = importSupportsModifier();
+            whitespace(true);
+        }
+
+        @Nullable Interpolation afterSupports = null;
+        if (!atImportArgumentEnd()) {
+            afterSupports = interpolatedDeclarationValue(
+                    false,
+                    true,
+                    this::lookingAtImportSupportsModifier
+            );
+            whitespace(true);
+            if (lookingAtImportSupportsModifier()) {
+                throw scanner.error("Only one supports() modifier is allowed per import.");
+            }
+        }
+
+        return new StaticImport(
+                url,
+                beforeSupports,
+                supports,
+                afterSupports,
+                scanner.spanFrom(start)
+        );
+    }
+
+    /// Parses one static-import `supports()` modifier.
+    ///
+    /// @return the structured condition inside the modifier
+    private SupportsCondition importSupportsModifier() {
+        expectIdentifier("supports");
+        scanner.expect('(');
+        whitespace(true);
+        if (scanner.peek() == ')') {
+            throw scanner.error("Expected supports condition.");
+        }
+        var condition = importSupportsCondition();
+        whitespace(true);
+        scanner.expect(')');
+        return condition;
+    }
+
+    /// Parses either an unparenthesized declaration or a regular supports condition.
+    ///
+    /// CSS import modifiers allow `supports(display: grid)`, while an
+    /// `@supports` rule spells the same declaration as `(display: grid)`.
+    ///
+    /// @return the parsed import supports condition
+    private SupportsCondition importSupportsCondition() {
+        var start = scanner.state();
+        var colonConsumed = false;
+        try {
+            var name = expression();
+            whitespace(true);
+            if (!scanner.scan(':')) {
+                throw scanner.error("Expected \":\".");
+            }
+            colonConsumed = true;
+            whitespace(true);
+
+            boolean customProperty = name instanceof StringExpression string
+                    && isPlainCustomPropertyName(string);
+            SassExpression value;
+            if (customProperty) {
+                var rawValue = interpolatedDeclarationValue(true, true);
+                value = new StringExpression(rawValue, false);
+            } else {
+                value = expression();
+            }
+            return new SupportsDeclaration(
+                    name,
+                    value,
+                    customProperty,
+                    scanner.spanFrom(start)
+            );
+        } catch (ParseException failure) {
+            scanner.restore(start);
+            if (colonConsumed) {
+                throw failure;
+            }
+            return supportsCondition();
+        }
+    }
+
+    /// Returns whether a top-level static-import `supports()` modifier begins here.
+    ///
+    /// Whitespace between the identifier and opening parenthesis is not valid.
+    /// The scanner position is unchanged.
+    ///
+    /// @return whether the modifier begins at the current position
+    private boolean lookingAtImportSupportsModifier() {
+        var start = scanner.state();
+        boolean result = scanIdentifier("supports") && scanner.peek() == '(';
+        scanner.restore(start);
+        return result;
     }
 
     /// Returns whether the current position terminates one import argument.

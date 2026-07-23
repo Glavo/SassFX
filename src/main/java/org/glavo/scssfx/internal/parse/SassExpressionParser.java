@@ -1336,6 +1336,24 @@ class SassExpressionParser extends Parser {
             boolean allowEmpty,
             boolean silentComments
     ) {
+        return interpolatedDeclarationValue(allowEmpty, silentComments, null);
+    }
+
+    /// Parses a raw declaration value with an optional top-level terminator.
+    ///
+    /// The terminator is tested before each top-level token and must not consume
+    /// input. Nested brackets always take precedence over the terminator.
+    ///
+    /// @param allowEmpty whether an empty raw value is accepted
+    /// @param silentComments whether silent comments are omitted
+    /// @param atEnd the optional top-level terminator predicate
+    /// @return the raw value interpolation
+    /// @throws ParseException if a required token is absent or nested syntax is malformed
+    protected final Interpolation interpolatedDeclarationValue(
+            boolean allowEmpty,
+            boolean silentComments,
+            @Nullable java.util.function.BooleanSupplier atEnd
+    ) {
         var start = scanner.state();
         var buffer = new InterpolationBuffer();
         var brackets = new ArrayDeque<Integer>();
@@ -1343,6 +1361,9 @@ class SassExpressionParser extends Parser {
 
         value:
         while (true) {
+            if (brackets.isEmpty() && atEnd != null && atEnd.getAsBoolean()) {
+                break;
+            }
             var next = scanner.peek();
             switch (next) {
                 case '\\' -> {

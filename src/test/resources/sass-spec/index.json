@@ -137,6 +137,12 @@
           "action": "run",
           "category": "SYNTAX",
           "loadedUrls": ["input.sass"]
+        },
+        {
+          "directory": "at-rules/supports-and-import",
+          "action": "run",
+          "category": "AT_RULES",
+          "loadedUrls": ["input.scss"]
         }
       ]
     }

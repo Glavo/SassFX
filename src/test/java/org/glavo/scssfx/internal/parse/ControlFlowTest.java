@@ -13,6 +13,9 @@ import org.glavo.scssfx.internal.ast.IfRule;
 import org.glavo.scssfx.internal.ast.MediaRule;
 import org.glavo.scssfx.internal.ast.SupportsRule;
 import org.glavo.scssfx.internal.ast.SupportsAnything;
+import org.glavo.scssfx.internal.ast.SupportsBooleanOperator;
+import org.glavo.scssfx.internal.ast.SupportsInterpolation;
+import org.glavo.scssfx.internal.ast.SupportsOperation;
 import org.glavo.scssfx.internal.ast.SupportsDeclaration;
 import org.glavo.scssfx.internal.ast.SupportsNegation;
 import org.glavo.scssfx.internal.ast.StyleRule;
@@ -155,6 +158,22 @@ final class ControlFlowTest {
 
         var bareElse = assertThrows(ParseException.class, () -> parse("@else {}"));
         assertEquals("This at-rule is not allowed here.", bareElse.getMessage());
+    }
+
+    /// Parses interpolation as an operand within a grouped supports operation.
+    @Test
+    void parsesGroupedSupportsOperationsWithInterpolation() {
+        var rule = assertInstanceOf(
+                SupportsRule.class,
+                parse("@supports (#{$condition} and (display: grid)) {}").children().get(0)
+        );
+        var operation = assertInstanceOf(SupportsOperation.class, rule.condition());
+
+        assertEquals(SupportsBooleanOperator.AND, operation.operator());
+        assertInstanceOf(SupportsInterpolation.class, operation.left());
+        var declaration = assertInstanceOf(SupportsDeclaration.class, operation.right());
+        assertEquals("display", declaration.name().toString());
+        assertEquals("grid", declaration.value().toString());
     }
 
     /// Verifies `@if` truthiness, branch selection, and semi-global assignment.

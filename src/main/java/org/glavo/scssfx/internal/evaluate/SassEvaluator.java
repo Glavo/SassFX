@@ -627,8 +627,30 @@ public final class SassEvaluator implements
 
             var staticImport = (StaticImport) importArgument;
             var argument = new StringBuilder(performInterpolation(staticImport.url()));
-            if (staticImport.modifiers() != null) {
-                argument.append(' ').append(performInterpolation(staticImport.modifiers()));
+            if (staticImport.modifiersBeforeSupports() != null) {
+                appendImportModifier(
+                        argument,
+                        performInterpolation(staticImport.modifiersBeforeSupports())
+                );
+            }
+            if (staticImport.supports() != null) {
+                var supports = evaluateSupportsCondition(staticImport.supports()).strip();
+                if (supports.isEmpty()) {
+                    throw new EvaluationException(
+                            "Expected supports condition.",
+                            staticImport.supports().span()
+                    );
+                }
+                if (staticImport.supports() instanceof SupportsDeclaration) {
+                    supports = supports.substring(1, supports.length() - 1);
+                }
+                appendImportModifier(argument, "supports(" + supports + ")");
+            }
+            if (staticImport.modifiersAfterSupports() != null) {
+                appendImportModifier(
+                        argument,
+                        performInterpolation(staticImport.modifiersAfterSupports())
+                );
             }
             var cssImport = new CssImport(argument.toString(), staticImport.span());
             var parent = requireCssParent();
@@ -639,6 +661,18 @@ public final class SassEvaluator implements
             }
         }
         return StatementResult.CONTINUE;
+    }
+
+    /// Appends one non-empty static-import modifier with canonical separation.
+    ///
+    /// @param argument the import argument under construction
+    /// @param modifier the evaluated modifier text
+    private static void appendImportModifier(StringBuilder argument, String modifier) {
+        var stripped = modifier.strip();
+        if (stripped.isEmpty()) {
+            return;
+        }
+        argument.append(' ').append(stripped);
     }
 
     /// Loads another module and registers it in the current environment.
