@@ -716,6 +716,11 @@ final class IndentedSassPreprocessor {
 
     /// Returns whether a statement can own an indented child block.
     ///
+    /// Style rules, mixins, includes with content, control-flow at-rules, empty
+    /// nested-property headers (`font:`), and valued nested-property headers
+    /// (`border: 1px`) may all open a child block. Variables, comments, and
+    /// terminal at-rules may not.
+    ///
     /// @param text the normalized statement
     /// @return whether the statement is a valid block header
     private static boolean isBlockHeader(String text) {
@@ -725,19 +730,7 @@ final class IndentedSassPreprocessor {
         if (text.startsWith("@")) {
             return !isTerminalAtRule(text);
         }
-        if (isNestedPropertyHeader(text)) {
-            return true;
-        }
-        var colon = topLevelColon(text);
-        return colon < 0 || colon + 1 >= text.length() || !Character.isWhitespace(text.charAt(colon + 1));
-    }
-
-    /// Returns whether a line is an empty-value nested-property header.
-    ///
-    /// @param text the normalized statement
-    /// @return whether the statement ends in a property colon
-    private static boolean isNestedPropertyHeader(String text) {
-        return !text.startsWith("$") && text.endsWith(":");
+        return true;
     }
 
     /// Returns whether an at-rule is a terminal statement.
@@ -752,36 +745,6 @@ final class IndentedSassPreprocessor {
                     "@debug", "@warn", "@error", "@charset", "@namespace" -> true;
             default -> false;
         };
-    }
-
-    /// Finds the first colon outside quotes and balanced CSS brackets.
-    ///
-    /// @param text the statement text
-    /// @return the colon offset, or {@code -1}
-    private static int topLevelColon(String text) {
-        var quote = 0;
-        var depth = 0;
-        for (var index = 0; index < text.length(); index++) {
-            var character = text.charAt(index);
-            if (quote != 0) {
-                if (character == '\\') {
-                    index++;
-                } else if (character == quote) {
-                    quote = 0;
-                }
-                continue;
-            }
-            if (character == '\'' || character == '"') {
-                quote = character;
-            } else if (character == '(' || character == '[' || character == '{') {
-                depth++;
-            } else if (character == ')' || character == ']' || character == '}') {
-                depth = Math.max(0, depth - 1);
-            } else if (character == ':' && depth == 0) {
-                return index;
-            }
-        }
-        return -1;
     }
 
     /// Returns whether a statement is a Sass or CSS comment.

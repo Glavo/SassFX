@@ -173,6 +173,18 @@
           "action": "run",
           "category": "MODULES",
           "loadedUrls": ["input.scss", "_theme.css"]
+        },
+        {
+          "directory": "syntax/indented-nested-props",
+          "action": "run",
+          "category": "SYNTAX",
+          "loadedUrls": ["input.sass"]
+        },
+        {
+          "directory": "syntax/indented-control-flow",
+          "action": "run",
+          "category": "SYNTAX",
+          "loadedUrls": ["input.sass"]
         }
       ]
     }

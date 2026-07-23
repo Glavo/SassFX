@@ -608,3 +608,35 @@ $foo-bar: 1;
 .main {
   color: blue;
 }
+<===> syntax/indented-nested-props/input.sass
+.item
+  border: 1px
+    style: solid
+  font:
+    size: 12px
+<===> syntax/indented-nested-props/output.css
+.item {
+  border: 1px;
+  border-style: solid;
+  font-size: 12px;
+}
+<===> syntax/indented-control-flow/input.sass
+$on: true
+.item
+  @if $on
+    color: red
+  @else
+    color: blue
+  @for $i from 1 through 2
+    .n-#{$i}
+      order: $i
+<===> syntax/indented-control-flow/output.css
+.item {
+  color: red;
+}
+.item .n-1 {
+  order: 1;
+}
+.item .n-2 {
+  order: 2;
+}

@@ -319,6 +319,8 @@ final class SassCompilerTest {
                                   +accent($color)
                                   font:
                                     family: serif
+                                  border: 1px
+                                    style: solid
                                   &:hover
                                     color: blue
                                 """,
@@ -331,9 +333,51 @@ final class SassCompilerTest {
                         .item {
                           color: red;
                           font-family: serif;
+                          border: 1px;
+                          border-style: solid;
                         }
                         .item:hover {
                           color: blue;
+                        }""",
+                result.output()
+        );
+    }
+
+    /// Compiles indented control flow, content blocks, and valued nested properties.
+    @Test
+    void compilesIndentedControlFlowAndContentBlocks() throws Exception {
+        var result = new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                =paint($color)
+                                  @content
+                                  color: $color
+                                $on: true
+                                .item
+                                  @if $on
+                                    +paint(red)
+                                      opacity: 1
+                                  @else
+                                    color: blue
+                                  @for $i from 1 through 2
+                                    .n-#{$i}
+                                      order: $i
+                                """,
+                        Syntax.SASS
+                ),
+                CssTarget.DEFAULT
+        );
+        assertEquals(
+                """
+                        .item {
+                          opacity: 1;
+                          color: red;
+                        }
+                        .item .n-1 {
+                          order: 1;
+                        }
+                        .item .n-2 {
+                          order: 2;
                         }""",
                 result.output()
         );
