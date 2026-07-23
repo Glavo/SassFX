@@ -640,3 +640,27 @@ $on: true
 .item .n-2 {
   order: 2;
 }
+<===> modules/math-extended/input.scss
+@use "sass:math";
+
+.item {
+  clamp: math.clamp(0px, 12px, 10px);
+  hypot: math.hypot(3px, 4px);
+  pow: math.pow(2, 8);
+  sqrt: math.sqrt(16);
+  sin: math.sin(90deg);
+  cos: math.cos(0turn);
+  asin: math.asin(0);
+  atan2: math.atan2(1px, 0px);
+}
+<===> modules/math-extended/output.css
+.item {
+  clamp: 10px;
+  hypot: 5px;
+  pow: 256;
+  sqrt: 4;
+  sin: 1;
+  cos: 1;
+  asin: 0deg;
+  atan2: 90deg;
+}

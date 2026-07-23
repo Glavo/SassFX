@@ -17,6 +17,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Verifies built-in Sass modules and their module-system integration.
 @NotNullByDefault
@@ -86,6 +87,73 @@ final class BuiltInModuleTest {
                 result.output()
         );
         assertEquals(Set.of(), result.loadedUrls());
+    }
+
+    /// Evaluates remaining sass:math bounding, distance, exponential, and trig APIs.
+    @Test
+    void evaluatesExtendedMathModuleApis() throws Exception {
+        var result = compile(
+                """
+                        @use "sass:math";
+
+                        .card {
+                          clamp: math.clamp(0px, 12px, 10px);
+                          hypot: math.hypot(3px, 4px);
+                          log: math.log(math.$e);
+                          log10: math.log(100, 10);
+                          pow: math.pow(2, 10);
+                          sqrt: math.sqrt(9);
+                          sin: math.sin(90deg);
+                          cos: math.cos(0deg);
+                          tan: math.tan(0deg);
+                          asin: math.asin(1);
+                          acos: math.acos(1);
+                          atan: math.atan(0);
+                          atan2: math.atan2(0px, 1px);
+                        }
+                        """
+        );
+
+        assertEquals(
+                """
+                        .card {
+                          clamp: 10px;
+                          hypot: 5px;
+                          log: 1;
+                          log10: 2;
+                          pow: 1024;
+                          sqrt: 3;
+                          sin: 1;
+                          cos: 1;
+                          tan: 0;
+                          asin: 90deg;
+                          acos: 0deg;
+                          atan: 0deg;
+                          atan2: 0deg;
+                        }""",
+                result.output()
+        );
+
+        var random = compile(
+                """
+                        @use "sass:math";
+                        .card { dice: math.random(6); unitless: math.random(); }
+                        """
+        ).output();
+        var dice = Integer.parseInt(extractProperty(random, "dice"));
+        assertTrue(dice >= 1 && dice <= 6, random);
+        var unitless = Double.parseDouble(extractProperty(random, "unitless"));
+        assertTrue(unitless >= 0.0 && unitless < 1.0, random);
+    }
+
+    /// Rejects unitful arguments to unitless-only math roots.
+    @Test
+    void rejectsUnitfulMathRoots() {
+        var failure = assertThrows(
+                SassCompilationException.class,
+                () -> compile("@use \"sass:math\"; a { x: math.sqrt(9px); }")
+        );
+        assertEquals("Expected 9px to have no units.", failure.getMessage());
     }
 
     /// Evaluates the first string, legacy color, and static meta module APIs.
@@ -275,5 +343,20 @@ final class BuiltInModuleTest {
                 SassSource.fromString(source, Syntax.SCSS),
                 CssTarget.DEFAULT
         );
+    }
+
+    /// Returns the CSS value text for one declaration name.
+    ///
+    /// @param css  the expanded CSS output
+    /// @param name the declaration name
+    /// @return the trimmed value without the trailing semicolon
+    private static String extractProperty(String css, String name) {
+        var marker = name + ": ";
+        var start = css.indexOf(marker);
+        assertTrue(start >= 0, css);
+        start += marker.length();
+        var end = css.indexOf(';', start);
+        assertTrue(end > start, css);
+        return css.substring(start, end).strip();
     }
 }

@@ -27,6 +27,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.atomic.AtomicLong;
 
 /// Registers built-in Sass functions for global and module namespaces.
@@ -35,6 +36,15 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class BuiltInFunctions {
     /// Generates unique IDs within the current process.
     private static final AtomicLong UNIQUE_ID = new AtomicLong(1);
+
+    /// Supplies values for {@code math.random()} within the current process.
+    private static final Random RANDOM = new Random();
+
+    /// Contains the radians unit used by trigonometric angle coercion.
+    private static final @Unmodifiable List<String> RADIANS = List.of("rad");
+
+    /// Contains the degrees unit returned by inverse trigonometric functions.
+    private static final @Unmodifiable List<String> DEGREES = List.of("deg");
 
     /// Contains the stable deprecation identifier for string-based {@code meta.call()}.
     private static final String CALL_STRING_CODE = "call-string";
@@ -127,6 +137,12 @@ public final class BuiltInFunctions {
                 List.of(),
                 "numbers",
                 BuiltInFunctions::max
+        ));
+        register(functions, BuiltInCallable.of(
+                "random",
+                List.of(Param.optional("limit", SassNull.NULL)),
+                0,
+                BuiltInFunctions::random
         ));
 
         register(functions, BuiltInCallable.of("map-get", List.of("map", "key"), BuiltInFunctions::mapGet));
@@ -229,6 +245,7 @@ public final class BuiltInFunctions {
         moduleFunction(functions, global, "round", "round");
         moduleFunction(functions, global, "unit", "unit");
         moduleFunction(functions, global, "comparable", "compatible");
+        moduleFunction(functions, global, "random", "random");
         register(functions, BuiltInCallable.of(
                 "div",
                 List.of("number1", "number2"),
@@ -238,6 +255,43 @@ public final class BuiltInFunctions {
                 "is-unitless",
                 List.of("number"),
                 BuiltInFunctions::isUnitless
+        ));
+        register(functions, BuiltInCallable.of(
+                "clamp",
+                List.of("min", "number", "max"),
+                BuiltInFunctions::clamp
+        ));
+        register(functions, BuiltInCallable.withRest(
+                "hypot",
+                List.of(),
+                "numbers",
+                BuiltInFunctions::hypot
+        ));
+        register(functions, BuiltInCallable.of(
+                "log",
+                List.of(
+                        Param.required("number"),
+                        Param.optional("base", SassNull.NULL)
+                ),
+                1,
+                BuiltInFunctions::log
+        ));
+        register(functions, BuiltInCallable.of(
+                "pow",
+                List.of("base", "exponent"),
+                BuiltInFunctions::pow
+        ));
+        register(functions, BuiltInCallable.of("sqrt", List.of("number"), BuiltInFunctions::sqrt));
+        register(functions, BuiltInCallable.of("sin", List.of("number"), BuiltInFunctions::sin));
+        register(functions, BuiltInCallable.of("cos", List.of("number"), BuiltInFunctions::cos));
+        register(functions, BuiltInCallable.of("tan", List.of("number"), BuiltInFunctions::tan));
+        register(functions, BuiltInCallable.of("asin", List.of("number"), BuiltInFunctions::asin));
+        register(functions, BuiltInCallable.of("acos", List.of("number"), BuiltInFunctions::acos));
+        register(functions, BuiltInCallable.of("atan", List.of("number"), BuiltInFunctions::atan));
+        register(functions, BuiltInCallable.of(
+                "atan2",
+                List.of("y", "x"),
+                BuiltInFunctions::atan2
         ));
         return freeze(functions);
     }
@@ -1072,6 +1126,187 @@ public final class BuiltInFunctions {
     private static SassValue isUnitless(List<SassValue> args) {
         return SassBoolean.of(args.get(0).assertNumber().isUnitless());
     }
+
+    /// Clamps {@code number} between compatible {@code min} and {@code max} bounds.
+    ///
+    /// @param args the bound min, number, and max arguments
+    /// @return the clamped number
+    private static SassValue clamp(List<SassValue> args) {
+        var min = args.get(0).assertNumber();
+        var number = args.get(1).assertNumber();
+        var max = args.get(2).assertNumber();
+        if (!min.isComparableTo(number) || !min.isComparableTo(max)) {
+            throw new SassValueException(
+                    min + ", " + number + ", and " + max + " have incompatible units."
+            );
+        }
+        if (min.greaterThanOrEquals(max).isTruthy()) {
+            return min;
+        }
+        if (min.greaterThanOrEquals(number).isTruthy()) {
+            return min;
+        }
+        if (number.greaterThanOrEquals(max).isTruthy()) {
+            return max;
+        }
+        return number;
+    }
+
+    /// Returns the square root of the sum of squares of compatible numbers.
+    ///
+    /// @param args the rest argument list
+    /// @return the hypotenuse with the first argument's units
+    private static SassValue hypot(List<SassValue> args) {
+        var numbers = restValues(args);
+        if (numbers.isEmpty()) {
+            throw new SassValueException("At least one argument must be passed.");
+        }
+        var first = numbers.get(0).assertNumber();
+        var subtotal = 0.0;
+        for (var index = 0; index < numbers.size(); index++) {
+            var number = numbers.get(index).assertNumber();
+            if (!first.isComparableTo(number)) {
+                throw new SassValueException(
+                        first + " and " + number + " have incompatible units."
+                );
+            }
+            var value = number.valueInUnitsOf(first);
+            subtotal += value * value;
+        }
+        return SassNumber.withUnits(
+                Math.sqrt(subtotal),
+                first.numeratorUnits(),
+                first.denominatorUnits()
+        );
+    }
+
+    /// Returns the natural or base-{@code base} logarithm of a unitless number.
+    ///
+    /// @param args the bound number and optional base
+    /// @return the unitless logarithm
+    private static SassValue log(List<SassValue> args) {
+        var number = args.get(0).assertNumber().assertNoUnits();
+        if (args.get(1) instanceof SassNull) {
+            return SassNumber.of(Math.log(number.value()), null);
+        }
+        var base = args.get(1).assertNumber().assertNoUnits();
+        return SassNumber.of(Math.log(number.value()) / Math.log(base.value()), null);
+    }
+
+    /// Raises a unitless base to a unitless exponent.
+    ///
+    /// @param args the bound base and exponent
+    /// @return the unitless power
+    private static SassValue pow(List<SassValue> args) {
+        var base = args.get(0).assertNumber().assertNoUnits();
+        var exponent = args.get(1).assertNumber().assertNoUnits();
+        return SassNumber.of(Math.pow(base.value(), exponent.value()), null);
+    }
+
+    /// Returns the square root of a unitless number.
+    ///
+    /// @param args the bound number
+    /// @return the unitless square root
+    private static SassValue sqrt(List<SassValue> args) {
+        var number = args.get(0).assertNumber().assertNoUnits();
+        return SassNumber.of(Math.sqrt(number.value()), null);
+    }
+
+    /// Returns the sine of an angle coerced to radians.
+    ///
+    /// @param args the bound angle
+    /// @return the unitless sine
+    private static SassValue sin(List<SassValue> args) {
+        return SassNumber.of(Math.sin(radians(args.get(0).assertNumber())), null);
+    }
+
+    /// Returns the cosine of an angle coerced to radians.
+    ///
+    /// @param args the bound angle
+    /// @return the unitless cosine
+    private static SassValue cos(List<SassValue> args) {
+        return SassNumber.of(Math.cos(radians(args.get(0).assertNumber())), null);
+    }
+
+    /// Returns the tangent of an angle coerced to radians.
+    ///
+    /// @param args the bound angle
+    /// @return the unitless tangent
+    private static SassValue tan(List<SassValue> args) {
+        return SassNumber.of(Math.tan(radians(args.get(0).assertNumber())), null);
+    }
+
+    /// Returns the arcsine of a unitless number in degrees.
+    ///
+    /// @param args the bound number
+    /// @return the degree angle
+    private static SassValue asin(List<SassValue> args) {
+        return degrees(Math.asin(args.get(0).assertNumber().assertNoUnits().value()));
+    }
+
+    /// Returns the arccosine of a unitless number in degrees.
+    ///
+    /// @param args the bound number
+    /// @return the degree angle
+    private static SassValue acos(List<SassValue> args) {
+        return degrees(Math.acos(args.get(0).assertNumber().assertNoUnits().value()));
+    }
+
+    /// Returns the arctangent of a unitless number in degrees.
+    ///
+    /// @param args the bound number
+    /// @return the degree angle
+    private static SassValue atan(List<SassValue> args) {
+        return degrees(Math.atan(args.get(0).assertNumber().assertNoUnits().value()));
+    }
+
+    /// Returns the two-argument arctangent of compatible coordinates in degrees.
+    ///
+    /// @param args the bound y and x coordinates
+    /// @return the degree angle
+    private static SassValue atan2(List<SassValue> args) {
+        var y = args.get(0).assertNumber();
+        var x = args.get(1).assertNumber();
+        if (!y.isComparableTo(x)) {
+            throw new SassValueException(y + " and " + x + " have incompatible units.");
+        }
+        return degrees(Math.atan2(y.value(), x.valueInUnitsOf(y)));
+    }
+
+    /// Returns a random unitless number, optionally bounded by a positive integer limit.
+    ///
+    /// @param args the optional limit
+    /// @return a number in {@code [0, 1)} or an integer in {@code 1..limit}
+    private static SassValue random(List<SassValue> args) {
+        if (args.isEmpty() || args.get(0) instanceof SassNull) {
+            return SassNumber.of(RANDOM.nextDouble(), null);
+        }
+        var limit = args.get(0).assertNumber();
+        var limitScalar = limit.assertInt();
+        if (limitScalar < 1) {
+            throw new SassValueException(
+                    "$limit: Must be greater than 0, was " + limit + "."
+            );
+        }
+        return SassNumber.of(RANDOM.nextInt(limitScalar) + 1.0, null);
+    }
+
+    /// Coerces an angle to radians for trigonometric functions.
+    ///
+    /// @param number the angle, unitless or angle-unitful
+    /// @return the magnitude in radians
+    private static double radians(SassNumber number) {
+        return number.coerce(RADIANS, List.of()).value();
+    }
+
+    /// Returns one degree-valued angle from a radian magnitude.
+    ///
+    /// @param radians the angle in radians
+    /// @return the degree number
+    private static SassNumber degrees(double radians) {
+        return SassNumber.withUnits(radians * (180.0 / Math.PI), DEGREES, List.of());
+    }
+
     private static SassValue abs(List<SassValue> args) {
         var number = args.get(0).assertNumber();
         return SassNumber.withUnits(
