@@ -197,6 +197,12 @@
           "action": "run",
           "category": "COLOR",
           "loadedUrls": ["input.scss"]
+        },
+        {
+          "directory": "modules/meta-load-css",
+          "action": "run",
+          "category": "META",
+          "loadedUrls": ["input.scss", "_theme.scss"]
         }
       ]
     }

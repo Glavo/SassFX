@@ -5,6 +5,7 @@ import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.evaluate.Environment;
 import org.glavo.scssfx.internal.evaluate.VariableBinding;
 import org.glavo.scssfx.internal.module.LoadedModule;
+import org.glavo.scssfx.internal.module.ModuleConfiguration;
 import org.glavo.scssfx.internal.value.SassArgumentList;
 import org.glavo.scssfx.internal.value.SassFunction;
 import org.glavo.scssfx.internal.value.SassMixin;
@@ -246,6 +247,29 @@ public final class BuiltInCallable implements Callable {
         );
     }
 
+    /// Creates a context-aware built-in mixin without content-block support.
+    ///
+    /// @param name     the mixin name
+    /// @param params   the ordinary parameters including defaults
+    /// @param minArgs  the number of required leading parameters
+    /// @param callback the context-aware implementation
+    /// @return the callable
+    public static BuiltInCallable contextualMixin(
+            String name,
+            List<Param> params,
+            int minArgs,
+            ContextCallback callback
+    ) {
+        return new BuiltInCallable(
+                name,
+                params,
+                null,
+                minArgs,
+                false,
+                callback
+        );
+    }
+
     /// Returns the normalized function name.
     ///
     /// @return the hyphenated name
@@ -378,6 +402,24 @@ public final class BuiltInCallable implements Callable {
         void report(String message, String code, SourceSpan span);
     }
 
+    /// Loads a stylesheet and injects its CSS at the current include point.
+    @FunctionalInterface
+    @NotNullByDefault
+    public interface LoadCssInvoker {
+        /// Loads {@code url} with optional configuration and injects combined CSS.
+        ///
+        /// @param url            the unresolved stylesheet URL
+        /// @param configuration  values for root {@code !default} variables
+        /// @param configured     whether the caller supplied a {@code $with} map
+        /// @param span           the include span
+        void load(
+                String url,
+                ModuleConfiguration configuration,
+                boolean configured,
+                SourceSpan span
+        );
+    }
+
     /// Describes one synchronous built-in invocation through limited evaluator capabilities.
     ///
     /// This object is valid only while its callback runs. It intentionally
@@ -409,6 +451,9 @@ public final class BuiltInCallable implements Callable {
         /// Records callback-local deprecation diagnostics.
         private final DeprecationReporter deprecationReporter;
 
+        /// Loads a stylesheet's CSS at the include point without exposing members.
+        private final LoadCssInvoker loadCssInvoker;
+
         /// Creates an invocation context with immutable global-function lookup.
         ///
         /// @param environment       the active lexical and module environment
@@ -419,6 +464,7 @@ public final class BuiltInCallable implements Callable {
         /// @param functionValueInvoker invokes function references through normal evaluation
         /// @param mixinValueInvoker includes mixin references through normal evaluation
         /// @param deprecationReporter records callback-local deprecation diagnostics
+        /// @param loadCssInvoker loads and injects stylesheet CSS at the call site
         public Context(
                 Environment environment,
                 @Unmodifiable Map<String, BuiltInCallable> globalFunctions,
@@ -427,7 +473,8 @@ public final class BuiltInCallable implements Callable {
                 Object compilationContext,
                 FunctionValueInvoker functionValueInvoker,
                 MixinValueInvoker mixinValueInvoker,
-                DeprecationReporter deprecationReporter
+                DeprecationReporter deprecationReporter,
+                LoadCssInvoker loadCssInvoker
         ) {
             this.environment = Objects.requireNonNull(environment, "environment");
             this.globalFunctions = Objects.requireNonNull(globalFunctions, "globalFunctions");
@@ -437,6 +484,7 @@ public final class BuiltInCallable implements Callable {
             this.functionValueInvoker = Objects.requireNonNull(functionValueInvoker, "functionValueInvoker");
             this.mixinValueInvoker = Objects.requireNonNull(mixinValueInvoker, "mixinValueInvoker");
             this.deprecationReporter = Objects.requireNonNull(deprecationReporter, "deprecationReporter");
+            this.loadCssInvoker = Objects.requireNonNull(loadCssInvoker, "loadCssInvoker");
         }
 
         /// Returns the active stylesheet URL.
@@ -668,6 +716,27 @@ public final class BuiltInCallable implements Callable {
             deprecationReporter.report(
                     Objects.requireNonNull(message, "message"),
                     Objects.requireNonNull(code, "code"),
+                    span
+            );
+        }
+
+        /// Loads a stylesheet and injects its CSS at the current include point.
+        ///
+        /// Members from the loaded stylesheet are not exposed. Relative URLs are
+        /// resolved against [#currentUrl()].
+        ///
+        /// @param url           the unresolved stylesheet URL
+        /// @param configuration values for root {@code !default} variables
+        /// @param configured    whether the caller supplied a configuration map
+        public void loadCss(
+                String url,
+                ModuleConfiguration configuration,
+                boolean configured
+        ) {
+            loadCssInvoker.load(
+                    Objects.requireNonNull(url, "url"),
+                    Objects.requireNonNull(configuration, "configuration"),
+                    configured,
                     span
             );
         }

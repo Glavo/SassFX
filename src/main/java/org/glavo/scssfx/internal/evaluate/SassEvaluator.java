@@ -2384,7 +2384,8 @@ public final class SassEvaluator implements
                                 compilationContext,
                                 this::runFunctionValue,
                                 this::runMixinValue,
-                                this::reportDeprecation
+                                this::reportDeprecation,
+                                this::loadCss
                         ),
                         bound.values()
                 );
@@ -2465,6 +2466,323 @@ public final class SassEvaluator implements
     /// @param span    the source span that triggered the deprecation
     private void reportDeprecation(String message, String code, SourceSpan span) {
         diagnostics.add(new Diagnostic(DiagnosticSeverity.DEPRECATION, message, span, code));
+    }
+
+    /// Loads a stylesheet and injects its combined CSS at the current include point.
+    ///
+    /// The loaded module is not registered as a namespace. Its CSS is cloned so
+    /// shared module graphs remain intact for later `@use` or `load-css` calls.
+    ///
+    /// @param url           the unresolved stylesheet URL
+    /// @param configuration values for root {@code !default} variables
+    /// @param configured    whether the caller supplied a configuration map
+    /// @param span          the include span
+    private void loadCss(
+            String url,
+            ModuleConfiguration configuration,
+            boolean configured,
+            SourceSpan span
+    ) {
+        if (moduleRegistry == null) {
+            throw new EvaluationException("Module loading isn't available.", span);
+        }
+        try {
+            var module = moduleRegistry.load(
+                    url,
+                    currentUrl,
+                    span,
+                    this,
+                    configuration,
+                    configured
+            );
+            assertConfigurationConsumed(configuration);
+            injectModuleCss(ModuleCss.combine(module));
+        } catch (SassValueException cause) {
+            throw new EvaluationException(
+                    Objects.requireNonNull(cause.getMessage(), "module failure message"),
+                    span,
+                    List.of(),
+                    cause
+            );
+        }
+    }
+
+    /// Clones and injects one combined module stylesheet under the current CSS parent.
+    ///
+    /// @param stylesheet the combined module CSS
+    private void injectModuleCss(CssStylesheet stylesheet) {
+        for (var child : stylesheet.children()) {
+            injectCssNode(child);
+        }
+    }
+
+    /// Clones one CSS node into the active evaluation parent with nesting applied.
+    ///
+    /// @param node the source CSS node from a loaded module
+    private void injectCssNode(CssNode node) {
+        if (node instanceof CssComment comment) {
+            copyParentAfterSibling();
+            requireCssParent().addChild(new CssComment(comment.text(), comment.span()));
+            return;
+        }
+        if (node instanceof CssImport importRule) {
+            requireCssParent();
+            if (cssStylesheet == null) {
+                throw new IllegalStateException("CSS root is unavailable");
+            }
+            cssStylesheet.addImport(new CssImport(importRule.argument(), importRule.span()));
+            return;
+        }
+        if (node instanceof CssDeclaration declaration) {
+            copyParentAfterSibling();
+            requireCssParent().addChild(new CssDeclaration(
+                    declaration.name(),
+                    declaration.value(),
+                    declaration.span(),
+                    declaration.parsedAsSassScript()
+            ));
+            return;
+        }
+        if (node instanceof CssStyleRule rule) {
+            injectStyleRule(rule);
+            return;
+        }
+        if (node instanceof CssMediaRule mediaRule) {
+            injectMediaRule(mediaRule);
+            return;
+        }
+        if (node instanceof CssSupportsRule supportsRule) {
+            injectSupportsRule(supportsRule);
+            return;
+        }
+        if (node instanceof CssUnknownAtRule unknownAtRule) {
+            injectUnknownAtRule(unknownAtRule);
+            return;
+        }
+        if (node instanceof CssFontFace fontFace) {
+            injectFontFace(fontFace);
+            return;
+        }
+        throw new EvaluationException(
+                "Unsupported CSS node in meta.load-css().",
+                node.span()
+        );
+    }
+
+    /// Injects one style rule, nesting selectors into the active style rule when present.
+    private void injectStyleRule(CssStyleRule rule) {
+        boolean merge;
+        if (styleRule == null) {
+            merge = true;
+        } else if (styleRule.fromPlainCss()) {
+            merge = false;
+        } else {
+            merge = true;
+        }
+        SelectorList nestedSelector;
+        try {
+            if (!merge) {
+                nestedSelector = rule.selector().value();
+            } else if (styleRule == null) {
+                nestedSelector = rule.selector().value();
+            } else {
+                nestedSelector = rule.selector().value().nestWithin(styleRule.selector().value());
+            }
+        } catch (SassValueException cause) {
+            throw new EvaluationException(
+                    Objects.requireNonNull(cause.getMessage(), "selector failure message"),
+                    rule.selector().span(),
+                    List.of(),
+                    cause
+            );
+        }
+        var injected = new CssStyleRule(
+                new CssValue<>(nestedSelector, rule.selector().span()),
+                rule.span(),
+                rule.fromPlainCss()
+        );
+        addCssChild(injected, merge);
+        var previousParent = requireCssParent();
+        var previousStyleRule = styleRule;
+        cssParent = injected;
+        styleRule = injected;
+        styleRuleDepth++;
+        try {
+            for (var child : rule.children()) {
+                injectCssNode(child);
+            }
+        } finally {
+            styleRuleDepth--;
+            styleRule = previousStyleRule;
+            cssParent = previousParent;
+        }
+        if (previousStyleRule == null && !previousParent.children().isEmpty()) {
+            previousParent.children().get(previousParent.children().size() - 1).setGroupEnd(true);
+        }
+    }
+
+    /// Injects one media rule using the same nesting and bubbling rules as evaluation.
+    private void injectMediaRule(CssMediaRule mediaRule) {
+        if (hasCssNesting()) {
+            var nested = new CssMediaRule(mediaRule.queries(), mediaRule.span());
+            addCssChild(nested, false);
+            var previousParent = requireCssParent();
+            cssParent = nested;
+            try {
+                for (var child : mediaRule.children()) {
+                    injectCssNode(child);
+                }
+            } finally {
+                cssParent = previousParent;
+            }
+            return;
+        }
+        @Nullable List<CssMediaQuery> mergedQueries = mediaQueries == null
+                ? null
+                : CssMediaQuery.mergeLists(mediaQueries, mediaRule.queries());
+        if (mergedQueries != null && mergedQueries.isEmpty()) {
+            return;
+        }
+        @Unmodifiable List<CssMediaQuery> effectiveQueries =
+                mergedQueries == null ? mediaRule.queries() : mergedQueries;
+        @Unmodifiable Set<CssMediaQuery> effectiveSources;
+        if (mergedQueries == null) {
+            effectiveSources = Set.of();
+        } else {
+            var sources = new LinkedHashSet<CssMediaQuery>();
+            if (mediaQuerySources != null) {
+                sources.addAll(mediaQuerySources);
+            }
+            if (mediaQueries != null) {
+                sources.addAll(mediaQueries);
+            }
+            sources.addAll(mediaRule.queries());
+            effectiveSources = Set.copyOf(sources);
+        }
+        var injected = new CssMediaRule(effectiveQueries, mediaRule.span());
+        addCssChild(injected, true, effectiveSources);
+        var previousParent = requireCssParent();
+        var previousMediaQueries = mediaQueries;
+        var previousMediaQuerySources = mediaQuerySources;
+        @Nullable CssStyleRule activeStyleRule = styleRule;
+        cssParent = injected;
+        mediaQueries = effectiveQueries;
+        mediaQuerySources = effectiveSources;
+        try {
+            if (activeStyleRule == null) {
+                for (var child : mediaRule.children()) {
+                    injectCssNode(child);
+                }
+            } else {
+                var wrapper = activeStyleRule.copyWithoutChildren();
+                injected.addChild(wrapper);
+                var mediaParent = requireCssParent();
+                cssParent = wrapper;
+                try {
+                    for (var child : mediaRule.children()) {
+                        injectCssNode(child);
+                    }
+                } finally {
+                    cssParent = mediaParent;
+                }
+            }
+        } finally {
+            mediaQueries = previousMediaQueries;
+            mediaQuerySources = previousMediaQuerySources;
+            cssParent = previousParent;
+        }
+    }
+
+    /// Injects one supports rule using the same nesting and bubbling rules as evaluation.
+    private void injectSupportsRule(CssSupportsRule supportsRule) {
+        if (hasCssNesting()) {
+            var nested = new CssSupportsRule(supportsRule.condition(), supportsRule.span());
+            addCssChild(nested, false);
+            var previousParent = requireCssParent();
+            cssParent = nested;
+            try {
+                for (var child : supportsRule.children()) {
+                    injectCssNode(child);
+                }
+            } finally {
+                cssParent = previousParent;
+            }
+            return;
+        }
+        var injected = new CssSupportsRule(supportsRule.condition(), supportsRule.span());
+        addCssChild(injected, true);
+        var previousParent = requireCssParent();
+        @Nullable CssStyleRule activeStyleRule = styleRule;
+        cssParent = injected;
+        try {
+            if (activeStyleRule == null) {
+                for (var child : supportsRule.children()) {
+                    injectCssNode(child);
+                }
+            } else {
+                var wrapper = activeStyleRule.copyWithoutChildren();
+                injected.addChild(wrapper);
+                var supportsParent = requireCssParent();
+                cssParent = wrapper;
+                try {
+                    for (var child : supportsRule.children()) {
+                        injectCssNode(child);
+                    }
+                } finally {
+                    cssParent = supportsParent;
+                }
+            }
+        } finally {
+            cssParent = previousParent;
+        }
+    }
+
+    /// Injects one opaque at-rule under the current CSS parent.
+    private void injectUnknownAtRule(CssUnknownAtRule rule) {
+        var injected = new CssUnknownAtRule(
+                rule.name(),
+                rule.value(),
+                rule.hasBlock(),
+                rule.span()
+        );
+        addCssChild(injected, false);
+        if (!rule.hasBlock()) {
+            return;
+        }
+        var previousParent = requireCssParent();
+        cssParent = injected;
+        try {
+            for (var child : rule.children()) {
+                injectCssNode(child);
+            }
+        } finally {
+            cssParent = previousParent;
+        }
+        injected.setGroupEnd(true);
+    }
+
+    /// Injects one font-face rule at the stylesheet root.
+    private void injectFontFace(CssFontFace fontFace) {
+        if (!(requireCssParent() instanceof CssStylesheet)) {
+            throw new EvaluationException(
+                    "@font-face rules may only be used at the stylesheet root.",
+                    fontFace.span()
+            );
+        }
+        var injected = new CssFontFace(fontFace.span());
+        addCssChild(injected, false);
+        var previousParent = requireCssParent();
+        var previousFontFace = this.fontFace;
+        cssParent = injected;
+        this.fontFace = injected;
+        try {
+            for (var child : fontFace.children()) {
+                injectCssNode(child);
+            }
+        } finally {
+            this.fontFace = previousFontFace;
+            cssParent = previousParent;
+        }
     }
 
     /// Executes a user-defined function body and returns its `@return` value.

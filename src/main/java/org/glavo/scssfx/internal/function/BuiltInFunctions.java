@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.function;
 
+import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.callable.BuiltInCallable;
 import org.glavo.scssfx.internal.callable.BuiltInCallable.Param;
 import org.glavo.scssfx.internal.callable.UserDefinedCallable;
+import org.glavo.scssfx.internal.module.ConfiguredValue;
+import org.glavo.scssfx.internal.module.ModuleConfiguration;
 import org.glavo.scssfx.internal.value.ListSeparator;
 import org.glavo.scssfx.internal.value.SassArgumentList;
 import org.glavo.scssfx.internal.value.SassBoolean;
@@ -621,6 +624,15 @@ public final class BuiltInFunctions {
                 1,
                 BuiltInFunctions::metaApply
         ));
+        register(mixins, BuiltInCallable.contextualMixin(
+                "load-css",
+                List.of(
+                        Param.required("url"),
+                        Param.optional("with", SassNull.NULL)
+                ),
+                1,
+                BuiltInFunctions::metaLoadCss
+        ));
         return freeze(mixins);
     }
 
@@ -1051,6 +1063,63 @@ public final class BuiltInFunctions {
         }
         context.apply(mixin, arguments);
         return SassNull.NULL;
+    }
+
+    /// Loads a stylesheet and injects its CSS without exposing module members.
+    ///
+    /// @param context the active built-in invocation context
+    /// @param args    the URL and optional configuration map
+    /// @return Sass null after CSS injection
+    private static SassValue metaLoadCss(
+            BuiltInCallable.Context context,
+            @Unmodifiable List<SassValue> args
+    ) {
+        var url = metaStringArgument(args.get(0), "url");
+        var withArgument = args.get(1);
+        var configured = !(withArgument instanceof SassNull);
+        var configuration = configured
+                ? configurationFromWithMap(withArgument, context.span())
+                : ModuleConfiguration.empty();
+        context.loadCss(url, configuration, configured);
+        return SassNull.NULL;
+    }
+
+    /// Converts a {@code $with} map into an explicit module configuration.
+    ///
+    /// @param value the configuration map
+    /// @param span  the include span used for configuration origins
+    /// @return the explicit configuration, or empty when the map has no entries
+    private static ModuleConfiguration configurationFromWithMap(
+            SassValue value,
+            SourceSpan span
+    ) {
+        @Nullable SassMap map = value.tryMap();
+        if (map == null) {
+            throw new SassValueException("$with: " + value + " is not a map.");
+        }
+        if (map.contents().isEmpty()) {
+            return ModuleConfiguration.empty();
+        }
+        var values = new LinkedHashMap<String, ConfiguredValue>();
+        for (var entry : map.contents().entrySet()) {
+            if (!(entry.getKey() instanceof SassString key)) {
+                throw new SassValueException(
+                        "$with: " + entry.getKey() + " is not a string in " + value + "."
+                );
+            }
+            var name = key.text().replace('_', '-');
+            if (name.isEmpty()) {
+                throw new SassValueException("$with: \"\" is not a valid variable name.");
+            }
+            var configured = new ConfiguredValue(entry.getValue(), span, span);
+            @Nullable ConfiguredValue previous = values.put(name, configured);
+            if (previous != null) {
+                throw new SassValueException(
+                        "The variable $" + name + " was configured twice."
+                );
+            }
+        }
+        return ModuleConfiguration.explicit(values);
     }
 
     /// Invokes a first-class function reference with a preserved argument list.

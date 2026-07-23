@@ -678,3 +678,26 @@ $on: true
   adjust: #cc0000;
   scale: rgb(127.5, 0, 0);
 }
+<===> modules/meta-load-css/input.scss
+@use "sass:meta";
+
+body.dark {
+  @include meta.load-css("theme", $with: (color: lime));
+}
+.main {
+  color: blue;
+}
+<===> modules/meta-load-css/_theme.scss
+$color: red !default;
+
+code {
+  color: $color;
+}
+<===> modules/meta-load-css/output.css
+body.dark code {
+  color: lime;
+}
+
+.main {
+  color: blue;
+}
