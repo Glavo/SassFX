@@ -593,3 +593,18 @@ $foo-bar: 1;
 .button {
   color: four;
 }
+<===> modules/pre-module-comments/input.scss
+/* before */
+@use "theme.css";
+.main { color: blue; }
+<===> modules/pre-module-comments/_theme.css
+.theme { color: red; }
+<===> modules/pre-module-comments/output.css
+/* before */
+.theme {
+  color: red;
+}
+
+.main {
+  color: blue;
+}

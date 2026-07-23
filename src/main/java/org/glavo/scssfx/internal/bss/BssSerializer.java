@@ -22,6 +22,7 @@ import org.glavo.scssfx.internal.css.CssNode;
 import org.glavo.scssfx.internal.css.CssSupportsRule;
 import org.glavo.scssfx.internal.css.CssStyleRule;
 import org.glavo.scssfx.internal.css.CssStylesheet;
+import org.glavo.scssfx.internal.css.CssUnknownAtRule;
 import org.glavo.scssfx.internal.value.ListSeparator;
 import org.glavo.scssfx.internal.value.SassBoolean;
 import org.glavo.scssfx.internal.value.SassColor;
@@ -358,6 +359,8 @@ public final class BssSerializer {
                         supportsRule.span(),
                         null
                 );
+            } else if (child instanceof CssUnknownAtRule unknownAtRule) {
+                throw unsupportedAtRule(unknownAtRule);
             } else {
                 throw unsupported(child, "top-level CSS node");
             }
@@ -427,6 +430,9 @@ public final class BssSerializer {
 
     /// Collects declarations from one style rule.
     ///
+    /// Nested style rules, conditionals, and opaque at-rules are rejected. BSS
+    /// encodes only a flat list of selectors and declarations.
+    ///
     /// @param rule the CSS style rule
     /// @return a binary-ready rule, or {@code null} when comments are its only content
     private static @Nullable BssRule collectRule(CssStyleRule rule) {
@@ -443,6 +449,26 @@ public final class BssSerializer {
                 );
             } else if (child instanceof CssDeclaration declaration) {
                 declarations.add(declaration);
+            } else if (child instanceof CssStyleRule nested) {
+                throw new BssSerializeException(
+                        "BSS output doesn't support nested style rules.",
+                        nested.span(),
+                        null
+                );
+            } else if (child instanceof CssMediaRule mediaRule) {
+                throw new BssSerializeException(
+                        "BSS output doesn't support @media rules.",
+                        mediaRule.span(),
+                        null
+                );
+            } else if (child instanceof CssSupportsRule supportsRule) {
+                throw new BssSerializeException(
+                        "BSS output doesn't support @supports rules.",
+                        supportsRule.span(),
+                        null
+                );
+            } else if (child instanceof CssUnknownAtRule unknownAtRule) {
+                throw unsupportedAtRule(unknownAtRule);
             } else {
                 throw unsupported(child, "nested CSS node");
             }
@@ -3767,6 +3793,18 @@ public final class BssSerializer {
         return new BssSerializeException(
                 "BSS output doesn't support this " + position + ".",
                 node.span(),
+                null
+        );
+    }
+
+    /// Creates a serialization failure for an opaque at-rule.
+    ///
+    /// @param rule the unsupported at-rule
+    /// @return the serialization failure
+    private static BssSerializeException unsupportedAtRule(CssUnknownAtRule rule) {
+        return new BssSerializeException(
+                "BSS output doesn't support @" + rule.name() + " rules.",
+                rule.span(),
                 null
         );
     }

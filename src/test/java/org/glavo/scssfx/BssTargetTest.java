@@ -680,6 +680,76 @@ final class BssTargetTest {
         );
     }
 
+    /// Rejects nested style rules retained by plain CSS nesting.
+    @Test
+    void rejectsNestedStyleRules() {
+        var failure = assertThrows(
+                SassCompilationException.class,
+                () -> new SassCompiler().compile(
+                        SassSource.fromString(
+                                """
+                                        .parent {
+                                          .child { -fx-opacity: 0.5; }
+                                        }
+                                        """,
+                                Syntax.CSS
+                        ),
+                        BssTarget.DEFAULT
+                )
+        );
+
+        assertEquals(
+                "BSS output doesn't support nested style rules.",
+                failure.getMessage()
+        );
+    }
+
+    /// Rejects opaque at-rules that have no BSS encoding.
+    @Test
+    void rejectsUnknownAtRules() {
+        var failure = assertThrows(
+                SassCompilationException.class,
+                () -> new SassCompiler().compile(
+                        SassSource.fromString(
+                                "@keyframes pulse { from { -fx-opacity: 0; } }",
+                                Syntax.SCSS
+                        ),
+                        BssTarget.DEFAULT
+                )
+        );
+
+        assertEquals(
+                "BSS output doesn't support @keyframes rules.",
+                failure.getMessage()
+        );
+    }
+
+    /// Rejects media rules that bubble to the stylesheet root.
+    @Test
+    void rejectsMediaRules() {
+        var failure = assertThrows(
+                SassCompilationException.class,
+                () -> new SassCompiler().compile(
+                        SassSource.fromString(
+                                """
+                                        .button {
+                                          @media screen {
+                                            -fx-opacity: 0.5;
+                                          }
+                                        }
+                                        """,
+                                Syntax.SCSS
+                        ),
+                        BssTarget.DEFAULT
+                )
+        );
+
+        assertEquals(
+                "BSS output doesn't support @media rules.",
+                failure.getMessage()
+        );
+    }
+
     /// Copies all remaining output bytes without changing the supplied buffer's position.
     ///
     /// @param buffer the binary output buffer

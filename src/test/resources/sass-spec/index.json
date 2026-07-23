@@ -167,6 +167,12 @@
           "action": "run",
           "category": "CSS",
           "loadedUrls": ["input.css"]
+        },
+        {
+          "directory": "modules/pre-module-comments",
+          "action": "run",
+          "category": "MODULES",
+          "loadedUrls": ["input.scss", "_theme.css"]
         }
       ]
     }

@@ -962,6 +962,42 @@ final class SassCompilerTest {
         );
     }
 
+    /// Serializes plain-CSS nesting through the JavaFX textual CSS target.
+    @Test
+    void serializesNativeCssNestingForJavaFxCss() throws Exception {
+        var result = new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                .parent {
+                                  color: blue;
+                                  .child {
+                                    color: red;
+                                  }
+                                  &:hover {
+                                    color: green;
+                                  }
+                                }
+                                """,
+                        Syntax.CSS
+                ),
+                JavaFXCssTarget.DEFAULT
+        );
+
+        assertEquals(
+                """
+                        .parent {
+                          color: blue;
+                          .child {
+                            color: red;
+                          }
+                          &:hover {
+                            color: green;
+                          }
+                        }""",
+                result.output()
+        );
+    }
+
     /// Keeps unknown at-rules nested once native CSS nesting is already active.
     @Test
     void retainsUnknownAtRulesUnderNativeCssNesting() throws Exception {
