@@ -48,6 +48,7 @@ import org.glavo.scssfx.internal.ast.StringExpression;
 import org.glavo.scssfx.internal.ast.StyleRule;
 import org.glavo.scssfx.internal.ast.StaticImport;
 import org.glavo.scssfx.internal.ast.Stylesheet;
+import org.glavo.scssfx.internal.ast.AtRootRule;
 import org.glavo.scssfx.internal.ast.ExtendRule;
 import org.glavo.scssfx.internal.ast.UnknownAtRule;
 import org.glavo.scssfx.internal.ast.VariableDeclaration;
@@ -518,16 +519,86 @@ final class ScssParser extends SassExpressionParser {
                     start.position(),
                     scanner.position() - start.position()
             );
-            case "at-root" -> throw scanner.error(
-                    context == StatementContext.ROOT
-                            ? "This stylesheet statement is not available."
-                            : "This block statement is not available.",
-                    start.position(),
-                    scanner.position() - start.position()
-            );
+            case "at-root" -> atRootRule(start);
             case "extend" -> extendRule(start, context);
             default -> unknownAtRule(start, name);
         };
+    }
+
+    /// Parses an {@code @at-root} rule.
+    ///
+    /// Supports a parenthesized query, a braced child block, or a trailing style
+    /// rule used as the sole child.
+    ///
+    /// @param start the scanner state at the leading {@code @}
+    /// @return the at-root rule
+    private AtRootRule atRootRule(ScannerState start) {
+        whitespace(false);
+        @Nullable Interpolation query = null;
+        ArrayList<SassStatement> children;
+        if (scanner.peek() == '(') {
+            query = atRootQuery();
+            whitespace(false);
+            children = statementBlock(StatementContext.STYLE_RULE);
+        } else if (scanner.peek() == '{') {
+            children = statementBlock(StatementContext.STYLE_RULE);
+        } else {
+            children = new ArrayList<>();
+            children.add(styleRule());
+        }
+        var span = scanner.spanFrom(start);
+        whitespaceWithoutComments(false);
+        return new AtRootRule(query, children, span);
+    }
+
+    /// Parses the parenthesized query of an {@code @at-root} rule.
+    ///
+    /// @return the unevaluated query interpolation
+    private Interpolation atRootQuery() {
+        var start = scanner.state();
+        var buffer = new InterpolationBuffer();
+        scanner.expect('(');
+        buffer.append('(');
+        var depth = 1;
+        while (depth > 0) {
+            var next = scanner.peek();
+            switch (next) {
+                case CssCharacters.END_OF_INPUT -> throw scanner.error("Expected \")\".");
+                case '\\' -> {
+                    buffer.append((char) scanner.read());
+                    buffer.append((char) scanner.read());
+                }
+                case '\'', '"' -> buffer.add(interpolatedStringToken());
+                case '#' -> {
+                    if (scanner.peek(1) == '{') {
+                        buffer.add(interpolatedIdentifier());
+                    } else {
+                        buffer.append((char) scanner.read());
+                    }
+                }
+                case '(' -> {
+                    depth++;
+                    buffer.append((char) scanner.read());
+                }
+                case ')' -> {
+                    depth--;
+                    if (depth == 0) {
+                        scanner.read();
+                        buffer.append(')');
+                    } else {
+                        buffer.append((char) scanner.read());
+                    }
+                }
+                default -> {
+                    if (lookingAtIdentifier()) {
+                        buffer.append(identifier(false, false));
+                    } else {
+                        buffer.append((char) scanner.read());
+                    }
+                }
+            }
+        }
+        return buffer.interpolation(scanner.spanFrom(start));
     }
 
     /// Parses an {@code @extend} rule.

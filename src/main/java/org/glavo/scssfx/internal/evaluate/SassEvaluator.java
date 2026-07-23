@@ -14,6 +14,8 @@ import org.glavo.scssfx.internal.ast.DynamicImport;
 import org.glavo.scssfx.internal.ast.EachRule;
 import org.glavo.scssfx.internal.ast.ElseClause;
 import org.glavo.scssfx.internal.ast.ErrorRule;
+import org.glavo.scssfx.internal.ast.AtRootQuery;
+import org.glavo.scssfx.internal.ast.AtRootRule;
 import org.glavo.scssfx.internal.ast.ExtendRule;
 import org.glavo.scssfx.internal.ast.ExpressionInterpolationPart;
 import org.glavo.scssfx.internal.ast.ForRule;
@@ -178,6 +180,12 @@ public final class SassEvaluator implements
 
     /// Contains the innermost active style rule, or {@code null} outside rules.
     private @Nullable CssStyleRule styleRule;
+
+    /// Contains the nearest style rule ignoring `@at-root` exclusion, or {@code null}.
+    private @Nullable CssStyleRule styleRuleForParent;
+
+    /// Records whether the active `@at-root` query excludes style-rule parents.
+    private boolean atRootExcludingStyleRule;
 
     /// Contains the active font-face rule, or {@code null} outside one.
     private @Nullable CssFontFace fontFace;
@@ -436,6 +444,8 @@ public final class SassEvaluator implements
         var previousCss = cssStylesheet;
         var previousParent = cssParent;
         var previousStyleRule = styleRule;
+        var previousStyleRuleForParent = styleRuleForParent;
+        var previousAtRootExcludingStyleRule = atRootExcludingStyleRule;
         var previousFontFace = fontFace;
         var previousMediaQueries = mediaQueries;
         var previousMediaQuerySources = mediaQuerySources;
@@ -454,6 +464,8 @@ public final class SassEvaluator implements
         cssStylesheet = new CssStylesheet(stylesheet.span());
         cssParent = cssStylesheet;
         styleRule = null;
+        styleRuleForParent = null;
+        atRootExcludingStyleRule = false;
         fontFace = null;
         mediaQueries = null;
         mediaQuerySources = null;
@@ -508,6 +520,8 @@ public final class SassEvaluator implements
             cssStylesheet = previousCss;
             cssParent = previousParent;
             styleRule = previousStyleRule;
+            styleRuleForParent = previousStyleRuleForParent;
+            atRootExcludingStyleRule = previousAtRootExcludingStyleRule;
             fontFace = previousFontFace;
             mediaQueries = previousMediaQueries;
             mediaQuerySources = previousMediaQuerySources;
@@ -532,6 +546,8 @@ public final class SassEvaluator implements
                 cssStylesheet = previousCss;
                 cssParent = previousParent;
                 styleRule = previousStyleRule;
+                styleRuleForParent = previousStyleRuleForParent;
+                atRootExcludingStyleRule = previousAtRootExcludingStyleRule;
                 fontFace = previousFontFace;
                 mediaQueries = previousMediaQueries;
                 mediaQuerySources = previousMediaQuerySources;
@@ -1273,17 +1289,20 @@ public final class SassEvaluator implements
             return StatementResult.CONTINUE;
         }
 
+        @Nullable CssStyleRule effectiveStyleRule =
+                atRootExcludingStyleRule ? null : styleRule;
         boolean merge;
-        if (styleRule == null) {
+        if (effectiveStyleRule == null) {
             merge = true;
-        } else if (styleRule.fromPlainCss()) {
+        } else if (effectiveStyleRule.fromPlainCss()) {
             merge = false;
         } else {
             merge = !(isPlainCss() && parsed.containsParentSelector());
         }
 
         @Nullable SelectorList parentSelector =
-                styleRule == null ? null : styleRule.selector().value();
+                styleRuleForParent == null ? null : styleRuleForParent.selector().value();
+        boolean implicitParent = !atRootExcludingStyleRule;
         SelectorList nestedSelector;
         try {
             if (!merge) {
@@ -1291,7 +1310,7 @@ public final class SassEvaluator implements
             } else if (isPlainCss() && parentSelector == null) {
                 nestedSelector = parsed;
             } else {
-                nestedSelector = parsed.nestWithin(parentSelector);
+                nestedSelector = parsed.nestWithin(parentSelector, implicitParent);
             }
         } catch (SassValueException cause) {
             throw new EvaluationException(
@@ -1313,8 +1332,12 @@ public final class SassEvaluator implements
 
         var previousParent = requireCssParent();
         var previousStyleRule = styleRule;
+        var previousStyleRuleForParent = styleRuleForParent;
+        var previousAtRootExcludingStyleRule = atRootExcludingStyleRule;
         cssParent = rule;
         styleRule = rule;
+        styleRuleForParent = rule;
+        atRootExcludingStyleRule = false;
         styleRuleDepth++;
         var scope = environment.scope(
                 ScopeSemantics.LEXICAL,
@@ -1330,6 +1353,8 @@ public final class SassEvaluator implements
             } finally {
                 styleRuleDepth--;
                 styleRule = previousStyleRule;
+                styleRuleForParent = previousStyleRuleForParent;
+                atRootExcludingStyleRule = previousAtRootExcludingStyleRule;
                 cssParent = previousParent;
             }
         }
@@ -1369,8 +1394,97 @@ public final class SassEvaluator implements
                 styleRule.selector().value(),
                 target,
                 statement.optional(),
+                mediaQueries,
                 statement.span()
         ));
+        return StatementResult.CONTINUE;
+    }
+
+    /// Evaluates an {@code @at-root} rule under a trimmed CSS parent path.
+    ///
+    /// @param statement the at-root rule
+    /// @return the continue result
+    @Override
+    public StatementResult visitAtRootRule(AtRootRule statement) {
+        AtRootQuery query;
+        try {
+            query = statement.query() == null
+                    ? AtRootQuery.DEFAULT
+                    : AtRootQuery.parse(performInterpolation(statement.query()).strip());
+        } catch (SassValueException cause) {
+            throw new EvaluationException(
+                    Objects.requireNonNull(cause.getMessage(), "at-root query failure"),
+                    statement.query() == null ? statement.span() : statement.query().span(),
+                    List.of(),
+                    cause
+            );
+        }
+
+        var included = new ArrayList<CssParentNode>();
+        var current = requireCssParent();
+        while (true) {
+            if (!query.excludes(current)) {
+                included.add(current);
+            }
+            @Nullable CssParentNode parent = current.parent();
+            if (parent == null) {
+                break;
+            }
+            current = parent;
+        }
+
+        var previousParent = requireCssParent();
+        var previousStyleRule = styleRule;
+        var previousAtRootExcludingStyleRule = atRootExcludingStyleRule;
+        var previousMediaQueries = mediaQueries;
+        var previousMediaQuerySources = mediaQuerySources;
+        var previousInKeyframes = inKeyframes;
+
+        CssParentNode root;
+        if (included.isEmpty()) {
+            root = Objects.requireNonNull(cssStylesheet, "css");
+        } else {
+            root = included.get(included.size() - 1);
+            for (var index = included.size() - 2; index >= 0; index--) {
+                var copy = included.get(index).copyWithoutChildren();
+                root.addChild(copy);
+                root = copy;
+            }
+        }
+
+        cssParent = root;
+        if (query.excludesStyleRules()) {
+            atRootExcludingStyleRule = true;
+            styleRule = null;
+        }
+        if (query.excludesName("media")) {
+            mediaQueries = null;
+            mediaQuerySources = null;
+        }
+        if (query.excludesName("keyframes")) {
+            inKeyframes = false;
+        }
+
+        var scope = environment.scope(
+                ScopeSemantics.LEXICAL,
+                hasDirectDeclarations(statement.children())
+        );
+        try {
+            for (var child : statement.children()) {
+                child.accept(this);
+            }
+        } finally {
+            try {
+                scope.close();
+            } finally {
+                cssParent = previousParent;
+                styleRule = previousStyleRule;
+                atRootExcludingStyleRule = previousAtRootExcludingStyleRule;
+                mediaQueries = previousMediaQueries;
+                mediaQuerySources = previousMediaQuerySources;
+                inKeyframes = previousInKeyframes;
+            }
+        }
         return StatementResult.CONTINUE;
     }
 
@@ -1382,52 +1496,16 @@ public final class SassEvaluator implements
         for (var extension : pendingExtensions) {
             var matched = false;
             for (var rule : extendableStyleRules) {
-                var before = rule.selector().value();
-                SelectorList after;
-                try {
-                    after = SelectorAlgebra.extend(
-                            before,
-                            extension.target(),
-                            extension.extender()
-                    );
-                } catch (SassValueException cause) {
-                    throw new EvaluationException(
-                            Objects.requireNonNull(cause.getMessage(), "extend failure message"),
-                            extension.span(),
-                            List.of(),
-                            cause
-                    );
-                }
-                if (!selectorCssEquals(before, after)) {
-                    matched = true;
-                    rule.setSelector(new CssValue<>(after, rule.selector().span()));
-                }
+                matched |= applyExtensionToRule(extension, rule, true);
             }
             // Fixed-point for extension chains introduced by earlier matches.
             var changed = true;
             while (changed) {
                 changed = false;
                 for (var rule : extendableStyleRules) {
-                    var before = rule.selector().value();
-                    SelectorList after;
-                    try {
-                        after = SelectorAlgebra.extend(
-                                before,
-                                extension.target(),
-                                extension.extender()
-                        );
-                    } catch (SassValueException cause) {
-                        throw new EvaluationException(
-                                Objects.requireNonNull(cause.getMessage(), "extend failure message"),
-                                extension.span(),
-                                List.of(),
-                                cause
-                        );
-                    }
-                    if (!selectorCssEquals(before, after)) {
+                    if (applyExtensionToRule(extension, rule, false)) {
                         matched = true;
                         changed = true;
-                        rule.setSelector(new CssValue<>(after, rule.selector().span()));
                     }
                 }
             }
@@ -1446,6 +1524,82 @@ public final class SassEvaluator implements
                 rule.setSelector(new CssValue<>(stripped, rule.selector().span()));
             }
         }
+    }
+
+    /// Applies one extension to one style rule when media contexts allow it.
+    ///
+    /// @param extension     the pending extension
+    /// @param rule          the candidate style rule
+    /// @param rejectCrossMedia whether a cross-media match should error
+    /// @return whether the rule selector changed
+    private boolean applyExtensionToRule(
+            PendingExtension extension,
+            CssStyleRule rule,
+            boolean rejectCrossMedia
+    ) {
+        var before = rule.selector().value();
+        SelectorList after;
+        try {
+            after = SelectorAlgebra.extend(
+                    before,
+                    extension.target(),
+                    extension.extender()
+            );
+        } catch (SassValueException cause) {
+            throw new EvaluationException(
+                    Objects.requireNonNull(cause.getMessage(), "extend failure message"),
+                    extension.span(),
+                    List.of(),
+                    cause
+            );
+        }
+        if (selectorCssEquals(before, after)) {
+            return false;
+        }
+        if (!mediaContextsCompatible(extension.mediaContext(), mediaContextOf(rule))) {
+            if (rejectCrossMedia) {
+                throw new EvaluationException(
+                        "You may not @extend selectors across media queries.",
+                        extension.span()
+                );
+            }
+            return false;
+        }
+        rule.setSelector(new CssValue<>(after, rule.selector().span()));
+        return true;
+    }
+
+    /// Returns the innermost media-query list enclosing a style rule.
+    ///
+    /// @param rule the style rule
+    /// @return the enclosing media queries, or {@code null}
+    private static @Nullable List<CssMediaQuery> mediaContextOf(CssStyleRule rule) {
+        @Nullable CssParentNode current = rule.parent();
+        while (current != null) {
+            if (current instanceof CssMediaRule mediaRule) {
+                return mediaRule.queries();
+            }
+            current = current.parent();
+        }
+        return null;
+    }
+
+    /// Returns whether two media contexts may exchange extensions.
+    ///
+    /// @param left  the first context, or {@code null} outside media
+    /// @param right the second context, or {@code null} outside media
+    /// @return whether the contexts are compatible
+    private static boolean mediaContextsCompatible(
+            @Nullable List<CssMediaQuery> left,
+            @Nullable List<CssMediaQuery> right
+    ) {
+        if (left == null && right == null) {
+            return true;
+        }
+        if (left == null || right == null) {
+            return false;
+        }
+        return left.equals(right);
     }
 
     /// Returns whether two selector lists serialize identically.
@@ -2740,22 +2894,25 @@ public final class SassEvaluator implements
 
     /// Injects one style rule, nesting selectors into the active style rule when present.
     private void injectStyleRule(CssStyleRule rule) {
+        @Nullable CssStyleRule effectiveStyleRule =
+                atRootExcludingStyleRule ? null : styleRule;
         boolean merge;
-        if (styleRule == null) {
+        if (effectiveStyleRule == null) {
             merge = true;
-        } else if (styleRule.fromPlainCss()) {
+        } else if (effectiveStyleRule.fromPlainCss()) {
             merge = false;
         } else {
             merge = true;
         }
+        @Nullable SelectorList parentSelector =
+                styleRuleForParent == null ? null : styleRuleForParent.selector().value();
+        boolean implicitParent = !atRootExcludingStyleRule;
         SelectorList nestedSelector;
         try {
             if (!merge) {
                 nestedSelector = rule.selector().value();
-            } else if (styleRule == null) {
-                nestedSelector = rule.selector().value();
             } else {
-                nestedSelector = rule.selector().value().nestWithin(styleRule.selector().value());
+                nestedSelector = rule.selector().value().nestWithin(parentSelector, implicitParent);
             }
         } catch (SassValueException cause) {
             throw new EvaluationException(
@@ -2771,10 +2928,17 @@ public final class SassEvaluator implements
                 rule.fromPlainCss()
         );
         addCssChild(injected, merge);
+        if (!isPlainCss()) {
+            extendableStyleRules.add(injected);
+        }
         var previousParent = requireCssParent();
         var previousStyleRule = styleRule;
+        var previousStyleRuleForParent = styleRuleForParent;
+        var previousAtRootExcludingStyleRule = atRootExcludingStyleRule;
         cssParent = injected;
         styleRule = injected;
+        styleRuleForParent = injected;
+        atRootExcludingStyleRule = false;
         styleRuleDepth++;
         try {
             for (var child : rule.children()) {
@@ -2783,6 +2947,8 @@ public final class SassEvaluator implements
         } finally {
             styleRuleDepth--;
             styleRule = previousStyleRule;
+            styleRuleForParent = previousStyleRuleForParent;
+            atRootExcludingStyleRule = previousAtRootExcludingStyleRule;
             cssParent = previousParent;
         }
         if (previousStyleRule == null && !previousParent.children().isEmpty()) {

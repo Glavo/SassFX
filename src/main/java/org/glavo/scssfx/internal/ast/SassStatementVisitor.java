@@ -165,4 +165,10 @@ public interface SassStatementVisitor<R> {
     /// @param statement the statement to visit
     /// @return the visit result
     R visitExtendRule(ExtendRule statement);
+
+    /// Visits an `@at-root` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitAtRootRule(AtRootRule statement);
 }

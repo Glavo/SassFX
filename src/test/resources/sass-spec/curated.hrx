@@ -723,3 +723,29 @@ body.dark code {
 .btn {
   color: red;
 }
+<===> at-root/default/input.scss
+.a {
+  color: red;
+  @at-root {
+    .b { color: blue; }
+  }
+}
+<===> at-root/default/output.css
+.a {
+  color: red;
+}
+.b {
+  color: blue;
+}
+<===> at-root/without-media/input.scss
+@media screen {
+  .a {
+    @at-root (without: media) {
+      .b { color: blue; }
+    }
+  }
+}
+<===> at-root/without-media/output.css
+.a .b {
+  color: blue;
+}

@@ -122,23 +122,46 @@ public record SelectorList(
 
     /// Nests this selector list within an optional parent selector list.
     ///
+    /// Implicit parent concatenation is enabled.
+    ///
     /// @param parent the resolved parent selectors, or {@code null} at the root
     /// @return the nested selector list
     /// @throws SassValueException if nesting is invalid
     public SelectorList nestWithin(@Nullable SelectorList parent) {
+        return nestWithin(parent, true);
+    }
+
+    /// Nests this selector list within an optional parent selector list.
+    ///
+    /// When {@code implicitParent} is {@code false}, complexes without an
+    /// explicit parent reference are left unchanged. Explicit {@code &}
+    /// references still resolve against {@code parent} when it is non-null.
+    ///
+    /// @param parent         the resolved parent selectors, or {@code null} at the root
+    /// @param implicitParent whether parentless complexes should append to {@code parent}
+    /// @return the nested selector list
+    /// @throws SassValueException if nesting is invalid
+    public SelectorList nestWithin(
+            @Nullable SelectorList parent,
+            boolean implicitParent
+    ) {
         if (hasUnresolvedParentReference()) {
             throw unresolvedParentReference();
         }
         if (parent == null) {
             if (containsParentSelector()) {
                 throw new SassValueException("Top-level parent selectors aren't allowed.");
-                }
+            }
             return this;
         }
 
         var result = new ArrayList<ComplexSelector>();
         for (var child : components) {
-            result.addAll(nestComplex(parent, child));
+            if (!implicitParent && !child.containsParentSelector()) {
+                result.add(child);
+            } else {
+                result.addAll(nestComplex(parent, child));
+            }
         }
         return new SelectorList(result, span);
     }
