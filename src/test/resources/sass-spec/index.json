@@ -89,6 +89,18 @@
           "action": "run",
           "category": "SYNTAX",
           "loadedUrls": ["input.sass"]
+        },
+        {
+          "directory": "syntax/indented-multiline",
+          "action": "run",
+          "category": "SYNTAX",
+          "loadedUrls": ["input.sass"]
+        },
+        {
+          "directory": "syntax/indented-advanced",
+          "action": "run",
+          "category": "SYNTAX",
+          "loadedUrls": ["input.sass"]
         }
       ]
     }

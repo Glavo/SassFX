@@ -338,6 +338,185 @@ final class SassCompilerTest {
         );
     }
 
+    /// Compiles multiline parenthesized values and comma-separated selector lists.
+    @Test
+    void compilesMultilineIndentedValuesAndSelectors() throws Exception {
+        var result = new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                $spacing: (
+                                  small: 4px,
+                                  large: 8px
+                                )
+                                .item,
+                                .other
+                                  padding: (
+                                    1px 2px
+                                  )
+                                  margin: map-get($spacing, small)
+                                """,
+                        Syntax.SASS
+                ),
+                CssTarget.DEFAULT
+        );
+
+        assertEquals(
+                """
+                        .item, .other {
+                          padding: 1px 2px;
+                          margin: 4px;
+                        }""",
+                result.output()
+        );
+    }
+
+    /// Compiles multiline selector interpolation and preserves loud comments.
+    @Test
+    void compilesIndentedInterpolationAndComments() throws Exception {
+        var result = new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                $item: item
+                                $property: color
+                                .#{
+                                  $item
+                                }
+                                  // ignored
+                                  #{$property}: red
+                                  /* loud
+                                     note */
+                                """,
+                        Syntax.SASS
+                ),
+                CssTarget.DEFAULT
+        );
+
+        assertEquals(
+                """
+                        .item {
+                          color: red;
+                          /* loud
+                             note */
+                        }""",
+                result.output()
+        );
+    }
+    /// Compiles escaped cross-line strings and interpolation expressions.
+    @Test
+    void compilesIndentedCrossLineStringsAndInterpolation() throws Exception {
+        var source = String.join(
+                "\n",
+                "$item: item",
+                ".item",
+                "  content: \"prefix \\",
+                "    #{",
+                "      $item",
+                "    }\""
+        );
+        var result = new SassCompiler().compile(
+                SassSource.fromString(source, Syntax.SASS),
+                CssTarget.DEFAULT
+        );
+
+        assertEquals(
+                """
+                        .item {
+                          content: "prefix item";
+                        }""",
+                result.output()
+        );
+    }
+    /// Treats more-indented and same-level silent-comment lines as one comment.
+    @Test
+    void compilesIndentedSilentCommentContinuation() throws Exception {
+        var result = new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                .item
+                                  // first line
+                                    more detail
+                                  // second line
+                                  color: red
+                                """,
+                        Syntax.SASS
+                ),
+                CssTarget.DEFAULT
+        );
+
+        assertEquals(
+                """
+                        .item {
+                          color: red;
+                        }""",
+                result.output()
+        );
+    }
+
+    /// Rejects malformed cross-line strings and mismatched delimiters before SCSS parsing.
+    @Test
+    void rejectsMalformedIndentedContinuations() {
+        var quoteFailure = assertThrows(
+                SassCompilationException.class,
+                () -> new SassCompiler().compile(
+                        SassSource.fromString(
+                                ".item\n  content: \\\"unterminated\n",
+                                Syntax.SASS
+                        ),
+                        CssTarget.DEFAULT
+                )
+        );
+        assertEquals("Expected closing quote.", quoteFailure.getMessage());
+        assertEquals(
+                "  content: \\\"unterminated",
+                Objects.requireNonNull(quoteFailure.primaryDiagnostic().span()).text()
+        );
+
+        var delimiterFailure = assertThrows(
+                SassCompilationException.class,
+                () -> new SassCompiler().compile(
+                        SassSource.fromString(
+                                ".item\n  padding: (1px]\n",
+                                Syntax.SASS
+                        ),
+                        CssTarget.DEFAULT
+                )
+        );
+        assertEquals("Mismatched closing delimiter.", delimiterFailure.getMessage());
+    }
+    /// Compiles a tab-indented child without dropping its first character.
+    @Test
+    void compilesTabIndentedSass() throws Exception {
+        var result = new SassCompiler().compile(
+                SassSource.fromString(".item\n\tcolor: red\n", Syntax.SASS),
+                CssTarget.DEFAULT
+        );
+
+        assertEquals(
+                """
+                        .item {
+                          color: red;
+                        }""",
+                result.output()
+        );
+    }
+
+    /// Rejects inconsistent child indentation in indented Sass.
+    @Test
+    void rejectsInconsistentIndentedSass() {
+        var failure = assertThrows(
+                SassCompilationException.class,
+                () -> new SassCompiler().compile(
+                        SassSource.fromString(
+                                ".item\n  .first\n    color: red\n   .second\n     color: blue\n",
+                                Syntax.SASS
+                        ),
+                        CssTarget.DEFAULT
+                )
+        );
+
+        assertEquals("Inconsistent indentation; expected 4 columns.", failure.getMessage());
+    }
+
     /// Compiles media rules for standard and JavaFX textual CSS targets.
     @Test
     void compilesMediaRulesForCssAndJavaFxCssTargets() throws Exception {

@@ -335,3 +335,35 @@ Error: Undefined variable.
 .item {
   color: red;
 }
+<===> syntax/indented-multiline/input.sass
+$spacing: (
+  small: 4px,
+  large: 8px
+)
+.item,
+.other
+  padding: (
+    1px 2px
+  )
+  margin: map-get($spacing, small)
+<===> syntax/indented-multiline/output.css
+.item, .other {
+  padding: 1px 2px;
+  margin: 4px;
+}
+<===> syntax/indented-advanced/input.sass
+$item: item
+.item
+  content: "prefix \
+    #{
+      $item
+    }"
+  // first line
+    more detail
+  // second line
+  color: red
+<===> syntax/indented-advanced/output.css
+.item {
+  content: "prefix item";
+  color: red;
+}
