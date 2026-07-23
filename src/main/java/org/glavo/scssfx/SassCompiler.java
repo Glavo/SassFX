@@ -69,9 +69,9 @@ public final class SassCompiler {
         Objects.requireNonNull(target, "target");
         Objects.requireNonNull(options, "options");
 
-        if (options.sourceMap()) {
+        if (options.sourceMap() && target instanceof BssTarget) {
             throw compilationFailure(
-                    "Source map generation isn't supported.",
+                    "Source map generation isn't supported for BSS output.",
                     null
             );
         }
@@ -83,10 +83,23 @@ public final class SassCompiler {
             var stylesheet = StylesheetParser.parse(loaded.file(), loaded.syntax());
             var root = evaluator.executeRoot(stylesheet, loaded.file().url());
             T output;
+            org.glavo.scssfx.SourceMap sourceMap = null;
             if (target instanceof CssTarget cssTarget) {
-                output = (T) CssSerializer.serialize(root.css(), cssTarget);
+                var serialized = CssSerializer.serialize(
+                        root.css(),
+                        cssTarget,
+                        options.sourceMap()
+                );
+                output = (T) serialized.css();
+                sourceMap = serialized.sourceMap();
             } else if (target instanceof JavaFXCssTarget javaFXCssTarget) {
-                output = (T) CssSerializer.serialize(root.css(), javaFXCssTarget);
+                var serialized = CssSerializer.serialize(
+                        root.css(),
+                        javaFXCssTarget,
+                        options.sourceMap()
+                );
+                output = (T) serialized.css();
+                sourceMap = serialized.sourceMap();
             } else if (target instanceof BssTarget bssTarget) {
                 output = (T) BssSerializer.serialize(root.css(), bssTarget);
             } else {
@@ -96,7 +109,7 @@ public final class SassCompiler {
             urls.addAll(loaded.loadedUrls());
             return new CompileResult<>(
                     output,
-                    null,
+                    sourceMap,
                     urls,
                     evaluator.diagnostics()
             );

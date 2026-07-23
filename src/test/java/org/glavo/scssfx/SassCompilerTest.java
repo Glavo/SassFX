@@ -1076,19 +1076,33 @@ final class SassCompilerTest {
         );
     }
 
-    /// Rejects unsupported source-map generation.
+    /// Generates a version-3 source map for CSS output and rejects BSS maps.
     @Test
-    void rejectsUnsupportedOptions() {
+    void generatesSourceMapsForCssAndRejectsBssMaps() throws Exception {
         var compiler = new SassCompiler();
         var source = SassSource.fromString("a { color: red; }", Syntax.SCSS);
+        var result = compiler.compile(
+                source,
+                CssTarget.DEFAULT,
+                new CompileOptions(true, java.util.List.of())
+        );
+        assertEquals(
+                """
+                        a {
+                          color: red;
+                        }""",
+                result.output()
+        );
+        assertEquals(true, result.sourceMap() != null);
+        assertTrue(result.sourceMap().json().contains("\"version\":3"));
 
         assertEquals(
-                "Source map generation isn't supported.",
+                "Source map generation isn't supported for BSS output.",
                 assertThrows(
                         SassCompilationException.class,
                         () -> compiler.compile(
                                 source,
-                                CssTarget.DEFAULT,
+                                BssTarget.DEFAULT,
                                 new CompileOptions(true, java.util.List.of())
                         )
                 ).getMessage()
