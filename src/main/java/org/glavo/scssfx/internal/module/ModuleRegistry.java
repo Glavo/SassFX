@@ -5,6 +5,7 @@ import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.ast.Stylesheet;
 import org.glavo.scssfx.internal.evaluate.EvaluationException;
 import org.glavo.scssfx.internal.evaluate.SassEvaluator;
+import org.glavo.scssfx.internal.parse.ParseException;
 import org.glavo.scssfx.internal.parse.StylesheetParser;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -21,7 +22,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-/// Loads and caches modules once per canonical URL for one compilation.
+/// Loads modules and legacy imports for one compilation.
 @ApiStatus.Internal
 @NotNullByDefault
 public final class ModuleRegistry {
@@ -38,11 +39,14 @@ public final class ModuleRegistry {
     private final LinkedHashMap<URI, ModuleConfiguration> loadedConfigurations =
             new LinkedHashMap<>();
 
-    /// Contains modules currently being loaded, for cycle detection.
+    /// Contains stylesheets currently being loaded, for cycle detection.
     private final LinkedHashMap<URI, SourceSpan> active = new LinkedHashMap<>();
 
     /// Contains every canonical URL loaded during compilation.
     private final LinkedHashSet<URI> loadedUrls = new LinkedHashSet<>();
+
+    /// Contains parsed legacy-import stylesheets keyed by canonical URL.
+    private final LinkedHashMap<URI, Stylesheet> parsedImports = new LinkedHashMap<>();
 
     /// Creates a registry.
     ///
@@ -143,12 +147,88 @@ public final class ModuleRegistry {
         }
     }
 
-    /// Records a root stylesheet URL as loaded.
+    /// Loads and executes a legacy Sass import in the caller's environment.
+    ///
+    /// Parsed syntax trees are cached, but evaluation is repeated for every
+    /// import occurrence. The active-load table is shared with module loading
+    /// so mixed `@use` and `@import` cycles are rejected.
+    ///
+    /// @param url       the unresolved import URL
+    /// @param baseUrl   the containing stylesheet URL, or {@code null}
+    /// @param loadSpan  the dynamic import URL span
+    /// @param evaluator the evaluator receiving imported statements
+    /// @throws EvaluationException if resolution, parsing, or evaluation fails
+    public void loadImport(
+            String url,
+            @Nullable URI baseUrl,
+            SourceSpan loadSpan,
+            SassEvaluator evaluator
+    ) {
+        Objects.requireNonNull(url, "url");
+        Objects.requireNonNull(loadSpan, "loadSpan");
+        Objects.requireNonNull(evaluator, "evaluator");
+
+        ImportResult imported;
+        try {
+            imported = importer.canonicalizeAndLoadImport(url, baseUrl);
+        } catch (IOException | IllegalStateException failure) {
+            throw new EvaluationException(
+                    Objects.requireNonNullElse(
+                            failure.getMessage(),
+                            "Can't find stylesheet to import."
+                    ),
+                    loadSpan,
+                    List.of(),
+                    failure
+            );
+        }
+        if (imported == null) {
+            throw new EvaluationException("Can't find stylesheet to import.", loadSpan);
+        }
+
+        var canonical = imported.canonicalUrl();
+        loadedUrls.add(canonical);
+        if (active.containsKey(canonical)) {
+            throw new EvaluationException(
+                    "This file is already being loaded.",
+                    loadSpan
+            );
+        }
+
+        active.put(canonical, loadSpan);
+        try {
+            @Nullable Stylesheet cached = parsedImports.get(canonical);
+            Stylesheet stylesheet;
+            try {
+                stylesheet = cached == null
+                        ? StylesheetParser.parse(imported.source(), imported.syntax())
+                        : cached;
+            } catch (ParseException failure) {
+                throw new EvaluationException(
+                        Objects.requireNonNull(failure.getMessage(), "parse failure message"),
+                        failure.span(),
+                        List.of(),
+                        failure
+                );
+            }
+            if (cached == null) {
+                parsedImports.put(canonical, stylesheet);
+            }
+            evaluator.executeLegacyImport(stylesheet, canonical);
+        } finally {
+            active.remove(canonical);
+        }
+    }
+
+    /// Records a root stylesheet URL as loaded and active.
     ///
     /// @param url the root canonical URL, or {@code null}
-    public void recordRoot(@Nullable URI url) {
+    /// @param span the root stylesheet span
+    public void recordRoot(@Nullable URI url, SourceSpan span) {
+        Objects.requireNonNull(span, "span");
         if (url != null) {
             loadedUrls.add(url);
+            active.put(url, span);
         }
     }
 

@@ -12,7 +12,7 @@ import org.jetbrains.annotations.Nullable;
 /// extension point.
 @ApiStatus.Internal
 @NotNullByDefault
-public sealed interface CssNode permits CssParentNode, CssDeclaration, CssComment {
+public sealed interface CssNode permits CssParentNode, CssDeclaration, CssComment, CssImport {
     /// Returns the source range associated with this node.
     ///
     /// @return the node span

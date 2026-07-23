@@ -10,6 +10,7 @@ import org.jetbrains.annotations.Unmodifiable;
 
 import java.net.URI;
 import java.util.Arrays;
+import java.util.IdentityHashMap;
 import java.util.Objects;
 
 /// Indexes source text for offset, line, column, and span operations.
@@ -31,14 +32,49 @@ public final class SourceFile {
     /// The UTF-16 offset at which each logical line begins.
     private final int @Unmodifiable [] lineStarts;
 
+    /// Projects generated ranges onto an original source, when this file is transformed.
+    private final @Nullable SourceProjection projection;
+
+    /// Remembers the generated range used to create each returned span instance.
+    private final IdentityHashMap<SourceSpan, GeneratedRange> generatedRanges =
+            new IdentityHashMap<>();
+
     /// Creates an indexed source file.
     ///
     /// @param content the complete source text
     /// @param url the source URL, or {@code null} when the source has no stable URL
     public SourceFile(String content, @Nullable URI url) {
+        this(content, url, null);
+    }
+
+    /// Creates an indexed source file with an optional source projection.
+    ///
+    /// @param content the complete text scanned by parsers
+    /// @param url the source URL, or {@code null} when none is available
+    /// @param projection the projection onto the original source, or {@code null}
+    private SourceFile(
+            String content,
+            @Nullable URI url,
+            @Nullable SourceProjection projection
+    ) {
         this.content = Objects.requireNonNull(content, "content");
         this.url = url;
         this.lineStarts = indexLineStarts(content);
+        this.projection = projection;
+    }
+
+    /// Creates transformed parser input backed by an original-source projection.
+    ///
+    /// @param content the generated parser input
+    /// @param url the original source URL, or {@code null}
+    /// @param projection the complete original-source projection
+    /// @return the projected source file
+    static SourceFile projected(
+            String content,
+            @Nullable URI url,
+            SourceProjection projection
+    ) {
+        return new SourceFile(content, url, Objects.requireNonNull(projection, "projection"));
     }
 
     /// Returns the complete source text.
@@ -101,12 +137,50 @@ public final class SourceFile {
             throw new IllegalArgumentException("endOffset must not precede startOffset");
         }
 
-        return new SourceSpan(
-                url,
-                locationAt(startOffset),
-                locationAt(endOffset),
-                content.substring(startOffset, endOffset)
-        );
+        SourceSpan result;
+        if (projection == null) {
+            result = new SourceSpan(
+                    url,
+                    locationAt(startOffset),
+                    locationAt(endOffset),
+                    content.substring(startOffset, endOffset)
+            );
+        } else {
+            result = projection.project(startOffset, endOffset);
+        }
+        generatedRanges.put(result, new GeneratedRange(startOffset, endOffset));
+        return result;
+    }
+
+    /// Returns the generated start offset that produced one span instance.
+    ///
+    /// Parser code uses this method when combining mapped child spans. Callers
+    /// must pass the exact span instance returned by [#span(int, int)].
+    ///
+    /// @param span a span produced by this source file
+    /// @return the inclusive generated offset
+    /// @throws IllegalArgumentException if this source did not produce the span
+    public int generatedStartOffset(SourceSpan span) {
+        return generatedRange(span).start();
+    }
+
+    /// Returns the generated end offset that produced one span instance.
+    ///
+    /// @param span a span produced by this source file
+    /// @return the exclusive generated offset
+    /// @throws IllegalArgumentException if this source did not produce the span
+    public int generatedEndOffset(SourceSpan span) {
+        return generatedRange(span).end();
+    }
+
+    /// Returns the remembered generated range for one span.
+    private GeneratedRange generatedRange(SourceSpan span) {
+        Objects.requireNonNull(span, "span");
+        var range = generatedRanges.get(span);
+        if (range == null) {
+            throw new IllegalArgumentException("span was not produced by this source file");
+        }
+        return range;
     }
 
     /// Returns a logical line without its line terminator.

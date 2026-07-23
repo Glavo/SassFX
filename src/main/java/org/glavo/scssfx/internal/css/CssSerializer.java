@@ -105,7 +105,10 @@ public final class CssSerializer {
     /// @param buffer      the output buffer
     /// @param indentation the current indentation level
     private static void writeExpandedNode(CssNode node, StringBuilder buffer, int indentation) {
-        if (node instanceof CssMediaRule mediaRule) {
+        if (node instanceof CssImport importRule) {
+            writeIndentation(buffer, indentation);
+            buffer.append("@import ").append(importRule.argument());
+        } else if (node instanceof CssMediaRule mediaRule) {
             writeExpandedMediaRule(mediaRule, buffer, indentation);
         } else if (node instanceof CssSupportsRule supportsRule) {
             writeExpandedSupportsRule(supportsRule, buffer, indentation);
@@ -260,7 +263,9 @@ public final class CssSerializer {
     /// @param node   the node to write
     /// @param buffer the output buffer
     private static void writeCompressedNode(CssNode node, StringBuilder buffer) {
-        if (node instanceof CssMediaRule mediaRule) {
+        if (node instanceof CssImport importRule) {
+            buffer.append("@import ").append(importRule.argument()).append(';');
+        } else if (node instanceof CssMediaRule mediaRule) {
             buffer.append("@media");
             if (mediaRule.queries().get(0).startsWithIdentifier()) {
                 buffer.append(' ');
@@ -401,7 +406,7 @@ public final class CssSerializer {
     /// @param node the preceding node
     /// @return whether a semicolon is required
     private static boolean requiresSemicolon(CssNode node) {
-        return node instanceof CssDeclaration;
+        return node instanceof CssDeclaration || node instanceof CssImport;
     }
 
     /// Writes indentation spaces for the given depth.

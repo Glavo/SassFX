@@ -65,6 +65,15 @@
           "loadedUrls": ["input.scss"]
         },
         {
+          "directory": "modules/legacy-import",
+          "action": "run",
+          "category": "MODULES",
+          "loadedUrls": ["input.scss", "_tokens.import.scss"],
+          "diagnostics": [
+            {"severity": "DEPRECATION", "code": "import"}
+          ]
+        },
+        {
           "directory": "errors/selector-algebra-opaque",
           "action": "run",
           "category": "SELECTORS"

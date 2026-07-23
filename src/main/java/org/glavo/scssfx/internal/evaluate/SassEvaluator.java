@@ -10,6 +10,7 @@ import org.glavo.scssfx.internal.ast.BooleanExpression;
 import org.glavo.scssfx.internal.ast.ColorExpression;
 import org.glavo.scssfx.internal.ast.Declaration;
 import org.glavo.scssfx.internal.ast.DebugRule;
+import org.glavo.scssfx.internal.ast.DynamicImport;
 import org.glavo.scssfx.internal.ast.EachRule;
 import org.glavo.scssfx.internal.ast.ElseClause;
 import org.glavo.scssfx.internal.ast.ErrorRule;
@@ -27,6 +28,7 @@ import org.glavo.scssfx.internal.ast.IncludeRule;
 import org.glavo.scssfx.internal.ast.InterpolatedFunctionExpression;
 import org.glavo.scssfx.internal.ast.Interpolation;
 import org.glavo.scssfx.internal.ast.LegacyIfExpression;
+import org.glavo.scssfx.internal.ast.ImportRule;
 import org.glavo.scssfx.internal.ast.ListExpression;
 import org.glavo.scssfx.internal.ast.LoudComment;
 import org.glavo.scssfx.internal.ast.MapExpression;
@@ -60,6 +62,7 @@ import org.glavo.scssfx.internal.ast.SupportsNegation;
 import org.glavo.scssfx.internal.ast.SupportsOperation;
 import org.glavo.scssfx.internal.ast.Stylesheet;
 import org.glavo.scssfx.internal.ast.TextInterpolationPart;
+import org.glavo.scssfx.internal.ast.StaticImport;
 import org.glavo.scssfx.internal.ast.UnaryOperationExpression;
 import org.glavo.scssfx.internal.ast.VariableDeclaration;
 import org.glavo.scssfx.internal.ast.VariableExpression;
@@ -68,6 +71,7 @@ import org.glavo.scssfx.internal.ast.WhileRule;
 import org.glavo.scssfx.internal.callable.BuiltInCallable;
 import org.glavo.scssfx.internal.callable.Callable;
 import org.glavo.scssfx.internal.callable.PlainCssCallable;
+import org.glavo.scssfx.internal.css.CssImport;
 import org.glavo.scssfx.internal.callable.UserDefinedCallable;
 import org.glavo.scssfx.internal.ast.selector.SelectorList;
 import org.glavo.scssfx.internal.css.CssComment;
@@ -266,7 +270,7 @@ public final class SassEvaluator implements
     public LoadedModule executeRoot(Stylesheet stylesheet, @Nullable URI url) {
         Objects.requireNonNull(stylesheet, "stylesheet");
         if (moduleRegistry != null) {
-            moduleRegistry.recordRoot(url);
+            moduleRegistry.recordRoot(url, stylesheet.span());
         }
         var module = executeModuleBody(
                 stylesheet,
@@ -323,6 +327,61 @@ public final class SassEvaluator implements
                 Objects.requireNonNull(configuration, "configuration"),
                 false
         );
+    }
+
+    /// Executes a legacy imported stylesheet in the current environment.
+    ///
+    /// CSS is emitted into the active parent at the import location. Variables,
+    /// functions, and mixins declared by the imported stylesheet remain visible
+    /// to subsequent caller statements. The imported source URL is installed
+    /// temporarily so nested relative imports resolve beside that file.
+    ///
+    /// @param imported the parsed imported stylesheet
+    /// @param url      the imported stylesheet's canonical URL
+    /// @throws EvaluationException if the imported stylesheet cannot be evaluated
+    public void executeLegacyImport(Stylesheet imported, URI url) {
+        Objects.requireNonNull(imported, "imported");
+        Objects.requireNonNull(url, "url");
+        if (!stylesheetActive) {
+            throw new IllegalStateException("legacy imports require active stylesheet execution");
+        }
+        for (var child : imported.children()) {
+            if (child instanceof UseRule || child instanceof ForwardRule) {
+                throw new EvaluationException(
+                        "Module directives in files loaded through @import aren't supported.",
+                        child.span()
+                );
+            }
+        }
+
+        var previousStylesheet = stylesheet;
+        var previousUrl = currentUrl;
+        var previousConfiguration = currentConfiguration;
+        stylesheet = imported;
+        currentUrl = url;
+        currentConfiguration = ModuleConfiguration.empty();
+        diagnostics.addAll(imported.parseTimeWarnings());
+        try {
+            for (var child : imported.children()) {
+                child.accept(this);
+            }
+            for (var entry : imported.globalVariables().entrySet()) {
+                @Nullable SassValue value = environment.getVariable(entry.getKey(), null);
+                if (value == null || value == SassNull.NULL) {
+                    environment.setVariable(
+                            entry.getKey(),
+                            SassNull.NULL,
+                            entry.getValue(),
+                            null,
+                            true
+                    );
+                }
+            }
+        } finally {
+            stylesheet = previousStylesheet;
+            currentUrl = previousUrl;
+            currentConfiguration = previousConfiguration;
+        }
     }
 
     /// Executes one stylesheet body, optionally retaining the resulting state.
@@ -541,6 +600,45 @@ public final class SassEvaluator implements
                     unused.configurationSpan()
             );
         }
+    }
+
+    /// Executes each legacy Sass or static CSS import argument in source order.
+    ///
+    /// @param statement the import rule
+    /// @return the continue result
+    @Override
+    public StatementResult visitImportRule(ImportRule statement) {
+        for (var importArgument : statement.imports()) {
+            if (importArgument instanceof DynamicImport dynamic) {
+                if (moduleRegistry == null) {
+                    throw new EvaluationException(
+                            "Stylesheet loading isn't available.",
+                            dynamic.span()
+                    );
+                }
+                moduleRegistry.loadImport(
+                        dynamic.url(),
+                        currentUrl,
+                        dynamic.span(),
+                        this
+                );
+                continue;
+            }
+
+            var staticImport = (StaticImport) importArgument;
+            var argument = new StringBuilder(performInterpolation(staticImport.url()));
+            if (staticImport.modifiers() != null) {
+                argument.append(' ').append(performInterpolation(staticImport.modifiers()));
+            }
+            var cssImport = new CssImport(argument.toString(), staticImport.span());
+            var parent = requireCssParent();
+            if (parent instanceof CssStylesheet root) {
+                root.addImport(cssImport);
+            } else {
+                addCssChild(cssImport, false);
+            }
+        }
+        return StatementResult.CONTINUE;
     }
 
     /// Loads another module and registers it in the current environment.

@@ -2,10 +2,12 @@
 package org.glavo.scssfx.internal.parse;
 
 import org.glavo.scssfx.SourceSpan;
+import org.glavo.scssfx.internal.source.MappedSourceBuilder;
 import org.glavo.scssfx.internal.source.SourceFile;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -44,7 +46,7 @@ final class IndentedSassPreprocessor {
     static SourceFile transform(SourceFile source) {
         Objects.requireNonNull(source, "source");
         var lines = logicalLines(source);
-        var output = new StringBuilder(source.content().length() + lines.size() * 4);
+        var output = new MappedSourceBuilder(source);
         var blocks = new ArrayDeque<OpenBlock>();
         var childIndents = new HashMap<Integer, Integer>();
         var lastStatementIndent = -1;
@@ -53,8 +55,9 @@ final class IndentedSassPreprocessor {
         for (var index = 0; index < lines.size(); index++) {
             var line = lines.get(index);
             if (line.comment()) {
-                closeBlocksBefore(line.indent(), blocks, childIndents, output);
-                output.append(line.text()).append('\n');
+                closeBlocksBefore(line.indent(), blocks, childIndents, output, line.startOffset());
+                appendLine(output, line, line.text());
+                output.appendSynthetic("\n", line.endOffset());
                 continue;
             }
 
@@ -68,7 +71,7 @@ final class IndentedSassPreprocessor {
                 );
             }
 
-            closeBlocksBefore(line.indent(), blocks, childIndents, output);
+            closeBlocksBefore(line.indent(), blocks, childIndents, output, line.startOffset());
             if (blocks.isEmpty() && line.indent() != 0) {
                 throw error(source, line, "Top-level Sass statements must start at column zero.");
             }
@@ -95,17 +98,19 @@ final class IndentedSassPreprocessor {
                             "This statement cannot contain indented children."
                     );
                 }
-                output.append(normalized).append(" {").append('\n');
+                appendLine(output, line, normalized);
+                output.appendSynthetic(" {\n", line.endOffset());
                 blocks.push(new OpenBlock(line.indent()));
             } else {
                 if (isComment(normalized)) {
-                    output.append(normalized).append('\n');
+                    appendLine(output, line, normalized);
+                    output.appendSynthetic("\n", line.endOffset());
                 } else {
-                    output.append(normalized);
+                    appendLine(output, line, normalized);
                     if (!normalized.endsWith(";") && !normalized.endsWith("{")) {
-                        output.append(';');
+                        output.appendSynthetic(";", line.endOffset());
                     }
-                    output.append('\n');
+                    output.appendSynthetic("\n", line.endOffset());
                 }
             }
             lastStatementIndent = line.indent();
@@ -114,9 +119,9 @@ final class IndentedSassPreprocessor {
 
         while (!blocks.isEmpty()) {
             blocks.pop();
-            output.append("}\n");
+            output.appendSynthetic("}\n", source.length());
         }
-        return new SourceFile(output.toString(), source.url());
+        return output.build();
     }
 
     /// Closes blocks whose headers are siblings of or ancestors of a line.
@@ -125,20 +130,134 @@ final class IndentedSassPreprocessor {
     /// @param blocks the open block stack
     /// @param childIndents the expected child indentation by block level
     /// @param output the generated source buffer
+    /// @param anchor the original offset of the following statement
     private static void closeBlocksBefore(
             int indent,
             Deque<OpenBlock> blocks,
             HashMap<Integer, Integer> childIndents,
-            StringBuilder output
+            MappedSourceBuilder output,
+            int anchor
     ) {
         while (!blocks.isEmpty() && blocks.peek().indent() >= indent) {
             var block = blocks.pop();
             childIndents.remove(block.indent());
-            output.append("}\n");
+            output.appendSynthetic("}\n", anchor);
             if (block.indent() == 0 && indent == 0) {
-                output.append('\n');
+                output.appendSynthetic("\n", anchor);
             }
         }
+    }
+
+    /// Appends one logical line using exact mapping when its spelling is unchanged.
+    ///
+    /// @param output the mapped output builder
+    /// @param line the original logical line
+    /// @param text the generated line spelling
+    private static void appendLine(
+            MappedSourceBuilder output,
+            LogicalLine line,
+            String text
+    ) {
+        if (!text.equals(line.text())) {
+            if (appendStructuredNormalization(output, line, text)) {
+                return;
+            }
+            output.appendReplacement(text, line.startOffset(), line.endOffset());
+            return;
+        }
+        for (var piece : line.pieces()) {
+            if (piece.original()) {
+                output.appendOriginal(piece.startOffset(), piece.endOffset());
+            } else {
+                output.appendReplacement(
+                        piece.text(),
+                        piece.startOffset(),
+                        piece.endOffset()
+                );
+            }
+        }
+    }
+
+    /// Appends a normalized shorthand while retaining exact source-backed suffixes.
+    ///
+    /// @param output the mapped output builder
+    /// @param line the original logical line
+    /// @param normalized the generated normalized spelling
+    /// @return whether a structured normalization was appended
+    private static boolean appendStructuredNormalization(
+            MappedSourceBuilder output,
+            LogicalLine line,
+            String normalized
+    ) {
+        if (line.pieces().size() != 1 || !line.pieces().get(0).original()) {
+            return false;
+        }
+        var original = line.text();
+        var base = line.pieces().get(0).startOffset();
+
+        if (original.startsWith("=") || original.startsWith("+")) {
+            var remainder = 1;
+            while (remainder < original.length()
+                    && Character.isWhitespace(original.charAt(remainder))) {
+                remainder++;
+            }
+            var directive = original.charAt(0) == '=' ? "@mixin " : "@include ";
+            output.appendReplacement(directive, base, base + remainder);
+            output.appendOriginal(base + remainder, base + original.length());
+            return true;
+        }
+
+        if (original.startsWith("@elseif")) {
+            output.appendReplacement(
+                    "@else if",
+                    base,
+                    base + "@elseif".length()
+            );
+            output.appendOriginal(base + "@elseif".length(), base + original.length());
+            return true;
+        }
+
+        if (original.startsWith(":")
+                && original.length() > 1
+                && Character.isLetter(original.charAt(1))) {
+            var separator = original.indexOf(' ');
+            if (separator > 1) {
+                output.appendReplacement(
+                        original.substring(1, separator),
+                        base,
+                        base + separator
+                );
+                output.appendSynthetic(":", base + separator);
+                output.appendOriginal(base + separator, base + original.length());
+                return true;
+            }
+        }
+
+        if (original.startsWith("@import ")
+                && normalized.startsWith("@import \"")
+                && normalized.endsWith("\"")) {
+            var argumentStart = "@import ".length();
+            while (argumentStart < original.length()
+                    && Character.isWhitespace(original.charAt(argumentStart))) {
+                argumentStart++;
+            }
+            var argumentEnd = original.length();
+            while (argumentEnd > argumentStart
+                    && Character.isWhitespace(original.charAt(argumentEnd - 1))) {
+                argumentEnd--;
+            }
+            output.appendReplacement(
+                    "@import ",
+                    base,
+                    base + argumentStart
+            );
+            output.appendSynthetic("\"", base + argumentStart);
+            output.appendOriginal(base + argumentStart, base + argumentEnd);
+            output.appendSynthetic("\"", base + argumentEnd);
+            return true;
+        }
+
+        return false;
     }
 
     /// Returns the next non-comment, nonblank logical line.
@@ -203,6 +322,13 @@ final class IndentedSassPreprocessor {
             }
 
             var combined = new StringBuilder(text);
+            var contentStartOffset = startOffset + indentation.length();
+            var contentEndOffset = contentStartOffset + text.length();
+            var pieces = new ArrayList<LinePiece>();
+            pieces.add(new LinePiece(
+                    text, contentStartOffset, contentEndOffset, true
+            ));
+            var previousContentEnd = contentEndOffset;
             var lastLine = line;
             while (true) {
                 var state = continuationState(combined.toString());
@@ -229,7 +355,21 @@ final class IndentedSassPreprocessor {
                         .substring(continuationIndentation.length())
                         .stripTrailing();
                 combined.append('\n').append(continuationText);
-                endOffset = lineStart(source, lastLine) + continuation.length();
+                var continuationLineStart = lineStart(source, lastLine);
+                var continuationStart = continuationLineStart
+                        + continuationIndentation.length();
+                var continuationEnd = continuationStart + continuationText.length();
+                pieces.add(new LinePiece(
+                        "\n", previousContentEnd, continuationStart, false
+                ));
+                pieces.add(new LinePiece(
+                        continuationText,
+                        continuationStart,
+                        continuationEnd,
+                        true
+                ));
+                previousContentEnd = continuationEnd;
+                endOffset = continuationLineStart + continuation.length();
             }
 
             var finalState = continuationState(combined.toString());
@@ -253,6 +393,7 @@ final class IndentedSassPreprocessor {
                     combined.toString(),
                     startOffset,
                     endOffset,
+                    List.copyOf(pieces),
                     false
             ));
             line = lastLine + 1;
@@ -298,7 +439,16 @@ final class IndentedSassPreprocessor {
             );
         }
         return new CollectedComment(
-                new LogicalLine(indent, combined.toString(), startOffset, endOffset, true),
+                new LogicalLine(
+                        indent,
+                        combined.toString(),
+                        startOffset,
+                        endOffset,
+                        List.of(new LinePiece(
+                                combined.toString(), startOffset, endOffset, false
+                        )),
+                        true
+                ),
                 lastLine + 1
         );
     }
@@ -352,7 +502,16 @@ final class IndentedSassPreprocessor {
             endOffset = lineStart(source, lastLine) + raw.length();
         }
         return new CollectedComment(
-                new LogicalLine(indent, combined.toString(), startOffset, endOffset, true),
+                new LogicalLine(
+                        indent,
+                        combined.toString(),
+                        startOffset,
+                        endOffset,
+                        List.of(new LinePiece(
+                                combined.toString(), startOffset, endOffset, false
+                        )),
+                        true
+                ),
                 lastLine + 1
         );
     }
@@ -541,6 +700,17 @@ final class IndentedSassPreprocessor {
                 return text.substring(1, separator) + ":" + text.substring(separator);
             }
         }
+        if (text.startsWith("@import ")) {
+            var argument = text.substring("@import ".length()).strip();
+            if (!argument.isEmpty()
+                    && argument.charAt(0) != '\''
+                    && argument.charAt(0) != '"'
+                    && !argument.regionMatches(true, 0, "url(", 0, 4)
+                    && argument.indexOf(',') < 0
+                    && argument.chars().noneMatch(Character::isWhitespace)) {
+                return "@import \"" + argument.replace("\"", "\\\"") + "\"";
+            }
+        }
         return text;
     }
 
@@ -659,18 +829,41 @@ final class IndentedSassPreprocessor {
     private record Indentation(int columns, int length) {
     }
 
+    /// Contains one generated logical-line piece and its original range.
+    ///
+    /// @param text the generated piece text
+    /// @param startOffset the inclusive original offset
+    /// @param endOffset the exclusive original offset
+    /// @param original whether the text exactly equals the original range
+    private record LinePiece(
+            String text,
+            int startOffset,
+            int endOffset,
+            boolean original
+    ) {
+        /// Creates one validated line piece.
+        LinePiece {
+            Objects.requireNonNull(text, "text");
+            if (startOffset < 0 || endOffset < startOffset) {
+                throw new IllegalArgumentException("line-piece range is invalid");
+            }
+        }
+    }
+
     /// Contains one logical statement line.
     ///
     /// @param indent the indentation width
     /// @param text the statement text
     /// @param startOffset the source start offset
     /// @param endOffset the source end offset
+    /// @param pieces source-backed pieces forming the unchanged statement text
     /// @param comment whether the line is a comment
     private record LogicalLine(
             int indent,
             String text,
             int startOffset,
             int endOffset,
+            @Unmodifiable List<LinePiece> pieces,
             boolean comment
     ) {
     }

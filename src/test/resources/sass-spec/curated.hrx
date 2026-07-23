@@ -396,3 +396,28 @@ a
 a {
   color: red;
 }
+<===> modules/legacy-import/input.scss
+$input: red;
+@import "tokens";
+@import "theme.css";
+.after {
+  color: $output;
+}
+<===> modules/legacy-import/_tokens.scss
+.ordinary {
+  color: black;
+}
+<===> modules/legacy-import/_tokens.import.scss
+.from-import {
+  color: $input;
+}
+$output: blue;
+<===> modules/legacy-import/output.css
+@import "theme.css";
+.from-import {
+  color: red;
+}
+
+.after {
+  color: blue;
+}

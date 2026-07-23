@@ -161,8 +161,9 @@ public final class SassCompiler {
         }
         if (source instanceof SassFileSource fileSource) {
             var path = fileSource.path();
-            var content = Files.readString(path, StandardCharsets.UTF_8);
-            var url = path.toAbsolutePath().normalize().toUri();
+            var realPath = path.toRealPath();
+            var content = Files.readString(realPath, StandardCharsets.UTF_8);
+            var url = realPath.toUri();
             var file = new SourceFile(content, url);
             return new LoadedSource(file, fileSource.syntax(), Set.of(url));
         }

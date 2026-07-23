@@ -136,6 +136,12 @@ public interface SassStatementVisitor<R> {
     /// @return the visit result
     R visitErrorRule(ErrorRule statement);
 
+    /// Visits an `@import` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitImportRule(ImportRule statement);
+
     /// Visits a `@use` rule.
     ///
     /// @param statement the statement to visit

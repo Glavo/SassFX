@@ -10,7 +10,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 @NotNullByDefault
 public sealed interface SassNode permits
         SassStatement, SassExpression, Interpolation, ArgumentList, ParameterList,
-        ContentBlock, SupportsCondition {
+        ContentBlock, SupportsCondition, SassImport {
     /// Returns the source range that produced this node.
     ///
     /// @return the complete source range of the node

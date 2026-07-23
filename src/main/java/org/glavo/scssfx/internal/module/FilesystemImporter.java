@@ -48,18 +48,52 @@ public final class FilesystemImporter {
             String url,
             @Nullable URI baseUrl
     ) throws IOException {
+        return canonicalizeAndLoad(url, baseUrl, false);
+    }
+
+    /// Canonicalizes and loads a stylesheet using legacy import resolution.
+    ///
+    /// Import-only files are preferred at each search location. Ordinary
+    /// module resolution remains unchanged for [#canonicalizeAndLoad].
+    ///
+    /// @param url     the unresolved import URL
+    /// @param baseUrl the canonical URL of the containing stylesheet, or {@code null}
+    /// @return the loaded stylesheet, or {@code null} when no candidate exists
+    /// @throws IOException if a candidate file cannot be read
+    /// @throws IllegalStateException if multiple candidates exist at the same
+    /// search location
+    public @Nullable ImportResult canonicalizeAndLoadImport(
+            String url,
+            @Nullable URI baseUrl
+    ) throws IOException {
+        return canonicalizeAndLoad(url, baseUrl, true);
+    }
+
+    /// Resolves a URL using module or legacy-import candidate precedence.
+    ///
+    /// @param url       the unresolved stylesheet URL
+    /// @param baseUrl   the containing stylesheet URL, or {@code null}
+    /// @param forImport whether import-only candidates take precedence
+    /// @return the loaded stylesheet, or {@code null} when no candidate exists
+    /// @throws IOException if a candidate cannot be read
+    /// @throws IllegalStateException if a search location is ambiguous
+    private @Nullable ImportResult canonicalizeAndLoad(
+            String url,
+            @Nullable URI baseUrl,
+            boolean forImport
+    ) throws IOException {
         Objects.requireNonNull(url, "url");
         if (baseUrl != null && "file".equalsIgnoreCase(baseUrl.getScheme())) {
             var basePath = Path.of(baseUrl).getParent();
             if (basePath != null) {
-                @Nullable Path candidate = resolveAt(basePath.resolve(url).normalize());
+                @Nullable Path candidate = resolveAt(basePath.resolve(url).normalize(), forImport);
                 if (candidate != null) {
                     return load(candidate);
                 }
             }
         }
         for (var loadPath : loadPaths) {
-            @Nullable Path candidate = resolveAt(loadPath.resolve(url).normalize());
+            @Nullable Path candidate = resolveAt(loadPath.resolve(url).normalize(), forImport);
             if (candidate != null) {
                 return load(candidate);
             }
@@ -70,18 +104,32 @@ public final class FilesystemImporter {
     /// Resolves one path stem without consulting any lower-priority search location.
     ///
     /// @param path the path stem to resolve
+    /// @param forImport whether import-only candidates take precedence
     /// @return the sole matching file, or {@code null} when this location has no match
     /// @throws IllegalStateException if this location produces multiple candidates
-    private static @Nullable Path resolveAt(Path path) {
+    private static @Nullable Path resolveAt(Path path, boolean forImport) {
         var candidates = new ArrayList<Path>();
+        if (forImport) {
+            addImportOnlyCandidates(candidates, path);
+            if (!candidates.isEmpty()) {
+                return exactlyOne(candidates);
+            }
+        }
         addCandidates(candidates, path);
-        if (candidates.isEmpty()) {
-            return null;
+        if (!candidates.isEmpty()) {
+            return exactlyOne(candidates);
         }
-        if (candidates.size() > 1) {
-            throw ambiguousCandidates(candidates);
+        if (forImport) {
+            addImportOnlyIndexCandidates(candidates, path);
+            if (!candidates.isEmpty()) {
+                return exactlyOne(candidates);
+            }
         }
-        return candidates.get(0);
+        addIndexCandidates(candidates, path);
+        if (!candidates.isEmpty()) {
+            return exactlyOne(candidates);
+        }
+        return null;
     }
 
     /// Loads a resolved stylesheet and derives its canonical URL from the real path.
@@ -102,6 +150,18 @@ public final class FilesystemImporter {
                 syntax,
                 canonical
         );
+    }
+
+    /// Returns the sole candidate or reports an ambiguity.
+    ///
+    /// @param candidates the nonempty candidate list
+    /// @return the sole candidate
+    /// @throws IllegalStateException if more than one candidate exists
+    private static Path exactlyOne(List<Path> candidates) {
+        if (candidates.size() > 1) {
+            throw ambiguousCandidates(candidates);
+        }
+        return candidates.get(0);
     }
 
     /// Creates a failure describing all candidates at one search location.
@@ -150,10 +210,89 @@ public final class FilesystemImporter {
         addIfRegular(candidates, parent.resolve("_" + name + ".scss"));
         addIfRegular(candidates, parent.resolve(name + ".sass"));
         addIfRegular(candidates, parent.resolve("_" + name + ".sass"));
-        addIfRegular(candidates, parent.resolve(name).resolve("index.scss"));
-        addIfRegular(candidates, parent.resolve(name).resolve("_index.scss"));
-        addIfRegular(candidates, parent.resolve(name).resolve("index.sass"));
-        addIfRegular(candidates, parent.resolve(name).resolve("_index.sass"));
+    }
+
+    /// Adds ordinary directory-index candidates for one extensionless path.
+    ///
+    /// @param candidates the mutable destination list
+    /// @param path       the path stem to inspect
+    private static void addIndexCandidates(List<Path> candidates, Path path) {
+        var fileName = path.getFileName();
+        var parent = path.getParent();
+        if (fileName == null || parent == null || fileName.toString().contains(".")) {
+            return;
+        }
+        var directory = parent.resolve(fileName.toString());
+        addIfRegular(candidates, directory.resolve("index.scss"));
+        addIfRegular(candidates, directory.resolve("_index.scss"));
+        addIfRegular(candidates, directory.resolve("index.sass"));
+        addIfRegular(candidates, directory.resolve("_index.sass"));
+    }
+
+    /// Adds import-only directory-index candidates for one extensionless path.
+    ///
+    /// @param candidates the mutable destination list
+    /// @param path       the path stem to inspect
+    private static void addImportOnlyIndexCandidates(
+            List<Path> candidates,
+            Path path
+    ) {
+        var fileName = path.getFileName();
+        var parent = path.getParent();
+        if (fileName == null || parent == null || fileName.toString().contains(".")) {
+            return;
+        }
+        var directory = parent.resolve(fileName.toString());
+        addImportPair(candidates, directory, "index.import.scss");
+        addImportPair(candidates, directory, "index.import.sass");
+    }
+
+    /// Adds import-only SCSS and Sass candidates for one path stem.
+    ///
+    /// @param candidates the mutable destination list
+    /// @param path       the path stem to inspect
+    private static void addImportOnlyCandidates(List<Path> candidates, Path path) {
+        var fileName = path.getFileName();
+        if (fileName == null) {
+            return;
+        }
+        var name = fileName.toString();
+        var parent = path.getParent();
+        if (name.endsWith(".scss") || name.endsWith(".sass")) {
+            var extensionIndex = name.lastIndexOf('.');
+            var importName = name.substring(0, extensionIndex)
+                    + ".import"
+                    + name.substring(extensionIndex);
+            addImportPair(candidates, parent, importName);
+            return;
+        }
+        if (name.contains(".")) {
+            return;
+        }
+
+        addImportPair(candidates, parent, name + ".import.scss");
+        addImportPair(candidates, parent, name + ".import.sass");
+    }
+
+    /// Adds a regular and partial import-only candidate pair.
+    ///
+    /// @param candidates the mutable destination list
+    /// @param parent     the containing directory, or {@code null}
+    /// @param name       the regular candidate file name
+    private static void addImportPair(
+            List<Path> candidates,
+            @Nullable Path parent,
+            String name
+    ) {
+        var regular = parent == null ? Path.of(name) : parent.resolve(name);
+        addIfRegular(candidates, regular);
+        if (!name.startsWith("_")) {
+            var partial = "_" + name;
+            addIfRegular(
+                    candidates,
+                    parent == null ? Path.of(partial) : parent.resolve(partial)
+            );
+        }
     }
 
     /// Adds a path when it is an existing regular file.

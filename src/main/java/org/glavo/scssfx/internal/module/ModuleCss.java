@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.module;
 
+import org.glavo.scssfx.internal.css.CssImport;
 import org.glavo.scssfx.internal.css.CssNode;
 import org.glavo.scssfx.internal.css.CssStylesheet;
 import org.jetbrains.annotations.ApiStatus;
@@ -44,7 +45,11 @@ public final class ModuleCss {
             append(upstream, result, seen);
         }
         for (CssNode child : module.css().children()) {
-            result.addChild(child);
+            if (child instanceof CssImport importRule) {
+                result.addImport(importRule);
+            } else {
+                result.addChild(child);
+            }
         }
     }
 }

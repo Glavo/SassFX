@@ -93,6 +93,28 @@ public final class CssStylesheet implements CssParentNode {
         children.add(child);
     }
 
+    /// Inserts a top-level import after the initial imports and comments.
+    ///
+    /// Imports evaluated after ordinary CSS are moved into the CSS import
+    /// prefix while preserving their relative order.
+    ///
+    /// @param child the import to insert
+    public void addImport(CssImport child) {
+        Objects.requireNonNull(child, "child");
+        var index = 0;
+        while (index < children.size()
+                && (children.get(index) instanceof CssImport
+                || children.get(index) instanceof CssComment)) {
+            index++;
+        }
+        children.add(index, child);
+        for (var current = index; current < children.size(); current++) {
+            if (children.get(current) instanceof AbstractCssNode node) {
+                node.attach(this, current);
+            }
+        }
+    }
+
     /// Returns false because the root has no siblings.
     ///
     /// @return {@code false}

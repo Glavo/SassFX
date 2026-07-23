@@ -177,7 +177,10 @@ class SassExpressionParser extends Parser {
                 contents,
                 ListSeparator.COMMA,
                 false,
-                scanner.source().span(first.span().start().offset(), scanner.position())
+                scanner.source().span(
+                        scanner.source().generatedStartOffset(first.span()),
+                        scanner.position()
+                )
         );
     }
 
@@ -239,8 +242,8 @@ class SassExpressionParser extends Parser {
                 ListSeparator.SPACE,
                 false,
                 scanner.source().span(
-                        first.span().start().offset(),
-                        last.span().end().offset()
+                        scanner.source().generatedStartOffset(first.span()),
+                        scanner.source().generatedEndOffset(last.span())
                 )
         );
     }
@@ -303,8 +306,8 @@ class SassExpressionParser extends Parser {
                     false,
                     scanner.spanFrom(operatorStart, operatorEnd),
                     scanner.source().span(
-                            left.span().start().offset(),
-                            right.span().end().offset()
+                            scanner.source().generatedStartOffset(left.span()),
+                            scanner.source().generatedEndOffset(right.span())
                     )
             );
             warnForStrictUnary(operation);
@@ -323,8 +326,10 @@ class SassExpressionParser extends Parser {
         }
 
         var content = scanner.source().content();
-        var leftEnd = operation.left().span().end().offset();
-        var rightStart = operation.right().span().start().offset();
+        var leftEnd = scanner.source().generatedEndOffset(operation.left().span());
+        var rightStart = scanner.source().generatedStartOffset(
+                operation.right().span()
+        );
         if (leftEnd >= content.length()
                 || rightStart <= 0
                 || content.charAt(rightStart - 1) != operator.source().charAt(0)
@@ -1042,7 +1047,7 @@ class SassExpressionParser extends Parser {
                         operand,
                         scanner.source().span(
                                 start.position(),
-                                operand.span().end().offset()
+                                scanner.source().generatedEndOffset(operand.span())
                         )
                 );
             }
@@ -1086,8 +1091,7 @@ class SassExpressionParser extends Parser {
             }
             throw scanner.error(
                     "Interpolation isn't allowed in namespaces.",
-                    identifier.span().start().offset(),
-                    identifier.span().text().length()
+                    identifier.span()
             );
         }
 
@@ -1215,8 +1219,7 @@ class SassExpressionParser extends Parser {
                 if (named.containsKey(variable.name())) {
                     throw scanner.error(
                             "Duplicate argument.",
-                            variable.span().start().offset(),
-                            variable.span().text().length()
+                            variable.span()
                     );
                 }
                 var value = expressionUntilComma(true);
@@ -1224,8 +1227,8 @@ class SassExpressionParser extends Parser {
                 namedSpans.put(
                         variable.name(),
                         scanner.source().span(
-                                variable.span().start().offset(),
-                                value.span().end().offset()
+                                scanner.source().generatedStartOffset(variable.span()),
+                                scanner.source().generatedEndOffset(value.span())
                         )
                 );
             } else if (scanner.scan('.')) {
@@ -1244,8 +1247,7 @@ class SassExpressionParser extends Parser {
             } else if (!named.isEmpty()) {
                 throw scanner.error(
                         "Positional arguments must come before keyword arguments.",
-                        argument.span().start().offset(),
-                        argument.span().text().length()
+                        argument.span()
                 );
             } else {
                 positional.add(argument);

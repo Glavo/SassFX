@@ -1,0 +1,71 @@
+// SPDX-License-Identifier: MPL-2.0
+package org.glavo.scssfx.internal.parse;
+
+import org.glavo.scssfx.DiagnosticSeverity;
+import org.glavo.scssfx.Syntax;
+import org.glavo.scssfx.internal.ast.DynamicImport;
+import org.glavo.scssfx.internal.ast.ImportRule;
+import org.glavo.scssfx.internal.ast.StaticImport;
+import org.glavo.scssfx.internal.source.SourceFile;
+import org.jetbrains.annotations.NotNullByDefault;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+/// Verifies legacy Sass and static CSS import parsing.
+@NotNullByDefault
+final class ImportRuleParserTest {
+    /// Classifies mixed import arguments and reports one deprecation per dynamic import.
+    @Test
+    void parsesMixedDynamicAndStaticImports() {
+        var stylesheet = parse(
+                "@import \"tokens\", \"theme.css\", url(#{$asset});"
+        );
+        var rule = assertInstanceOf(ImportRule.class, stylesheet.children().get(0));
+
+        assertEquals(3, rule.imports().size());
+        var dynamic = assertInstanceOf(DynamicImport.class, rule.imports().get(0));
+        assertEquals("tokens", dynamic.url());
+        assertEquals("\"tokens\"", dynamic.span().text());
+        assertInstanceOf(StaticImport.class, rule.imports().get(1));
+        assertInstanceOf(StaticImport.class, rule.imports().get(2));
+        assertEquals(1, stylesheet.parseTimeWarnings().size());
+        assertEquals(DiagnosticSeverity.DEPRECATION, stylesheet.parseTimeWarnings().get(0).severity());
+        assertEquals("import", stylesheet.parseTimeWarnings().get(0).code());
+    }
+
+    /// Treats a quoted URL with modifiers as a static CSS import.
+    @Test
+    void parsesStaticImportModifiersAsOneArgument() {
+        var stylesheet = parse("@import \"print\" screen, print;");
+        var rule = assertInstanceOf(ImportRule.class, stylesheet.children().get(0));
+        var importRule = assertInstanceOf(StaticImport.class, rule.imports().get(0));
+
+        assertEquals(1, rule.imports().size());
+        assertEquals("\"print\"", importRule.url().asPlain());
+        assertEquals("screen, print", importRule.modifiers().asPlain());
+        assertEquals(0, stylesheet.parseTimeWarnings().size());
+    }
+
+    /// Rejects dynamic imports in control directives, mixins, and declaration-only contexts.
+    @Test
+    void rejectsDynamicImportsInDisallowedContexts() {
+        assertThrows(ParseException.class, () -> parse("@if true { @import \"tokens\"; }"));
+        assertThrows(ParseException.class, () -> parse("@mixin load { @import \"tokens\"; }"));
+        assertThrows(ParseException.class, () -> parse("a { font: { @import \"x.css\"; } }"));
+    }
+
+    /// Accepts static imports in control directives and mixin declarations.
+    @Test
+    void acceptsStaticImportsInDynamicContexts() {
+        parse("@if true { @import \"theme.css\"; }");
+        parse("@mixin load { @import url(theme.css); }");
+    }
+
+    /// Parses one SCSS source through the shared stylesheet entry point.
+    private static org.glavo.scssfx.internal.ast.Stylesheet parse(String source) {
+        return StylesheetParser.parse(new SourceFile(source, null), Syntax.SCSS);
+    }
+}

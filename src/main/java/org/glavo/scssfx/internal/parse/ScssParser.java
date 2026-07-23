@@ -10,6 +10,7 @@ import org.glavo.scssfx.internal.ast.ContentBlock;
 import org.glavo.scssfx.internal.ast.ContentRule;
 import org.glavo.scssfx.internal.ast.Declaration;
 import org.glavo.scssfx.internal.ast.DebugRule;
+import org.glavo.scssfx.internal.ast.DynamicImport;
 import org.glavo.scssfx.internal.ast.EachRule;
 import org.glavo.scssfx.internal.ast.ElseClause;
 import org.glavo.scssfx.internal.ast.ErrorRule;
@@ -22,6 +23,7 @@ import org.glavo.scssfx.internal.ast.IfRule;
 import org.glavo.scssfx.internal.ast.IncludeRule;
 import org.glavo.scssfx.internal.ast.Interpolation;
 import org.glavo.scssfx.internal.ast.InterpolationBuffer;
+import org.glavo.scssfx.internal.ast.ImportRule;
 import org.glavo.scssfx.internal.ast.LoudComment;
 import org.glavo.scssfx.internal.ast.MixinRule;
 import org.glavo.scssfx.internal.ast.MediaRule;
@@ -38,11 +40,13 @@ import org.glavo.scssfx.internal.ast.Parameter;
 import org.glavo.scssfx.internal.ast.ParameterList;
 import org.glavo.scssfx.internal.ast.ReturnRule;
 import org.glavo.scssfx.internal.ast.UseRule;
+import org.glavo.scssfx.internal.ast.SassImport;
 import org.glavo.scssfx.internal.ast.SassExpression;
 import org.glavo.scssfx.internal.ast.SassStatement;
 import org.glavo.scssfx.internal.ast.SilentComment;
 import org.glavo.scssfx.internal.ast.StringExpression;
 import org.glavo.scssfx.internal.ast.StyleRule;
+import org.glavo.scssfx.internal.ast.StaticImport;
 import org.glavo.scssfx.internal.ast.Stylesheet;
 import org.glavo.scssfx.internal.ast.VariableDeclaration;
 import org.glavo.scssfx.internal.ast.WarnRule;
@@ -90,6 +94,9 @@ final class ScssParser extends SassExpressionParser {
 
     /// Records whether the parser is inside a mixin declaration body.
     private boolean inMixin;
+
+    /// Contains the number of nested control-directive bodies being parsed.
+    private int controlDirectiveDepth;
 
     /// Records whether the parser is inside an include content block.
     private boolean inContentBlock;
@@ -426,6 +433,7 @@ final class ScssParser extends SassExpressionParser {
             case "return" -> returnRule(start, context);
             case "debug" -> debugRule(start);
             case "warn" -> warnRule(start);
+            case "import" -> importRule(start, context);
             case "error" -> errorRule(start);
             case "use" -> useRule(start, context, atStylesheetRoot);
             case "forward" -> forwardRule(start, context, atStylesheetRoot);
@@ -681,6 +689,19 @@ final class ScssParser extends SassExpressionParser {
         }
     }
 
+    /// Parses a statement block while recording a control-directive context.
+    ///
+    /// @param context the statement forms permitted in the block
+    /// @return the parsed child statements
+    private ArrayList<SassStatement> controlDirectiveBlock(StatementContext context) {
+        controlDirectiveDepth++;
+        try {
+            return statementBlock(context);
+        } finally {
+            controlDirectiveDepth--;
+        }
+    }
+
     /// Returns whether a parsed name is a custom-property name.
     ///
     /// @param expression the parsed name expression
@@ -698,7 +719,7 @@ final class ScssParser extends SassExpressionParser {
     private IfRule ifRule(ScannerState start, StatementContext context) {
         whitespace(true);
         var clauses = new ArrayList<IfClause>();
-        clauses.add(new IfClause(expression(), statementBlock(context)));
+        clauses.add(new IfClause(expression(), controlDirectiveBlock(context)));
         whitespaceWithoutComments(false);
 
         @Nullable ElseClause lastClause = null;
@@ -706,10 +727,10 @@ final class ScssParser extends SassExpressionParser {
             whitespace(false);
             if (scanIdentifier("if")) {
                 whitespace(true);
-                clauses.add(new IfClause(expression(), statementBlock(context)));
+                clauses.add(new IfClause(expression(), controlDirectiveBlock(context)));
                 whitespaceWithoutComments(false);
             } else {
-                lastClause = new ElseClause(statementBlock(context));
+                lastClause = new ElseClause(controlDirectiveBlock(context));
                 whitespaceWithoutComments(false);
                 break;
             }
@@ -765,7 +786,7 @@ final class ScssParser extends SassExpressionParser {
         expectIdentifier("in");
         whitespace(true);
         var list = expression();
-        var children = statementBlock(context);
+        var children = controlDirectiveBlock(context);
         var span = scanner.spanFrom(start);
         whitespaceWithoutComments(false);
         return new EachRule(variables, list, children, span);
@@ -806,7 +827,7 @@ final class ScssParser extends SassExpressionParser {
         }
         whitespace(true);
         var to = expression();
-        var children = statementBlock(context);
+        var children = controlDirectiveBlock(context);
         var span = scanner.spanFrom(start);
         whitespaceWithoutComments(false);
         return new ForRule(variable, from, to, exclusive[0], children, span);
@@ -820,7 +841,7 @@ final class ScssParser extends SassExpressionParser {
     private WhileRule whileRule(ScannerState start, StatementContext context) {
         whitespace(true);
         var condition = expression();
-        var children = statementBlock(context);
+        var children = controlDirectiveBlock(context);
         var span = scanner.spanFrom(start);
         whitespaceWithoutComments(false);
         return new WhileRule(condition, children, span);
@@ -1010,7 +1031,7 @@ final class ScssParser extends SassExpressionParser {
         var expression = expression();
         var span = scanner.source().span(
                 start.position(),
-                expression.span().end().offset()
+                scanner.source().generatedEndOffset(expression.span())
         );
         expectStatementSeparator();
         whitespaceWithoutComments(false);
@@ -1026,7 +1047,7 @@ final class ScssParser extends SassExpressionParser {
         var expression = expression();
         var span = scanner.source().span(
                 start.position(),
-                expression.span().end().offset()
+                scanner.source().generatedEndOffset(expression.span())
         );
         expectStatementSeparator();
         whitespaceWithoutComments(false);
@@ -1042,11 +1063,133 @@ final class ScssParser extends SassExpressionParser {
         var expression = expression();
         var span = scanner.source().span(
                 start.position(),
-                expression.span().end().offset()
+                scanner.source().generatedEndOffset(expression.span())
         );
         expectStatementSeparator();
         whitespaceWithoutComments(false);
         return new ErrorRule(expression, span);
+    }
+
+    /// Parses a legacy Sass `@import` rule.
+    ///
+    /// Dynamic Sass imports are forbidden in control directives and mixin
+    /// declarations. Static CSS imports remain valid in those contexts.
+    ///
+    /// @param start   the scanner state at the leading `@`
+    /// @param context the surrounding statement context
+    /// @return the import rule
+    private ImportRule importRule(ScannerState start, StatementContext context) {
+        if (context != StatementContext.ROOT && context != StatementContext.STYLE_RULE) {
+            throw scanner.error("This at-rule is not allowed here.");
+        }
+
+        var imports = new ArrayList<SassImport>();
+        do {
+            whitespace(true);
+            var argumentStart = scanner.state();
+            if (scanner.peek() == 'u' || scanner.peek() == 'U') {
+                var name = identifier(false, false);
+                if (!name.equalsIgnoreCase("url")) {
+                    throw scanner.error("Expected string or url().");
+                }
+                var url = importUrl(argumentStart, name);
+                whitespace(true);
+                @Nullable Interpolation modifiers = atImportArgumentEnd()
+                        ? null
+                        : interpolatedDeclarationValue(false, true);
+                imports.add(new StaticImport(
+                        url,
+                        modifiers,
+                        scanner.spanFrom(argumentStart)
+                ));
+            } else if (scanner.peek() == '\'' || scanner.peek() == '"') {
+                var urlStart = scanner.state();
+                var url = string();
+                var urlEnd = scanner.state();
+                var rawUrl = Interpolation.plain(
+                        scanner.substring(urlStart.position(), urlEnd.position()),
+                        scanner.spanFrom(urlStart, urlEnd)
+                );
+                whitespace(true);
+                @Nullable Interpolation modifiers = atImportArgumentEnd()
+                        ? null
+                        : interpolatedDeclarationValue(false, true);
+                var argumentSpan = scanner.spanFrom(argumentStart);
+                if (modifiers != null || isPlainImportUrl(url)) {
+                    imports.add(new StaticImport(rawUrl, modifiers, argumentSpan));
+                } else {
+                    if (controlDirectiveDepth > 0 || inMixin) {
+                        throw scanner.error("This at-rule is not allowed here.");
+                    }
+                    var dynamic = new DynamicImport(url, rawUrl.span());
+                    imports.add(dynamic);
+                    addParseTimeWarning(new Diagnostic(
+                            DiagnosticSeverity.DEPRECATION,
+                            "Sass @import rules are deprecated and will be removed in "
+                                    + "Dart Sass 3.0.0.\n\n"
+                                    + "More info and automated migrator: "
+                                    + "https://sass-lang.com/d/import",
+                            dynamic.span(),
+                            "import"
+                    ));
+                }
+            } else {
+                throw scanner.error("Expected string or url().");
+            }
+            whitespace(true);
+        } while (scanner.scan(','));
+
+        expectStatementSeparator();
+        var span = scanner.spanFrom(start);
+        whitespaceWithoutComments(false);
+        return new ImportRule(imports, span);
+    }
+
+    /// Parses a static CSS `url()` token used by an import.
+    ///
+    /// @param start the position before the function name
+    /// @param name  the parsed function name
+    /// @return the interpolated URL token
+    private Interpolation importUrl(ScannerState start, String name) {
+        @Nullable Interpolation raw = tryInterpolatedUrlContents(start, name);
+        if (raw != null) {
+            return raw;
+        }
+
+        scanner.expect('(');
+        whitespace(true);
+        if (scanner.peek() != '\'' && scanner.peek() != '"') {
+            throw scanner.error("Expected URL.");
+        }
+        var buffer = new InterpolationBuffer();
+        buffer.append(name);
+        buffer.append('(');
+        buffer.add(interpolatedStringToken());
+        whitespace(true);
+        scanner.expect(')');
+        buffer.append(')');
+        return buffer.interpolation(scanner.spanFrom(start));
+    }
+
+    /// Returns whether the current position terminates one import argument.
+    ///
+    /// @return whether no modifier begins here
+    private boolean atImportArgumentEnd() {
+        return switch (scanner.peek()) {
+            case CssCharacters.END_OF_INPUT, ',', ';', '}' -> true;
+            default -> false;
+        };
+    }
+
+    /// Returns whether a quoted URL denotes a plain CSS import.
+    ///
+    /// @param url the decoded URL contents
+    /// @return whether the URL must not be loaded as Sass
+    private static boolean isPlainImportUrl(String url) {
+        return url.endsWith(".css")
+                || url.startsWith("//")
+                || url.startsWith("http://")
+                || url.startsWith("https://");
     }
 
     /// Parses a `@use` rule.
@@ -1192,15 +1335,14 @@ final class ScssParser extends SassExpressionParser {
             if (!names.add(name)) {
                 throw scanner.error(
                         "The same variable may only be configured once.",
-                        nameSpan.start().offset(),
-                        nameSpan.text().length()
+                        nameSpan
                 );
             }
             whitespace(true);
             scanner.expect(':');
             whitespace(true);
             var expression = expressionUntilComma();
-            var variableEnd = expression.span().end().offset();
+            var variableEnd = scanner.source().generatedEndOffset(expression.span());
             var guarded = false;
             if (allowGuarded && scanner.scan('!')) {
                 var flagStart = scanner.state();
@@ -1467,8 +1609,7 @@ final class ScssParser extends SassExpressionParser {
                     if (namespace != null) {
                         throw scanner.error(
                                 "!global isn't allowed for variables in other modules.",
-                                flagSpan.start().offset(),
-                                flagSpan.text().length()
+                                flagSpan
                         );
                     }
                     if (global) {
@@ -1484,8 +1625,7 @@ final class ScssParser extends SassExpressionParser {
                 }
                 default -> throw scanner.error(
                         "Invalid flag name.",
-                        flagSpan.start().offset(),
-                        flagSpan.text().length()
+                        flagSpan
                 );
             }
 
@@ -1571,8 +1711,7 @@ final class ScssParser extends SassExpressionParser {
             if (declarationsOnly) {
                 throw scanner.error(
                         "Declarations whose names begin with \"--\" may not be nested.",
-                        name.span().start().offset(),
-                        name.span().text().length()
+                        name.span()
                 );
             }
 

@@ -16,6 +16,7 @@ import org.glavo.scssfx.internal.ast.selector.UniversalSelector;
 import org.glavo.scssfx.internal.css.CssComment;
 import org.glavo.scssfx.internal.css.CssDeclaration;
 import org.glavo.scssfx.internal.css.CssFontFace;
+import org.glavo.scssfx.internal.css.CssImport;
 import org.glavo.scssfx.internal.css.CssMediaRule;
 import org.glavo.scssfx.internal.css.CssNode;
 import org.glavo.scssfx.internal.css.CssSupportsRule;
@@ -324,7 +325,13 @@ public final class BssSerializer {
             if (child instanceof CssComment || child.isInvisible()) {
                 continue;
             }
-            if (child instanceof CssStyleRule rule) {
+            if (child instanceof CssImport) {
+                throw new BssSerializeException(
+                        "BSS output doesn't support @import rules.",
+                        child.span(),
+                        null
+                );
+            } else if (child instanceof CssStyleRule rule) {
                 sawStyleRule = true;
                 @Nullable BssRule converted = collectRule(rule);
                 if (converted != null) {
@@ -428,7 +435,13 @@ public final class BssSerializer {
             if (child instanceof CssComment || child.isInvisible()) {
                 continue;
             }
-            if (child instanceof CssDeclaration declaration) {
+            if (child instanceof CssImport) {
+                throw new BssSerializeException(
+                        "BSS output doesn't support @import rules.",
+                        child.span(),
+                        null
+                );
+            } else if (child instanceof CssDeclaration declaration) {
                 declarations.add(declaration);
             } else {
                 throw unsupported(child, "nested CSS node");

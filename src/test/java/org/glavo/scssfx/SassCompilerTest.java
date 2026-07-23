@@ -812,10 +812,6 @@ final class SassCompilerTest {
     @Test
     void rejectsUnsupportedAtRulesAndUnsafeConditionalNesting() {
         assertEquals(
-                "This stylesheet statement is not available.",
-                assertCompilationFailure("@import \"theme.css\";").getMessage()
-        );
-        assertEquals(
                 "This at-rule may only be used at the stylesheet root.",
                 assertCompilationFailure("Pane { @font-face { src: local(Example); } }").getMessage()
         );

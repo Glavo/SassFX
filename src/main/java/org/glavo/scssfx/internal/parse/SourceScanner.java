@@ -219,6 +219,18 @@ final class SourceScanner {
         return new ParseException(message, source.span(start, Math.addExact(start, length)));
     }
 
+    /// Creates a parse failure for an already projected source span.
+    ///
+    /// @param message the failure message
+    /// @param span the source span associated with the failure
+    /// @return the parse failure
+    ParseException error(String message, SourceSpan span) {
+        return new ParseException(
+                Objects.requireNonNull(message, "message"),
+                Objects.requireNonNull(span, "span")
+        );
+    }
+
     /// Returns readable text for an expected UTF-16 code unit.
     ///
     /// @param character the code unit to format
