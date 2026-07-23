@@ -13,11 +13,13 @@ import org.glavo.scssfx.internal.parse.StylesheetParser;
 import org.glavo.scssfx.internal.source.SourceFile;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -75,10 +77,10 @@ public final class SassCompiler {
         }
 
         var loaded = readSource(source);
+        var registry = new ModuleRegistry(options.loadPaths());
+        var evaluator = new SassEvaluator(registry);
         try {
             var stylesheet = StylesheetParser.parse(loaded.file(), loaded.syntax());
-            var registry = new ModuleRegistry(options.loadPaths());
-            var evaluator = new SassEvaluator(registry);
             var root = evaluator.executeRoot(stylesheet, loaded.file().url());
             T output;
             if (target instanceof CssTarget cssTarget) {
@@ -110,23 +112,41 @@ public final class SassCompiler {
             );
         } catch (EvaluationException failure) {
             throw new SassCompilationException(
-                    List.of(failure.primaryDiagnostic()),
+                    failureDiagnostics(failure.primaryDiagnostic(), evaluator.diagnostics()),
                     failure.sassTrace(),
                     failure
             );
         } catch (CssSerializeException failure) {
             throw new SassCompilationException(
-                    List.of(failure.primaryDiagnostic()),
+                    failureDiagnostics(failure.primaryDiagnostic(), evaluator.diagnostics()),
                     failure.sassTrace(),
                     failure
             );
         } catch (BssSerializeException failure) {
             throw new SassCompilationException(
-                    List.of(failure.primaryDiagnostic()),
+                    failureDiagnostics(failure.primaryDiagnostic(), evaluator.diagnostics()),
                     failure.sassTrace(),
                     failure
             );
         }
+    }
+
+    /// Combines a primary failure with diagnostics emitted before the failure.
+    ///
+    /// The primary error remains first as required by [SassCompilationException];
+    /// any earlier non-error diagnostics retain their reporting order afterward.
+    ///
+    /// @param primary  the primary compilation error
+    /// @param previous diagnostics emitted before the failure
+    /// @return an immutable nonempty diagnostic list
+    private static @Unmodifiable List<Diagnostic> failureDiagnostics(
+            Diagnostic primary,
+            List<? extends Diagnostic> previous
+    ) {
+        var result = new ArrayList<Diagnostic>(previous.size() + 1);
+        result.add(primary);
+        result.addAll(previous);
+        return List.copyOf(result);
     }
 
     /// Reads the root source text and records its canonical URL when available.

@@ -9,8 +9,10 @@ import org.glavo.scssfx.internal.ast.ConfiguredVariable;
 import org.glavo.scssfx.internal.ast.ContentBlock;
 import org.glavo.scssfx.internal.ast.ContentRule;
 import org.glavo.scssfx.internal.ast.Declaration;
+import org.glavo.scssfx.internal.ast.DebugRule;
 import org.glavo.scssfx.internal.ast.EachRule;
 import org.glavo.scssfx.internal.ast.ElseClause;
+import org.glavo.scssfx.internal.ast.ErrorRule;
 import org.glavo.scssfx.internal.ast.ForwardRule;
 import org.glavo.scssfx.internal.ast.ForRule;
 import org.glavo.scssfx.internal.ast.FontFaceRule;
@@ -43,6 +45,7 @@ import org.glavo.scssfx.internal.ast.StringExpression;
 import org.glavo.scssfx.internal.ast.StyleRule;
 import org.glavo.scssfx.internal.ast.Stylesheet;
 import org.glavo.scssfx.internal.ast.VariableDeclaration;
+import org.glavo.scssfx.internal.ast.WarnRule;
 import org.glavo.scssfx.internal.ast.WhileRule;
 import org.glavo.scssfx.internal.source.SourceFile;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -421,6 +424,9 @@ final class ScssParser extends SassExpressionParser {
             case "include" -> includeRule(start, context);
             case "content" -> contentRule(start, context);
             case "return" -> returnRule(start, context);
+            case "debug" -> debugRule(start);
+            case "warn" -> warnRule(start);
+            case "error" -> errorRule(start);
             case "use" -> useRule(start, context, atStylesheetRoot);
             case "forward" -> forwardRule(start, context, atStylesheetRoot);
             case "else" -> throw scanner.error(
@@ -993,6 +999,54 @@ final class ScssParser extends SassExpressionParser {
         var span = scanner.spanFrom(start);
         whitespaceWithoutComments(false);
         return new ReturnRule(expression, span);
+    }
+
+    /// Parses a `@debug` rule in any statement context.
+    ///
+    /// @param start the scanner state at the leading `@`
+    /// @return the debug rule
+    private DebugRule debugRule(ScannerState start) {
+        whitespace(true);
+        var expression = expression();
+        var span = scanner.source().span(
+                start.position(),
+                expression.span().end().offset()
+        );
+        expectStatementSeparator();
+        whitespaceWithoutComments(false);
+        return new DebugRule(expression, span);
+    }
+
+    /// Parses a `@warn` rule in any statement context.
+    ///
+    /// @param start the scanner state at the leading `@`
+    /// @return the warning rule
+    private WarnRule warnRule(ScannerState start) {
+        whitespace(true);
+        var expression = expression();
+        var span = scanner.source().span(
+                start.position(),
+                expression.span().end().offset()
+        );
+        expectStatementSeparator();
+        whitespaceWithoutComments(false);
+        return new WarnRule(expression, span);
+    }
+
+    /// Parses an `@error` rule in any statement context.
+    ///
+    /// @param start the scanner state at the leading `@`
+    /// @return the error rule
+    private ErrorRule errorRule(ScannerState start) {
+        whitespace(true);
+        var expression = expression();
+        var span = scanner.source().span(
+                start.position(),
+                expression.span().end().offset()
+        );
+        expectStatementSeparator();
+        whitespaceWithoutComments(false);
+        return new ErrorRule(expression, span);
     }
 
     /// Parses a `@use` rule.

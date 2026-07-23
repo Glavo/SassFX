@@ -118,6 +118,24 @@ public interface SassStatementVisitor<R> {
     /// @return the visit result
     R visitReturnRule(ReturnRule statement);
 
+    /// Visits a `@debug` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitDebugRule(DebugRule statement);
+
+    /// Visits a `@warn` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitWarnRule(WarnRule statement);
+
+    /// Visits an `@error` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitErrorRule(ErrorRule statement);
+
     /// Visits a `@use` rule.
     ///
     /// @param statement the statement to visit

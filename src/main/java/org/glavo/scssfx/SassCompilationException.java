@@ -14,7 +14,8 @@ public final class SassCompilationException extends Exception {
     /// The serialization version of this exception representation.
     private static final long serialVersionUID = 1L;
 
-    /// The immutable, nonempty diagnostics associated with the failure.
+    /// The immutable, nonempty diagnostics associated with the failure, with
+    /// the primary error first.
     private final @Unmodifiable List<Diagnostic> diagnostics;
 
     /// The immutable Sass call trace associated with the failure.
@@ -67,7 +68,10 @@ public final class SassCompilationException extends Exception {
 
     /// Returns all diagnostics associated with this failure.
     ///
-    /// @return an immutable, nonempty list in reporting order
+    /// The primary error is first. Any remaining diagnostics retain the order
+    /// supplied when this exception was created.
+    ///
+    /// @return an immutable, nonempty list whose first element is the primary error
     public @Unmodifiable List<Diagnostic> diagnostics() {
         return diagnostics;
     }

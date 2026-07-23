@@ -4,6 +4,7 @@ package org.glavo.scssfx.cli;
 import org.glavo.scssfx.BssTarget;
 import org.glavo.scssfx.CompileResult;
 import org.glavo.scssfx.CssTarget;
+import org.glavo.scssfx.Diagnostic;
 import org.glavo.scssfx.DiagnosticSeverity;
 import org.glavo.scssfx.JavaFXCompatibility;
 import org.glavo.scssfx.JavaFXCssTarget;
@@ -182,6 +183,7 @@ public final class ScssfxMain implements Callable<Integer> {
                 default -> throw new AssertionError("Unsupported target was validated: " + targetName);
             };
         } catch (SassCompilationException failure) {
+            printNonErrorDiagnostics(failure.diagnostics(), err);
             err.println(DiagnosticPrinter.format(failure));
             return FAILURE_EXIT_STATUS;
         } catch (IOException failure) {
@@ -274,7 +276,18 @@ public final class ScssfxMain implements Callable<Integer> {
     /// @param result the completed compilation result
     /// @param err the standard-error writer
     private static void printNonErrorDiagnostics(CompileResult<?> result, java.io.PrintWriter err) {
-        for (var diagnostic : result.diagnostics()) {
+        printNonErrorDiagnostics(result.diagnostics(), err);
+    }
+
+    /// Writes non-error diagnostics from a completed or failed compilation.
+    ///
+    /// @param diagnostics diagnostics in their container-defined order
+    /// @param err the standard-error writer
+    private static void printNonErrorDiagnostics(
+            List<Diagnostic> diagnostics,
+            java.io.PrintWriter err
+    ) {
+        for (var diagnostic : diagnostics) {
             if (diagnostic.severity() != DiagnosticSeverity.ERROR) {
                 err.println(DiagnosticPrinter.format(diagnostic));
             }

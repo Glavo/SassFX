@@ -367,3 +367,32 @@ $item: item
   content: "prefix item";
   color: red;
 }
+<===> diagnostics/statements/input.scss
+@use "messages" as first;
+@use "messages" as second;
+@debug "root";
+@warn #abc;
+a {
+  color: red;
+}
+<===> diagnostics/statements/_messages.scss
+@debug module;
+@warn "loaded";
+<===> diagnostics/statements/output.css
+a {
+  color: red;
+}
+<===> errors/error-rule/input.scss
+@debug before;
+@error "fatal";
+<===> errors/error-rule/error
+Error: "fatal"
+<===> syntax/indented-diagnostics/input.sass
+@debug "sass"
+@warn warning
+a
+  color: red
+<===> syntax/indented-diagnostics/output.css
+a {
+  color: red;
+}

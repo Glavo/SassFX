@@ -9,8 +9,10 @@ import org.glavo.scssfx.internal.ast.BinaryOperator;
 import org.glavo.scssfx.internal.ast.BooleanExpression;
 import org.glavo.scssfx.internal.ast.ColorExpression;
 import org.glavo.scssfx.internal.ast.Declaration;
+import org.glavo.scssfx.internal.ast.DebugRule;
 import org.glavo.scssfx.internal.ast.EachRule;
 import org.glavo.scssfx.internal.ast.ElseClause;
+import org.glavo.scssfx.internal.ast.ErrorRule;
 import org.glavo.scssfx.internal.ast.ExpressionInterpolationPart;
 import org.glavo.scssfx.internal.ast.ForRule;
 import org.glavo.scssfx.internal.ast.FontFaceRule;
@@ -61,6 +63,7 @@ import org.glavo.scssfx.internal.ast.TextInterpolationPart;
 import org.glavo.scssfx.internal.ast.UnaryOperationExpression;
 import org.glavo.scssfx.internal.ast.VariableDeclaration;
 import org.glavo.scssfx.internal.ast.VariableExpression;
+import org.glavo.scssfx.internal.ast.WarnRule;
 import org.glavo.scssfx.internal.ast.WhileRule;
 import org.glavo.scssfx.internal.callable.BuiltInCallable;
 import org.glavo.scssfx.internal.callable.Callable;
@@ -1317,6 +1320,62 @@ public final class SassEvaluator implements
     @Override
     public StatementResult visitReturnRule(ReturnRule statement) {
         return new StatementResult.ReturnValue(evaluate(statement.expression()).withoutSlash());
+    }
+
+    /// Evaluates a `@debug` expression and records its inspect representation.
+    ///
+    /// Quoted and unquoted strings report their unquoted text. Other values use
+    /// their inspect-mode Sass representation.
+    ///
+    /// @param statement the debug rule
+    /// @return the continue result
+    @Override
+    public StatementResult visitDebugRule(DebugRule statement) {
+        var value = evaluate(statement.expression());
+        var message = value instanceof SassString string ? string.text() : value.toString();
+        diagnostics.add(new Diagnostic(
+                DiagnosticSeverity.DEBUG,
+                message,
+                statement.span(),
+                null
+        ));
+        return StatementResult.CONTINUE;
+    }
+
+    /// Evaluates a `@warn` expression and records its CSS string representation.
+    ///
+    /// Quoted and unquoted strings report their unquoted text. Other values use
+    /// CSS serialization, so `null` produces an empty warning message.
+    ///
+    /// @param statement the warning rule
+    /// @return the continue result
+    /// @throws EvaluationException if the evaluated value cannot be represented as CSS
+    @Override
+    public StatementResult visitWarnRule(WarnRule statement) {
+        var value = evaluate(statement.expression());
+        var message = value instanceof SassString string
+                ? string.text()
+                : valueOperation(statement.expression().span(), value::toCssString);
+        diagnostics.add(new Diagnostic(
+                DiagnosticSeverity.WARNING,
+                message,
+                statement.span(),
+                null
+        ));
+        return StatementResult.CONTINUE;
+    }
+
+    /// Evaluates an `@error` expression and terminates stylesheet execution.
+    ///
+    /// @param statement the error rule
+    /// @return this method does not return normally
+    /// @throws EvaluationException always, with the value's inspect representation
+    @Override
+    public StatementResult visitErrorRule(ErrorRule statement) {
+        throw new EvaluationException(
+                evaluate(statement.expression()).toString(),
+                statement.span()
+        );
     }
 
     /// Evaluates a string and its embedded expressions.

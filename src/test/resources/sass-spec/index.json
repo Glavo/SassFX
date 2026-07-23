@@ -80,6 +80,33 @@
           ]
         },
         {
+          "directory": "diagnostics/statements",
+          "action": "run",
+          "category": "DIAGNOSTICS",
+          "loadedUrls": ["input.scss", "_messages.scss"],
+          "diagnostics": [
+            {"severity": "DEBUG", "message": "module"},
+            {"severity": "WARNING", "message": "loaded"},
+            {"severity": "DEBUG", "message": "root"},
+            {"severity": "WARNING", "message": "#abc"}
+          ]
+        },
+        {
+          "directory": "errors/error-rule",
+          "action": "run",
+          "category": "ERRORS"
+        },
+        {
+          "directory": "syntax/indented-diagnostics",
+          "action": "run",
+          "category": "SYNTAX",
+          "loadedUrls": ["input.sass"],
+          "diagnostics": [
+            {"severity": "DEBUG", "message": "sass"},
+            {"severity": "WARNING", "message": "warning"}
+          ]
+        },
+        {
           "directory": "errors/undefined-variable",
           "action": "run",
           "category": "ERRORS"
