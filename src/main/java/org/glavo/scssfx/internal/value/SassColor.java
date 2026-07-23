@@ -2,6 +2,9 @@
 package org.glavo.scssfx.internal.value;
 
 import org.glavo.scssfx.SourceSpan;
+import org.glavo.scssfx.internal.value.color.ColorChannel;
+import org.glavo.scssfx.internal.value.color.ColorConversions;
+import org.glavo.scssfx.internal.value.color.ColorSpace;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -13,10 +16,12 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
-/// Represents an immutable Sass color in the legacy RGB color space.
+/// Represents an immutable Sass color in a known CSS Color Level 4 space.
 ///
+/// Legacy RGB, HSL, and HWB colors remain fully supported. Modern spaces store
+/// their native channels and convert through the Color 4 XYZ hub when needed.
 /// The optional source format affects serialization but not value equality or
-/// hashing.
+/// hashing, and is retained only for legacy RGB colors.
 @ApiStatus.Internal
 @NotNullByDefault
 public final class SassColor implements SassValue {
@@ -30,40 +35,125 @@ public final class SassColor implements SassValue {
     private static final @Unmodifiable Map<Integer, String> CANONICAL_NAMES_BY_RGB =
             createCanonicalNames();
 
-    /// Contains the red channel.
-    private final double red;
+    /// Contains this color's space.
+    private final ColorSpace space;
 
-    /// Contains the green channel.
-    private final double green;
+    /// Contains the first channel, or {@code null} when missing.
+    private final @Nullable Double channel0;
 
-    /// Contains the blue channel.
-    private final double blue;
+    /// Contains the second channel, or {@code null} when missing.
+    private final @Nullable Double channel1;
 
-    /// Contains the alpha channel.
-    private final double alpha;
+    /// Contains the third channel, or {@code null} when missing.
+    private final @Nullable Double channel2;
 
-    /// Contains the preferred expanded serialization format.
+    /// Contains the alpha channel, or {@code null} when missing.
+    private final @Nullable Double alpha;
+
+    /// Contains the preferred expanded serialization format for legacy RGB.
     private final @Nullable ColorFormat format;
 
-    /// Creates an RGB color after its alpha channel has been validated.
+    /// Creates a color after channel preprocessing for polar spaces.
     ///
-    /// @param red the red channel
-    /// @param green the green channel
-    /// @param blue the blue channel
-    /// @param alpha the alpha channel between zero and one
+    /// @param space the color space
+    /// @param channel0 the first channel, or {@code null} when missing
+    /// @param channel1 the second channel, or {@code null} when missing
+    /// @param channel2 the third channel, or {@code null} when missing
+    /// @param alpha the alpha channel between zero and one, or {@code null} when missing
     /// @param format the preferred expanded format, or {@code null}
     private SassColor(
-            double red,
-            double green,
-            double blue,
-            double alpha,
+            ColorSpace space,
+            @Nullable Double channel0,
+            @Nullable Double channel1,
+            @Nullable Double channel2,
+            @Nullable Double alpha,
             @Nullable ColorFormat format
     ) {
-        this.red = red;
-        this.green = green;
-        this.blue = blue;
+        if (alpha != null && !(alpha >= 0.0 && alpha <= 1.0) && !SassFuzzy.equals(alpha, 0.0)
+                && !SassFuzzy.equals(alpha, 1.0)) {
+            // Allow fuzzy endpoints while rejecting clearly out-of-range values.
+            if (alpha < 0.0 || alpha > 1.0) {
+                throw new IllegalArgumentException("alpha must be between 0 and 1");
+            }
+        }
+        if (format != null && space != ColorSpace.RGB) {
+            throw new IllegalArgumentException("format is only valid for rgb colors");
+        }
+        if (space == ColorSpace.LMS) {
+            throw new IllegalArgumentException("lms is an internal intermediate space");
+        }
+        this.space = space;
+        this.channel0 = channel0;
+        this.channel1 = channel1;
+        this.channel2 = channel2;
         this.alpha = alpha;
         this.format = format;
+    }
+
+    /// Creates a color in an arbitrary known space after polar-channel normalization.
+    ///
+    /// @param space the color space
+    /// @param channel0 the first channel, or {@code null} when missing
+    /// @param channel1 the second channel, or {@code null} when missing
+    /// @param channel2 the third channel, or {@code null} when missing
+    /// @param alpha the alpha channel, or {@code null} when missing
+    /// @return the color
+    /// @throws IllegalArgumentException if {@code alpha} is outside its range
+    public static SassColor forSpace(
+            ColorSpace space,
+            @Nullable Double channel0,
+            @Nullable Double channel1,
+            @Nullable Double channel2,
+            @Nullable Double alpha
+    ) {
+        Objects.requireNonNull(space, "space");
+        return switch (space) {
+            case HSL -> raw(
+                    space,
+                    normalizeHue(channel0, channel1 != null && channel1 < 0.0 && !SassFuzzy.equals(channel1, 0.0)),
+                    channel1 == null ? null : Math.abs(channel1),
+                    channel2,
+                    alpha,
+                    null
+            );
+            case HWB -> raw(
+                    space,
+                    normalizeHue(channel0, false),
+                    channel1,
+                    channel2,
+                    alpha,
+                    null
+            );
+            case LCH, OKLCH -> raw(
+                    space,
+                    channel0,
+                    channel1 == null ? null : Math.abs(channel1),
+                    normalizeHue(channel2, channel1 != null && channel1 < 0.0 && !SassFuzzy.equals(channel1, 0.0)),
+                    alpha,
+                    null
+            );
+            default -> raw(space, channel0, channel1, channel2, alpha, null);
+        };
+    }
+
+    /// Creates a color without polar-channel preprocessing.
+    private static SassColor raw(
+            ColorSpace space,
+            @Nullable Double channel0,
+            @Nullable Double channel1,
+            @Nullable Double channel2,
+            @Nullable Double alpha,
+            @Nullable ColorFormat format
+    ) {
+        if (alpha != null) {
+            if (Double.isNaN(alpha) || alpha < 0.0 || alpha > 1.0) {
+                // Mirror previous strict validation for ordinary constructors.
+                if (!(alpha >= 0.0 && alpha <= 1.0)) {
+                    throw new IllegalArgumentException("alpha must be between 0 and 1");
+                }
+            }
+        }
+        return new SassColor(space, channel0, channel1, channel2, alpha, format);
     }
 
     /// Creates a color in the legacy RGB color space.
@@ -78,7 +168,6 @@ public final class SassColor implements SassValue {
     /// @param format the preferred expanded format, or {@code null}
     /// @return the RGB color
     /// @throws IllegalArgumentException if {@code alpha} is outside its range
-    /// or is not a number
     public static SassColor rgb(
             double red,
             double green,
@@ -86,10 +175,123 @@ public final class SassColor implements SassValue {
             double alpha,
             @Nullable ColorFormat format
     ) {
-        if (!(alpha >= 0.0 && alpha <= 1.0)) {
-            throw new IllegalArgumentException("alpha must be between 0 and 1");
-        }
-        return new SassColor(red, green, blue, alpha, format);
+        return raw(ColorSpace.RGB, red, green, blue, alpha, format);
+    }
+
+    /// Creates a color in the legacy RGB color space with optional missing channels.
+    ///
+    /// @param red the red channel, or {@code null} when missing
+    /// @param green the green channel, or {@code null} when missing
+    /// @param blue the blue channel, or {@code null} when missing
+    /// @param alpha the alpha channel, or {@code null} when missing
+    /// @return the RGB color
+    public static SassColor rgb(
+            @Nullable Double red,
+            @Nullable Double green,
+            @Nullable Double blue,
+            @Nullable Double alpha
+    ) {
+        return forSpace(ColorSpace.RGB, red, green, blue, alpha);
+    }
+
+    /// Creates a color in the legacy HSL color space.
+    ///
+    /// @param hue the hue in degrees
+    /// @param saturation the saturation percentage
+    /// @param lightness the lightness percentage
+    /// @param alpha the alpha channel between zero and one
+    /// @return the HSL color
+    /// @throws IllegalArgumentException if {@code alpha} is outside its range
+    public static SassColor hsl(
+            double hue,
+            double saturation,
+            double lightness,
+            double alpha
+    ) {
+        return forSpace(ColorSpace.HSL, hue, saturation, lightness, alpha);
+    }
+
+    /// Creates a color in the legacy HWB color space.
+    ///
+    /// @param hue the hue in degrees
+    /// @param whiteness the whiteness percentage
+    /// @param blackness the blackness percentage
+    /// @param alpha the alpha channel between zero and one
+    /// @return the HWB color
+    /// @throws IllegalArgumentException if {@code alpha} is outside its range
+    public static SassColor hwb(
+            double hue,
+            double whiteness,
+            double blackness,
+            double alpha
+    ) {
+        return forSpace(ColorSpace.HWB, hue, whiteness, blackness, alpha);
+    }
+
+    /// Creates a color in the OKLab color space.
+    ///
+    /// @param lightness the lightness channel
+    /// @param a the a channel
+    /// @param b the b channel
+    /// @param alpha the alpha channel between zero and one
+    /// @return the OKLab color
+    public static SassColor oklab(double lightness, double a, double b, double alpha) {
+        return forSpace(ColorSpace.OKLAB, lightness, a, b, alpha);
+    }
+
+    /// Creates a color in the OKLCH color space.
+    ///
+    /// @param lightness the lightness channel
+    /// @param chroma the chroma channel
+    /// @param hue the hue in degrees
+    /// @param alpha the alpha channel between zero and one
+    /// @return the OKLCH color
+    public static SassColor oklch(double lightness, double chroma, double hue, double alpha) {
+        return forSpace(ColorSpace.OKLCH, lightness, chroma, hue, alpha);
+    }
+
+    /// Creates a color in the CIE Lab color space.
+    ///
+    /// @param lightness the lightness channel
+    /// @param a the a channel
+    /// @param b the b channel
+    /// @param alpha the alpha channel between zero and one
+    /// @return the Lab color
+    public static SassColor lab(double lightness, double a, double b, double alpha) {
+        return forSpace(ColorSpace.LAB, lightness, a, b, alpha);
+    }
+
+    /// Creates a color in the CIE LCH color space.
+    ///
+    /// @param lightness the lightness channel
+    /// @param chroma the chroma channel
+    /// @param hue the hue in degrees
+    /// @param alpha the alpha channel between zero and one
+    /// @return the LCH color
+    public static SassColor lch(double lightness, double chroma, double hue, double alpha) {
+        return forSpace(ColorSpace.LCH, lightness, chroma, hue, alpha);
+    }
+
+    /// Creates a color in the sRGB color space.
+    ///
+    /// @param red the red channel
+    /// @param green the green channel
+    /// @param blue the blue channel
+    /// @param alpha the alpha channel between zero and one
+    /// @return the sRGB color
+    public static SassColor srgb(double red, double green, double blue, double alpha) {
+        return forSpace(ColorSpace.SRGB, red, green, blue, alpha);
+    }
+
+    /// Creates a color in the XYZ D65 color space.
+    ///
+    /// @param x the X channel
+    /// @param y the Y channel
+    /// @param z the Z channel
+    /// @param alpha the alpha channel between zero and one
+    /// @return the XYZ D65 color
+    public static SassColor xyzD65(double x, double y, double z, double alpha) {
+        return forSpace(ColorSpace.XYZ_D65, x, y, z, alpha);
     }
 
     /// Resolves a CSS named color and preserves the supplied source spelling.
@@ -105,9 +307,9 @@ public final class SassColor implements SassValue {
             return null;
         }
         return rgb(
-                rgba >>> 24 & 0xff,
-                rgba >>> 16 & 0xff,
-                rgba >>> 8 & 0xff,
+                (double) (rgba >>> 24 & 0xff),
+                (double) (rgba >>> 16 & 0xff),
+                (double) (rgba >>> 8 & 0xff),
                 (rgba & 0xff) / 255.0,
                 new SpanColorFormat(span)
         );
@@ -121,31 +323,175 @@ public final class SassColor implements SassValue {
         return this;
     }
 
-    /// Returns the red channel.
+    /// Returns this color's space.
+    ///
+    /// @return the color space
+    public ColorSpace space() {
+        return space;
+    }
+
+    /// Returns whether this color uses a legacy RGB, HSL, or HWB space.
+    ///
+    /// @return whether the color is legacy
+    public boolean isLegacy() {
+        return space.isLegacy();
+    }
+
+    /// Returns the first channel, treating missing values as zero.
+    ///
+    /// @return the first channel
+    public double channel0() {
+        return channel0 != null ? channel0 : 0.0;
+    }
+
+    /// Returns the second channel, treating missing values as zero.
+    ///
+    /// @return the second channel
+    public double channel1() {
+        return channel1 != null ? channel1 : 0.0;
+    }
+
+    /// Returns the third channel, treating missing values as zero.
+    ///
+    /// @return the third channel
+    public double channel2() {
+        return channel2 != null ? channel2 : 0.0;
+    }
+
+    /// Returns the first channel, or {@code null} when missing.
+    ///
+    /// @return the first channel or {@code null}
+    public @Nullable Double channel0OrNull() {
+        return channel0;
+    }
+
+    /// Returns the second channel, or {@code null} when missing.
+    ///
+    /// @return the second channel or {@code null}
+    public @Nullable Double channel1OrNull() {
+        return channel1;
+    }
+
+    /// Returns the third channel, or {@code null} when missing.
+    ///
+    /// @return the third channel or {@code null}
+    public @Nullable Double channel2OrNull() {
+        return channel2;
+    }
+
+    /// Returns whether the first channel is missing.
+    ///
+    /// @return whether channel 0 is missing
+    public boolean isChannel0Missing() {
+        return channel0 == null;
+    }
+
+    /// Returns whether the second channel is missing.
+    ///
+    /// @return whether channel 1 is missing
+    public boolean isChannel1Missing() {
+        return channel1 == null;
+    }
+
+    /// Returns whether the third channel is missing.
+    ///
+    /// @return whether channel 2 is missing
+    public boolean isChannel2Missing() {
+        return channel2 == null;
+    }
+
+    /// Returns whether any color or alpha channel is missing.
+    ///
+    /// @return whether a missing channel is present
+    public boolean hasMissingChannel() {
+        return channel0 == null || channel1 == null || channel2 == null || alpha == null;
+    }
+
+    /// Returns the named channel value, treating missing values as zero.
+    ///
+    /// @param channel the channel name
+    /// @return the channel value
+    /// @throws SassValueException if the channel name is unknown for this space
+    public double channel(String channel) {
+        Objects.requireNonNull(channel, "channel");
+        var channels = space.channels();
+        if (channel.equals(channels.get(0).name())) {
+            return channel0();
+        }
+        if (channel.equals(channels.get(1).name())) {
+            return channel1();
+        }
+        if (channel.equals(channels.get(2).name())) {
+            return channel2();
+        }
+        if ("alpha".equals(channel)) {
+            return alpha();
+        }
+        throw new SassValueException(
+                "Color " + this + " doesn't have a channel named \"" + channel + "\"."
+        );
+    }
+
+    /// Returns whether the named channel is missing.
+    ///
+    /// @param channel the channel name
+    /// @return whether the channel is missing
+    /// @throws SassValueException if the channel name is unknown for this space
+    public boolean isChannelMissing(String channel) {
+        Objects.requireNonNull(channel, "channel");
+        var channels = space.channels();
+        if (channel.equals(channels.get(0).name())) {
+            return channel0 == null;
+        }
+        if (channel.equals(channels.get(1).name())) {
+            return channel1 == null;
+        }
+        if (channel.equals(channels.get(2).name())) {
+            return channel2 == null;
+        }
+        if ("alpha".equals(channel)) {
+            return alpha == null;
+        }
+        throw new SassValueException(
+                "Color " + this + " doesn't have a channel named \"" + channel + "\"."
+        );
+    }
+
+    /// Returns the red channel of the RGB conversion of this color.
     ///
     /// @return the un-clamped channel value
+    /// @throws SassValueException if this color is not legacy
     public double red() {
-        return red;
+        return legacyChannel(ColorSpace.RGB, "red");
     }
 
-    /// Returns the green channel.
+    /// Returns the green channel of the RGB conversion of this color.
     ///
     /// @return the un-clamped channel value
+    /// @throws SassValueException if this color is not legacy
     public double green() {
-        return green;
+        return legacyChannel(ColorSpace.RGB, "green");
     }
 
-    /// Returns the blue channel.
+    /// Returns the blue channel of the RGB conversion of this color.
     ///
     /// @return the un-clamped channel value
+    /// @throws SassValueException if this color is not legacy
     public double blue() {
-        return blue;
+        return legacyChannel(ColorSpace.RGB, "blue");
     }
 
-    /// Returns the alpha channel.
+    /// Returns the alpha channel, treating a missing alpha as zero.
     ///
     /// @return a value between zero and one
     public double alpha() {
+        return alpha != null ? alpha : 0.0;
+    }
+
+    /// Returns the alpha channel, or {@code null} when missing.
+    ///
+    /// @return the alpha channel or {@code null}
+    public @Nullable Double alphaOrNull() {
         return alpha;
     }
 
@@ -156,50 +502,103 @@ public final class SassColor implements SassValue {
         return format;
     }
 
-    /// Returns this color's legacy HSL hue in degrees.
-    ///
-    /// Achromatic colors return {@code 0} because the legacy RGB model has no
-    /// separate missing-hue state.
+    /// Returns this color's HSL hue in degrees.
     ///
     /// @return the normalized hue between zero inclusive and 360 exclusive
+    /// @throws SassValueException if this color is not legacy
     public double hue() {
-        var normalizedRed = red / 255.0;
-        var normalizedGreen = green / 255.0;
-        var normalizedBlue = blue / 255.0;
-        var saturation = hslSaturation(normalizedRed, normalizedGreen, normalizedBlue);
-        if (SassFuzzy.equals(saturation, 0.0)) {
-            return 0.0;
-        }
-        var hue = hslHue(normalizedRed, normalizedGreen, normalizedBlue);
-        if (saturation < 0.0) {
-            hue += 180.0;
-        }
-        return normalizeHue(hue);
+        return legacyChannel(ColorSpace.HSL, "hue");
     }
 
-    /// Returns this color's legacy HSL saturation as a percentage.
+    /// Returns this color's HSL saturation as a percentage.
     ///
     /// @return the non-negative saturation percentage
+    /// @throws SassValueException if this color is not legacy
     public double saturation() {
-        return Math.abs(hslSaturation(red / 255.0, green / 255.0, blue / 255.0) * 100.0);
+        return legacyChannel(ColorSpace.HSL, "saturation");
     }
 
-    /// Returns this color's legacy HSL lightness as a percentage.
+    /// Returns this color's HSL lightness as a percentage.
     ///
     /// @return the lightness percentage
+    /// @throws SassValueException if this color is not legacy
     public double lightness() {
-        return hslLightness(red / 255.0, green / 255.0, blue / 255.0) * 100.0;
+        return legacyChannel(ColorSpace.HSL, "lightness");
     }
 
-    /// Mixes this color with another legacy RGB color.
+    /// Returns whether this color is in-gamut for its space.
     ///
-    /// The resulting RGB channel weights account for the alpha difference,
-    /// while alpha itself is interpolated directly using {@code firstWeight}.
-    /// Source serialization metadata is not retained.
+    /// Unbounded spaces always return {@code true}. Missing channels are treated
+    /// as zero for the gamut check.
+    ///
+    /// @return whether every linear channel lies within its conventional range
+    public boolean isInGamut() {
+        if (!space.isBounded()) {
+            return true;
+        }
+        return isChannelInGamut(channel0(), space.channels().get(0))
+                && isChannelInGamut(channel1(), space.channels().get(1))
+                && isChannelInGamut(channel2(), space.channels().get(2));
+    }
+
+    /// Converts this color to {@code dest}.
+    ///
+    /// When {@code legacyMissing} is {@code false} and the converted color is
+    /// legacy, missing channels are replaced with zero.
+    ///
+    /// @param dest the destination space
+    /// @param legacyMissing whether missing channels may remain on legacy results
+    /// @return the converted color
+    public SassColor toSpace(ColorSpace dest, boolean legacyMissing) {
+        Objects.requireNonNull(dest, "dest");
+        if (space == dest) {
+            return this;
+        }
+        var converted = ColorConversions.convert(
+                space,
+                dest,
+                channel0,
+                channel1,
+                channel2,
+                alpha
+        );
+        var result = forSpace(
+                dest,
+                converted.channel0(),
+                converted.channel1(),
+                converted.channel2(),
+                converted.alpha()
+        );
+        if (!legacyMissing
+                && result.isLegacy()
+                && result.hasMissingChannel()) {
+            return forSpace(
+                    dest,
+                    result.channel0(),
+                    result.channel1(),
+                    result.channel2(),
+                    result.alpha()
+            );
+        }
+        return result;
+    }
+
+    /// Converts this color to {@code dest}, preserving missing legacy channels.
+    ///
+    /// @param dest the destination space
+    /// @return the converted color
+    public SassColor toSpace(ColorSpace dest) {
+        return toSpace(dest, true);
+    }
+
+    /// Mixes this color with another color using the legacy RGB algorithm.
+    ///
+    /// Both colors are converted to RGB. Source serialization metadata is not
+    /// retained.
     ///
     /// @param other the second color
     /// @param firstWeight the contribution of this color between zero and one
-    /// @return the mixed color
+    /// @return the mixed RGB color
     /// @throws IllegalArgumentException if {@code firstWeight} is outside its range
     public SassColor mixedWith(SassColor other, double firstWeight) {
         Objects.requireNonNull(other, "other");
@@ -207,8 +606,10 @@ public final class SassColor implements SassValue {
             throw new IllegalArgumentException("firstWeight must be between 0 and 1");
         }
 
+        var left = toSpace(ColorSpace.RGB, false);
+        var right = other.toSpace(ColorSpace.RGB, false);
         var normalizedWeight = firstWeight * 2.0 - 1.0;
-        var alphaDistance = alpha - other.alpha;
+        var alphaDistance = left.alpha() - right.alpha();
         var combinedWeight = normalizedWeight * alphaDistance == -1.0
                 ? normalizedWeight
                 : (normalizedWeight + alphaDistance)
@@ -216,10 +617,10 @@ public final class SassColor implements SassValue {
         var weight1 = (combinedWeight + 1.0) / 2.0;
         var weight2 = 1.0 - weight1;
         return rgb(
-                red * weight1 + other.red * weight2,
-                green * weight1 + other.green * weight2,
-                blue * weight1 + other.blue * weight2,
-                alpha * firstWeight + other.alpha * (1.0 - firstWeight),
+                left.channel0() * weight1 + right.channel0() * weight2,
+                left.channel1() * weight1 + right.channel1() * weight2,
+                left.channel2() * weight1 + right.channel2() * weight2,
+                left.alpha() * firstWeight + right.alpha() * (1.0 - firstWeight),
                 null
         );
     }
@@ -228,196 +629,109 @@ public final class SassColor implements SassValue {
     ///
     /// @return the color with every RGB channel subtracted from 255
     public SassColor inverted() {
-        return rgb(255.0 - red, 255.0 - green, 255.0 - blue, alpha, null);
+        var rgb = toSpace(ColorSpace.RGB, false);
+        return SassColor.rgb(
+                255.0 - rgb.channel0(),
+                255.0 - rgb.channel1(),
+                255.0 - rgb.channel2(),
+                rgb.alpha(),
+                null
+        ).toSpace(space, false);
     }
 
-    /// Returns this color with zero legacy HSL saturation.
+    /// Returns this color with zero HSL saturation in the original space.
     ///
     /// @return the grayscale color without source serialization metadata
     public SassColor grayscale() {
-        return fromHsl(hue(), 0.0, lightness(), alpha);
+        var hsl = toSpace(ColorSpace.HSL, false);
+        return forSpace(ColorSpace.HSL, hsl.channel0OrNull(), 0.0, hsl.channel2OrNull(), hsl.alphaOrNull())
+                .toSpace(space, false);
     }
 
-    /// Returns the legacy HSL complement of this color.
+    /// Returns the HSL complement of this color in the original space.
     ///
     /// @return the color with its hue rotated by 180 degrees
     public SassColor complemented() {
-        return fromHsl(hue() + 180.0, saturation(), lightness(), alpha);
+        var hsl = toSpace(ColorSpace.HSL, false);
+        return forSpace(
+                ColorSpace.HSL,
+                hsl.channel0() + 180.0,
+                hsl.channel1OrNull(),
+                hsl.channel2OrNull(),
+                hsl.alphaOrNull()
+        ).toSpace(space, false);
     }
 
-    /// Creates a legacy RGB color from HSL channels.
-    ///
-    /// @param hue the hue in degrees
-    /// @param saturation the saturation percentage
-    /// @param lightness the lightness percentage
-    /// @param alpha the alpha channel between zero and one
-    /// @return a format-free RGB color
-    /// @throws IllegalArgumentException if {@code alpha} is outside its range
-    public static SassColor hsl(
-            double hue,
-            double saturation,
-            double lightness,
-            double alpha
-    ) {
-        return fromHsl(hue, saturation, lightness, alpha);
-    }
-
-    /// Converts legacy HSL channels to an RGB color.
-    ///
-    /// @param hue the hue in degrees
-    /// @param saturation the saturation percentage
-    /// @param lightness the lightness percentage
-    /// @param alpha the alpha channel
-    /// @return a format-free RGB color
-    private static SassColor fromHsl(
-            double hue,
-            double saturation,
-            double lightness,
-            double alpha
-    ) {
-        var normalizedHue = normalizeHue(hue) / 360.0;
-        var normalizedSaturation = saturation / 100.0;
-        var normalizedLightness = lightness / 100.0;
-        var secondMultiplier = normalizedLightness <= 0.5
-                ? normalizedLightness * (normalizedSaturation + 1.0)
-                : normalizedLightness + normalizedSaturation
-                - normalizedLightness * normalizedSaturation;
-        var firstMultiplier = normalizedLightness * 2.0 - secondMultiplier;
-        return rgb(
-                normalizeRgbEndpoint(
-                        hslHueToRgb(firstMultiplier, secondMultiplier, normalizedHue + 1.0 / 3.0)
-                                * 255.0
-                ),
-                normalizeRgbEndpoint(hslHueToRgb(firstMultiplier, secondMultiplier, normalizedHue) * 255.0),
-                normalizeRgbEndpoint(
-                        hslHueToRgb(firstMultiplier, secondMultiplier, normalizedHue - 1.0 / 3.0)
-                                * 255.0
-                ),
-                alpha,
-                null
-        );
-    }
-
-    /// Returns the legacy HSL hue computed from normalized RGB channels.
-    ///
-    /// @param red the normalized red channel
-    /// @param green the normalized green channel
-    /// @param blue the normalized blue channel
-    /// @return the unnormalized hue in degrees
-    private static double hslHue(double red, double green, double blue) {
-        var maximum = Math.max(Math.max(red, green), blue);
-        var minimum = Math.min(Math.min(red, green), blue);
-        var delta = maximum - minimum;
-        if (delta == 0.0) {
-            return 0.0;
+    /// Returns a legacy channel after converting this color into {@code targetSpace}.
+    private double legacyChannel(ColorSpace targetSpace, String channel) {
+        if (!isLegacy()) {
+            throw new SassValueException(
+                    "color." + channel + "() is only supported for legacy colors. Please use "
+                            + "color.channel() instead with an explicit $space argument."
+            );
         }
-        if (maximum == red) {
-            return 60.0 * (green - blue) / delta + 360.0;
-        }
-        if (maximum == green) {
-            return 60.0 * (blue - red) / delta + 120.0;
-        }
-        return 60.0 * (red - green) / delta + 240.0;
+        return toSpace(targetSpace).channel(channel);
     }
 
-    /// Returns the legacy HSL saturation computed from normalized RGB channels.
-    ///
-    /// @param red the normalized red channel
-    /// @param green the normalized green channel
-    /// @param blue the normalized blue channel
-    /// @return the signed saturation fraction
-    private static double hslSaturation(double red, double green, double blue) {
-        var maximum = Math.max(Math.max(red, green), blue);
-        var minimum = Math.min(Math.min(red, green), blue);
-        var lightness = (minimum + maximum) / 2.0;
-        if (lightness == 0.0 || lightness == 1.0) {
-            return 0.0;
+    /// Returns whether a linear channel value is inside its conventional gamut.
+    private static boolean isChannelInGamut(double value, ColorChannel channel) {
+        if (!(channel instanceof ColorChannel.Linear linear)) {
+            return true;
         }
-        return (maximum - lightness) / Math.min(lightness, 1.0 - lightness);
+        return SassFuzzy.lessThanOrEquals(value, linear.max())
+                && SassFuzzy.greaterThanOrEquals(value, linear.min());
     }
 
-    /// Returns the legacy HSL lightness computed from normalized RGB channels.
-    ///
-    /// @param red the normalized red channel
-    /// @param green the normalized green channel
-    /// @param blue the normalized blue channel
-    /// @return the lightness fraction
-    private static double hslLightness(double red, double green, double blue) {
-        return (Math.min(Math.min(red, green), blue)
-                + Math.max(Math.max(red, green), blue)) / 2.0;
-    }
-
-    /// Normalizes one hue to the half-open legacy HSL degree range.
-    ///
-    /// @param hue the hue to normalize
-    /// @return a hue between zero inclusive and 360 exclusive
-    private static double normalizeHue(double hue) {
+    /// Normalizes one hue to the half-open degree range, optionally inverted.
+    private static @Nullable Double normalizeHue(@Nullable Double hue, boolean invert) {
+        if (hue == null) {
+            return null;
+        }
         var normalized = hue % 360.0;
         if (normalized < 0.0) {
             normalized += 360.0;
         }
+        if (invert) {
+            normalized = (normalized + 180.0) % 360.0;
+        }
         return normalized == 0.0 ? 0.0 : normalized;
-    }
-
-    /// Converts one normalized hue position to a normalized RGB channel.
-    ///
-    /// @param firstMultiplier the lower HSL conversion multiplier
-    /// @param secondMultiplier the upper HSL conversion multiplier
-    /// @param hue the normalized hue position
-    /// @return the normalized RGB channel
-    private static double hslHueToRgb(
-            double firstMultiplier,
-            double secondMultiplier,
-            double hue
-    ) {
-        if (hue < 0.0) {
-            hue += 1.0;
-        }
-        if (hue > 1.0) {
-            hue -= 1.0;
-        }
-        if (hue < 1.0 / 6.0) {
-            return firstMultiplier + (secondMultiplier - firstMultiplier) * hue * 6.0;
-        }
-        if (hue < 1.0 / 2.0) {
-            return secondMultiplier;
-        }
-        if (hue < 2.0 / 3.0) {
-            return firstMultiplier + (secondMultiplier - firstMultiplier)
-                    * (2.0 / 3.0 - hue) * 6.0;
-        }
-        return firstMultiplier;
-    }
-
-    /// Normalizes RGB endpoints that differ only by Sass numeric fuzziness.
-    ///
-    /// @param channel the computed RGB channel
-    /// @return zero or 255 for a fuzzy-equal endpoint, otherwise {@code channel}
-    private static double normalizeRgbEndpoint(double channel) {
-        if (SassFuzzy.equals(channel, 0.0)) {
-            return 0.0;
-        }
-        if (SassFuzzy.equals(channel, 255.0)) {
-            return 255.0;
-        }
-        return channel;
     }
 
     /// Compares semantic channels using Sass numeric fuzzy equality while
     /// ignoring source format.
     ///
+    /// Legacy colors compare as RGB after conversion. Modern colors compare
+    /// channel-for-channel within the same space.
+    ///
     /// @param other the object to compare
-    /// @return whether all four channels are equal
+    /// @return whether the colors are equal under Sass semantics
     @Override
     public boolean equals(@Nullable Object other) {
         if (this == other) {
             return true;
         }
-        return other instanceof SassColor color
-                && SassFuzzy.equals(red, color.red)
-                && SassFuzzy.equals(green, color.green)
-                && SassFuzzy.equals(blue, color.blue)
-                && SassFuzzy.equals(alpha, color.alpha);
+        if (!(other instanceof SassColor color)) {
+            return false;
+        }
+        if (isLegacy()) {
+            if (!color.isLegacy()) {
+                return false;
+            }
+            if (!SassFuzzy.equalsNullable(alpha, color.alpha)) {
+                return false;
+            }
+            if (space == color.space) {
+                return SassFuzzy.equalsNullable(channel0, color.channel0)
+                        && SassFuzzy.equalsNullable(channel1, color.channel1)
+                        && SassFuzzy.equalsNullable(channel2, color.channel2);
+            }
+            return toSpace(ColorSpace.RGB).equals(color.toSpace(ColorSpace.RGB));
+        }
+        return space == color.space
+                && SassFuzzy.equalsNullable(channel0, color.channel0)
+                && SassFuzzy.equalsNullable(channel1, color.channel1)
+                && SassFuzzy.equalsNullable(channel2, color.channel2)
+                && SassFuzzy.equalsNullable(alpha, color.alpha);
     }
 
     /// Returns a fuzzy semantic channel hash that ignores source format.
@@ -425,17 +739,26 @@ public final class SassColor implements SassValue {
     /// @return the color hash
     @Override
     public int hashCode() {
-        return SassFuzzy.hashCode(red)
-                ^ SassFuzzy.hashCode(green)
-                ^ SassFuzzy.hashCode(blue)
-                ^ SassFuzzy.hashCode(alpha);
+        if (isLegacy()) {
+            var rgb = toSpace(ColorSpace.RGB);
+            return SassFuzzy.hashCode(rgb.channel0())
+                    ^ SassFuzzy.hashCode(rgb.channel1())
+                    ^ SassFuzzy.hashCode(rgb.channel2())
+                    ^ SassFuzzy.hashCode(alpha());
+        }
+        return space.hashCode()
+                ^ SassFuzzy.hashCode(channel0())
+                ^ SassFuzzy.hashCode(channel1())
+                ^ SassFuzzy.hashCode(channel2())
+                ^ SassFuzzy.hashCode(alpha());
     }
 
     /// Returns the inspect-mode Sass representation of this color.
     ///
-    /// Source-backed literals retain their original spelling. Colors without
-    /// a retained format use a canonical name, hexadecimal spelling, or RGB
-    /// function.
+    /// Source-backed legacy RGB literals retain their original spelling.
+    /// Legacy colors without a retained format use a canonical name,
+    /// hexadecimal spelling, or RGB function. Modern colors use their CSS
+    /// function or {@code color()} serialization.
     ///
     /// @return the Sass color source
     @Override
@@ -443,9 +766,17 @@ public final class SassColor implements SassValue {
         if (format instanceof SpanColorFormat sourceFormat) {
             return sourceFormat.original();
         }
+        if (isLegacy() && !hasMissingChannel()) {
+            return serializeLegacy();
+        }
+        return serializeModern();
+    }
 
-        var packedRgb = packedRgb();
-        var opaque = Double.compare(alpha, 1.0) == 0;
+    /// Serializes a complete legacy color.
+    private String serializeLegacy() {
+        var rgb = toSpace(ColorSpace.RGB, false);
+        var packedRgb = rgb.packedRgb();
+        var opaque = Double.compare(rgb.alpha(), 1.0) == 0;
         if (opaque && packedRgb >= 0) {
             @Nullable String name = CANONICAL_NAMES_BY_RGB.get(packedRgb);
             if (name != null) {
@@ -457,12 +788,85 @@ public final class SassColor implements SassValue {
             appendHexByte(result, packedRgb);
             return result.toString();
         }
-
         return (opaque ? "rgb(" : "rgba(")
-                + formatNumber(red) + ", "
-                + formatNumber(green) + ", "
-                + formatNumber(blue)
-                + (opaque ? ")" : ", " + formatNumber(alpha) + ")");
+                + formatNumber(rgb.channel0()) + ", "
+                + formatNumber(rgb.channel1()) + ", "
+                + formatNumber(rgb.channel2())
+                + (opaque ? ")" : ", " + formatNumber(rgb.alpha()) + ")");
+    }
+
+    /// Serializes a modern or incomplete color.
+    private String serializeModern() {
+        return switch (space) {
+            case RGB -> "rgb("
+                    + formatChannel(channel0) + " "
+                    + formatChannel(channel1) + " "
+                    + formatChannel(channel2)
+                    + formatSlashAlpha()
+                    + ")";
+            case HSL, HWB -> space.spaceName() + "("
+                    + formatChannel(channel0, "deg") + " "
+                    + formatChannel(channel1, "%") + " "
+                    + formatChannel(channel2, "%")
+                    + formatSlashAlpha()
+                    + ")";
+            case LAB, LCH, OKLAB, OKLCH -> {
+                var lightness = channel0;
+                var builder = new StringBuilder(space.spaceName()).append('(');
+                if (lightness == null) {
+                    builder.append("none");
+                } else {
+                    var max = ((ColorChannel.Linear) space.channels().get(0)).max();
+                    builder.append(formatNumber(lightness * 100.0 / max)).append('%');
+                }
+                builder.append(' ')
+                        .append(formatChannel(channel1))
+                        .append(' ');
+                if (space == ColorSpace.LCH || space == ColorSpace.OKLCH) {
+                    builder.append(formatChannel(channel2, "deg"));
+                } else {
+                    builder.append(formatChannel(channel2));
+                }
+                builder.append(formatSlashAlpha()).append(')');
+                yield builder.toString();
+            }
+            default -> {
+                var builder = new StringBuilder("color(")
+                        .append(space.spaceName())
+                        .append(' ')
+                        .append(formatChannel(channel0))
+                        .append(' ')
+                        .append(formatChannel(channel1))
+                        .append(' ')
+                        .append(formatChannel(channel2));
+                builder.append(formatSlashAlpha()).append(')');
+                yield builder.toString();
+            }
+        };
+    }
+
+    /// Formats an optional alpha suffix using slash syntax.
+    private String formatSlashAlpha() {
+        if (alpha == null) {
+            return " / none";
+        }
+        if (Double.compare(alpha, 1.0) == 0) {
+            return "";
+        }
+        return " / " + formatNumber(alpha);
+    }
+
+    /// Formats one channel that may be missing.
+    private static String formatChannel(@Nullable Double channel) {
+        return formatChannel(channel, null);
+    }
+
+    /// Formats one channel that may be missing, optionally with a unit.
+    private static String formatChannel(@Nullable Double channel, @Nullable String unit) {
+        if (channel == null) {
+            return "none";
+        }
+        return formatNumber(channel) + (unit == null ? "" : unit);
     }
 
     /// Packs integral in-range RGB channels.
@@ -470,33 +874,24 @@ public final class SassColor implements SassValue {
     /// @return the packed RGB value, or {@code -1} if hexadecimal output is
     /// unavailable
     private int packedRgb() {
-        if (!isByte(red) || !isByte(green) || !isByte(blue)) {
+        if (!isByte(channel0()) || !isByte(channel1()) || !isByte(channel2())) {
             return -1;
         }
-        return (int) red << 16 | (int) green << 8 | (int) blue;
+        return (int) channel0() << 16 | (int) channel1() << 8 | (int) channel2();
     }
 
     /// Returns whether a channel is an integer in the byte range.
-    ///
-    /// @param value the channel to test
-    /// @return whether the channel can be emitted as one hexadecimal byte
     private static boolean isByte(double value) {
         return value >= 0.0 && value < 256.0 && value == Math.rint(value);
     }
 
     /// Appends one lowercase hexadecimal byte.
-    ///
-    /// @param target the destination
-    /// @param value the value whose low byte is appended
     private static void appendHexByte(StringBuilder target, int value) {
         target.append(Character.forDigit(value >>> 4 & 0xf, 16));
         target.append(Character.forDigit(value & 0xf, 16));
     }
 
     /// Formats a literal color channel without an unnecessary decimal suffix.
-    ///
-    /// @param value the channel value
-    /// @return the channel text
     private static String formatNumber(double value) {
         if (!Double.isFinite(value)) {
             return Double.toString(value);
@@ -506,8 +901,6 @@ public final class SassColor implements SassValue {
     }
 
     /// Creates the immutable named-color lookup table.
-    ///
-    /// @return lowercase names mapped to packed RGBA values
     private static @Unmodifiable Map<String, Integer> createNamedColors() {
         var table = """
                 yellowgreen=9ACD32FF
@@ -675,8 +1068,6 @@ public final class SassColor implements SassValue {
     }
 
     /// Creates the canonical reverse lookup for opaque named colors.
-    ///
-    /// @return packed RGB values mapped to their alphabetically first names
     private static @Unmodifiable Map<Integer, String> createCanonicalNames() {
         var result = new HashMap<Integer, String>();
         for (var entry : NAMED_RGBA.entrySet()) {

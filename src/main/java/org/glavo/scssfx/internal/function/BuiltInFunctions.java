@@ -20,6 +20,9 @@ import org.glavo.scssfx.internal.value.SassNumber;
 import org.glavo.scssfx.internal.value.SassString;
 import org.glavo.scssfx.internal.value.SassValue;
 import org.glavo.scssfx.internal.value.SassValueException;
+import org.glavo.scssfx.internal.value.SassFuzzy;
+import org.glavo.scssfx.internal.value.color.ColorChannel;
+import org.glavo.scssfx.internal.value.color.ColorSpace;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -412,16 +415,16 @@ public final class BuiltInFunctions {
         return freeze(functions);
     }
 
-    /// Returns the legacy RGB functions exported by the {@code sass:color} module.
+    /// Returns the functions exported by the {@code sass:color} module.
     ///
-    /// The current color value model represents only legacy RGB colors.
-    /// Color-valued APIs that accept Color 4 interpolation methods or output
-    /// spaces expose their parameter for signature compatibility, but reject
-    /// non-null values rather than silently applying an incorrect color-space
-    /// algorithm. Compatible plain-CSS number filters retain native CSS
-    /// invocation behavior.
+    /// Color values use the CSS Color Level 4 multi-space model. Space query
+    /// and conversion APIs are fully available. Interpolation-method parameters
+    /// on {@code mix}, {@code invert}, {@code complement}, and legacy channel
+    /// updates still reject non-null Color 4 method/space arguments until those
+    /// algorithms are implemented. Compatible plain-CSS number filters retain
+    /// native CSS invocation behavior.
     ///
-    /// @return an immutable legacy color function table
+    /// @return an immutable color function table
     public static @Unmodifiable Map<String, BuiltInCallable> colorModule() {
         var global = global();
         var functions = new LinkedHashMap<String, BuiltInCallable>();
@@ -480,6 +483,45 @@ public final class BuiltInFunctions {
                 "same",
                 List.of("color1", "color2"),
                 BuiltInFunctions::colorSame
+        ));
+        register(functions, BuiltInCallable.of(
+                "space",
+                List.of("color"),
+                BuiltInFunctions::colorSpace
+        ));
+        register(functions, BuiltInCallable.of(
+                "to-space",
+                List.of("color", "space"),
+                BuiltInFunctions::colorToSpace
+        ));
+        register(functions, BuiltInCallable.of(
+                "is-legacy",
+                List.of("color"),
+                BuiltInFunctions::colorIsLegacy
+        ));
+        register(functions, BuiltInCallable.of(
+                "is-missing",
+                List.of("color", "channel"),
+                BuiltInFunctions::colorIsMissing
+        ));
+        register(functions, BuiltInCallable.of(
+                "is-in-gamut",
+                List.of(
+                        Param.required("color"),
+                        Param.optional("space", SassNull.NULL)
+                ),
+                1,
+                BuiltInFunctions::colorIsInGamut
+        ));
+        register(functions, BuiltInCallable.of(
+                "channel",
+                List.of(
+                        Param.required("color"),
+                        Param.required("channel"),
+                        Param.optional("space", SassNull.NULL)
+                ),
+                2,
+                BuiltInFunctions::colorChannel
         ));
         register(functions, BuiltInCallable.withRest(
                 "adjust",
@@ -2068,14 +2110,149 @@ public final class BuiltInFunctions {
         return SassNumber.of(value.assertColor().alpha(), null);
     }
 
-    /// Compares two legacy RGB colors using Sass value equality.
+    /// Compares two colors using Color 4 {@code same} semantics.
+    ///
+    /// Colors in the same space compare channel-for-channel. Colors in
+    /// different spaces compare after conversion to XYZ D65 with missing
+    /// channels replaced by zero.
     ///
     /// @param args the two color arguments
-    /// @return whether all color channels are Sass-equal
+    /// @return whether the colors represent the same appearance
     private static SassValue colorSame(List<SassValue> args) {
-        return SassBoolean.of(
-                args.get(0).assertColor().equals(args.get(1).assertColor())
-        );
+        var first = args.get(0).assertColor();
+        var second = args.get(1).assertColor();
+        if (first.space() == second.space()) {
+            return SassBoolean.of(
+                    SassFuzzy.equals(first.channel0(), second.channel0())
+                            && SassFuzzy.equals(first.channel1(), second.channel1())
+                            && SassFuzzy.equals(first.channel2(), second.channel2())
+                            && SassFuzzy.equals(first.alpha(), second.alpha())
+            );
+        }
+        return SassBoolean.of(toXyzNoMissing(first).equals(toXyzNoMissing(second)));
+    }
+
+    /// Returns the CSS name of one color's space.
+    ///
+    /// @param args the one color argument
+    /// @return the unquoted space name
+    private static SassValue colorSpace(List<SassValue> args) {
+        return new SassString(args.get(0).assertColor().space().spaceName(), false);
+    }
+
+    /// Converts one color into another known space.
+    ///
+    /// @param args the color and space-name arguments
+    /// @return the converted color
+    private static SassValue colorToSpace(List<SassValue> args) {
+        var color = args.get(0).assertColor();
+        var space = spaceArgument(args.get(1), "space");
+        return color.toSpace(space, false);
+    }
+
+    /// Returns whether one color uses a legacy space.
+    ///
+    /// @param args the one color argument
+    /// @return whether the color is legacy
+    private static SassValue colorIsLegacy(List<SassValue> args) {
+        return SassBoolean.of(args.get(0).assertColor().isLegacy());
+    }
+
+    /// Returns whether one named channel is missing.
+    ///
+    /// @param args the color and channel-name arguments
+    /// @return whether the channel is missing
+    private static SassValue colorIsMissing(List<SassValue> args) {
+        var color = args.get(0).assertColor();
+        return SassBoolean.of(color.isChannelMissing(channelNameArgument(args.get(1))));
+    }
+
+    /// Returns whether one color is in-gamut in an optional space.
+    ///
+    /// @param args the color and optional space arguments
+    /// @return whether the color is in-gamut
+    private static SassValue colorIsInGamut(List<SassValue> args) {
+        return SassBoolean.of(colorInSpace(args.get(0), args.get(1)).isInGamut());
+    }
+
+    /// Returns one channel of a color, optionally after conversion.
+    ///
+    /// @param args the color, channel name, and optional space
+    /// @return the channel number with its conventional unit
+    private static SassValue colorChannel(List<SassValue> args) {
+        var color = colorInSpace(args.get(0), args.get(2));
+        var channelName = channelNameArgument(args.get(1));
+        if ("alpha".equals(channelName)) {
+            return SassNumber.of(color.alpha(), null);
+        }
+        var channels = color.space().channels();
+        var channelIndex = -1;
+        for (var index = 0; index < channels.size(); index++) {
+            if (channels.get(index).name().equals(channelName)) {
+                channelIndex = index;
+                break;
+            }
+        }
+        if (channelIndex < 0) {
+            throw new SassValueException(
+                    "Color " + color + " has no channel named " + channelName + "."
+            );
+        }
+        var channelInfo = channels.get(channelIndex);
+        var channelValue = switch (channelIndex) {
+            case 0 -> color.channel0();
+            case 1 -> color.channel1();
+            default -> color.channel2();
+        };
+        @Nullable String unit = channelInfo.associatedUnit();
+        if ("%".equals(unit) && channelInfo instanceof ColorChannel.Linear linear) {
+            channelValue = channelValue * 100.0 / linear.max();
+        }
+        return SassNumber.of(channelValue, unit);
+    }
+
+    /// Converts a color into XYZ D65 with missing channels replaced by zero.
+    private static SassColor toXyzNoMissing(SassColor color) {
+        if (color.space() == ColorSpace.XYZ_D65 && !color.hasMissingChannel()) {
+            return color;
+        }
+        if (color.space() == ColorSpace.XYZ_D65) {
+            return SassColor.xyzD65(color.channel0(), color.channel1(), color.channel2(), color.alpha());
+        }
+        return color.toSpace(ColorSpace.XYZ_D65, false);
+    }
+
+    /// Converts {@code color} into {@code spaceArgument} when present.
+    private static SassColor colorInSpace(SassValue colorValue, SassValue spaceValue) {
+        var color = colorValue.assertColor();
+        if (spaceValue instanceof SassNull) {
+            return color;
+        }
+        return color.toSpace(spaceArgument(spaceValue, "space"), false);
+    }
+
+    /// Parses a color-space name argument.
+    private static ColorSpace spaceArgument(SassValue value, String name) {
+        if (!(value instanceof SassString string) || string.hasQuotes()) {
+            throw new SassValueException("$" + name + ": " + value + " is not an unquoted string.");
+        }
+        try {
+            return ColorSpace.fromName(string.text());
+        } catch (IllegalArgumentException exception) {
+            throw new SassValueException("$" + name + ": " + exception.getMessage());
+        }
+    }
+
+    /// Parses a channel-name argument.
+    ///
+    /// Sass requires the channel name to be a quoted string.
+    private static String channelNameArgument(SassValue value) {
+        if (!(value instanceof SassString string) || !string.hasQuotes()) {
+            throw new SassValueException(
+                    "$channel: " + value + " is not a quoted string."
+            );
+        }
+        return string.text().toLowerCase(Locale.ROOT);
     }
 
     /// Adjusts legacy RGB or HSL channels by additive deltas.
@@ -2266,7 +2443,7 @@ public final class BuiltInFunctions {
         if (alphaArg != null) {
             alpha = updateAlpha(alpha, alphaArg, mode);
         }
-        return SassColor.hsl(hue, saturation, lightness, alpha);
+        return SassColor.hsl(hue, saturation, lightness, alpha).toSpace(color.space(), false);
     }
 
     /// Updates one linear channel according to the selected mode.

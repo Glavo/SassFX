@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.value;
 
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -9,8 +10,9 @@ import java.math.BigInteger;
 import java.math.RoundingMode;
 
 /// Provides Sass-compatible fuzzy equality and hashing for double values.
+@ApiStatus.Internal
 @NotNullByDefault
-final class SassFuzzy {
+public final class SassFuzzy {
     /// Contains the maximum distance between fuzzy-equal values.
     private static final double EPSILON = 1e-11;
 
@@ -26,7 +28,7 @@ final class SassFuzzy {
     /// @param first  the first value
     /// @param second the second value
     /// @return whether the values are fuzzy equal
-    static boolean equals(double first, double second) {
+    public static boolean equals(double first, double second) {
         if (first == second) {
             return true;
         }
@@ -34,11 +36,41 @@ final class SassFuzzy {
                 && bucket(first).equals(bucket(second));
     }
 
+    /// Returns whether two nullable values are equal under Sass numeric semantics.
+    ///
+    /// @param first  the first value, or {@code null}
+    /// @param second the second value, or {@code null}
+    /// @return whether both are null or both are fuzzy equal
+    public static boolean equalsNullable(@Nullable Double first, @Nullable Double second) {
+        if (first == null) {
+            return second == null;
+        }
+        return second != null && equals(first, second);
+    }
+
+    /// Returns whether {@code first} is greater than or fuzzy-equal to {@code second}.
+    ///
+    /// @param first  the first value
+    /// @param second the second value
+    /// @return whether {@code first >= second} under Sass fuzzy semantics
+    public static boolean greaterThanOrEquals(double first, double second) {
+        return first > second || equals(first, second);
+    }
+
+    /// Returns whether {@code first} is less than or fuzzy-equal to {@code second}.
+    ///
+    /// @param first  the first value
+    /// @param second the second value
+    /// @return whether {@code first <= second} under Sass fuzzy semantics
+    public static boolean lessThanOrEquals(double first, double second) {
+        return first < second || equals(first, second);
+    }
+
     /// Returns a hash consistent with Sass fuzzy equality.
     ///
     /// @param value the value to hash
     /// @return the fuzzy hash
-    static int hashCode(double value) {
+    public static int hashCode(double value) {
         return Double.isFinite(value)
                 ? bucket(value).hashCode()
                 : Double.hashCode(value);
@@ -48,7 +80,7 @@ final class SassFuzzy {
     ///
     /// @param value the value to test
     /// @return whether the value is an integer under Sass numeric semantics
-    static boolean isInt(double value) {
+    public static boolean isInt(double value) {
         return Double.isFinite(value) && equals(value, Math.rint(value));
     }
 
@@ -56,7 +88,7 @@ final class SassFuzzy {
     ///
     /// @param value the value to convert
     /// @return the integer, or {@code null} when the value is not an integer
-    static @Nullable Integer asInt(double value) {
+    public static @Nullable Integer asInt(double value) {
         if (!isInt(value)) {
             return null;
         }

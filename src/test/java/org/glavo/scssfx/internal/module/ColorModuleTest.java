@@ -103,7 +103,45 @@ final class ColorModuleTest {
         );
     }
 
-    /// Rejects unsupported Color 4 paths and validates legacy arguments in Sass order.
+    /// Exercises Color 4 space query, conversion, channel, and same APIs.
+    @Test
+    void evaluatesColorFourSpaceAndChannelApis() throws Exception {
+        var result = compile(
+                """
+                        @use "sass:color";
+
+                        .example {
+                          space: color.space(red);
+                          legacy: color.is-legacy(red);
+                          modern-legacy: color.is-legacy(color.to-space(red, oklab));
+                          converted-space: color.space(color.to-space(red, oklch));
+                          red-channel: color.channel(red, "red");
+                          oklab-l: color.channel(red, "lightness", $space: oklab);
+                          same-self: color.same(red, red);
+                          same-spaces: color.same(red, color.to-space(red, srgb));
+                          in-gamut: color.is-in-gamut(red);
+                        }
+                        """
+        );
+
+        assertEquals(
+                """
+                        .example {
+                          space: rgb;
+                          legacy: true;
+                          modern-legacy: false;
+                          converted-space: oklch;
+                          red-channel: 255;
+                          oklab-l: 62.79553639214311%;
+                          same-self: true;
+                          same-spaces: true;
+                          in-gamut: true;
+                        }""",
+                result.output()
+        );
+    }
+
+    /// Rejects unsupported Color 4 interpolation paths and validates legacy arguments.
     @Test
     void rejectsUnsupportedColorSpacesAndInvalidWeights() {
         assertEquals(
