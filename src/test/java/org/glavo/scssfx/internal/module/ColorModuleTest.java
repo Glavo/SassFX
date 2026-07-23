@@ -71,6 +71,38 @@ final class ColorModuleTest {
         assertEquals(Set.of(), result.loadedUrls());
     }
 
+    /// Compiles legacy adjust, scale, and change channel updates.
+    @Test
+    void evaluatesLegacyColorChannelUpdates() throws Exception {
+        var result = compile(
+                """
+                        @use "sass:color";
+
+                        .example {
+                          change-blue: color.change(red, $blue: 255);
+                          adjust-lightness: color.adjust(red, $lightness: -10%);
+                          scale-lightness: color.scale(red, $lightness: -50%);
+                          adjust-alpha: color.adjust(rgba(255, 0, 0, 0.5), $alpha: 0.25);
+                          change-hue: color.change(red, $hue: 120deg);
+                          scale-red: color.scale(#336699, $red: 50%);
+                        }
+                        """
+        );
+
+        assertEquals(
+                """
+                        .example {
+                          change-blue: fuchsia;
+                          adjust-lightness: #cc0000;
+                          scale-lightness: rgb(127.5, 0, 0);
+                          adjust-alpha: rgba(255, 0, 0, 0.75);
+                          change-hue: lime;
+                          scale-red: #996699;
+                        }""",
+                result.output()
+        );
+    }
+
     /// Rejects unsupported Color 4 paths and validates legacy arguments in Sass order.
     @Test
     void rejectsUnsupportedColorSpacesAndInvalidWeights() {
@@ -101,6 +133,18 @@ final class ColorModuleTest {
         assertEquals(
                 "Only one argument may be passed to the plain-CSS invert() function.",
                 failure("@use \"sass:color\"; .a { value: color.invert(0.5, 50%); }")
+        );
+        assertEquals(
+                "Only one positional argument is allowed. All other arguments must be passed by name.",
+                failure("@use \"sass:color\"; .a { value: color.adjust(red, 10%); }")
+        );
+        assertEquals(
+                "$hue: Channel isn't scalable.",
+                failure("@use \"sass:color\"; .a { value: color.scale(red, $hue: 10%); }")
+        );
+        assertEquals(
+                "$space: color.adjust() only supports the legacy RGB algorithm.",
+                failure("@use \"sass:color\"; .a { value: color.adjust(red, $lightness: -10%, $space: hsl); }")
         );
     }
 

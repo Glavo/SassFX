@@ -191,6 +191,12 @@
           "action": "run",
           "category": "BUILT_IN_MODULES",
           "loadedUrls": ["input.scss"]
+        },
+        {
+          "directory": "modules/color-channel-updates",
+          "action": "run",
+          "category": "COLOR",
+          "loadedUrls": ["input.scss"]
         }
       ]
     }

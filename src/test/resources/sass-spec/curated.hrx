@@ -664,3 +664,17 @@ $on: true
   asin: 0deg;
   atan2: 90deg;
 }
+<===> modules/color-channel-updates/input.scss
+@use "sass:color";
+
+.item {
+  change: color.change(red, $blue: 255);
+  adjust: color.adjust(red, $lightness: -10%);
+  scale: color.scale(red, $lightness: -50%);
+}
+<===> modules/color-channel-updates/output.css
+.item {
+  change: fuchsia;
+  adjust: #cc0000;
+  scale: rgb(127.5, 0, 0);
+}

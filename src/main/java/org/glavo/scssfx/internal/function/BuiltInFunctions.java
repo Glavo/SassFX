@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicLong;
@@ -476,6 +477,24 @@ public final class BuiltInFunctions {
                 "same",
                 List.of("color1", "color2"),
                 BuiltInFunctions::colorSame
+        ));
+        register(functions, BuiltInCallable.withRest(
+                "adjust",
+                List.of("color"),
+                "kwargs",
+                BuiltInFunctions::colorAdjust
+        ));
+        register(functions, BuiltInCallable.withRest(
+                "scale",
+                List.of("color"),
+                "kwargs",
+                BuiltInFunctions::colorScale
+        ));
+        register(functions, BuiltInCallable.withRest(
+                "change",
+                List.of("color"),
+                "kwargs",
+                BuiltInFunctions::colorChange
         ));
         return freeze(functions);
     }
@@ -1987,6 +2006,325 @@ public final class BuiltInFunctions {
     private static SassValue colorSame(List<SassValue> args) {
         return SassBoolean.of(
                 args.get(0).assertColor().equals(args.get(1).assertColor())
+        );
+    }
+
+    /// Adjusts legacy RGB or HSL channels by additive deltas.
+    ///
+    /// @param args the color and keyword argument list
+    /// @return the adjusted color
+    private static SassValue colorAdjust(List<SassValue> args) {
+        return updateColorComponents(args, ColorUpdateMode.ADJUST);
+    }
+
+    /// Scales legacy RGB or HSL channels toward their channel extremes.
+    ///
+    /// @param args the color and keyword argument list
+    /// @return the scaled color
+    private static SassValue colorScale(List<SassValue> args) {
+        return updateColorComponents(args, ColorUpdateMode.SCALE);
+    }
+
+    /// Replaces legacy RGB or HSL channels with absolute values.
+    ///
+    /// @param args the color and keyword argument list
+    /// @return the changed color
+    private static SassValue colorChange(List<SassValue> args) {
+        return updateColorComponents(args, ColorUpdateMode.CHANGE);
+    }
+
+    /// Identifies how {@code color.adjust}, {@code color.scale}, and
+    /// {@code color.change} rewrite channel values.
+    private enum ColorUpdateMode {
+        /// Adds deltas to existing channel values.
+        ADJUST,
+        /// Scales channels toward their minimum or maximum.
+        SCALE,
+        /// Replaces channel values absolutely.
+        CHANGE
+    }
+
+    /// Identifies the legacy channel space selected by keyword sniffing.
+    private enum LegacyColorSpace {
+        /// The RGB channel space.
+        RGB,
+        /// The HSL channel space.
+        HSL
+    }
+
+    /// Implements legacy-only {@code adjust}/{@code scale}/{@code change}.
+    ///
+    /// @param args the color and keyword rest list
+    /// @param mode the update algorithm
+    /// @return the rewritten color
+    private static SassValue updateColorComponents(
+            List<SassValue> args,
+            ColorUpdateMode mode
+    ) {
+        var color = colorArgument(args.get(0), "color");
+        if (!(args.get(1) instanceof SassArgumentList keywordsRest)) {
+            throw new SassValueException(
+                    "Only one positional argument is allowed. All other arguments must be passed by name."
+            );
+        }
+        if (!keywordsRest.asList().isEmpty()) {
+            throw new SassValueException(
+                    "Only one positional argument is allowed. All other arguments must be passed by name."
+            );
+        }
+        var keywords = new LinkedHashMap<>(keywordsRest.keywords());
+        if (keywords.containsKey("space")) {
+            requireLegacyRgbOnly(keywords.get("space"), "space", "color." + modeName(mode));
+            keywords.remove("space");
+        }
+        if (keywords.containsKey("whiteness") || keywords.containsKey("blackness")) {
+            throw new SassValueException(
+                    "color." + modeName(mode) + "() only supports the legacy RGB and HSL algorithms."
+            );
+        }
+        @Nullable SassValue alphaArg = keywords.remove("alpha");
+        var space = sniffLegacyColorSpace(keywords.keySet());
+        if (space == null && alphaArg == null) {
+            if (!keywords.isEmpty()) {
+                throw unknownColorChannel(keywords.keySet().iterator().next(), LegacyColorSpace.RGB);
+            }
+            return color;
+        }
+        if (space == null) {
+            space = LegacyColorSpace.RGB;
+        }
+        return switch (space) {
+            case RGB -> updateRgbColor(color, keywords, alphaArg, mode);
+            case HSL -> updateHslColor(color, keywords, alphaArg, mode);
+        };
+    }
+
+    /// Returns the exported function name for one update mode.
+    ///
+    /// @param mode the update mode
+    /// @return the hyphenated function name
+    private static String modeName(ColorUpdateMode mode) {
+        return switch (mode) {
+            case ADJUST -> "adjust";
+            case SCALE -> "scale";
+            case CHANGE -> "change";
+        };
+    }
+
+    /// Sniffs whether keyword names target RGB or HSL channels.
+    ///
+    /// @param names the remaining keyword names
+    /// @return the sniffed space, or {@code null} when only alpha may remain
+    private static @Nullable LegacyColorSpace sniffLegacyColorSpace(Iterable<String> names) {
+        var sawHue = false;
+        for (var name : names) {
+            switch (name) {
+                case "red", "green", "blue" -> {
+                    return LegacyColorSpace.RGB;
+                }
+                case "saturation", "lightness" -> {
+                    return LegacyColorSpace.HSL;
+                }
+                case "hue" -> sawHue = true;
+                default -> {
+                }
+            }
+        }
+        return sawHue ? LegacyColorSpace.HSL : null;
+    }
+
+    /// Updates RGB channels of one color.
+    private static SassColor updateRgbColor(
+            SassColor color,
+            Map<String, SassValue> keywords,
+            @Nullable SassValue alphaArg,
+            ColorUpdateMode mode
+    ) {
+        var red = color.red();
+        var green = color.green();
+        var blue = color.blue();
+        var alpha = color.alpha();
+        for (var entry : keywords.entrySet()) {
+            switch (entry.getKey()) {
+                case "red" -> red = updateLinearChannel(
+                        red, entry.getValue(), "red", 0.0, 255.0, true, true, mode
+                );
+                case "green" -> green = updateLinearChannel(
+                        green, entry.getValue(), "green", 0.0, 255.0, true, true, mode
+                );
+                case "blue" -> blue = updateLinearChannel(
+                        blue, entry.getValue(), "blue", 0.0, 255.0, true, true, mode
+                );
+                default -> throw unknownColorChannel(entry.getKey(), LegacyColorSpace.RGB);
+            }
+        }
+        if (alphaArg != null) {
+            alpha = updateAlpha(alpha, alphaArg, mode);
+        }
+        return SassColor.rgb(red, green, blue, alpha, null);
+    }
+
+    /// Updates HSL channels of one color.
+    private static SassColor updateHslColor(
+            SassColor color,
+            Map<String, SassValue> keywords,
+            @Nullable SassValue alphaArg,
+            ColorUpdateMode mode
+    ) {
+        var hue = color.hue();
+        var saturation = color.saturation();
+        var lightness = color.lightness();
+        var alpha = color.alpha();
+        for (var entry : keywords.entrySet()) {
+            switch (entry.getKey()) {
+                case "hue" -> {
+                    if (mode == ColorUpdateMode.SCALE) {
+                        throw new SassValueException("$hue: Channel isn't scalable.");
+                    }
+                    var number = numberArgument(entry.getValue(), "hue");
+                    var degrees = hueDegrees(number);
+                    hue = mode == ColorUpdateMode.CHANGE ? degrees : hue + degrees;
+                }
+                case "saturation" -> saturation = updateLinearChannel(
+                        saturation, entry.getValue(), "saturation", 0.0, 100.0, true, false, mode
+                );
+                case "lightness" -> lightness = updateLinearChannel(
+                        lightness, entry.getValue(), "lightness", 0.0, 100.0, false, false, mode
+                );
+                default -> throw unknownColorChannel(entry.getKey(), LegacyColorSpace.HSL);
+            }
+        }
+        if (alphaArg != null) {
+            alpha = updateAlpha(alpha, alphaArg, mode);
+        }
+        return SassColor.hsl(hue, saturation, lightness, alpha);
+    }
+
+    /// Updates one linear channel according to the selected mode.
+    private static double updateLinearChannel(
+            double oldValue,
+            SassValue argument,
+            String name,
+            double minimum,
+            double maximum,
+            boolean lowerClamped,
+            boolean upperClamped,
+            ColorUpdateMode mode
+    ) {
+        var number = numberArgument(argument, name);
+        return switch (mode) {
+            case CHANGE -> percentageOrUnitless(number, maximum, name);
+            case ADJUST -> {
+                var delta = percentageOrUnitless(number, maximum, name);
+                yield clampAdjustedChannel(oldValue + delta, oldValue, minimum, maximum, lowerClamped, upperClamped);
+            }
+            case SCALE -> scaleChannel(oldValue, number, name, minimum, maximum);
+        };
+    }
+
+    /// Updates the alpha channel according to the selected mode.
+    private static double updateAlpha(
+            double oldValue,
+            SassValue argument,
+            ColorUpdateMode mode
+    ) {
+        var number = numberArgument(argument, "alpha");
+        return switch (mode) {
+            case CHANGE -> {
+                var next = percentageOrUnitless(number, 1.0, "alpha");
+                yield clamp(next, 0.0, 1.0);
+            }
+            case ADJUST -> {
+                var delta = percentageOrUnitless(number, 1.0, "alpha");
+                yield clamp(oldValue + delta, 0.0, 1.0);
+            }
+            case SCALE -> scaleChannel(oldValue, number, "alpha", 0.0, 1.0);
+        };
+    }
+
+    /// Scales one channel toward its minimum or maximum by a percent factor.
+    private static double scaleChannel(
+            double oldValue,
+            SassNumber factorArg,
+            String name,
+            double minimum,
+            double maximum
+    ) {
+        if (!(factorArg.numeratorUnits().equals(List.of("%"))
+                && factorArg.denominatorUnits().isEmpty())) {
+            throw new SassValueException("$" + name + ": Expected " + factorArg + " to have unit \"%\".");
+        }
+        double factor;
+        try {
+            factor = factorArg.valueInRange(-100.0, 100.0) / 100.0;
+        } catch (SassValueException exception) {
+            throw new SassValueException("$" + name + ": " + exception.getMessage());
+        }
+        if (factor == 0.0) {
+            return oldValue;
+        }
+        if (factor > 0.0) {
+            return oldValue >= maximum ? oldValue : oldValue + (maximum - oldValue) * factor;
+        }
+        return oldValue <= minimum ? oldValue : oldValue + (oldValue - minimum) * factor;
+    }
+
+    /// Clamps an adjusted channel using Sass linear-channel clamping rules.
+    private static double clampAdjustedChannel(
+            double result,
+            double oldValue,
+            double minimum,
+            double maximum,
+            boolean lowerClamped,
+            boolean upperClamped
+    ) {
+        if (lowerClamped && result < minimum) {
+            return oldValue < minimum ? Math.max(oldValue, result) : minimum;
+        }
+        if (upperClamped && result > maximum) {
+            return oldValue > maximum ? Math.min(oldValue, result) : maximum;
+        }
+        return result;
+    }
+
+    /// Parses a number that is unitless or a percentage of {@code max}.
+    private static double percentageOrUnitless(SassNumber number, double max, String name) {
+        if (number.isUnitless()) {
+            return number.value();
+        }
+        if (number.numeratorUnits().equals(List.of("%")) && number.denominatorUnits().isEmpty()) {
+            return max * number.value() / 100.0;
+        }
+        throw new SassValueException(
+                "$" + name + ": Expected " + number + " to have unit \"%\" or no units."
+        );
+    }
+
+    /// Converts a hue argument to degrees.
+    private static double hueDegrees(SassNumber number) {
+        if (number.isUnitless()) {
+            return number.value();
+        }
+        try {
+            return number.coerce(List.of("deg"), List.of()).value();
+        } catch (SassValueException exception) {
+            throw new SassValueException("$hue: " + exception.getMessage());
+        }
+    }
+
+    /// Clamps a finite value into an inclusive range.
+    private static double clamp(double value, double minimum, double maximum) {
+        return Math.min(maximum, Math.max(minimum, value));
+    }
+
+    /// Creates the failure for an unsupported keyword channel name.
+    private static SassValueException unknownColorChannel(
+            String name,
+            LegacyColorSpace space
+    ) {
+        return new SassValueException(
+                "$" + name + ": Color space " + space.name().toLowerCase(Locale.ROOT)
+                        + " doesn't have a channel with this name."
         );
     }
 

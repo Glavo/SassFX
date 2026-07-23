@@ -245,6 +245,23 @@ public final class SassColor implements SassValue {
         return fromHsl(hue() + 180.0, saturation(), lightness(), alpha);
     }
 
+    /// Creates a legacy RGB color from HSL channels.
+    ///
+    /// @param hue the hue in degrees
+    /// @param saturation the saturation percentage
+    /// @param lightness the lightness percentage
+    /// @param alpha the alpha channel between zero and one
+    /// @return a format-free RGB color
+    /// @throws IllegalArgumentException if {@code alpha} is outside its range
+    public static SassColor hsl(
+            double hue,
+            double saturation,
+            double lightness,
+            double alpha
+    ) {
+        return fromHsl(hue, saturation, lightness, alpha);
+    }
+
     /// Converts legacy HSL channels to an RGB color.
     ///
     /// @param hue the hue in degrees
