@@ -749,3 +749,17 @@ body.dark code {
 .a .b {
   color: blue;
 }
+<===> extend/cross-module/input.scss
+@use "base";
+
+.primary {
+  @extend %btn;
+}
+<===> extend/cross-module/_base.scss
+%btn {
+  color: red;
+}
+<===> extend/cross-module/output.css
+.primary {
+  color: red;
+}

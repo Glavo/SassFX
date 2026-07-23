@@ -320,6 +320,11 @@ public final class SassEvaluator implements
         );
         cssStylesheet = ModuleCss.combine(module);
         cssParent = cssStylesheet;
+        var extensions = new ArrayList<PendingExtension>();
+        collectExtensions(module, extensions, new IdentityHashMap<>());
+        var styleRules = new ArrayList<CssStyleRule>();
+        collectStyleRules(cssStylesheet, styleRules);
+        applyExtensions(styleRules, extensions);
         return new LoadedModule(
                 module.url(),
                 module.variables(),
@@ -329,7 +334,8 @@ public final class SassEvaluator implements
                 module.upstream(),
                 module.configurableVariables(),
                 module.forwardedModules(),
-                module.preModuleComments()
+                module.preModuleComments(),
+                module.extensions()
         );
     }
 
@@ -490,7 +496,6 @@ public final class SassEvaluator implements
             for (var child : stylesheet.children()) {
                 child.accept(this);
             }
-            applyPendingExtensions();
             for (var entry : stylesheet.globalVariables().entrySet()) {
                 @Nullable SassValue value = environment.getVariable(entry.getKey(), null);
                 if (value == null || value == SassNull.NULL) {
@@ -512,7 +517,8 @@ public final class SassEvaluator implements
                     environment.allModules(),
                     environment.configurableVariables(),
                     environment.forwardedModules(),
-                    Map.copyOf(preModuleComments)
+                    Map.copyOf(preModuleComments),
+                    List.copyOf(pendingExtensions)
             );
         } catch (RuntimeException failure) {
             environment = previousEnvironment;
@@ -1488,21 +1494,64 @@ public final class SassEvaluator implements
         return StatementResult.CONTINUE;
     }
 
-    /// Applies collected `@extend` directives to every extendable style rule.
-    private void applyPendingExtensions() {
-        if (pendingExtensions.isEmpty()) {
+    /// Collects `@extend` directives from one module graph in dependency order.
+    ///
+    /// @param module     the module to visit
+    /// @param extensions the accumulator
+    /// @param seen       modules already visited
+    private static void collectExtensions(
+            LoadedModule module,
+            ArrayList<PendingExtension> extensions,
+            IdentityHashMap<LoadedModule, Boolean> seen
+    ) {
+        if (seen.put(module, Boolean.TRUE) != null) {
             return;
         }
-        for (var extension : pendingExtensions) {
+        for (var upstream : module.upstream()) {
+            collectExtensions(upstream, extensions, seen);
+        }
+        extensions.addAll(module.extensions());
+    }
+
+    /// Collects every style rule under a CSS parent.
+    ///
+    /// @param parent the parent to walk
+    /// @param rules  the accumulator
+    private static void collectStyleRules(
+            CssParentNode parent,
+            ArrayList<CssStyleRule> rules
+    ) {
+        for (var child : parent.children()) {
+            if (child instanceof CssStyleRule styleRule) {
+                rules.add(styleRule);
+                collectStyleRules(styleRule, rules);
+            } else if (child instanceof CssParentNode nested) {
+                collectStyleRules(nested, rules);
+            }
+        }
+    }
+
+    /// Applies collected `@extend` directives across a complete stylesheet.
+    ///
+    /// @param styleRules  every style rule in the combined CSS tree
+    /// @param extensions  every extension from the module graph
+    private void applyExtensions(
+            List<CssStyleRule> styleRules,
+            List<PendingExtension> extensions
+    ) {
+        if (extensions.isEmpty()) {
+            return;
+        }
+        for (var extension : extensions) {
             var matched = false;
-            for (var rule : extendableStyleRules) {
+            for (var rule : styleRules) {
                 matched |= applyExtensionToRule(extension, rule, true);
             }
             // Fixed-point for extension chains introduced by earlier matches.
             var changed = true;
             while (changed) {
                 changed = false;
-                for (var rule : extendableStyleRules) {
+                for (var rule : styleRules) {
                     if (applyExtensionToRule(extension, rule, false)) {
                         matched = true;
                         changed = true;
@@ -1518,7 +1567,7 @@ public final class SassEvaluator implements
                 );
             }
         }
-        for (var rule : extendableStyleRules) {
+        for (var rule : styleRules) {
             var stripped = stripPlaceholderComplexes(rule.selector().value());
             if (!selectorCssEquals(rule.selector().value(), stripped)) {
                 rule.setSelector(new CssValue<>(stripped, rule.selector().span()));
@@ -2819,6 +2868,9 @@ public final class SassEvaluator implements
                     configured
             );
             assertConfigurationConsumed(configuration);
+            var loadedExtensions = new ArrayList<PendingExtension>();
+            collectExtensions(module, loadedExtensions, new IdentityHashMap<>());
+            pendingExtensions.addAll(loadedExtensions);
             injectModuleCss(ModuleCss.combine(module));
         } catch (SassValueException cause) {
             throw new EvaluationException(

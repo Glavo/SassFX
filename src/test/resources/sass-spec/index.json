@@ -227,6 +227,12 @@
           "action": "run",
           "category": "AT_ROOT",
           "loadedUrls": ["input.scss"]
+        },
+        {
+          "directory": "extend/cross-module",
+          "action": "run",
+          "category": "EXTEND",
+          "loadedUrls": ["input.scss", "_base.scss"]
         }
       ]
     }

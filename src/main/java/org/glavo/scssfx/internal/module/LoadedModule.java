@@ -5,6 +5,7 @@ import org.glavo.scssfx.internal.callable.Callable;
 import org.glavo.scssfx.internal.css.CssComment;
 import org.glavo.scssfx.internal.css.CssStylesheet;
 import org.glavo.scssfx.internal.evaluate.VariableBinding;
+import org.glavo.scssfx.internal.extend.PendingExtension;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -35,6 +36,7 @@ import java.util.Set;
 ///                              {@code !default}
 /// @param forwardedModules      forwarded export views used for configuration reachability
 /// @param preModuleComments     loud comments that must precede each upstream module's CSS
+/// @param extensions            `@extend` directives collected while evaluating this module
 @ApiStatus.Internal
 @NotNullByDefault
 public record LoadedModule(
@@ -46,7 +48,8 @@ public record LoadedModule(
         @Unmodifiable List<LoadedModule> upstream,
         @Unmodifiable Set<String> configurableVariables,
         @Unmodifiable List<ForwardedModuleView> forwardedModules,
-        @Unmodifiable Map<LoadedModule, List<CssComment>> preModuleComments
+        @Unmodifiable Map<LoadedModule, List<CssComment>> preModuleComments,
+        @Unmodifiable List<PendingExtension> extensions
 ) {
     /// Creates a loaded module while retaining variable-binding identities.
     public LoadedModule {
@@ -58,6 +61,7 @@ public record LoadedModule(
         Objects.requireNonNull(configurableVariables, "configurableVariables");
         Objects.requireNonNull(forwardedModules, "forwardedModules");
         Objects.requireNonNull(preModuleComments, "preModuleComments");
+        Objects.requireNonNull(extensions, "extensions");
         variables = Collections.unmodifiableMap(new LinkedHashMap<>(variables));
         functions = Collections.unmodifiableMap(new LinkedHashMap<>(functions));
         mixins = Collections.unmodifiableMap(new LinkedHashMap<>(mixins));
@@ -71,9 +75,10 @@ public record LoadedModule(
             comments.put(entry.getKey(), List.copyOf(entry.getValue()));
         }
         preModuleComments = Collections.unmodifiableMap(comments);
+        extensions = List.copyOf(extensions);
     }
 
-    /// Creates a loaded module with no pre-module comments.
+    /// Creates a loaded module with no pre-module comments or extensions.
     ///
     /// @param url                   the canonical module URL, or {@code null}
     /// @param variables             public variables
@@ -102,7 +107,8 @@ public record LoadedModule(
                 upstream,
                 configurableVariables,
                 forwardedModules,
-                Map.of()
+                Map.of(),
+                List.of()
         );
     }
 
