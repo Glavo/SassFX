@@ -11,7 +11,7 @@ public sealed interface SassStatement extends SassNode
         permits Stylesheet, StyleRule, FontFaceRule, MediaRule, SupportsRule, Declaration, VariableDeclaration, SilentComment, LoudComment,
         IfRule, EachRule, ForRule, WhileRule,
         MixinRule, FunctionRule, IncludeRule, ContentRule, ReturnRule,
-        DebugRule, WarnRule, ErrorRule, ImportRule, UseRule, ForwardRule, UnknownAtRule {
+        DebugRule, WarnRule, ErrorRule, ImportRule, UseRule, ForwardRule, ExtendRule, UnknownAtRule {
     /// Dispatches this statement to its type-specific visitor method.
     ///
     /// @param visitor the visitor that receives this statement

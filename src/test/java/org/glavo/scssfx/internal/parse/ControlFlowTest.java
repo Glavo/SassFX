@@ -163,11 +163,20 @@ final class ControlFlowTest {
         var bareElse = assertThrows(ParseException.class, () -> parse("@else {}"));
         assertEquals("This at-rule is not allowed here.", bareElse.getMessage());
 
-        var missingExtend = assertThrows(ParseException.class, () -> parse("@extend .a;"));
+        var rootExtend = assertThrows(ParseException.class, () -> parse("@extend .a;"));
         assertEquals(
                 "This stylesheet statement is not available.",
-                missingExtend.getMessage()
+                rootExtend.getMessage()
         );
+        var nestedExtend = assertInstanceOf(
+                org.glavo.scssfx.internal.ast.ExtendRule.class,
+                assertInstanceOf(
+                        StyleRule.class,
+                        parse(".a { @extend .b; }").children().get(0)
+                ).children().get(0)
+        );
+        assertEquals(".b", nestedExtend.selector().asPlain());
+        assertFalse(nestedExtend.optional());
     }
 
     /// Parses interpolation as an operand within a grouped supports operation.

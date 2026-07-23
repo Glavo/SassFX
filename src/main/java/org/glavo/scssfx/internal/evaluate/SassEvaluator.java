@@ -14,6 +14,7 @@ import org.glavo.scssfx.internal.ast.DynamicImport;
 import org.glavo.scssfx.internal.ast.EachRule;
 import org.glavo.scssfx.internal.ast.ElseClause;
 import org.glavo.scssfx.internal.ast.ErrorRule;
+import org.glavo.scssfx.internal.ast.ExtendRule;
 import org.glavo.scssfx.internal.ast.ExpressionInterpolationPart;
 import org.glavo.scssfx.internal.ast.ForRule;
 import org.glavo.scssfx.internal.ast.FontFaceRule;
@@ -74,8 +75,11 @@ import org.glavo.scssfx.internal.callable.Callable;
 import org.glavo.scssfx.internal.callable.PlainCssCallable;
 import org.glavo.scssfx.internal.css.CssImport;
 import org.glavo.scssfx.internal.callable.UserDefinedCallable;
+import org.glavo.scssfx.internal.ast.selector.ComplexSelector;
 import org.glavo.scssfx.internal.ast.selector.PlaceholderSelector;
+import org.glavo.scssfx.internal.ast.selector.SelectorAlgebra;
 import org.glavo.scssfx.internal.ast.selector.SelectorList;
+import org.glavo.scssfx.internal.extend.PendingExtension;
 import org.glavo.scssfx.internal.css.CssComment;
 import org.glavo.scssfx.internal.css.CssFontFace;
 import org.glavo.scssfx.internal.css.CssMediaQuery;
@@ -208,6 +212,12 @@ public final class SassEvaluator implements
     /// Maps upstream modules to loud comments that must precede their CSS.
     private final IdentityHashMap<LoadedModule, List<CssComment>> preModuleComments =
             new IdentityHashMap<>();
+
+    /// Contains style rules eligible for end-of-module `@extend` rewriting.
+    private final ArrayList<CssStyleRule> extendableStyleRules = new ArrayList<>();
+
+    /// Contains `@extend` directives collected during the active module body.
+    private final ArrayList<PendingExtension> pendingExtensions = new ArrayList<>();
 
     /// Creates an evaluator with an empty environment and no module loader.
     public SassEvaluator() {
@@ -458,12 +468,17 @@ public final class SassEvaluator implements
         nestedDeclarationDepth = 0;
         inKeyframes = false;
         preModuleComments.clear();
+        var previousExtendableRules = new ArrayList<>(extendableStyleRules);
+        var previousPendingExtensions = new ArrayList<>(pendingExtensions);
+        extendableStyleRules.clear();
+        pendingExtensions.clear();
         diagnostics.addAll(stylesheet.parseTimeWarnings());
 
         try {
             for (var child : stylesheet.children()) {
                 child.accept(this);
             }
+            applyPendingExtensions();
             for (var entry : stylesheet.globalVariables().entrySet()) {
                 @Nullable SassValue value = environment.getVariable(entry.getKey(), null);
                 if (value == null || value == SassNull.NULL) {
@@ -505,6 +520,10 @@ public final class SassEvaluator implements
             inKeyframes = previousInKeyframes;
             preModuleComments.clear();
             preModuleComments.putAll(previousPreModuleComments);
+            extendableStyleRules.clear();
+            extendableStyleRules.addAll(previousExtendableRules);
+            pendingExtensions.clear();
+            pendingExtensions.addAll(previousPendingExtensions);
             throw failure;
         } finally {
             if (!retainState) {
@@ -525,6 +544,13 @@ public final class SassEvaluator implements
                 inKeyframes = previousInKeyframes;
                 preModuleComments.clear();
                 preModuleComments.putAll(previousPreModuleComments);
+                extendableStyleRules.clear();
+                extendableStyleRules.addAll(previousExtendableRules);
+                pendingExtensions.clear();
+                pendingExtensions.addAll(previousPendingExtensions);
+            } else {
+                extendableStyleRules.clear();
+                pendingExtensions.clear();
             }
         }
     }
@@ -1281,6 +1307,9 @@ public final class SassEvaluator implements
                 isPlainCss()
         );
         addCssChild(rule, merge);
+        if (!isPlainCss()) {
+            extendableStyleRules.add(rule);
+        }
 
         var previousParent = requireCssParent();
         var previousStyleRule = styleRule;
@@ -1309,6 +1338,146 @@ public final class SassEvaluator implements
             previousParent.children().get(previousParent.children().size() - 1).setGroupEnd(true);
         }
         return StatementResult.CONTINUE;
+    }
+
+    /// Records one `@extend` against the active style rule for later application.
+    ///
+    /// @param statement the extend rule
+    /// @return the continue result
+    @Override
+    public StatementResult visitExtendRule(ExtendRule statement) {
+        if (styleRule == null) {
+            throw new EvaluationException(
+                    "@extend may only be used within style rules.",
+                    statement.span()
+            );
+        }
+        var selectorText = performInterpolation(statement.selector()).strip();
+        SelectorList target;
+        try {
+            target = SelectorList.parse(selectorText, statement.selector().span());
+            SelectorAlgebra.assertCompoundTargets(target, "extendee");
+        } catch (SassValueException cause) {
+            throw new EvaluationException(
+                    Objects.requireNonNull(cause.getMessage(), "selector failure message"),
+                    statement.selector().span(),
+                    List.of(),
+                    cause
+            );
+        }
+        pendingExtensions.add(new PendingExtension(
+                styleRule.selector().value(),
+                target,
+                statement.optional(),
+                statement.span()
+        ));
+        return StatementResult.CONTINUE;
+    }
+
+    /// Applies collected `@extend` directives to every extendable style rule.
+    private void applyPendingExtensions() {
+        if (pendingExtensions.isEmpty()) {
+            return;
+        }
+        for (var extension : pendingExtensions) {
+            var matched = false;
+            for (var rule : extendableStyleRules) {
+                var before = rule.selector().value();
+                SelectorList after;
+                try {
+                    after = SelectorAlgebra.extend(
+                            before,
+                            extension.target(),
+                            extension.extender()
+                    );
+                } catch (SassValueException cause) {
+                    throw new EvaluationException(
+                            Objects.requireNonNull(cause.getMessage(), "extend failure message"),
+                            extension.span(),
+                            List.of(),
+                            cause
+                    );
+                }
+                if (!selectorCssEquals(before, after)) {
+                    matched = true;
+                    rule.setSelector(new CssValue<>(after, rule.selector().span()));
+                }
+            }
+            // Fixed-point for extension chains introduced by earlier matches.
+            var changed = true;
+            while (changed) {
+                changed = false;
+                for (var rule : extendableStyleRules) {
+                    var before = rule.selector().value();
+                    SelectorList after;
+                    try {
+                        after = SelectorAlgebra.extend(
+                                before,
+                                extension.target(),
+                                extension.extender()
+                        );
+                    } catch (SassValueException cause) {
+                        throw new EvaluationException(
+                                Objects.requireNonNull(cause.getMessage(), "extend failure message"),
+                                extension.span(),
+                                List.of(),
+                                cause
+                        );
+                    }
+                    if (!selectorCssEquals(before, after)) {
+                        matched = true;
+                        changed = true;
+                        rule.setSelector(new CssValue<>(after, rule.selector().span()));
+                    }
+                }
+            }
+            if (!matched && !extension.optional()) {
+                throw new EvaluationException(
+                        "The target selector was not found.\n"
+                                + "Use \"@extend " + extension.target().toCssString()
+                                + " !optional\" to avoid this error.",
+                        extension.span()
+                );
+            }
+        }
+        for (var rule : extendableStyleRules) {
+            var stripped = stripPlaceholderComplexes(rule.selector().value());
+            if (!selectorCssEquals(rule.selector().value(), stripped)) {
+                rule.setSelector(new CssValue<>(stripped, rule.selector().span()));
+            }
+        }
+    }
+
+    /// Returns whether two selector lists serialize identically.
+    private static boolean selectorCssEquals(SelectorList left, SelectorList right) {
+        return left.toCssString().equals(right.toCssString());
+    }
+
+    /// Removes pure-placeholder complexes from a selector list.
+    private static SelectorList stripPlaceholderComplexes(SelectorList selectors) {
+        var kept = new ArrayList<ComplexSelector>();
+        for (var complex : selectors.components()) {
+            if (!isPurePlaceholderComplex(complex)) {
+                kept.add(complex);
+            }
+        }
+        if (kept.size() == selectors.components().size()) {
+            return selectors;
+        }
+        return new SelectorList(kept, selectors.span());
+    }
+
+    /// Returns whether a complex selector is a lone placeholder compound.
+    private static boolean isPurePlaceholderComplex(ComplexSelector complex) {
+        if (!complex.leadingCombinators().isEmpty() || complex.components().size() != 1) {
+            return false;
+        }
+        var compound = complex.components().get(0);
+        if (!compound.combinators().isEmpty()) {
+            return false;
+        }
+        var simples = compound.selector().components();
+        return simples.size() == 1 && simples.get(0) instanceof PlaceholderSelector;
     }
 
     /// Returns whether the active CSS position already uses native nesting.

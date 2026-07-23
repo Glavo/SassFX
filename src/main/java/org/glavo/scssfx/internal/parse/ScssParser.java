@@ -48,6 +48,7 @@ import org.glavo.scssfx.internal.ast.StringExpression;
 import org.glavo.scssfx.internal.ast.StyleRule;
 import org.glavo.scssfx.internal.ast.StaticImport;
 import org.glavo.scssfx.internal.ast.Stylesheet;
+import org.glavo.scssfx.internal.ast.ExtendRule;
 import org.glavo.scssfx.internal.ast.UnknownAtRule;
 import org.glavo.scssfx.internal.ast.VariableDeclaration;
 import org.glavo.scssfx.internal.ast.WarnRule;
@@ -517,15 +518,47 @@ final class ScssParser extends SassExpressionParser {
                     start.position(),
                     scanner.position() - start.position()
             );
-            case "at-root", "extend" -> throw scanner.error(
+            case "at-root" -> throw scanner.error(
                     context == StatementContext.ROOT
                             ? "This stylesheet statement is not available."
                             : "This block statement is not available.",
                     start.position(),
                     scanner.position() - start.position()
             );
+            case "extend" -> extendRule(start, context);
             default -> unknownAtRule(start, name);
         };
+    }
+
+    /// Parses an {@code @extend} rule.
+    ///
+    /// @param start   the scanner state at the leading {@code @}
+    /// @param context the enclosing statement context
+    /// @return the extend rule
+    private ExtendRule extendRule(ScannerState start, StatementContext context) {
+        if (context == StatementContext.ROOT || context == StatementContext.FUNCTION) {
+            throw scanner.error(
+                    context == StatementContext.ROOT
+                            ? "This stylesheet statement is not available."
+                            : "This block statement is not available.",
+                    start.position(),
+                    scanner.position() - start.position()
+            );
+        }
+        whitespace(false);
+        var selector = almostAnyValue();
+        @Nullable String plain = selector.asPlain();
+        if (selector.parts().isEmpty() || plain != null && plain.isBlank()) {
+            throw scanner.error("Expected selector.");
+        }
+        var optional = false;
+        if (scanner.scan('!')) {
+            expectIdentifier("optional");
+            optional = true;
+            whitespace(false);
+        }
+        expectStatementSeparator();
+        return new ExtendRule(selector, optional, scanner.spanFrom(start));
     }
 
     /// Parses an opaque at-rule accepted by plain CSS.

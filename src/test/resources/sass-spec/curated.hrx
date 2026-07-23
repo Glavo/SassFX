@@ -701,3 +701,25 @@ body.dark code {
 .main {
   color: blue;
 }
+<===> extend/simple/input.scss
+.a {
+  color: red;
+}
+.b {
+  @extend .a;
+}
+<===> extend/simple/output.css
+.a, .b {
+  color: red;
+}
+<===> extend/placeholder/input.scss
+%base {
+  color: red;
+}
+.btn {
+  @extend %base;
+}
+<===> extend/placeholder/output.css
+.btn {
+  color: red;
+}

@@ -203,6 +203,18 @@
           "action": "run",
           "category": "META",
           "loadedUrls": ["input.scss", "_theme.scss"]
+        },
+        {
+          "directory": "extend/simple",
+          "action": "run",
+          "category": "EXTEND",
+          "loadedUrls": ["input.scss"]
+        },
+        {
+          "directory": "extend/placeholder",
+          "action": "run",
+          "category": "EXTEND",
+          "loadedUrls": ["input.scss"]
         }
       ]
     }

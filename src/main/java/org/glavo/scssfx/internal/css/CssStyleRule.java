@@ -2,6 +2,8 @@
 package org.glavo.scssfx.internal.css;
 
 import org.glavo.scssfx.SourceSpan;
+import org.glavo.scssfx.internal.ast.selector.ComplexSelector;
+import org.glavo.scssfx.internal.ast.selector.PlaceholderSelector;
 import org.glavo.scssfx.internal.ast.selector.SelectorList;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -17,7 +19,9 @@ import java.util.Objects;
 @NotNullByDefault
 public final class CssStyleRule extends AbstractCssNode implements CssParentNode {
     /// Contains the evaluated selector list and its source span.
-    private final CssValue<SelectorList> selector;
+    ///
+    /// The value may be rewritten in place when `@extend` is applied.
+    private CssValue<SelectorList> selector;
 
     /// Records whether this rule originated from plain CSS rather than Sass nesting.
     private final boolean fromPlainCss;
@@ -56,6 +60,13 @@ public final class CssStyleRule extends AbstractCssNode implements CssParentNode
         return selector;
     }
 
+    /// Replaces the resolved selector list after extension.
+    ///
+    /// @param selector the extended selector list
+    public void setSelector(CssValue<SelectorList> selector) {
+        this.selector = Objects.requireNonNull(selector, "selector");
+    }
+
     /// Returns whether this rule originated from plain CSS.
     ///
     /// Plain-CSS rules keep native nesting and do not participate in Sass
@@ -66,14 +77,48 @@ public final class CssStyleRule extends AbstractCssNode implements CssParentNode
         return fromPlainCss;
     }
 
-    /// Returns whether every child is invisible.
+    /// Returns whether this rule contributes no visible CSS.
     ///
-    /// Empty rules are invisible and omitted from expanded output.
+    /// Rules whose selectors contain only placeholder complexes are omitted,
+    /// as are rules whose remaining children are all invisible.
     ///
     /// @return whether this rule may be omitted
     @Override
     public boolean isInvisible() {
-        return children.stream().allMatch(CssNode::isInvisible);
+        return isPlaceholderOnly(selector.value())
+                || children.stream().allMatch(CssNode::isInvisible);
+    }
+
+    /// Returns whether every complex selector is a pure placeholder selector.
+    ///
+    /// @param selectors the selector list to inspect
+    /// @return whether the list is placeholder-only
+    private static boolean isPlaceholderOnly(SelectorList selectors) {
+        if (selectors.components().isEmpty()) {
+            return true;
+        }
+        for (var complex : selectors.components()) {
+            if (!isPlaceholderComplex(complex)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// Returns whether one complex selector is a single placeholder compound.
+    ///
+    /// @param complex the complex selector
+    /// @return whether it is a pure placeholder
+    private static boolean isPlaceholderComplex(ComplexSelector complex) {
+        if (!complex.leadingCombinators().isEmpty() || complex.components().size() != 1) {
+            return false;
+        }
+        var compound = complex.components().get(0);
+        if (!compound.combinators().isEmpty()) {
+            return false;
+        }
+        var simples = compound.selector().components();
+        return simples.size() == 1 && simples.get(0) instanceof PlaceholderSelector;
     }
 
     /// Returns the live unmodifiable child list.
