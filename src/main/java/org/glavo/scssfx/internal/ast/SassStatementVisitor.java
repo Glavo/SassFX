@@ -40,6 +40,12 @@ public interface SassStatementVisitor<R> {
     /// @return the visit result
     R visitSupportsRule(SupportsRule statement);
 
+    /// Visits an opaque plain-CSS at-rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitUnknownAtRule(UnknownAtRule statement);
+
     /// Visits a property declaration.
     ///
     /// @param statement the statement to visit

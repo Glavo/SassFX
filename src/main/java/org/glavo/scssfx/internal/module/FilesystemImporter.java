@@ -15,9 +15,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
-/// Resolves and loads SCSS or indented Sass files from the filesystem.
+/// Resolves and loads SCSS, indented Sass, or plain CSS files from the filesystem.
 @ApiStatus.Internal
 @NotNullByDefault
 public final class FilesystemImporter {
@@ -178,7 +179,7 @@ public final class FilesystemImporter {
         return new IllegalStateException(message.toString().trim());
     }
 
-    /// Adds resolvable SCSS and Sass candidates for one path stem.
+    /// Adds resolvable SCSS, Sass, and CSS candidates for one path stem.
     ///
     /// @param candidates the mutable destination list
     /// @param path       the path stem to inspect
@@ -188,15 +189,15 @@ public final class FilesystemImporter {
             return;
         }
         var name = fileName.toString();
+        var lowerName = name.toLowerCase(Locale.ROOT);
         var parent = path.getParent();
-        if (name.endsWith(".scss") || name.endsWith(".sass")) {
+        if (lowerName.endsWith(".scss")
+                || lowerName.endsWith(".sass")
+                || lowerName.endsWith(".css")) {
             addIfRegular(candidates, path);
             if (parent != null && !name.startsWith("_")) {
                 addIfRegular(candidates, parent.resolve("_" + name));
             }
-            return;
-        }
-        if (name.contains(".")) {
             return;
         }
         if (parent == null) {
@@ -204,12 +205,22 @@ public final class FilesystemImporter {
             addIfRegular(candidates, Path.of("_" + name + ".scss"));
             addIfRegular(candidates, Path.of(name + ".sass"));
             addIfRegular(candidates, Path.of("_" + name + ".sass"));
+            if (!candidates.isEmpty()) {
+                return;
+            }
+            addIfRegular(candidates, Path.of(name + ".css"));
+            addIfRegular(candidates, Path.of("_" + name + ".css"));
             return;
         }
         addIfRegular(candidates, parent.resolve(name + ".scss"));
         addIfRegular(candidates, parent.resolve("_" + name + ".scss"));
         addIfRegular(candidates, parent.resolve(name + ".sass"));
         addIfRegular(candidates, parent.resolve("_" + name + ".sass"));
+        if (!candidates.isEmpty()) {
+            return;
+        }
+        addIfRegular(candidates, parent.resolve(name + ".css"));
+        addIfRegular(candidates, parent.resolve("_" + name + ".css"));
     }
 
     /// Adds ordinary directory-index candidates for one extensionless path.
@@ -219,7 +230,7 @@ public final class FilesystemImporter {
     private static void addIndexCandidates(List<Path> candidates, Path path) {
         var fileName = path.getFileName();
         var parent = path.getParent();
-        if (fileName == null || parent == null || fileName.toString().contains(".")) {
+        if (fileName == null || parent == null) {
             return;
         }
         var directory = parent.resolve(fileName.toString());
@@ -227,6 +238,11 @@ public final class FilesystemImporter {
         addIfRegular(candidates, directory.resolve("_index.scss"));
         addIfRegular(candidates, directory.resolve("index.sass"));
         addIfRegular(candidates, directory.resolve("_index.sass"));
+        if (!candidates.isEmpty()) {
+            return;
+        }
+        addIfRegular(candidates, directory.resolve("index.css"));
+        addIfRegular(candidates, directory.resolve("_index.css"));
     }
 
     /// Adds import-only directory-index candidates for one extensionless path.
@@ -239,15 +255,19 @@ public final class FilesystemImporter {
     ) {
         var fileName = path.getFileName();
         var parent = path.getParent();
-        if (fileName == null || parent == null || fileName.toString().contains(".")) {
+        if (fileName == null || parent == null) {
             return;
         }
         var directory = parent.resolve(fileName.toString());
         addImportPair(candidates, directory, "index.import.scss");
         addImportPair(candidates, directory, "index.import.sass");
+        if (!candidates.isEmpty()) {
+            return;
+        }
+        addImportPair(candidates, directory, "index.import.css");
     }
 
-    /// Adds import-only SCSS and Sass candidates for one path stem.
+    /// Adds import-only SCSS, Sass, and CSS candidates for one path stem.
     ///
     /// @param candidates the mutable destination list
     /// @param path       the path stem to inspect
@@ -257,8 +277,11 @@ public final class FilesystemImporter {
             return;
         }
         var name = fileName.toString();
+        var lowerName = name.toLowerCase(Locale.ROOT);
         var parent = path.getParent();
-        if (name.endsWith(".scss") || name.endsWith(".sass")) {
+        if (lowerName.endsWith(".scss")
+                || lowerName.endsWith(".sass")
+                || lowerName.endsWith(".css")) {
             var extensionIndex = name.lastIndexOf('.');
             var importName = name.substring(0, extensionIndex)
                     + ".import"
@@ -266,12 +289,13 @@ public final class FilesystemImporter {
             addImportPair(candidates, parent, importName);
             return;
         }
-        if (name.contains(".")) {
-            return;
-        }
 
         addImportPair(candidates, parent, name + ".import.scss");
         addImportPair(candidates, parent, name + ".import.sass");
+        if (!candidates.isEmpty()) {
+            return;
+        }
+        addImportPair(candidates, parent, name + ".import.css");
     }
 
     /// Adds a regular and partial import-only candidate pair.

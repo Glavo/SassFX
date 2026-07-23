@@ -48,6 +48,7 @@ import org.glavo.scssfx.internal.ast.StringExpression;
 import org.glavo.scssfx.internal.ast.StyleRule;
 import org.glavo.scssfx.internal.ast.StaticImport;
 import org.glavo.scssfx.internal.ast.Stylesheet;
+import org.glavo.scssfx.internal.ast.UnknownAtRule;
 import org.glavo.scssfx.internal.ast.VariableDeclaration;
 import org.glavo.scssfx.internal.ast.WarnRule;
 import org.glavo.scssfx.internal.ast.WhileRule;
@@ -68,6 +69,12 @@ import java.util.Set;
 /// control-flow at-rules, module directives, mixins, functions, and comments.
 @NotNullByDefault
 final class ScssParser extends SassExpressionParser {
+    /// Records whether Sass-only stylesheet syntax must be rejected.
+    private final boolean plainCss;
+
+    /// Counts style-rule blocks currently being parsed in plain CSS.
+    private int plainCssStyleRuleDepth;
+
     /// Identifies the statement forms allowed inside a braced block.
     private enum StatementContext {
         /// Top-level statements and top-level control-flow bodies.
@@ -108,10 +115,31 @@ final class ScssParser extends SassExpressionParser {
     ///
     /// @param source the SCSS source to parse
     ScssParser(SourceFile source) {
-        super(source);
+        this(source, false);
     }
 
-    /// Parses the complete source as an SCSS stylesheet.
+    /// Creates a parser for an indexed SCSS or plain-CSS source.
+    ///
+    /// @param source the source to parse
+    /// @param plainCss whether Sass-only stylesheet syntax must be rejected
+    ScssParser(SourceFile source, boolean plainCss) {
+        super(source);
+        this.plainCss = plainCss;
+    }
+
+    /// Consumes a Sass silent comment unless plain-CSS restrictions are active.
+    ///
+    /// @return {@code true} after consuming the comment
+    /// @throws ParseException if a silent comment occurs in plain CSS
+    @Override
+    protected boolean silentComment() {
+        if (plainCss) {
+            throw scanner.error("Silent comments aren't allowed in plain CSS.");
+        }
+        return super.silentComment();
+    }
+
+    /// Parses the complete source as an SCSS or plain-CSS stylesheet.
     ///
     /// A byte-order mark is accepted only at the beginning. Whitespace and
     /// empty semicolon statements do not produce syntax nodes.
@@ -120,6 +148,9 @@ final class ScssParser extends SassExpressionParser {
     /// @throws ParseException if a comment is malformed or another statement
     /// production is encountered
     Stylesheet parse() {
+        if (plainCss) {
+            validatePlainCssSource();
+        }
         var start = scanner.state();
         scanner.scan(0xFEFF);
         var children = statements();
@@ -127,7 +158,7 @@ final class ScssParser extends SassExpressionParser {
         return new Stylesheet(
                 children,
                 scanner.spanFrom(start),
-                false,
+                plainCss,
                 parseTimeWarnings(),
                 globalVariables
         );
@@ -144,6 +175,7 @@ final class ScssParser extends SassExpressionParser {
             switch (scanner.peek()) {
                 case '/' -> {
                     if (scanner.peek(1) == '/') {
+                        rejectPlainCss("Silent comments aren't allowed in plain CSS.");
                         statements.add(silentCommentStatement());
                     } else if (scanner.peek(1) == '*') {
                         statements.add(loudCommentStatement());
@@ -157,6 +189,7 @@ final class ScssParser extends SassExpressionParser {
                     whitespaceWithoutComments(true);
                 }
                 case '$' -> {
+                    rejectPlainCss("Sass variables aren't allowed in plain CSS.");
                     statements.add(variableDeclarationWithoutNamespace());
                 }
                 case '@' -> {
@@ -209,10 +242,21 @@ final class ScssParser extends SassExpressionParser {
         var selector = styleRuleSelector();
         selectorPrefix.add(selector);
         selector = selectorPrefix.interpolation(scanner.spanFrom(start));
+        requirePlainCssText(selector);
         if (selector.parts().isEmpty()) {
             throw scanner.error("Expected selector.");
         }
-        var children = statementBlock(StatementContext.STYLE_RULE);
+        ArrayList<SassStatement> children;
+        if (plainCss) {
+            plainCssStyleRuleDepth++;
+            try {
+                children = statementBlock(StatementContext.STYLE_RULE);
+            } finally {
+                plainCssStyleRuleDepth--;
+            }
+        } else {
+            children = statementBlock(StatementContext.STYLE_RULE);
+        }
         var span = scanner.spanFrom(start);
         whitespaceWithoutComments(false);
         return new StyleRule(selector, children, span);
@@ -369,6 +413,7 @@ final class ScssParser extends SassExpressionParser {
                 case CssCharacters.END_OF_INPUT -> throw scanner.error("Expected \"}\".");
                 case '/' -> {
                     if (scanner.peek(1) == '/') {
+                        rejectPlainCss("Silent comments aren't allowed in plain CSS.");
                         children.add(silentCommentStatement());
                     } else if (scanner.peek(1) == '*') {
                         children.add(loudCommentStatement());
@@ -385,7 +430,10 @@ final class ScssParser extends SassExpressionParser {
                     scanner.read();
                     return children;
                 }
-                case '$' -> children.add(variableDeclarationWithoutNamespace());
+                case '$' -> {
+                    rejectPlainCss("Sass variables aren't allowed in plain CSS.");
+                    children.add(variableDeclarationWithoutNamespace());
+                }
                 case '@' -> children.add(atRule(context, false));
                 default -> {
                     children.add(blockChild(context));
@@ -418,6 +466,33 @@ final class ScssParser extends SassExpressionParser {
         var start = scanner.state();
         scanner.expect('@');
         var name = identifier(false, false);
+        if (plainCss) {
+            return switch (name) {
+                case "at-root", "content", "debug", "each", "error", "extend",
+                        "for", "if", "include", "mixin", "return", "warn", "while" ->
+                        throw scanner.error(
+                                "This at-rule isn't allowed in plain CSS.",
+                                start.position(),
+                                scanner.position() - start.position()
+                        );
+                case "function" -> {
+                    whitespace(false);
+                    if (scanner.peek() != '-' || scanner.peek(1) != '-') {
+                        throw scanner.error(
+                                "This at-rule isn't allowed in plain CSS.",
+                                start.position(),
+                                scanner.position() - start.position()
+                        );
+                    }
+                    yield unknownAtRule(start, name);
+                }
+                case "font-face" -> fontFaceRule(start, context);
+                case "media" -> mediaRule(start, context);
+                case "supports" -> supportsRule(start, context);
+                case "import" -> importRule(start, context);
+                default -> unknownAtRule(start, name);
+            };
+        }
         return switch (name) {
             case "if" -> ifRule(start, context);
             case "each" -> eachRule(start, context);
@@ -450,6 +525,29 @@ final class ScssParser extends SassExpressionParser {
                     scanner.position() - start.position()
             );
         };
+    }
+
+    /// Parses an opaque at-rule accepted by plain CSS.
+    ///
+    /// @param start the state at the leading at sign
+    /// @param name the decoded at-rule name
+    /// @return the opaque rule
+    private UnknownAtRule unknownAtRule(ScannerState start, String name) {
+        whitespace(false);
+        var value = interpolatedDeclarationValue(
+                true,
+                false,
+                () -> scanner.peek() == '{'
+        );
+        requirePlainCssText(value);
+        if (scanner.peek() == '{') {
+            var children = statementBlock(StatementContext.STYLE_RULE);
+            var span = scanner.spanFrom(start);
+            whitespaceWithoutComments(false);
+            return new UnknownAtRule(name, value, children, span);
+        }
+        expectStatementSeparator();
+        return new UnknownAtRule(name, value, null, scanner.spanFrom(start));
     }
 
     /// Parses a top-level `@font-face` rule.
@@ -1196,7 +1294,7 @@ final class ScssParser extends SassExpressionParser {
                         scanner.spanFrom(urlStart, urlEnd)
                 );
                 whitespace(true);
-                if (!atImportArgumentEnd() || isPlainImportUrl(url)) {
+                if (plainCss || !atImportArgumentEnd() || isPlainImportUrl(url)) {
                     imports.add(staticImport(rawUrl, argumentStart));
                 } else {
                     if (controlDirectiveDepth > 0 || inMixin) {
@@ -1218,7 +1316,7 @@ final class ScssParser extends SassExpressionParser {
                 throw scanner.error("Expected string or url().");
             }
             whitespace(true);
-        } while (scanner.scan(','));
+        } while (!plainCss && scanner.scan(','));
 
         expectStatementSeparator();
         var span = scanner.spanFrom(start);
@@ -1692,6 +1790,12 @@ final class ScssParser extends SassExpressionParser {
         if (declaration != null) {
             return declaration;
         }
+        if (plainCss && plainCssStyleRuleDepth > 0) {
+            throw scanner.error(
+                    "Nested style rules aren't supported in plain CSS.",
+                    scanner.spanFrom(start)
+            );
+        }
         return styleRule(selectorPrefix, start);
     }
 
@@ -1883,6 +1987,7 @@ final class ScssParser extends SassExpressionParser {
             return null;
         }
         var identifier = interpolatedIdentifier();
+        requirePlainCssText(identifier);
         nameBuffer.add(identifier);
         var declarationNameEnd = scanner.state();
 
@@ -1926,6 +2031,7 @@ final class ScssParser extends SassExpressionParser {
             } else {
                 rawValue = interpolatedDeclarationValue(false, false);
             }
+            requirePlainCssText(rawValue);
             expectStatementSeparator();
             return Declaration.raw(
                     name,
@@ -1942,6 +2048,9 @@ final class ScssParser extends SassExpressionParser {
 
         var postColonWhitespace = rawText(() -> whitespace(false));
         if (scanner.peek() == '{') {
+            if (plainCss) {
+                throw scanner.error("Nested declarations aren't allowed in plain CSS.");
+            }
             return nestedDeclaration(name, null, start);
         }
 
@@ -2009,6 +2118,88 @@ final class ScssParser extends SassExpressionParser {
             case '#' -> scanner.peek(1) != '{';
             default -> false;
         };
+    }
+
+    /// Rejects one Sass-only construct when parsing plain CSS.
+    ///
+    /// @param message the parse failure message
+    private void rejectPlainCss(String message) {
+        if (plainCss) {
+            throw scanner.error(message);
+        }
+    }
+
+    /// Requires an interpolation to contain only literal text in plain CSS.
+    ///
+    /// @param interpolation the parsed text
+    private void requirePlainCssText(Interpolation interpolation) {
+        if (plainCss && interpolation.asPlain() == null) {
+            throw scanner.error("Interpolation isn't allowed in plain CSS.", interpolation.span());
+        }
+    }
+
+    /// Rejects Sass variables and interpolation tokens before parsing plain CSS.
+    ///
+    /// Quoted strings may contain dollar signs, while loud comments are ignored.
+    /// Interpolation syntax remains forbidden within quoted strings because Sass
+    /// would otherwise treat it as executable input.
+    private void validatePlainCssSource() {
+        var content = scanner.source().content();
+        for (var index = 0; index < content.length(); index++) {
+            var character = content.charAt(index);
+            if (character == '/'
+                    && index + 1 < content.length()
+                    && content.charAt(index + 1) == '*') {
+                index += 2;
+                while (index + 1 < content.length()
+                        && (content.charAt(index) != '*'
+                        || content.charAt(index + 1) != '/')) {
+                    index++;
+                }
+                index++;
+                continue;
+            }
+            if (character == '\\') {
+                index++;
+                continue;
+            }
+            if (character == '\'' || character == '"') {
+                var quote = character;
+                while (++index < content.length()) {
+                    character = content.charAt(index);
+                    if (character == '\\') {
+                        index++;
+                    } else if (character == '#'
+                            && index + 1 < content.length()
+                            && content.charAt(index + 1) == '{') {
+                        throw scanner.error(
+                                "Interpolation isn't allowed in plain CSS.",
+                                index,
+                                2
+                        );
+                    } else if (character == quote) {
+                        break;
+                    }
+                }
+                continue;
+            }
+            if (character == '$') {
+                throw scanner.error(
+                        "Sass variables aren't allowed in plain CSS.",
+                        index,
+                        1
+                );
+            }
+            if (character == '#'
+                    && index + 1 < content.length()
+                    && content.charAt(index + 1) == '{') {
+                throw scanner.error(
+                        "Interpolation isn't allowed in plain CSS.",
+                        index,
+                        2
+                );
+            }
+        }
     }
 
     /// Returns whether the scanner is at an SCSS statement boundary.

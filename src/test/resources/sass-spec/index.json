@@ -145,6 +145,12 @@
           "loadedUrls": ["input.sass"]
         },
         {
+          "directory": "modules/plain-css",
+          "action": "run",
+          "category": "MODULES",
+          "loadedUrls": ["input.scss", "_theme.css", "_facade.scss"]
+        },
+        {
           "directory": "at-rules/supports-and-import",
           "action": "run",
           "category": "AT_RULES",

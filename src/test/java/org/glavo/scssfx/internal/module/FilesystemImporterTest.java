@@ -54,6 +54,116 @@ final class FilesystemImporterTest {
         assertEquals(module.toRealPath().toUri(), result.canonicalUrl());
     }
 
+    /// Loads explicit, extensionless, and directory-index CSS modules.
+    @Test
+    void loadsPlainCssModules(@TempDir Path directory) throws Exception {
+        var containingFile = Files.writeString(directory.resolve("main.scss"), "");
+        var partial = Files.writeString(directory.resolve("_theme.css"), ".theme {}");
+        var importer = new FilesystemImporter(List.of());
+
+        var explicit = Objects.requireNonNull(importer.canonicalizeAndLoad(
+                "theme.css",
+                containingFile.toRealPath().toUri()
+        ));
+        assertEquals(Syntax.CSS, explicit.syntax());
+        assertEquals(partial.toRealPath().toUri(), explicit.canonicalUrl());
+
+        Files.delete(partial);
+        var extensionlessFile = Files.writeString(
+                directory.resolve("theme.css"),
+                ".extensionless {}"
+        );
+        var extensionless = Objects.requireNonNull(importer.canonicalizeAndLoad(
+                "theme",
+                containingFile.toRealPath().toUri()
+        ));
+        assertEquals(extensionlessFile.toRealPath().toUri(), extensionless.canonicalUrl());
+
+        Files.delete(extensionlessFile);
+        var moduleDirectory = Files.createDirectory(directory.resolve("theme"));
+        var index = Files.writeString(moduleDirectory.resolve("_index.css"), ".index {}");
+        var indexed = Objects.requireNonNull(importer.canonicalizeAndLoad(
+                "theme",
+                containingFile.toRealPath().toUri()
+        ));
+        assertEquals(index.toRealPath().toUri(), indexed.canonicalUrl());
+    }
+
+    /// Prefers any Sass or SCSS candidate group over an extensionless CSS candidate.
+    @Test
+    void prefersSassSyntaxCandidatesOverCss(@TempDir Path directory) throws Exception {
+        var containingFile = Files.writeString(directory.resolve("main.scss"), "");
+        var scss = Files.writeString(directory.resolve("theme.scss"), "$source: scss;");
+        Files.writeString(directory.resolve("theme.css"), ".theme {}");
+        var importer = new FilesystemImporter(List.of());
+
+        var result = Objects.requireNonNull(importer.canonicalizeAndLoad(
+                "theme",
+                containingFile.toRealPath().toUri()
+        ));
+        assertEquals(Syntax.SCSS, result.syntax());
+        assertEquals(scss.toRealPath().toUri(), result.canonicalUrl());
+    }
+
+    /// Reports regular and partial CSS candidates as ambiguous.
+    @Test
+    void rejectsAmbiguousCssCandidates(@TempDir Path directory) throws Exception {
+        var containingFile = Files.writeString(directory.resolve("main.scss"), "");
+        Files.writeString(directory.resolve("theme.css"), ".regular {}");
+        Files.writeString(directory.resolve("_theme.css"), ".partial {}");
+        var importer = new FilesystemImporter(List.of());
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> importer.canonicalizeAndLoad(
+                        "theme.css",
+                        containingFile.toRealPath().toUri()
+                )
+        );
+    }
+
+    /// Resolves recognized extensions case-insensitively and extends dotted stems.
+    @Test
+    void resolvesCaseInsensitiveExtensionsAndDottedStems(@TempDir Path directory)
+            throws Exception {
+        var containingFile = Files.writeString(directory.resolve("main.scss"), "");
+        var uppercase = Files.writeString(directory.resolve("theme.CSS"), ".upper {}");
+        var dotted = Files.writeString(directory.resolve("theme.v2.css"), ".dotted {}");
+        var importer = new FilesystemImporter(List.of());
+
+        var explicit = Objects.requireNonNull(importer.canonicalizeAndLoad(
+                "theme.CSS",
+                containingFile.toRealPath().toUri()
+        ));
+        assertEquals(Syntax.CSS, explicit.syntax());
+        assertEquals(uppercase.toRealPath().toUri(), explicit.canonicalUrl());
+
+        var extensionless = Objects.requireNonNull(importer.canonicalizeAndLoad(
+                "theme.v2",
+                containingFile.toRealPath().toUri()
+        ));
+        assertEquals(dotted.toRealPath().toUri(), extensionless.canonicalUrl());
+    }
+
+    /// Prefers an import-only CSS file during legacy import resolution.
+    @Test
+    void prefersImportOnlyCssCandidates(@TempDir Path directory) throws Exception {
+        var containingFile = Files.writeString(directory.resolve("main.scss"), "");
+        Files.writeString(directory.resolve("theme.css"), ".regular {}");
+        var importOnly = Files.writeString(
+                directory.resolve("_theme.import.css"),
+                ".import-only {}"
+        );
+        var importer = new FilesystemImporter(List.of());
+
+        var result = Objects.requireNonNull(importer.canonicalizeAndLoadImport(
+                "theme",
+                containingFile.toRealPath().toUri()
+        ));
+        assertEquals(Syntax.CSS, result.syntax());
+        assertEquals(importOnly.toRealPath().toUri(), result.canonicalUrl());
+    }
+
     /// Selects the first load path containing a matching module.
     @Test
     void searchesLoadPathsInDeclarationOrder(@TempDir Path directory) throws Exception {

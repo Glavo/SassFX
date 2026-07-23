@@ -112,6 +112,8 @@ public final class CssSerializer {
             writeExpandedMediaRule(mediaRule, buffer, indentation);
         } else if (node instanceof CssSupportsRule supportsRule) {
             writeExpandedSupportsRule(supportsRule, buffer, indentation);
+        } else if (node instanceof CssUnknownAtRule unknownAtRule) {
+            writeExpandedUnknownAtRule(unknownAtRule, buffer, indentation);
         } else if (node instanceof CssFontFace fontFace) {
             writeExpandedFontFace(fontFace, buffer, indentation);
         } else if (node instanceof CssStyleRule rule) {
@@ -124,6 +126,29 @@ public final class CssSerializer {
         } else {
             throw new IllegalStateException("unsupported CSS node: " + node.getClass().getName());
         }
+    }
+
+    /// Writes one expanded opaque at-rule.
+    ///
+    /// @param rule the opaque at-rule
+    /// @param buffer the destination
+    /// @param indentation the indentation level
+    private static void writeExpandedUnknownAtRule(
+            CssUnknownAtRule rule,
+            StringBuilder buffer,
+            int indentation
+    ) {
+        writeIndentation(buffer, indentation);
+        buffer.append('@').append(rule.name());
+        if (!rule.value().isEmpty()) {
+            buffer.append(' ').append(rule.value());
+        }
+        if (!rule.hasBlock()) {
+            return;
+        }
+        buffer.append(" {");
+        writeExpandedChildren(rule, buffer, indentation);
+        buffer.append('}');
     }
 
     /// Writes one expanded style rule.
@@ -283,6 +308,18 @@ public final class CssSerializer {
             buffer.append('{');
             writeCompressedChildren(supportsRule, buffer);
             buffer.append('}');
+        } else if (node instanceof CssUnknownAtRule unknownAtRule) {
+            buffer.append('@').append(unknownAtRule.name());
+            if (!unknownAtRule.value().isEmpty()) {
+                buffer.append(' ').append(unknownAtRule.value());
+            }
+            if (unknownAtRule.hasBlock()) {
+                buffer.append('{');
+                writeCompressedChildren(unknownAtRule, buffer);
+                buffer.append('}');
+            } else {
+                buffer.append(';');
+            }
         } else if (node instanceof CssFontFace fontFace) {
             buffer.append("@font-face{");
             writeCompressedChildren(fontFace, buffer);
@@ -358,6 +395,9 @@ public final class CssSerializer {
         if (node instanceof CssComment comment) {
             return comment.isPreserved();
         }
+        if (node instanceof CssUnknownAtRule) {
+            return true;
+        }
         if (node instanceof CssParentNode parent) {
             for (var child : parent.children()) {
                 if (isCompressedVisible(child)) {
@@ -406,7 +446,9 @@ public final class CssSerializer {
     /// @param node the preceding node
     /// @return whether a semicolon is required
     private static boolean requiresSemicolon(CssNode node) {
-        return node instanceof CssDeclaration || node instanceof CssImport;
+        return node instanceof CssDeclaration
+                || node instanceof CssImport
+                || node instanceof CssUnknownAtRule rule && !rule.hasBlock();
     }
 
     /// Writes indentation spaces for the given depth.

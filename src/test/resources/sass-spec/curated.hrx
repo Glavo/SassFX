@@ -485,3 +485,49 @@ $foo-bar: 1;
   function: 4;
   derived: 2;
 }
+<===> modules/plain-css/input.scss
+@use "theme.css";
+@use "facade";
+
+.main {
+  color: blue;
+}
+<===> modules/plain-css/_facade.scss
+@forward "theme" as forwarded-* show nothing;
+<===> modules/plain-css/_theme.css
+@use "ignored.css";
+
+@layer components {
+  .layered { width: min(10px, 20px); }
+}
+
+@keyframes pulse {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.theme { color: rgb(1 2 3 / 50%); }
+<===> modules/plain-css/output.css
+@use "ignored.css";
+@layer components {
+  .layered {
+    width: min(10px, 20px);
+  }
+}
+
+@keyframes pulse {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.theme {
+  color: rgb(1 2 3/50%);
+}
+
+.main {
+  color: blue;
+}

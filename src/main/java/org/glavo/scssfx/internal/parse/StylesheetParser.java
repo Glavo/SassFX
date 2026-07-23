@@ -36,10 +36,7 @@ public final class StylesheetParser {
         return switch (syntax) {
             case SCSS -> new ScssParser(source).parse();
             case SASS -> new ScssParser(IndentedSassPreprocessor.transform(source)).parse();
-            case CSS -> throw new ParseException(
-                    "Plain CSS stylesheet syntax isn't supported.",
-                    source.span(0, source.length())
-            );
+            case CSS -> new ScssParser(source, true).parse();
         };
     }
 }

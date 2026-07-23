@@ -64,6 +64,7 @@ import org.glavo.scssfx.internal.ast.Stylesheet;
 import org.glavo.scssfx.internal.ast.TextInterpolationPart;
 import org.glavo.scssfx.internal.ast.StaticImport;
 import org.glavo.scssfx.internal.ast.UnaryOperationExpression;
+import org.glavo.scssfx.internal.ast.UnknownAtRule;
 import org.glavo.scssfx.internal.ast.VariableDeclaration;
 import org.glavo.scssfx.internal.ast.VariableExpression;
 import org.glavo.scssfx.internal.ast.WarnRule;
@@ -73,12 +74,14 @@ import org.glavo.scssfx.internal.callable.Callable;
 import org.glavo.scssfx.internal.callable.PlainCssCallable;
 import org.glavo.scssfx.internal.css.CssImport;
 import org.glavo.scssfx.internal.callable.UserDefinedCallable;
+import org.glavo.scssfx.internal.ast.selector.PlaceholderSelector;
 import org.glavo.scssfx.internal.ast.selector.SelectorList;
 import org.glavo.scssfx.internal.css.CssComment;
 import org.glavo.scssfx.internal.css.CssFontFace;
 import org.glavo.scssfx.internal.css.CssMediaQuery;
 import org.glavo.scssfx.internal.css.CssMediaRule;
 import org.glavo.scssfx.internal.css.CssSupportsRule;
+import org.glavo.scssfx.internal.css.CssUnknownAtRule;
 import org.glavo.scssfx.internal.function.BuiltInFunctions;
 import org.glavo.scssfx.internal.css.CssDeclaration;
 import org.glavo.scssfx.internal.css.CssNode;
@@ -135,6 +138,18 @@ public final class SassEvaluator implements
     /// Contains the global built-in function table.
     private static final @Unmodifiable Map<String, BuiltInCallable> BUILT_IN_FUNCTIONS =
             BuiltInFunctions.global();
+
+    /// Contains global function names that retain native CSS meaning in plain CSS.
+    private static final @Unmodifiable Set<String> PLAIN_CSS_ALLOWED_FUNCTIONS = Set.of(
+            "abs", "alpha", "color", "grayscale", "hsl", "hsla", "hwb",
+            "invert", "lab", "lch", "max", "min", "oklab", "oklch",
+            "opacity", "rgb", "rgba", "round", "saturate"
+    );
+
+    /// Contains calculation functions whose argument grammar is preserved verbatim.
+    private static final @Unmodifiable Set<String> PLAIN_CSS_CALCULATION_FUNCTIONS = Set.of(
+            "abs", "calc", "clamp", "max", "min", "round"
+    );
 
     /// Identifies function references created during this compilation.
     private final Object compilationContext;
@@ -999,6 +1014,36 @@ public final class SassEvaluator implements
         return StatementResult.CONTINUE;
     }
 
+    /// Emits an opaque plain-CSS at-rule and evaluates its optional block.
+    ///
+    /// @param statement the opaque at-rule
+    /// @return the continue result
+    @Override
+    public StatementResult visitUnknownAtRule(UnknownAtRule statement) {
+        var rule = new CssUnknownAtRule(
+                statement.name(),
+                performInterpolation(statement.value()).strip(),
+                statement.hasChildren(),
+                statement.span()
+        );
+        addCssChild(rule, false);
+        if (statement.children() == null) {
+            return StatementResult.CONTINUE;
+        }
+
+        var previousParent = requireCssParent();
+        cssParent = rule;
+        try {
+            for (var child : statement.children()) {
+                child.accept(this);
+            }
+        } finally {
+            cssParent = previousParent;
+        }
+        rule.setGroupEnd(true);
+        return StatementResult.CONTINUE;
+    }
+
     /// Evaluates a selector, emits a CSS style rule, and executes its children.
     ///
     /// Nested style rules bubble through existing style-rule parents so the CSS
@@ -1031,6 +1076,12 @@ public final class SassEvaluator implements
                     statement.selector().span(),
                     List.of(),
                     cause
+            );
+        }
+        if (isPlainCss() && containsPlaceholderSelector(parsed)) {
+            throw new EvaluationException(
+                    "Placeholder selectors aren't allowed in plain CSS.",
+                    statement.selector().span()
             );
         }
         @Nullable SelectorList parentSelector =
@@ -1081,6 +1132,23 @@ public final class SassEvaluator implements
         return StatementResult.CONTINUE;
     }
 
+    /// Returns whether a selector list contains a Sass placeholder selector.
+    ///
+    /// @param selectors the selector list to inspect
+    /// @return whether any compound contains a placeholder
+    private static boolean containsPlaceholderSelector(SelectorList selectors) {
+        for (var complex : selectors.components()) {
+            for (var component : complex.components()) {
+                for (var simple : component.selector().components()) {
+                    if (simple instanceof PlaceholderSelector) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     /// Evaluates a property name and value and writes a CSS declaration.
     ///
     /// Nested property blocks prefix child names with the parent name. Blank
@@ -1090,7 +1158,9 @@ public final class SassEvaluator implements
     /// @return the continue result, [StatementResult#CONTINUE]
     @Override
     public StatementResult visitDeclaration(Declaration statement) {
-        if (styleRule == null && fontFace == null) {
+        if (styleRule == null
+                && fontFace == null
+                && !(requireCssParent() instanceof CssUnknownAtRule)) {
             throw new EvaluationException(
                     "Declarations may only be used within style rules or @font-face rules.",
                     statement.span()
@@ -1669,11 +1739,40 @@ public final class SassEvaluator implements
     /// global built-ins, and finally falls back to plain CSS. A namespaced call
     /// resolves only the explicitly loaded module with that namespace.
     ///
+    /// Plain-CSS stylesheets reject namespaced and Sass-only built-in functions.
+    /// Native calculation syntax is retained verbatim; other native calls
+    /// evaluate their arguments without resolving Sass functions.
+    ///
     /// @param expression the function expression
     /// @return the function result
     /// @throws EvaluationException if invocation fails
     @Override
     public SassValue visitFunctionExpression(FunctionExpression expression) {
+        if (isPlainCss()) {
+            if (expression.namespace() != null) {
+                throw new EvaluationException(
+                        "Module namespaces aren't allowed in plain CSS.",
+                        expression.span()
+                );
+            }
+            var name = expression.name();
+            if (BUILT_IN_FUNCTIONS.containsKey(name)
+                    && !PLAIN_CSS_ALLOWED_FUNCTIONS.contains(name)) {
+                throw new EvaluationException(
+                        "This function isn't allowed in plain CSS.",
+                        expression.span()
+                );
+            }
+            if (PLAIN_CSS_CALCULATION_FUNCTIONS.contains(name)) {
+                return new SassString(expression.span().text(), false);
+            }
+            return runCallable(
+                    new PlainCssCallable(expression.originalName()),
+                    expression.arguments(),
+                    expression.span()
+            );
+        }
+
         @Nullable Callable callable;
         try {
             callable = environment.getFunction(expression.name(), expression.namespace());

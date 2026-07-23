@@ -10,7 +10,7 @@ import java.util.List;
 /// A CSS IR node that may own ordered child statements.
 @ApiStatus.Internal
 @NotNullByDefault
-public sealed interface CssParentNode extends CssNode permits CssStylesheet, CssStyleRule, CssFontFace, CssMediaRule, CssSupportsRule {
+public sealed interface CssParentNode extends CssNode permits CssStylesheet, CssStyleRule, CssFontFace, CssMediaRule, CssSupportsRule, CssUnknownAtRule {
     /// Returns an unmodifiable live view of this node's children.
     ///
     /// @return the child statements in evaluation order
