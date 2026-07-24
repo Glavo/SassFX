@@ -1,0 +1,8 @@
+<===> direct/input.scss
+@if & {
+  foo {
+    foo: bar;
+  }
+}
+
+<===> direct/output.css

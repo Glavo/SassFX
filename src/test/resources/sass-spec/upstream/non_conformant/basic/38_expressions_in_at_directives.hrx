@@ -1,0 +1,16 @@
+<===> 38_expressions_in_at_directives/input.scss
+$x: 1;
+$y: 2;
+
+@foo $x $y, hux {
+  bar {
+    whatever: whatever;
+  }
+}
+
+<===> 38_expressions_in_at_directives/output.css
+@foo $x $y, hux {
+  bar {
+    whatever: whatever;
+  }
+}

@@ -1,0 +1,18 @@
+<===> 04_variable_double/input.scss
+$input: \"\';
+.result {
+  output: #{#{$input}};
+  output: #{"[#{$input}]"};
+  output: #{"#{$input}"};
+  output: #{'#{$input}'};
+  output: #{"['#{$input}']"};
+}
+
+<===> 04_variable_double/output.css
+.result {
+  output: \"\';
+  output: [\"\'];
+  output: \"\';
+  output: \"\';
+  output: ['\"\''];
+}

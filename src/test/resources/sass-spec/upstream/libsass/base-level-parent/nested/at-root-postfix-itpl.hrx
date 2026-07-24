@@ -1,0 +1,15 @@
+<===> at-root-postfix-itpl/input.scss
+test {
+  @at-root {
+    #{&}post {
+      foo {
+        bar: baz;
+      }
+    }
+  }
+}
+
+<===> at-root-postfix-itpl/output.css
+testpost foo {
+  bar: baz;
+}

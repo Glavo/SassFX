@@ -1,0 +1,5 @@
+<===> import/input.scss
+@import "http://foo"
+
+<===> import/output.css
+@import "http://foo";

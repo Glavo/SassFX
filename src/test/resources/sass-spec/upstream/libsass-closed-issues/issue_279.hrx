@@ -1,0 +1,29 @@
+<===> issue_279/input.scss
+.theme {
+  @import "foo.scss";
+}
+
+<===> issue_279/foo.scss
+.test-hello {
+  color: red;
+}
+
+.test-world {
+  @extend .test-hello;
+}
+
+<===> issue_279/output.css
+.theme .test-hello, .theme .test-world {
+  color: red;
+}
+
+<===> issue_279/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+2 |   @import "foo.scss";
+  |           ^^^^^^^^^^
+  '
+    input.scss 2:11  root stylesheet

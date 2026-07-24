@@ -1,0 +1,8 @@
+<===> 020_test_universal_unification_with_simple_target/input.scss
+%-a .foo {a: b}
+* {@extend .foo} -a {@extend %-a}
+
+<===> 020_test_universal_unification_with_simple_target/output.css
+-a * {
+  a: b;
+}

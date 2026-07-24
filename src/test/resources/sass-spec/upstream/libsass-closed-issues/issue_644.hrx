@@ -1,0 +1,9 @@
+<===> issue_644/input.scss
+foo {
+  background-image: url(foo/#{"bar"}/baz.jpg);
+}
+
+<===> issue_644/output.css
+foo {
+  background-image: url(foo/bar/baz.jpg);
+}

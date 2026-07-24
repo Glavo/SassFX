@@ -1,0 +1,24 @@
+<===> issue_1994/input.scss
+%hoverbrighter {
+    &:hover,
+    &:focus {
+        opacity: .8;
+
+        @supports (filter: brightness(120%)) {
+            filter: brightness(120%);
+        }
+    }
+}
+
+.productportal-link {
+    @extend %hoverbrighter;
+}
+<===> issue_1994/output.css
+.productportal-link:hover, .productportal-link:focus {
+  opacity: 0.8;
+}
+@supports (filter: brightness(120%)) {
+  .productportal-link:hover, .productportal-link:focus {
+    filter: brightness(120%);
+  }
+}

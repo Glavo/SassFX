@@ -1,0 +1,10 @@
+<===> issue_1658/input.scss
+@else{}
+
+<===> issue_1658/error
+Error: This at-rule is not allowed here.
+  ,
+1 | @else{}
+  | ^^^^^
+  '
+  input.scss 1:1  root stylesheet

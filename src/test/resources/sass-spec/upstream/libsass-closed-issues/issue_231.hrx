@@ -1,0 +1,9 @@
+<===> issue_231/input.scss
+// test.scss:
+a {
+  background-image: url(fn("s"));
+}
+<===> issue_231/output.css
+a {
+  background-image: url(fn("s"));
+}

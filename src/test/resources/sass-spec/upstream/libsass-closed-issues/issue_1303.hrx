@@ -1,0 +1,10 @@
+<===> issue_1303/input.scss
+@use "sass:selector";
+.simple {
+  a: selector.replace('foo.bar', 'foo', 'foo[baz]');
+}
+
+<===> issue_1303/output.css
+.simple {
+  a: foo.bar[baz];
+}

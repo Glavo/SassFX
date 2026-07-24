@@ -1,0 +1,12 @@
+<===> issue_1297/input.scss
+.test .testa {
+  @at-root #{"%foo"} {
+    color: red;
+  }
+  @extend %foo;
+}
+
+<===> issue_1297/output.css
+.test .testa {
+  color: red;
+}

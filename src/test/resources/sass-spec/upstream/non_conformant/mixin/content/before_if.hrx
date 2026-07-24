@@ -1,0 +1,18 @@
+<===> before_if/input.scss
+// Regression test for sass/dart-sass#482.
+@mixin outer {
+  a {@content}
+}
+
+@mixin inner {
+  @content;
+}
+
+@include outer {
+  @include inner {}
+  x: y;
+}
+<===> before_if/output.css
+a {
+  x: y;
+}

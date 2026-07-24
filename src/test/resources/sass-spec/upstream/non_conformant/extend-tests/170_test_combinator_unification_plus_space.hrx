@@ -1,0 +1,8 @@
+<===> 170_test_combinator_unification_plus_space/input.scss
+.a.b + x {a: b}
+.a y {@extend x}
+
+<===> 170_test_combinator_unification_plus_space/output.css
+.a.b + x, .a .a.b + y {
+  a: b;
+}

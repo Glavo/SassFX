@@ -1,0 +1,12 @@
+<===> invalid-key/input.scss
+@use "sass:meta";
+
+$id: meta.inspect((a,b:c)...)
+
+<===> invalid-key/error
+Error: expected ")".
+  ,
+3 | $id: meta.inspect((a,b:c)...)
+  |                       ^
+  '
+  input.scss 3:23  root stylesheet

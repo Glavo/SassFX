@@ -1,0 +1,6 @@
+<===> calc/input.scss
+@function calc() {
+  @return null;
+}
+
+<===> calc/output.css

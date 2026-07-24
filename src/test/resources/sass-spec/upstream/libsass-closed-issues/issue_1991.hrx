@@ -1,0 +1,6 @@
+<===> issue_1991/input.scss
+$tests: (
+  0: 'foo',
+  false: 'bar',
+);
+<===> issue_1991/output.css

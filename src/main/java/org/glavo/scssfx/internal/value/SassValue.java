@@ -25,7 +25,8 @@ public sealed interface SassValue permits
         SassMap,
         SassFunction,
         SassMixin,
-        SassColor {
+        SassColor,
+        SassCalculation {
     /// Returns this value's separator when viewed as a Sass list.
     ///
     /// Atomic values use an undecided separator.
@@ -74,6 +75,27 @@ public sealed interface SassValue permits
     ///
     /// @return whether this value is blank
     default boolean isBlank() {
+        return false;
+    }
+
+    /// Returns whether this value is a special CSS number-producing function call
+    /// that color constructors must preserve as plain CSS.
+    ///
+    /// Matches unquoted {@code calc()}, {@code clamp()}, {@code min()}, {@code max()},
+    /// {@code var()}, {@code env()}, {@code attr()}, and {@code if()} call forms.
+    ///
+    /// @return whether this value is a special number string
+    default boolean isSpecialNumber() {
+        return false;
+    }
+
+    /// Returns whether this value is a special CSS variable-producing call that
+    /// may expand to multiple function arguments after substitution.
+    ///
+    /// Matches unquoted {@code var()}, {@code attr()}, and {@code if()} call forms.
+    ///
+    /// @return whether this value is a special variable string
+    default boolean isSpecialVariable() {
         return false;
     }
 

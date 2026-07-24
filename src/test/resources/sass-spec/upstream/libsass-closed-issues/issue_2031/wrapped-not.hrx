@@ -1,0 +1,8 @@
+<===> wrapped-not/input.scss
+:not(.asd, .qwe) {
+  content: test;
+}
+<===> wrapped-not/output.css
+:not(.asd, .qwe) {
+  content: test;
+}

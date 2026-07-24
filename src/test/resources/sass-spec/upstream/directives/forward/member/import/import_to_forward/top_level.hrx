@@ -1,0 +1,168 @@
+<===> mixin/input.scss
+@import "midstream";
+
+@include a;
+
+<===> mixin/_midstream.scss
+@forward "upstream";
+
+<===> mixin/_upstream.scss
+@mixin a() {b {c: d}}
+
+<===> mixin/output.css
+b {
+  c: d;
+}
+
+<===> mixin/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import "midstream";
+  |         ^^^^^^^^^^^
+  '
+    input.scss 1:9  root stylesheet
+
+<===> variable_assignment/input.scss
+@import "midstream";
+
+$a: new value;
+
+b {c: get-a()}
+
+<===> variable_assignment/_midstream.scss
+@forward "upstream";
+
+<===> variable_assignment/_upstream.scss
+$a: old value;
+
+@function get-a() {@return $a}
+
+<===> variable_assignment/output.css
+b {
+  c: new value;
+}
+
+<===> variable_assignment/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import "midstream";
+  |         ^^^^^^^^^^^
+  '
+    input.scss 1:9  root stylesheet
+
+<===> variable_use/input.scss
+@import "midstream";
+
+a {b: $c}
+
+<===> variable_use/_midstream.scss
+@forward "upstream";
+
+<===> variable_use/_upstream.scss
+$c: d;
+
+<===> variable_use/output.css
+a {
+  b: d;
+}
+
+<===> variable_use/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import "midstream";
+  |         ^^^^^^^^^^^
+  '
+    input.scss 1:9  root stylesheet
+
+<===> post_facto/without_use/input.scss
+@import "other";
+@import "midstream";
+
+@include a;
+
+<===> post_facto/without_use/_other.scss
+@mixin a {b {c: $d}}
+
+<===> post_facto/without_use/_midstream.scss
+@forward "upstream";
+
+<===> post_facto/without_use/_upstream.scss
+$d: e;
+
+<===> post_facto/without_use/output.css
+b {
+  c: e;
+}
+
+<===> post_facto/without_use/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import "other";
+  |         ^^^^^^^
+  '
+    input.scss 1:9  root stylesheet
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+2 | @import "midstream";
+  |         ^^^^^^^^^^^
+  '
+    input.scss 2:9  root stylesheet
+
+<===> post_facto/with_use/input.scss
+@import "other";
+@import "midstream";
+
+@include a;
+
+<===> post_facto/with_use/_other.scss
+@use "sass:math";
+
+@mixin a {b {c: $d}}
+
+<===> post_facto/with_use/_midstream.scss
+@forward "upstream";
+
+<===> post_facto/with_use/_upstream.scss
+$d: e;
+
+<===> post_facto/with_use/output.css
+b {
+  c: e;
+}
+
+<===> post_facto/with_use/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import "other";
+  |         ^^^^^^^
+  '
+    input.scss 1:9  root stylesheet
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+2 | @import "midstream";
+  |         ^^^^^^^^^^^
+  '
+    input.scss 2:9  root stylesheet

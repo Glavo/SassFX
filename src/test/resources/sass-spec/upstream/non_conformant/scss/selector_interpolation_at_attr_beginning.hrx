@@ -1,0 +1,8 @@
+<===> selector_interpolation_at_attr_beginning/input.scss
+$zzz: zzz;
+[#{$zzz}=foo] { a: b; }
+
+<===> selector_interpolation_at_attr_beginning/output.css
+[zzz=foo] {
+  a: b;
+}

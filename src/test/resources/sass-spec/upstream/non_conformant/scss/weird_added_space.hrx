@@ -1,0 +1,11 @@
+<===> weird_added_space/input.scss
+$value : bip;
+
+foo {
+  bar: -moz-#{$value};
+}
+
+<===> weird_added_space/output.css
+foo {
+  bar: -moz-bip;
+}

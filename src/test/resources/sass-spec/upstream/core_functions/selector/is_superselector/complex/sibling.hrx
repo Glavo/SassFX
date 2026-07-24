@@ -1,0 +1,164 @@
+<===> single/in_sub/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("c", "d ~ c")}
+
+<===> single/in_sub/output.css
+a {
+  b: true;
+}
+
+<===> single/in_super/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("c ~ d", "d")}
+
+<===> single/in_super/output.css
+a {
+  b: false;
+}
+
+<===> single/in_both/equal/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("c ~ d", "c ~ d")}
+
+<===> single/in_both/equal/output.css
+a {
+  b: true;
+}
+
+<===> single/in_both/subset/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("c ~ d", "c.e ~ d.f")}
+
+<===> single/in_both/subset/output.css
+a {
+  b: true;
+}
+
+<===> single/in_both/superset/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("c.e ~ d.f", "c ~ d")}
+
+<===> single/in_both/superset/output.css
+a {
+  b: false;
+}
+
+<===> multiple/in_sub/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("c", "d ~ e ~ c")}
+
+<===> multiple/in_sub/output.css
+a {
+  b: true;
+}
+
+<===> multiple/first/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("d ~ c", "d ~ e ~ c")}
+
+<===> multiple/first/output.css
+a {
+  b: true;
+}
+
+<===> multiple/second/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("e ~ c", "d ~ e ~ c")}
+
+<===> multiple/second/output.css
+a {
+  b: true;
+}
+
+<===> multiple/neither/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("f ~ c", "d ~ e ~ c")}
+
+<===> multiple/neither/output.css
+a {
+  b: false;
+}
+
+<===> multiple/extra_middle/README.md
+Regression tests for sass/dart-sass#1843.
+
+<===> multiple/extra_middle/descendant/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("a ~ b ~ c", "a ~ x b ~ c")}
+
+<===> multiple/extra_middle/descendant/output.css
+a {
+  b: false;
+}
+
+<===> multiple/extra_middle/child/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("a ~ b ~ c", "a ~ x > b ~ c")}
+
+<===> multiple/extra_middle/child/output.css
+a {
+  b: false;
+}
+
+<===> multiple/extra_middle/following_sibling/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("a ~ b ~ c", "a ~ x ~ b ~ c")}
+
+<===> multiple/extra_middle/following_sibling/output.css
+a {
+  b: true;
+}
+
+<===> multiple/extra_middle/next_sibling/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("a ~ b ~ c", "a ~ x + b ~ c")}
+
+<===> multiple/extra_middle/next_sibling/output.css
+a {
+  b: true;
+}
+
+<===> and_adjacent_sibling/super/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("d ~ c", "d + c")}
+
+<===> and_adjacent_sibling/super/output.css
+a {
+  b: true;
+}
+
+<===> and_adjacent_sibling/sub/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("d + c", "d ~ c")}
+
+<===> and_adjacent_sibling/sub/output.css
+a {
+  b: false;
+}
+
+<===> and_adjacent_sibling/multiple/first/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("d ~ c", "d + e + c")}
+
+<===> and_adjacent_sibling/multiple/first/output.css
+a {
+  b: true;
+}
+
+<===> and_adjacent_sibling/multiple/second/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("e ~ c", "d + e + c")}
+
+<===> and_adjacent_sibling/multiple/second/output.css
+a {
+  b: true;
+}
+
+<===> and_adjacent_sibling/multiple/neither/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("f ~ c", "d + e + c")}
+
+<===> and_adjacent_sibling/multiple/neither/output.css
+a {
+  b: false;
+}

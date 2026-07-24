@@ -1,0 +1,8 @@
+<===> 113_test_nested_extender_finds_common_selectors_around_sibling_selector/input.scss
+a ~ b c .c1 {a: b}
+a b .c2 {@extend .c1}
+
+<===> 113_test_nested_extender_finds_common_selectors_around_sibling_selector/output.css
+a ~ b c .c1, a a ~ b c .c2 {
+  a: b;
+}

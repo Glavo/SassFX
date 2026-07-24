@@ -1,0 +1,9 @@
+<===> 22_double_escaped_interpolated_variable/input.scss
+$key: 'bar';
+$suffix2: '\\@#{$key}';
+.test22#{$suffix2} { content: '2.2'; }
+
+<===> 22_double_escaped_interpolated_variable/output.css
+.test22\@bar {
+  content: "2.2";
+}

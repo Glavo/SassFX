@@ -1,0 +1,17 @@
+<===> 03_inline_double/input.scss
+.result {
+  output: #{#{literal}};
+  output: #{"[#{literal}]"};
+  output: #{"#{literal}"};
+  output: #{'#{literal}'};
+  output: #{"['#{literal}']"};
+}
+
+<===> 03_inline_double/output.css
+.result {
+  output: literal;
+  output: [literal];
+  output: literal;
+  output: literal;
+  output: ['literal'];
+}

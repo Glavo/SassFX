@@ -1,0 +1,8 @@
+<===> ruleset/input.scss
+foo { 
+  color: green;
+}
+<===> ruleset/output.css
+foo {
+  color: green;
+}

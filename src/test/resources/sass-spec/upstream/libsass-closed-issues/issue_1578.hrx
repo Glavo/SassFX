@@ -1,0 +1,19 @@
+<===> issue_1578/input.sass
+foo
+  bar: baz
+  &:hover
+    baz:bam
+
+<===> issue_1578/output.css
+foo {
+  bar: baz;
+}
+
+<===> issue_1578/warning
+WARNING: This selector doesn't have any properties and won't be rendered.
+
+  ,
+4 |     baz:bam
+  |     ^^^^^^^
+  '
+    input.sass 4:5  root stylesheet

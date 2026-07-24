@@ -1,0 +1,14 @@
+<===> issue_2482/input.scss
+@mixin mixin()
+{
+	& .class
+	{
+		color: black;
+	}
+}
+
+@include mixin();
+<===> issue_2482/output.css
+& .class {
+  color: black;
+}

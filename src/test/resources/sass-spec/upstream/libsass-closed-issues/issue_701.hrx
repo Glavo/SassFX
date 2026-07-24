@@ -1,0 +1,30 @@
+<===> issue_701/input.scss
+@use "sass:meta";
+
+.test-1 {
+  content: null;
+  content: meta.inspect(null);
+  content: meta.inspect(false);
+  content: meta.inspect(true);
+  content: meta.inspect(42);
+  content: meta.inspect(42.3);
+  content: meta.inspect(42px);
+  content: meta.inspect("string");
+  $list: 1, 2, 3;
+  content: meta.inspect($list);
+  $map: ( a: 1, b: 2, c: 3 );
+  content: meta.inspect($map);
+}
+
+<===> issue_701/output.css
+.test-1 {
+  content: null;
+  content: false;
+  content: true;
+  content: 42;
+  content: 42.3;
+  content: 42px;
+  content: "string";
+  content: 1, 2, 3;
+  content: (a: 1, b: 2, c: 3);
+}

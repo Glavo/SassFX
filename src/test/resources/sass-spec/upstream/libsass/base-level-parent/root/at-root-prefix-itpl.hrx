@@ -1,0 +1,13 @@
+<===> at-root-prefix-itpl/input.scss
+@at-root {
+  pre#{&} {
+    foo {
+      bar: baz;
+    }
+  }
+}
+
+<===> at-root-prefix-itpl/output.css
+pre foo {
+  bar: baz;
+}

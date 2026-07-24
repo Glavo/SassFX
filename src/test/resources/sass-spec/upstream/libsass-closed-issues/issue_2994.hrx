@@ -1,0 +1,20 @@
+<===> issue_2994/input.scss
+.one-screen-page {
+	@extend %context-dark;
+}
+
+%context-dark {
+	.button-secondary-outline {
+		&:hover,
+		&:focus,
+		&:active,
+		&:hover {
+			color: #fca;
+		}
+	}
+}
+
+<===> issue_2994/output.css
+.one-screen-page .button-secondary-outline:hover, .one-screen-page .button-secondary-outline:focus, .one-screen-page .button-secondary-outline:active {
+  color: #fca;
+}

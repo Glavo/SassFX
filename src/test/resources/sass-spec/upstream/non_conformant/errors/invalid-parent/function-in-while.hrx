@@ -1,0 +1,11 @@
+<===> function-in-while/input.scss
+@while (false) {
+  @function foo() {}
+}
+<===> function-in-while/error
+Error: Functions may not be declared in control directives.
+  ,
+2 |   @function foo() {}
+  |   ^^^^^^^^^^^^^^^
+  '
+  input.scss 2:3  root stylesheet

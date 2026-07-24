@@ -1,0 +1,14 @@
+<===> issue_1283/input.scss
+@use "sass:map";
+@use "sass:meta";
+
+$map: map.merge((1 2: 3), (2 1: 3));
+
+.test {
+  test: meta.inspect($map);
+}
+
+<===> issue_1283/output.css
+.test {
+  test: (1 2: 3, 2 1: 3);
+}

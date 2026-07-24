@@ -1,0 +1,10 @@
+<===> rhs/input.scss
+$map: 1 + (a:b,c:d);
+
+<===> rhs/error
+Error: (a: b, c: d) isn't a valid CSS value.
+  ,
+1 | $map: 1 + (a:b,c:d);
+  |       ^^^^^^^^^^^^^
+  '
+  input.scss 1:7  root stylesheet

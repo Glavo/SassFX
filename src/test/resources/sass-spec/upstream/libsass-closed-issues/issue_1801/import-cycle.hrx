@@ -1,0 +1,55 @@
+<===> import-cycle/input.scss
+@import 'alpha';
+
+<===> import-cycle/_alpha.scss
+@import 'beta';
+
+<===> import-cycle/_beta.scss
+@import 'alpha';
+
+<===> import-cycle/error
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import 'alpha';
+  |         ^^^^^^^
+  '
+    input.scss 1:9  root stylesheet
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import 'beta';
+  |         ^^^^^^
+  '
+    _alpha.scss 1:9  @import
+    input.scss 1:9   root stylesheet
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import 'alpha';
+  |         ^^^^^^^
+  '
+    _beta.scss 1:9   @import
+    _alpha.scss 1:9  @import
+    input.scss 1:9   root stylesheet
+
+Error: This file is already being loaded.
+  ,--> _beta.scss
+1 | @import 'alpha';
+  |         ^^^^^^^ new load
+  '
+  ,--> input.scss
+1 | @import 'alpha';
+  |         ======= original load
+  '
+  _beta.scss 1:9   @import
+  _alpha.scss 1:9  @import
+  input.scss 1:9   root stylesheet

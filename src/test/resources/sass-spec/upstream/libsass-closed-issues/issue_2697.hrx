@@ -1,0 +1,13 @@
+<===> issue_2697/input.scss
+.Card {
+  &:not(.is-open, .is-static) {
+    .CardContents {
+      display: none;
+    }
+  }
+}
+
+<===> issue_2697/output.css
+.Card:not(.is-open, .is-static) .CardContents {
+  display: none;
+}

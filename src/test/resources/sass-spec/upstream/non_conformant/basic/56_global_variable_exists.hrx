@@ -1,0 +1,77 @@
+<===> 56_global_variable_exists/input.scss
+@use "sass:meta";
+@function exists($name) {
+  @return meta.global-variable-exists($name);
+}
+
+@function f() {
+  $foo: hi;
+  @return g();
+}
+
+@function g() {
+  @return meta.global-variable-exists(foo);
+}
+
+$z: hi;
+
+div {
+  foo: meta.global-variable-exists(x);    
+  foo: meta.global-variable-exists("x");    
+  foo: meta.global-variable-exists(z);
+  foo: meta.global-variable-exists("z");    
+
+  span {
+    $x: false;
+
+    foo: meta.global-variable-exists(x);
+    foo: meta.global-variable-exists("x");    
+    foo: meta.global-variable-exists(y);
+    foo: meta.global-variable-exists("y");    
+
+    foo: meta.global-variable-exists(z);
+    foo: meta.global-variable-exists("z");    
+
+    p {
+      foo: meta.global-variable-exists(x);
+      foo: meta.global-variable-exists("x");    
+      foo: exists(x);
+      foo: exists("x");    
+      foo: meta.global-variable-exists(z);
+      foo: meta.global-variable-exists("z");    
+      foo: meta.global-variable-exists(y);
+      foo: meta.global-variable-exists("y");    
+      foo: f();
+      $y: blah;
+      //TODO: check for shadowing
+    }
+  }
+
+}
+
+<===> 56_global_variable_exists/output.css
+div {
+  foo: false;
+  foo: false;
+  foo: true;
+  foo: true;
+}
+div span {
+  foo: false;
+  foo: false;
+  foo: false;
+  foo: false;
+  foo: true;
+  foo: true;
+}
+div span p {
+  foo: false;
+  foo: false;
+  foo: false;
+  foo: false;
+  foo: true;
+  foo: true;
+  foo: false;
+  foo: false;
+  foo: false;
+}

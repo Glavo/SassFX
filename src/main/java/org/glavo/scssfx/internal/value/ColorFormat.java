@@ -7,5 +7,5 @@ import org.jetbrains.annotations.NotNullByDefault;
 /// Marks source formats that affect expanded color serialization.
 @ApiStatus.Internal
 @NotNullByDefault
-public sealed interface ColorFormat permits SpanColorFormat {
+public sealed interface ColorFormat permits SpanColorFormat, RgbFunctionColorFormat {
 }

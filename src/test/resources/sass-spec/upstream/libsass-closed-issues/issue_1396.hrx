@@ -1,0 +1,11 @@
+<===> issue_1396/input.scss
+foo {
+  foo: foo"bar"#{baz};
+  foo: foo"bar"baz;
+}
+
+<===> issue_1396/output.css
+foo {
+  foo: foo "bar" baz;
+  foo: foo "bar" baz;
+}

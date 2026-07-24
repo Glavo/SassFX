@@ -1,0 +1,129 @@
+<===> full_string/quoted/input.scss
+@use "sass:selector";
+a {b: selector.parse("c d, e f")}
+
+<===> full_string/quoted/output.css
+a {
+  b: c d, e f;
+}
+
+<===> full_string/unquoted/input.scss
+@use "sass:selector";
+@use "sass:string";
+a {b: selector.parse(string.unquote("c d, e f"))}
+
+<===> full_string/unquoted/output.css
+a {
+  b: c d, e f;
+}
+
+<===> decomposed/full/quoted/input.scss
+@use "sass:selector";
+a {b: selector.parse(("c" "d", "e" "f"))}
+
+<===> decomposed/full/quoted/output.css
+a {
+  b: c d, e f;
+}
+
+<===> decomposed/full/unquoted/input.scss
+@use "sass:selector";
+a {b: selector.parse((c d, e f))}
+
+<===> decomposed/full/unquoted/output.css
+a {
+  b: c d, e f;
+}
+
+<===> decomposed/full/mixed/input.scss
+@use "sass:selector";
+a {b: selector.parse((c "d", e "f"))}
+
+<===> decomposed/full/mixed/output.css
+a {
+  b: c d, e f;
+}
+
+<===> decomposed/partial/quoted/input.scss
+@use "sass:selector";
+a {b: selector.parse(("c d", "e f"))}
+
+<===> decomposed/partial/quoted/output.css
+a {
+  b: c d, e f;
+}
+
+<===> decomposed/partial/unquoted/input.scss
+@use "sass:selector";
+@use "sass:string";
+a {b: selector.parse((string.unquote("c d"), string.unquote("e f")))}
+
+<===> decomposed/partial/unquoted/output.css
+a {
+  b: c d, e f;
+}
+
+<===> decomposed/partial/mixed/input.scss
+@use "sass:selector";
+@use "sass:string";
+a {b: selector.parse((c d, string.unquote("e f")))}
+
+<===> decomposed/partial/mixed/output.css
+a {
+  b: c d, e f;
+}
+
+<===> decomposed/middle/quoted/input.scss
+@use "sass:selector";
+a {b: selector.parse("c" "d, e" "f")}
+
+<===> decomposed/middle/quoted/output.css
+a {
+  b: c d, e f;
+}
+
+<===> decomposed/middle/unquoted/input.scss
+@use "sass:selector";
+@use "sass:string";
+a {b: selector.parse(c string.unquote("d, e") f)}
+
+<===> decomposed/middle/unquoted/output.css
+a {
+  b: c d, e f;
+}
+
+<===> decomposed/middle/mixed/input.scss
+@use "sass:selector";
+a {b: selector.parse(c "d, e" f)}
+
+<===> decomposed/middle/mixed/output.css
+a {
+  b: c d, e f;
+}
+
+<===> decomposed/complex/quoted/input.scss
+@use "sass:selector";
+a {b: selector.parse("c" "d" "e")}
+
+<===> decomposed/complex/quoted/output.css
+a {
+  b: c d e;
+}
+
+<===> decomposed/complex/unquoted/input.scss
+@use "sass:selector";
+a {b: selector.parse(c d e)}
+
+<===> decomposed/complex/unquoted/output.css
+a {
+  b: c d e;
+}
+
+<===> decomposed/complex/mixed/input.scss
+@use "sass:selector";
+a {b: selector.parse(c "d" e)}
+
+<===> decomposed/complex/mixed/output.css
+a {
+  b: c d e;
+}

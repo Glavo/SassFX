@@ -1,0 +1,74 @@
+<===> arglist/invalid/input.scss
+@mixin mixin {
+  @content;
+}
+
+@include mixin() using ($arg1: ) {}
+
+<===> arglist/invalid/error
+Error: Expected expression.
+  ,
+5 | @include mixin() using ($arg1: ) {}
+  |                                ^
+  '
+  input.scss 5:32  root stylesheet
+
+<===> arglist/missing/input.scss
+@mixin mixin {
+  @content;
+}
+
+@include mixin using {}
+
+<===> arglist/missing/error
+Error: expected "(".
+  ,
+5 | @include mixin using {}
+  |                      ^
+  '
+  input.scss 5:22  root stylesheet
+
+<===> arglist/missing_parens/input.scss
+@mixin mixin {
+  @content;
+}
+
+@include mixin using $arg1 {}
+
+<===> arglist/missing_parens/error
+Error: expected "(".
+  ,
+5 | @include mixin using $arg1 {}
+  |                      ^
+  '
+  input.scss 5:22  root stylesheet
+
+<===> missing_using/input.scss
+@mixin mixin {
+  @content;
+}
+
+@include mixin() () {}
+
+<===> missing_using/error
+Error: expected ";".
+  ,
+5 | @include mixin() () {}
+  |                  ^
+  '
+  input.scss 5:18  root stylesheet
+
+<===> missing_block/input.scss
+@mixin mixin {
+  @content;
+}
+
+@include mixin using ();
+
+<===> missing_block/error
+Error: expected "{".
+  ,
+5 | @include mixin using ();
+  |                        ^
+  '
+  input.scss 5:24  root stylesheet

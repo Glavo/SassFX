@@ -1,0 +1,7 @@
+<===> 185_test_keyword_args_in_functions/input.scss
+.keyed { color: rgba($color: #a7c, $alpha: 0.4) }
+
+<===> 185_test_keyword_args_in_functions/output.css
+.keyed {
+  color: rgba(170, 119, 204, 0.4);
+}

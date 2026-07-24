@@ -1,0 +1,19 @@
+<===> mixin/input.scss
+@mixin c() {
+  @error test;
+  c: d;
+}
+
+a {
+  b: {
+    @include c();
+  }
+}
+
+<===> mixin/error
+Error: test
+  ,
+8 |     @include c();
+  |     ^^^^^^^^^^^^
+  '
+  input.scss 8:5  root stylesheet

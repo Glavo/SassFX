@@ -1,0 +1,20 @@
+<===> 215_test_multiple_source_redundancy_elimination/input.scss
+%default-color {color: red}
+%alt-color {color: green}
+
+%default-style {
+@extend %default-color;
+&:hover {@extend %alt-color}
+&:active {@extend %default-color}
+}
+
+.test-case {@extend %default-style}
+
+<===> 215_test_multiple_source_redundancy_elimination/output.css
+.test-case:active, .test-case {
+  color: red;
+}
+
+.test-case:hover {
+  color: green;
+}

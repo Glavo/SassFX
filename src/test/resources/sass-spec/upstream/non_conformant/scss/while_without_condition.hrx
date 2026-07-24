@@ -1,0 +1,12 @@
+<===> while_without_condition/input.scss
+@while {
+
+}
+
+<===> while_without_condition/error
+Error: Expected expression.
+  ,
+1 | @while {
+  |        ^
+  '
+  input.scss 1:8  root stylesheet

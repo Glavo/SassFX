@@ -1,0 +1,87 @@
+<===> issue_1127/input.scss
+@use "sass:string";
+$a: string.to-upper-case('abcd');
+$b: string.to-upper-case("abcd");
+$c: string.to-upper-case(abcd);
+
+foo {
+    content: #{$a};
+    content: #{$b};
+    content: #{$c};
+    content: '#{$a}';
+    content: '#{$b}';
+    content: '#{$c}';
+    content: "#{$a}";
+    content: "#{$b}";
+    content: "#{$c}";
+
+    content: #{string.unquote($a)};
+    content: #{string.unquote($b)};
+    content: #{string.unquote($c)};
+    content: '#{string.unquote($a)}';
+    content: '#{string.unquote($b)}';
+    content: '#{string.unquote($c)}';
+    content: "#{string.unquote($a)}";
+    content: "#{string.unquote($b)}";
+    content: "#{string.unquote($c)}";
+
+    content: #{$a + string.unquote("efg")};
+    content: #{$b + string.unquote("efg")};
+    content: #{$c + string.unquote("efg")};
+    content: '#{$a + string.unquote("efg")}';
+    content: '#{$b + string.unquote("efg")}';
+    content: '#{$c + string.unquote("efg")}';
+    content: "#{$a + string.unquote("efg")}";
+    content: "#{$b + string.unquote("efg")}";
+    content: "#{$c + string.unquote("efg")}";
+
+    content: #{$a + string.unquote("")};
+    content: #{$b + string.unquote("")};
+    content: #{$c + string.unquote("")};
+    content: '#{$a + string.unquote("")}';
+    content: '#{$b + string.unquote("")}';
+    content: '#{$c + string.unquote("")}';
+    content: "#{$a + string.unquote("")}";
+    content: "#{$b + string.unquote("")}";
+    content: "#{$c + string.unquote("")}";
+}
+
+<===> issue_1127/output.css
+foo {
+  content: ABCD;
+  content: ABCD;
+  content: ABCD;
+  content: "ABCD";
+  content: "ABCD";
+  content: "ABCD";
+  content: "ABCD";
+  content: "ABCD";
+  content: "ABCD";
+  content: ABCD;
+  content: ABCD;
+  content: ABCD;
+  content: "ABCD";
+  content: "ABCD";
+  content: "ABCD";
+  content: "ABCD";
+  content: "ABCD";
+  content: "ABCD";
+  content: ABCDefg;
+  content: ABCDefg;
+  content: ABCDefg;
+  content: "ABCDefg";
+  content: "ABCDefg";
+  content: "ABCDefg";
+  content: "ABCDefg";
+  content: "ABCDefg";
+  content: "ABCDefg";
+  content: ABCD;
+  content: ABCD;
+  content: ABCD;
+  content: "ABCD";
+  content: "ABCD";
+  content: "ABCD";
+  content: "ABCD";
+  content: "ABCD";
+  content: "ABCD";
+}

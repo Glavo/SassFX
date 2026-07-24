@@ -1,0 +1,12 @@
+<===> outside/input.scss
+@mixin do_import() {
+  @import url("http://www.libsass.org");
+}
+
+@if (false) {
+} @else {
+  @include do_import();
+}
+
+<===> outside/output.css
+@import url("http://www.libsass.org");

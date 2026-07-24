@@ -1,0 +1,15 @@
+<===> issue_346/input.scss
+$mediaquery: 'and (min-width: 300px)';
+
+@media all #{$mediaquery} {
+  div {
+    display: block;
+  }
+}
+
+<===> issue_346/output.css
+@media all and (min-width: 300px) {
+  div {
+    display: block;
+  }
+}

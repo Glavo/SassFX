@@ -1,0 +1,23 @@
+<===> issue_552/input.scss
+a,
+div {
+    top: 0;
+}
+
+.a,
+.b {
+    &.c {
+        color: red;
+    }
+}
+
+<===> issue_552/output.css
+a,
+div {
+  top: 0;
+}
+
+.a.c,
+.b.c {
+  color: red;
+}

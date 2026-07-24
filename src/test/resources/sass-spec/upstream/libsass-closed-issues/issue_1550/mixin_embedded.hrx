@@ -1,0 +1,14 @@
+<===> mixin_embedded/input.scss
+@mixin foo() {
+  @function foo() {
+    @return 'foo';
+  }
+}
+
+<===> mixin_embedded/error
+Error: Mixins may not contain function declarations.
+  ,
+2 |   @function foo() {
+  |   ^^^^^^^^^^^^^^^
+  '
+  input.scss 2:3  root stylesheet

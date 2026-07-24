@@ -1,0 +1,10 @@
+<===> issue_1007/input.scss
+/* start */ foo /* foo */ baz /* bar */ {
+    /* before */ margin /* X */: /* Y */ 0 /* */; /* after */
+} /* end */
+<===> issue_1007/output.css
+/* start */
+foo baz {
+  /* before */
+  margin: 0; /* after */
+} /* end */

@@ -1,0 +1,14 @@
+<===> for/input.scss
+@for $i from 1 through 2 {
+  @import '_include';
+}
+
+<===> for/_include.scss
+
+<===> for/error
+Error: This at-rule is not allowed here.
+  ,
+2 |   @import '_include';
+  |   ^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:3  root stylesheet

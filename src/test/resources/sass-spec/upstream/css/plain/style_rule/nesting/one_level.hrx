@@ -1,0 +1,12 @@
+<===> one_level/input.scss
+@use "plain";
+
+<===> one_level/plain.css
+a {b {c: d}}
+
+<===> one_level/output.css
+a {
+  b {
+    c: d;
+  }
+}

@@ -1,0 +1,14 @@
+<===> mixin-in-mixin/input.scss
+@mixin mix() {
+  @mixin foo() {}
+}
+foo {
+  bar: include mix();
+}
+<===> mixin-in-mixin/error
+Error: Mixins may not contain mixin declarations.
+  ,
+2 |   @mixin foo() {}
+  |   ^^^^^^^^^^^^
+  '
+  input.scss 2:3  root stylesheet

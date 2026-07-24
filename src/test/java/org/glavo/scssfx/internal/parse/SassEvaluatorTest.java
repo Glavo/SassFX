@@ -251,17 +251,17 @@ final class SassEvaluatorTest {
         assertStylesheetFailure("theme.$x: $missing;", "Undefined variable.", "$missing");
         assertStylesheetFailure(
                 "theme.$x: 1;",
-                "There is no module with the namespace \"theme\".",
+                "There is no module with namespace \"theme\".",
                 "theme.$x: 1"
         );
         assertStylesheetFailure(
                 "theme.$x: $missing !default;",
-                "There is no module with the namespace \"theme\".",
+                "There is no module with namespace \"theme\".",
                 "theme.$x: $missing !default"
         );
         assertExpressionFailure(
                 "theme.$x",
-                "There is no module with the namespace \"theme\".",
+                "There is no module with namespace \"theme\".",
                 "theme.$x"
         );
     }

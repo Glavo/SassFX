@@ -105,6 +105,12 @@ final class IndentedSassPreprocessor {
                 if (isComment(normalized)) {
                     appendLine(output, line, normalized);
                     output.appendSynthetic("\n", line.endOffset());
+                } else if (isBlockHeader(normalized) && !looksLikePropertyDeclaration(normalized)) {
+                    // Empty functions, mixins, control directives, and style rules need
+                    // braces. Property declarations keep a trailing semicolon.
+                    appendLine(output, line, normalized);
+                    output.appendSynthetic(" {}", line.endOffset());
+                    output.appendSynthetic("\n", line.endOffset());
                 } else {
                     appendLine(output, line, normalized);
                     if (!normalized.endsWith(";") && !normalized.endsWith("{")) {
@@ -729,6 +735,130 @@ final class IndentedSassPreprocessor {
         }
         if (text.startsWith("@")) {
             return !isTerminalAtRule(text);
+        }
+        return true;
+    }
+
+    /// Returns whether {@code text} looks like a CSS/Sass property declaration.
+    ///
+    /// Style rules such as {@code a:hover} keep their colon as part of the selector
+    /// and must not be treated as property declarations. Plain {@code name: value}
+    /// and nested-property headers ending in {@code :} are treated as properties.
+    ///
+    /// @param text the normalized statement
+    /// @return whether the statement should terminate with a semicolon when empty
+    private static boolean looksLikePropertyDeclaration(String text) {
+        if (text.startsWith("@") || text.startsWith("$")) {
+            return false;
+        }
+        // Nested-property header with no value on this line.
+        if (text.endsWith(":")) {
+            return true;
+        }
+        var colon = indexOfTopLevelColon(text);
+        if (colon <= 0) {
+            return false;
+        }
+        var name = text.substring(0, colon).strip();
+        if (name.isEmpty()) {
+            return false;
+        }
+        // Namespaced or local variable assignments always terminate with ';'.
+        if (name.indexOf('$') >= 0) {
+            return true;
+        }
+        // Selectors frequently begin with combinators or simple selector sigils.
+        var first = name.charAt(0);
+        if (first == '.' || first == '#' || first == '[' || first == '*'
+                || first == '&' || first == '%' || first == '>' || first == '+'
+                || first == '~') {
+            return false;
+        }
+        // Pseudo-element/class-only selectors such as `:hover` or `::before`.
+        if (first == ':') {
+            return false;
+        }
+        // `a:hover` is a selector; `color: red` is a declaration. Treat a colon
+        // immediately followed by an identifier character (no whitespace) as a
+        // pseudo-class when the name before the colon is a type selector token.
+        if (colon + 1 < text.length()) {
+            var after = text.charAt(colon + 1);
+            if (!Character.isWhitespace(after) && after != ':'
+                    && isTypeSelectorName(name)) {
+                return false;
+            }
+        }
+        return isPropertyName(name);
+    }
+
+    /// Returns the index of the first top-level colon, or {@code -1}.
+    private static int indexOfTopLevelColon(String text) {
+        var depth = 0;
+        var quote = 0;
+        for (var index = 0; index < text.length(); index++) {
+            var character = text.charAt(index);
+            if (quote != 0) {
+                if (character == '\\' && index + 1 < text.length()) {
+                    index++;
+                } else if (character == quote) {
+                    quote = 0;
+                }
+                continue;
+            }
+            if (character == '\'' || character == '"') {
+                quote = character;
+            } else if (character == '(' || character == '[' || character == '{') {
+                depth++;
+            } else if (character == ')' || character == ']' || character == '}') {
+                if (depth > 0) {
+                    depth--;
+                }
+            } else if (character == ':' && depth == 0) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    /// Returns whether {@code name} is a plausible CSS property name.
+    private static boolean isPropertyName(String name) {
+        if (name.isEmpty()) {
+            return false;
+        }
+        var index = 0;
+        if (name.startsWith("--")) {
+            index = 2;
+        } else if (name.charAt(0) == '-') {
+            index = 1;
+        }
+        if (index >= name.length()) {
+            return false;
+        }
+        for (; index < name.length(); index++) {
+            var character = name.charAt(index);
+            if (!(Character.isLetterOrDigit(character)
+                    || character == '-'
+                    || character == '_'
+                    || character == '\\')) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// Returns whether {@code name} is a bare type/ident selector before a pseudo.
+    private static boolean isTypeSelectorName(String name) {
+        if (name.isEmpty() || name.equals("*")) {
+            return true;
+        }
+        for (var index = 0; index < name.length(); index++) {
+            var character = name.charAt(index);
+            if (!(Character.isLetterOrDigit(character)
+                    || character == '-'
+                    || character == '_'
+                    || character == '\\')) {
+                return false;
+            }
         }
         return true;
     }

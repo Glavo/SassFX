@@ -1,0 +1,9 @@
+<===> not-into-not-not/input.scss
+// Regression test for dart-sass#191.
+:not(:not(.x)) {a: b}
+:not(.y) {@extend .x}
+
+<===> not-into-not-not/output.css
+:not(:not(.x)) {
+  a: b;
+}

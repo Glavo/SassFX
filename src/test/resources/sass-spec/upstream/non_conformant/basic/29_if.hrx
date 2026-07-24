@@ -1,0 +1,49 @@
+<===> 29_if/input.scss
+@use "sass:list";
+@use "sass:meta";
+$x: a, b, 1+2;
+
+@if meta.type-of(list.nth($x, 3)) == number {
+  div {
+    background: gray;
+  }
+}
+
+@if meta.type-of(list.nth($x, 2)) == number {
+  div {
+    background: gray;
+  }
+}
+@else if meta.type-of(list.nth($x, 2)) == string {
+  div {
+    background: blue;
+  }
+}
+
+@if meta.type-of(list.nth($x, 2)) == number {
+  div {
+    background: gray;
+  }
+}
+@else if meta.type-of(list.nth($x, 2)) == color {
+  div {
+    background: blue;
+  }
+}
+@else {
+  div {
+    background: red;
+  }
+}
+<===> 29_if/output.css
+div {
+  background: gray;
+}
+
+div {
+  background: blue;
+}
+
+div {
+  background: red;
+}

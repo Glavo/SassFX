@@ -99,7 +99,7 @@ final class BuiltInFunctionsTest {
                 () -> evaluate("math.div(1, 2)")
         );
         assertEquals(
-                "There is no module with the namespace \"math\".",
+                "There is no module with namespace \"math\".",
                 failure.getMessage()
         );
     }
@@ -127,7 +127,7 @@ final class BuiltInFunctionsTest {
                 """
                         a {
                           content: "hello";
-                          color: #010203;
+                          color: rgb(1, 2, 3);
                           width: 1px;
                           order: b;
                           filter: blur(2px);

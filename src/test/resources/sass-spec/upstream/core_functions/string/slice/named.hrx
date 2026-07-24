@@ -1,0 +1,8 @@
+<===> named/input.scss
+@use "sass:string";
+a {b: string.slice($string: "cde", $start-at: 2, $end-at: 2)}
+
+<===> named/output.css
+a {
+  b: "d";
+}

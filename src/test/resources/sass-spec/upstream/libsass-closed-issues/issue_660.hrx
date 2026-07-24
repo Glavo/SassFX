@@ -1,0 +1,36 @@
+<===> issue_660/input.scss
+$foo: true;
+
+div {
+  blah: $foo;
+}
+
+div {
+  blah: not $foo;
+}
+
+div {
+  blah: not ($foo);
+}
+
+div {
+  blah: not (true);
+}
+
+
+<===> issue_660/output.css
+div {
+  blah: true;
+}
+
+div {
+  blah: false;
+}
+
+div {
+  blah: false;
+}
+
+div {
+  blah: false;
+}

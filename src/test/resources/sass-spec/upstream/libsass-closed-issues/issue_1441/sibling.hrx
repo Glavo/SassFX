@@ -1,0 +1,11 @@
+<===> sibling/input.scss
+.sibling {
+    & ~ & {
+        foo: bar;
+    }
+}
+
+<===> sibling/output.css
+.sibling ~ .sibling {
+  foo: bar;
+}

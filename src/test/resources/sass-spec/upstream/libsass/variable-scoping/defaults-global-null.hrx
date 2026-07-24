@@ -1,0 +1,45 @@
+<===> defaults-global-null/input.scss
+div {
+  $foo: null !default !global;
+  $foo: inner !default !global;
+  $foo: null !default !global;
+  $foo: lexical;
+  inner { foo: $foo; }
+}
+
+$foo: null !default !global;
+$foo: outer !default !global;
+$foo: null !default !global;
+outer { foo: $foo; }
+
+div {
+  $foo: null !default !global;
+  $foo: footer !default !global;
+  $foo: null !default !global;
+  $foo: lexical;
+  inner { foo: $foo; }
+}
+
+<===> defaults-global-null/output.css
+div inner {
+  foo: lexical;
+}
+
+outer {
+  foo: inner;
+}
+
+div inner {
+  foo: lexical;
+}
+
+<===> defaults-global-null/warning
+DEPRECATION WARNING [new-global]: As of Dart Sass 2.0.0, !global assignments won't be able to declare new variables.
+
+Recommendation: add `$foo: null` at the stylesheet root.
+
+  ,
+2 |   $foo: null !default !global;
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 2:3  root stylesheet

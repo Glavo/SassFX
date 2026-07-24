@@ -1,0 +1,5 @@
+<===> directive_with_lots_of_whitespace/input.scss
+@foo "bar";
+
+<===> directive_with_lots_of_whitespace/output.css
+@foo "bar";

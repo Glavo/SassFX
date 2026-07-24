@@ -1,0 +1,13 @@
+<===> 182_test_nested_extend_loop/input.scss
+.bar {
+a: b;
+.foo {c: d; @extend .bar}
+}
+
+<===> 182_test_nested_extend_loop/output.css
+.bar, .bar .foo {
+  a: b;
+}
+.bar .foo {
+  c: d;
+}

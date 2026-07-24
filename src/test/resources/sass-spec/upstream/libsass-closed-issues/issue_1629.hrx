@@ -1,0 +1,9 @@
+<===> issue_1629/input.scss
+foo {
+  background: url(...) 2rem 3rem / auto 2rem;
+}
+
+<===> issue_1629/output.css
+foo {
+  background: url(...) 2rem 3rem/auto 2rem;
+}

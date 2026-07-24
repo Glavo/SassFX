@@ -1,0 +1,16 @@
+<===> five_args/input.scss
+a {
+  b: hsl(0, 100%, 50%, 0.5, 0);
+}
+
+<===> five_args/error
+Error: Only 4 arguments allowed, but 5 were passed.
+  ,--> input.scss
+2 |   b: hsl(0, 100%, 50%, 0.5, 0);
+  |      ^^^^^^^^^^^^^^^^^^^^^^^^^ invocation
+  '
+  ,
+1 | @function hsl($hue, $saturation, $lightness, $alpha) {
+  |           ========================================== declaration
+  '
+  input.scss 2:6  root stylesheet

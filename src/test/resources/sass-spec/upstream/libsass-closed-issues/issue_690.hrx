@@ -1,0 +1,11 @@
+<===> issue_690/input.scss
+test {
+  left: expression(callSomeFunc());
+  content: expression("Smile :-)");
+}
+
+<===> issue_690/output.css
+test {
+  left: expression(callSomeFunc());
+  content: expression("Smile :-)");
+}

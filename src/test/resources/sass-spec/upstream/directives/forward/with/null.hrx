@@ -1,0 +1,14 @@
+<===> null/input.scss
+@use "midstream";
+
+<===> null/_midstream.scss
+@forward "upstream" with ($a: null);
+
+<===> null/_upstream.scss
+$a: original !default;
+b {c: $a}
+
+<===> null/output.css
+b {
+  c: original;
+}

@@ -1,0 +1,10 @@
+<===> assignment/input.scss
+$foo: #{};
+
+<===> assignment/error
+Error: Expected expression.
+  ,
+1 | $foo: #{};
+  |       ^^
+  '
+  input.scss 1:7  root stylesheet

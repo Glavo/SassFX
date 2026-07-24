@@ -1,0 +1,105 @@
+<===> 58_mixin_exists/input.scss
+@use "sass:meta";
+@function exists($name) {
+  @return meta.mixin-exists($name);
+}
+
+@function f() {
+  $foo: hi;
+  @return g();
+}
+
+@function g() {
+  @return meta.mixin-exists(foo);
+}
+
+@function h() {
+  @return meta.mixin-exists(lighten);
+}
+
+@mixin red-text { color: red; }
+@mixin blue-text { color: red; }
+@mixin green-text { color: red; }
+
+div {
+  foo: meta.mixin-exists(red-text); 
+  foo: meta.mixin-exists("red-text"); 
+  foo: meta.mixin-exists(blue-text); 
+  foo: meta.mixin-exists("blue-text"); 
+  foo: meta.mixin-exists(green-text);   
+  foo: meta.mixin-exists("green-text"); 
+  foo: meta.mixin-exists(nope);
+  foo: meta.mixin-exists("nope");
+  foo: g();
+  foo: f();
+  foo: h();
+
+
+  span {
+    foo: meta.mixin-exists(red-text); 
+    foo: meta.mixin-exists("red-text"); 
+    foo: meta.mixin-exists(blue-text); 
+    foo: meta.mixin-exists("blue-text"); 
+    foo: meta.mixin-exists(green-text);   
+    foo: meta.mixin-exists("green-text"); 
+    foo: meta.mixin-exists(nope);
+    foo: meta.mixin-exists("nope");
+    foo: g();
+    foo: f();
+    foo: h();
+    p {
+      foo: meta.mixin-exists(red-text); 
+      foo: meta.mixin-exists("red-text"); 
+      foo: meta.mixin-exists(blue-text); 
+      foo: meta.mixin-exists("blue-text"); 
+      foo: meta.mixin-exists(green-text);   
+      foo: meta.mixin-exists("green-text"); 
+      foo: meta.mixin-exists(nope);
+      foo: meta.mixin-exists("nope");
+      foo: g();
+      foo: f();
+      foo: h();
+    }
+  }
+
+}
+<===> 58_mixin_exists/output.css
+div {
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: false;
+  foo: false;
+  foo: false;
+  foo: false;
+  foo: false;
+}
+div span {
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: false;
+  foo: false;
+  foo: false;
+  foo: false;
+  foo: false;
+}
+div span p {
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: false;
+  foo: false;
+  foo: false;
+  foo: false;
+  foo: false;
+}

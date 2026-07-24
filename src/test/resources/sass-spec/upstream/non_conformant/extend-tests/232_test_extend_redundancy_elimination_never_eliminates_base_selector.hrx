@@ -1,0 +1,8 @@
+<===> 232_test_extend_redundancy_elimination_never_eliminates_base_selector/input.scss
+a.foo {a: b}
+.foo {@extend a}
+
+<===> 232_test_extend_redundancy_elimination_never_eliminates_base_selector/output.css
+a.foo, .foo {
+  a: b;
+}

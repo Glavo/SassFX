@@ -1,0 +1,13 @@
+<===> issue_1670/input.scss
+.this-should-error {
+  @extend %an-undefined-placeholder;
+}
+
+<===> issue_1670/error
+Error: The target selector was not found.
+Use "@extend %an-undefined-placeholder !optional" to avoid this error.
+  ,
+2 |   @extend %an-undefined-placeholder;
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:3  root stylesheet

@@ -1,0 +1,25 @@
+<===> issue_2233/input.scss
+@media all and (min-width: 100px) {
+  @import "foo"
+}
+
+<===> issue_2233/foo.scss
+a { b: c; }
+
+<===> issue_2233/output.css
+@media all and (min-width: 100px) {
+  a {
+    b: c;
+  }
+}
+
+<===> issue_2233/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+2 |   @import "foo"
+  |           ^^^^^
+  '
+    input.scss 2:11  root stylesheet

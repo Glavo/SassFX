@@ -1,0 +1,10 @@
+<===> incomplete-expression/input.scss
+@debug("foo";
+
+<===> incomplete-expression/error
+Error: expected ")".
+  ,
+1 | @debug("foo";
+  |             ^
+  '
+  input.scss 1:13  root stylesheet

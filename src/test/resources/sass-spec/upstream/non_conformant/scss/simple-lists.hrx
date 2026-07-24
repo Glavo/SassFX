@@ -1,0 +1,13 @@
+<===> simple-lists/input.scss
+@use "sass:string";
+div {
+  hey: a, b, c, d;
+  ho: a b c d;
+  ha: string.unquote("a, b, c, d");
+}
+<===> simple-lists/output.css
+div {
+  hey: a, b, c, d;
+  ho: a b c d;
+  ha: a, b, c, d;
+}

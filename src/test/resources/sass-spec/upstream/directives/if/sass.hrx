@@ -1,0 +1,60 @@
+<===> if/input.sass
+$b: true
+a
+  @if $b
+    value: 1
+
+<===> if/output.css
+a {
+  value: 1;
+}
+
+<===> if_statement/input.sass
+$b: c
+a
+  @if $b == c
+    value: 1
+
+<===> if_statement/output.css
+a {
+  value: 1;
+}
+
+<===> if_statement_wrapped/input.sass
+$b: c
+a
+  @if ($b == c)
+    d: e
+
+<===> if_statement_wrapped/output.css
+a {
+  d: e;
+}
+
+<===> if_statement_wrapped_multiline/input.sass
+$a: b
+$c: d
+a
+  @if (
+    $a == b and
+    $c == d
+    )
+    e: f
+
+<===> if_statement_wrapped_multiline/output.css
+a {
+  e: f;
+}
+
+<===> if_statement_unwrapped_multiline/input.sass
+$a: b
+$c: d
+a
+  @if 
+    $a == b and
+    $c == d
+    e: f
+<===> if_statement_unwrapped_multiline/output.css
+a {
+  e: f;
+}

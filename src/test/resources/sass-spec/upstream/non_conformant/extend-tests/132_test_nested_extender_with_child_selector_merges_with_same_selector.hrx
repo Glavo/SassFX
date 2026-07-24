@@ -1,0 +1,8 @@
+<===> 132_test_nested_extender_with_child_selector_merges_with_same_selector/input.scss
+.foo > .bar .baz {a: b}
+.foo > .bar .bang {@extend .baz}
+
+<===> 132_test_nested_extender_with_child_selector_merges_with_same_selector/output.css
+.foo > .bar .baz, .foo > .bar .bang {
+  a: b;
+}

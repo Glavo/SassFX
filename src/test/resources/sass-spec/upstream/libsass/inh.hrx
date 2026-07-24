@@ -1,0 +1,17 @@
+<===> inh/input.scss
+foo.a {
+  width: 10px;
+}
+
+bar {
+  color: red;
+  @extend foo;
+}
+<===> inh/output.css
+foo.a, bar.a {
+  width: 10px;
+}
+
+bar {
+  color: red;
+}

@@ -1,0 +1,9 @@
+<===> 136_test_at_root_with_selector/input.scss
+.foo {
+  @at-root .bar {a: b}
+}
+
+<===> 136_test_at_root_with_selector/output.css
+.bar {
+  a: b;
+}

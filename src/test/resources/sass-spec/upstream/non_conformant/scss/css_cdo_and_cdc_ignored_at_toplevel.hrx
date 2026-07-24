@@ -1,0 +1,22 @@
+<===> css_cdo_and_cdc_ignored_at_toplevel/input.scss
+foo {
+  bar: baz; }
+
+bar {
+  bar: baz; }
+
+baz {
+  bar: baz; }
+
+<===> css_cdo_and_cdc_ignored_at_toplevel/output.css
+foo {
+  bar: baz;
+}
+
+bar {
+  bar: baz;
+}
+
+baz {
+  bar: baz;
+}

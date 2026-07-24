@@ -1,0 +1,17 @@
+<===> 133_test_combinator_unification_for_hacky_combinators/input.scss
+.a > + x {a: b}
+.b y {@extend x}
+
+<===> 133_test_combinator_unification_for_hacky_combinators/output.css
+
+<===> 133_test_combinator_unification_for_hacky_combinators/warning
+DEPRECATION WARNING [bogus-combinators]: The selector ".a > + x" is invalid CSS. It will be omitted from the generated CSS.
+This will be an error in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/bogus-combinators
+
+  ,
+1 | .a > + x {a: b}
+  | ^^^^^^^^
+  '
+    input.scss 1:1  root stylesheet

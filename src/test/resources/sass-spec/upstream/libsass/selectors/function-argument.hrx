@@ -1,0 +1,59 @@
+<===> function-argument/input.scss
+@use "sass:list";
+$Selectors: ();
+
+//////////////////////////////
+// Add selectors of various depths and makeups
+//////////////////////////////
+.foo {
+  $Selectors: list.append($Selectors, &) !global;
+}
+
+.bar a {
+  $Selectors: list.append($Selectors, &) !global;
+}
+
+.bar,
+.baz {
+  $Selectors: list.append($Selectors, &) !global;
+}
+
+.qux {
+  &.waldo {
+    .where & {
+      .final {
+        $Selectors: list.append($Selectors, &) !global;
+      }
+    }
+  }
+}
+
+//////////////////////////////
+// Display Results
+//////////////////////////////
+.result {
+  length: list.length($Selectors);
+  content: $Selectors;
+  @for $i from 1 through list.length($Selectors) {
+    index: $i;
+    length: list.length(list.nth($Selectors, $i));
+    content: list.nth($Selectors, $i);
+  }
+}
+<===> function-argument/output.css
+.result {
+  length: 4;
+  content: .foo .bar a .bar, .baz .where .qux.waldo .final;
+  index: 1;
+  length: 1;
+  content: .foo;
+  index: 2;
+  length: 1;
+  content: .bar a;
+  index: 3;
+  length: 2;
+  content: .bar, .baz;
+  index: 4;
+  length: 1;
+  content: .where .qux.waldo .final;
+}

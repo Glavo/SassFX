@@ -1,0 +1,17 @@
+<===> 03_inline_double/input.scss
+.result {
+  output: #{#{"l\\ite\ral"}};
+  output: #{"[#{"l\\ite\ral"}]"};
+  output: #{"#{"l\\ite\ral"}"};
+  output: #{'#{"l\\ite\ral"}'};
+  output: #{"['#{"l\\ite\ral"}']"};
+}
+
+<===> 03_inline_double/output.css
+.result {
+  output: l\iteral;
+  output: [l\iteral];
+  output: l\iteral;
+  output: l\iteral;
+  output: ['l\iteral'];
+}

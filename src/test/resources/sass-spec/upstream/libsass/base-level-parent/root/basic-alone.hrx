@@ -1,0 +1,11 @@
+<===> basic-alone/input.scss
+& {
+  foo {
+    bar: baz;
+  }
+}
+
+<===> basic-alone/output.css
+& foo {
+  bar: baz;
+}

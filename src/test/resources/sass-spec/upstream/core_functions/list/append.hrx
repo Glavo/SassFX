@@ -1,0 +1,258 @@
+<===> empty/undecided/input.scss
+@use "sass:list";
+@use "sass:meta";
+@use "core_functions/list/utils";
+
+$result: list.append((), 1);
+a {
+  value: $result;
+  type: meta.type-of($result);
+  separator: utils.real-separator($result);
+}
+
+<===> empty/undecided/output.css
+a {
+  value: 1;
+  type: list;
+  separator: space;
+}
+
+<===> empty/space/input.scss
+@use "sass:list";
+@use "sass:meta";
+@use "core_functions/list/utils";
+
+$result: list.append(utils.$empty-space-list, 1);
+a {
+  value: $result;
+  type: meta.type-of($result);
+  separator: utils.real-separator($result);
+}
+
+<===> empty/space/output.css
+a {
+  value: 1;
+  type: list;
+  separator: space;
+}
+
+<===> empty/comma/input.scss
+@use "sass:list";
+@use "sass:meta";
+@use "core_functions/list/utils";
+
+$result: list.append(utils.$empty-comma-list, 1);
+a {
+  value: $result;
+  type: meta.type-of($result);
+  separator: utils.real-separator($result);
+}
+
+<===> empty/comma/output.css
+a {
+  value: 1;
+  type: list;
+  separator: comma;
+}
+
+<===> single/undecided/input.scss
+@use "sass:list";
+a {b: list.append(1, 2)}
+
+<===> single/undecided/output.css
+a {
+  b: 1 2;
+}
+
+<===> single/space/input.scss
+@use "sass:list";
+@use "core_functions/list/utils";
+a {b: list.append(utils.with-separator(1, space), 2)}
+
+<===> single/space/output.css
+a {
+  b: 1 2;
+}
+
+<===> single/comma/input.scss
+@use "sass:list";
+a {b: list.append((1,), 2)}
+
+<===> single/comma/output.css
+a {
+  b: 1, 2;
+}
+
+<===> space/default/input.scss
+@use "sass:list";
+a {b: list.append(1 2 3, 4)}
+
+<===> space/default/output.css
+a {
+  b: 1 2 3 4;
+}
+
+<===> space/overridden/input.scss
+@use "sass:list";
+a {b: list.append((1, 2, 3), 4, $separator: space)}
+
+<===> space/overridden/output.css
+a {
+  b: 1 2 3 4;
+}
+
+<===> comma/default/input.scss
+@use "sass:list";
+a {b: list.append((1, 2, 3), 4)}
+
+<===> comma/default/output.css
+a {
+  b: 1, 2, 3, 4;
+}
+
+<===> comma/overridden/input.scss
+@use "sass:list";
+a {b: list.append(1 2 3, 4, $separator: comma)}
+
+<===> comma/overridden/output.css
+a {
+  b: 1, 2, 3, 4;
+}
+
+<===> slash/default/input.scss
+@use "sass:list";
+a {b: list.append(list.slash(c, d), e)}
+
+<===> slash/default/output.css
+a {
+  b: c / d / e;
+}
+
+<===> slash/overridden/input.scss
+@use "sass:list";
+a {b: list.append(c d, e, $separator: slash)}
+
+<===> slash/overridden/output.css
+a {
+  b: c / d / e;
+}
+
+<===> bracketed/input.scss
+@use "sass:list";
+a {b: list.append([], 1)}
+
+<===> bracketed/output.css
+a {
+  b: [1];
+}
+
+<===> map/empty/input.scss
+@use "sass:list";
+@use "sass:meta";
+@use "core_functions/list/utils";
+
+$result: list.append(utils.$empty-map, 1);
+a {
+  value: $result;
+  type: meta.type-of($result);
+  separator: utils.real-separator($result);
+}
+
+<===> map/empty/output.css
+a {
+  value: 1;
+  type: list;
+  separator: space;
+}
+
+<===> map/non_empty/input.scss
+@use "sass:list";
+a {b: list.append((c: d, e: f), g)}
+
+<===> map/non_empty/output.css
+a {
+  b: c d, e f, g;
+}
+
+<===> non_list/input.scss
+@use "sass:list";
+a {b: list.append(c, d)}
+
+<===> non_list/output.css
+a {
+  b: c d;
+}
+
+<===> auto/input.scss
+@use "sass:list";
+a {b: list.append(c d, e, $separator: auto)}
+
+<===> auto/output.css
+a {
+  b: c d e;
+}
+
+<===> named/input.scss
+@use "sass:list";
+a {b: list.append($list: c d, $val: e, $separator: comma)}
+
+<===> named/output.css
+a {
+  b: c, d, e;
+}
+
+<===> error/type/separator/input.scss
+@use "sass:list";
+a {b: list.append(c, d, $separator: 1)}
+
+<===> error/type/separator/error
+Error: $separator: 1 is not a string.
+  ,
+2 | a {b: list.append(c, d, $separator: 1)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/too_many_args/input.scss
+@use "sass:list";
+a {b: list.append(c, d, comma, e)}
+
+<===> error/too_many_args/error
+Error: Only 3 arguments allowed, but 4 were passed.
+  ,--> input.scss
+2 | a {b: list.append(c, d, comma, e)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:list
+1 | @function append($list, $val, $separator: auto) {
+  |           ===================================== declaration
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/too_few_args/input.scss
+@use "sass:list";
+a {b: list.append(c)}
+
+<===> error/too_few_args/error
+Error: Missing argument $val.
+  ,--> input.scss
+2 | a {b: list.append(c)}
+  |       ^^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:list
+1 | @function append($list, $val, $separator: auto) {
+  |           ===================================== declaration
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/unknown_separator/input.scss
+@use "sass:list";
+a {b: list.append(c, d, $separator: e)}
+
+<===> error/unknown_separator/error
+Error: $separator: Must be "space", "comma", "slash", or "auto".
+  ,
+2 | a {b: list.append(c, d, $separator: e)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet

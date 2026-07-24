@@ -1,0 +1,8 @@
+<===> named/input.scss
+@use "sass:color";
+a {b: color.to-gamut($color: pink, $space: rgb, $method: local-minde)}
+
+<===> named/output.css
+a {
+  b: pink;
+}

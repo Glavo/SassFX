@@ -1,0 +1,15 @@
+<===> issue_2153/input.scss
+foo {
+  a: "\"foo\"" + "";
+  b: "" + "\"foo\"";
+  c: "" + "\"foo";
+  d: "\"foo\"" + "bar";
+}
+
+<===> issue_2153/output.css
+foo {
+  a: '"foo"';
+  b: '"foo"';
+  c: '"foo';
+  d: '"foo"bar';
+}

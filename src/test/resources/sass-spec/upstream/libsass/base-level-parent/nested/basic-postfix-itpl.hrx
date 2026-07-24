@@ -1,0 +1,13 @@
+<===> basic-postfix-itpl/input.scss
+test {
+  #{&}post {
+    foo {
+      bar: baz;
+    }
+  }
+}
+
+<===> basic-postfix-itpl/output.css
+test testpost foo {
+  bar: baz;
+}

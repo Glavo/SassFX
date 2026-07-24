@@ -1,0 +1,12 @@
+<===> issue_1577/input.scss
+$foo: 10%; // line 1
+// line 2
+$error: $foo + 20px; // line 3
+
+<===> issue_1577/error
+Error: 10% and 20px have incompatible units.
+  ,
+3 | $error: $foo + 20px; // line 3
+  |         ^^^^^^^^^^^
+  '
+  input.scss 3:9  root stylesheet

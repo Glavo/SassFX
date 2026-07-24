@@ -7,11 +7,14 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /// Represents an immutable Sass number with numerator and denominator units.
 ///
@@ -20,6 +23,9 @@ import java.util.Objects;
 @ApiStatus.Internal
 @NotNullByDefault
 public final class SassNumber implements SassValue {
+    /// Maximum decimal places written for CSS number serialization, matching dart-sass.
+    public static final int PRECISION = 10;
+
     /// Contains conversion metadata for compatible CSS units.
     private static final @Unmodifiable Map<String, UnitDefinition> CONVERTIBLE_UNITS = Map.ofEntries(
             Map.entry("in", new UnitDefinition("in", 1.0)),
@@ -238,6 +244,64 @@ public final class SassNumber implements SassValue {
         );
     }
 
+    /// Returns this magnitude after validating a fuzzy-inclusive range, with a
+    /// parameter-name prefix on the failure message.
+    ///
+    /// @param minimum the inclusive lower bound
+    /// @param maximum the inclusive upper bound
+    /// @param name    the parameter name used in the failure message
+    /// @return this magnitude, or a normalized endpoint
+    /// @throws SassValueException if this magnitude lies outside the range
+    public double valueInRange(double minimum, double maximum, String name) {
+        try {
+            return valueInRange(minimum, maximum);
+        } catch (SassValueException exception) {
+            throw new SassValueException(
+                    "$" + name + ": " + Objects.requireNonNull(exception.getMessage(), "range message")
+            );
+        }
+    }
+
+    /// Returns this magnitude after validating a fuzzy-inclusive range and writes
+    /// an explicit unit on the diagnostic bounds.
+    ///
+    /// This matches dart-sass {@code valueInRangeWithUnit} and exists so callers
+    /// such as {@code opacify()} can report unitless bounds even when the
+    /// argument still carries a deprecated unit.
+    ///
+    /// @param minimum the inclusive lower bound
+    /// @param maximum the inclusive upper bound
+    /// @param name    the parameter name used in the failure message
+    /// @param unit    the unit text written after each bound (may be empty)
+    /// @return this magnitude, or a normalized endpoint
+    /// @throws SassValueException if this magnitude lies outside the range
+    public double valueInRangeWithUnit(
+            double minimum,
+            double maximum,
+            String name,
+            String unit
+    ) {
+        Objects.requireNonNull(name, "name");
+        Objects.requireNonNull(unit, "unit");
+        if (!(Double.isFinite(minimum) && Double.isFinite(maximum) && minimum <= maximum)) {
+            throw new IllegalArgumentException("range bounds must be finite and ordered");
+        }
+        if (SassFuzzy.equals(value, minimum)) {
+            return minimum;
+        }
+        if (SassFuzzy.equals(value, maximum)) {
+            return maximum;
+        }
+        if (value > minimum && value < maximum) {
+            return value;
+        }
+        throw new SassValueException(
+                "$" + name + ": Expected " + this + " to be within "
+                        + formatNumber(minimum) + unit + " and "
+                        + formatNumber(maximum) + unit + "."
+        );
+    }
+
     /// Returns the unit string used by Sass math functions.
     ///
     /// @return the unit text, or the empty string when unitless
@@ -276,6 +340,75 @@ public final class SassNumber implements SassValue {
         } catch (IllegalArgumentException ignored) {
             return false;
         }
+    }
+
+    /// Returns whether this number has multiple numerators or any denominators.
+    ///
+    /// Complex units cannot participate in CSS calculations.
+    ///
+    /// @return whether the unit structure is too complex for calculations
+    public boolean hasComplexUnits() {
+        return numeratorUnits.size() > 1 || !denominatorUnits.isEmpty();
+    }
+
+    /// Browser-known unit compatibility groups used by CSS calculations.
+    private static final @Unmodifiable List<Set<String>> KNOWN_UNIT_COMPATIBILITY = List.of(
+            Set.of(
+                    "em", "rem", "ex", "rex", "cap", "rcap", "ch", "rch", "ic", "ric", "lh",
+                    "rlh", "vw", "lvw", "svw", "dvw", "vh", "lvh", "svh", "dvh", "vi", "lvi",
+                    "svi", "dvi", "vb", "lvb", "svb", "dvb", "vmin", "lvmin", "svmin",
+                    "dvmin", "vmax", "lvmax", "svmax", "dvmax", "cqw", "cqh", "cqi", "cqb",
+                    "cqmin", "cqmax", "cm", "mm", "q", "in", "pt", "pc", "px"
+            ),
+            Set.of("deg", "grad", "rad", "turn"),
+            Set.of("s", "ms"),
+            Set.of("hz", "khz"),
+            Set.of("dpi", "dpcm", "dppx")
+    );
+
+    /// Maps lowercase unit names to the set of units known compatible with them.
+    private static final @Unmodifiable Map<String, Set<String>> KNOWN_COMPATIBILITIES_BY_UNIT;
+
+    static {
+        var map = new java.util.HashMap<String, Set<String>>();
+        for (var set : KNOWN_UNIT_COMPATIBILITY) {
+            for (var unit : set) {
+                map.put(unit, set);
+            }
+        }
+        KNOWN_COMPATIBILITIES_BY_UNIT = java.util.Collections.unmodifiableMap(map);
+    }
+
+    /// Returns whether CSS may still be able to combine this number with another.
+    ///
+    /// Percentages and unknown units are treated as possibly compatible. Known
+    /// units of different dimensions (for example {@code px} and {@code s}) are not.
+    ///
+    /// @param other the other number
+    /// @return whether the pair is not known to be incompatible
+    public boolean hasPossiblyCompatibleUnits(SassNumber other) {
+        Objects.requireNonNull(other, "other");
+        if (isUnitless() || other.isUnitless()) {
+            return isUnitless() && other.isUnitless();
+        }
+        if (hasComplexUnits() || other.hasComplexUnits()) {
+            return false;
+        }
+        if (numeratorUnits.size() != 1 || other.numeratorUnits.size() != 1) {
+            return false;
+        }
+        var unit = numeratorUnits.get(0).toLowerCase(Locale.ROOT);
+        var otherUnit = other.numeratorUnits.get(0).toLowerCase(Locale.ROOT);
+        if (unit.equals(otherUnit)) {
+            return true;
+        }
+        @Nullable Set<String> known = KNOWN_COMPATIBILITIES_BY_UNIT.get(unit);
+        if (known == null) {
+            // Unknown units (including %) are possibly compatible with anything.
+            return true;
+        }
+        return known.contains(otherUnit)
+                || !KNOWN_COMPATIBILITIES_BY_UNIT.containsKey(otherUnit);
     }
 
     /// Returns this magnitude converted into another number's units when needed.
@@ -521,11 +654,13 @@ public final class SassNumber implements SassValue {
     /// Returns this number's CSS representation.
     ///
     /// Complex units and non-finite values are represented as calculations.
+    /// Finite unitless or single-unit values are truncated to at most
+    /// [#PRECISION] digits after the decimal point.
     ///
     /// @return the CSS number or calculation
     @Override
     public String toCssString() {
-        return serialize();
+        return serialize(true);
     }
 
     /// Compares magnitudes using Sass fuzzy equality and requires identical units.
@@ -555,28 +690,29 @@ public final class SassNumber implements SassValue {
     /// @return the serialized number or calculation
     @Override
     public String toString() {
-        return serialize();
+        return serialize(false);
     }
 
-    /// Serializes this number in Sass inspect and expanded CSS form.
+    /// Serializes this number in Sass inspect or expanded CSS form.
     ///
+    /// @param css whether CSS precision truncation should be applied
     /// @return the number or an unsimplified calculation
-    private String serialize() {
+    private String serialize(boolean css) {
         if (slashNumerator != null) {
-            return slashNumerator.serialize() + "/"
-                    + Objects.requireNonNull(slashDenominator, "slash denominator").serialize();
+            return slashNumerator.serialize(css) + "/"
+                    + Objects.requireNonNull(slashDenominator, "slash denominator").serialize(css);
         }
         if (Double.isFinite(value)
                 && numeratorUnits.size() <= 1
                 && denominatorUnits.isEmpty()) {
-            return formatNumber(value)
+            return formatNumber(value, css)
                     + (numeratorUnits.isEmpty() ? "" : numeratorUnits.get(0));
         }
 
         var result = new StringBuilder("calc(");
         var firstAdditionalNumerator = 0;
         if (Double.isFinite(value)) {
-            result.append(formatNumber(value));
+            result.append(formatNumber(value, css));
             if (!numeratorUnits.isEmpty()) {
                 result.append(numeratorUnits.get(0));
                 firstAdditionalNumerator = 1;
@@ -808,10 +944,39 @@ public final class SassNumber implements SassValue {
     /// @param number the number to format
     /// @return the inspect representation
     private static String formatNumber(double number) {
+        return formatNumber(number, false);
+    }
+
+    /// Formats a finite number for inspect or CSS emission.
+    ///
+    /// CSS emission writes at most [#PRECISION] digits after the decimal point
+    /// and uses half-up rounding, matching dart-sass. Inspect mode retains the
+    /// full {@link Double} precision as a plain decimal string.
+    ///
+    /// @param number the number to format
+    /// @param css    whether CSS precision truncation should be applied
+    /// @return the formatted number text
+    public static String formatNumber(double number, boolean css) {
         if (!Double.isFinite(number)) {
-            return Double.toString(number);
+            // CSS Color 4 serializes non-finite channel magnitudes as calculations.
+            if (Double.isNaN(number)) {
+                return "calc(NaN)";
+            }
+            return number > 0 ? "calc(infinity)" : "calc(-infinity)";
         }
-        var decimal = BigDecimal.valueOf(number).stripTrailingZeros();
+        if (css && SassFuzzy.isInt(number)) {
+            return BigDecimal.valueOf(Math.rint(number)).toBigInteger().toString();
+        }
+        if (!css) {
+            var decimal = BigDecimal.valueOf(number).stripTrailingZeros();
+            return decimal.signum() == 0 ? "0" : decimal.toPlainString();
+        }
+        var decimal = BigDecimal.valueOf(number)
+                .setScale(PRECISION, RoundingMode.HALF_UP)
+                .stripTrailingZeros();
+        if (decimal.scale() < 0) {
+            decimal = decimal.setScale(0);
+        }
         return decimal.signum() == 0 ? "0" : decimal.toPlainString();
     }
 

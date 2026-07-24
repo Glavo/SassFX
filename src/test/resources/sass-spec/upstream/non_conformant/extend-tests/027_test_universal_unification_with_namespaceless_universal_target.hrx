@@ -1,0 +1,8 @@
+<===> 027_test_universal_unification_with_namespaceless_universal_target/input.scss
+%-a *|*.foo {a: b}
+* {@extend .foo} -a {@extend %-a}
+
+<===> 027_test_universal_unification_with_namespaceless_universal_target/output.css
+-a * {
+  a: b;
+}

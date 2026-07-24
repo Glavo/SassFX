@@ -84,7 +84,7 @@ final class MetaFunctionValueTest {
     @Test
     void rejectsInvalidFunctionValueOperations() {
         assertEquals(
-                "Function not found: \"missing\".",
+                "Function not found: \"missing\"",
                 failure("@use \"sass:meta\"; a { value: meta.get-function(\"missing\"); }")
         );
         assertEquals(

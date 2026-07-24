@@ -1,0 +1,6 @@
+<===> issue_641/input.scss
+.#{"foo"}--1 { width:100%; }
+<===> issue_641/output.css
+.foo--1 {
+  width: 100%;
+}

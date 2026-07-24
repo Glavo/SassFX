@@ -1,0 +1,14 @@
+<===> issue_1752/input.scss
+@mixin some-fn($args...) {
+  @each $item in $args {
+    @debug($item);
+  }
+}
+
+foo {
+  @include some-fn(());
+}
+<===> issue_1752/output.css
+
+<===> issue_1752/warning
+input.scss:3 DEBUG: ()

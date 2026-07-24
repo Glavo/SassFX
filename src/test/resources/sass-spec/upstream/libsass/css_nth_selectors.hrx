@@ -1,0 +1,18 @@
+<===> css_nth_selectors/input.scss
+:nth-child(2n + 3) {
+  outer-whitespace: false;
+}
+
+// Regression test for sass/dart-sass#465.
+:nth-child( 2n + 3 ) {
+  outer-whitespace: true;
+}
+
+<===> css_nth_selectors/output.css
+:nth-child(2n+3) {
+  outer-whitespace: false;
+}
+
+:nth-child(2n+3) {
+  outer-whitespace: true;
+}

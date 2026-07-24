@@ -1,0 +1,14 @@
+<===> each/input.scss
+@each $i in (1) {
+  @import '_include';
+}
+
+<===> each/_include.scss
+
+<===> each/error
+Error: This at-rule is not allowed here.
+  ,
+2 |   @import '_include';
+  |   ^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:3  root stylesheet

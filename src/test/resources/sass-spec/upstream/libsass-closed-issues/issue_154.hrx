@@ -1,0 +1,8 @@
+<===> issue_154/input.scss
+test {
+  filter:alpha(opacity=75);
+}
+<===> issue_154/output.css
+test {
+  filter: alpha(opacity=75);
+}

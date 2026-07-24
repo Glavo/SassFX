@@ -1,0 +1,16 @@
+<===> doesnt_run_default/input.scss
+@use "midstream";
+
+<===> doesnt_run_default/_midstream.scss
+@forward "upstream" with ($a: configured);
+
+<===> doesnt_run_default/_upstream.scss
+// This will throw an error if it's evaluated, but it shouldn't be because `$a`
+// already has a value.
+$a: 1px + 1em !default;
+b {c: $a}
+
+<===> doesnt_run_default/output.css
+b {
+  c: configured;
+}

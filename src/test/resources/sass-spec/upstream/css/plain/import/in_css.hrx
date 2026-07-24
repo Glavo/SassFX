@@ -1,0 +1,26 @@
+<===> string/input.scss
+@use "plain";
+
+<===> string/plain.css
+@import "whatever";
+
+<===> string/output.css
+@import "whatever";
+
+<===> url/unquoted/input.scss
+@use "plain";
+
+<===> url/unquoted/plain.css
+@import url(whatever);
+
+<===> url/unquoted/output.css
+@import url(whatever);
+
+<===> url/quoted/input.scss
+@use "plain";
+
+<===> url/quoted/plain.css
+@import url("whatever");
+
+<===> url/quoted/output.css
+@import url("whatever");

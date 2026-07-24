@@ -1,0 +1,11 @@
+<===> interpolated/input.scss
+.foo a,
+.bar p {
+  $bar: &;
+  content: #{$bar};
+}
+<===> interpolated/output.css
+.foo a,
+.bar p {
+  content: .foo a, .bar p;
+}

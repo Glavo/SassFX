@@ -1,0 +1,20 @@
+<===> 049_test_several_namespace_properties/input.scss
+foo {
+  bar: baz;
+  bang: {
+    bip: 1px;
+    bop: bar;}
+  buzz: {
+    fram: "foo";
+    frum: moo;
+  }
+}
+
+<===> 049_test_several_namespace_properties/output.css
+foo {
+  bar: baz;
+  bang-bip: 1px;
+  bang-bop: bar;
+  buzz-fram: "foo";
+  buzz-frum: moo;
+}

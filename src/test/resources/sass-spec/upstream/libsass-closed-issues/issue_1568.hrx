@@ -1,0 +1,11 @@
+<===> issue_1568/input.scss
+body {
+    font-weight: bold; // test
+    font-size: 10px // test
+}
+
+<===> issue_1568/output.css
+body {
+  font-weight: bold;
+  font-size: 10px;
+}

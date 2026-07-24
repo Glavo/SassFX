@@ -1,0 +1,11 @@
+<===> issue_2444/input.scss
+a {
+  @at-root (with: rule) {
+    b: c;
+  }
+}
+
+<===> issue_2444/output.css
+a {
+  b: c;
+}

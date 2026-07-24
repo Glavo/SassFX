@@ -1,0 +1,9 @@
+<===> 058_test_mixins_with_empty_args/input.scss
+@mixin foo() {a: b}
+
+.foo {@include foo;}
+
+<===> 058_test_mixins_with_empty_args/output.css
+.foo {
+  a: b;
+}

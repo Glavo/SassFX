@@ -1,0 +1,17 @@
+<===> equal/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector(".c", ".c")}
+
+<===> equal/output.css
+a {
+  b: true;
+}
+
+<===> unequal/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector(".c", ".d")}
+
+<===> unequal/output.css
+a {
+  b: false;
+}

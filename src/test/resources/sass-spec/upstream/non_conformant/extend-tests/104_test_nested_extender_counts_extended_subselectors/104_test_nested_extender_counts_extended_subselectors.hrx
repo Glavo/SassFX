@@ -1,0 +1,8 @@
+<===> 104_test_nested_extender_counts_extended_subselectors/input.scss
+.a .bip.bop .foo {a: b}
+.b .bip .bar {@extend .foo}
+
+<===> 104_test_nested_extender_counts_extended_subselectors/output.css
+.a .bip.bop .foo, .a .b .bip.bop .bar, .b .a .bip.bop .bar {
+  a: b;
+}

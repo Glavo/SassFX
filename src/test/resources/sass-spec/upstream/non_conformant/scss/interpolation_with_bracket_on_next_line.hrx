@@ -1,0 +1,8 @@
+<===> interpolation_with_bracket_on_next_line/input.scss
+a.#{"foo"} b
+{color: red}
+
+<===> interpolation_with_bracket_on_next_line/output.css
+a.foo b {
+  color: red;
+}

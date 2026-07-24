@@ -1,0 +1,8 @@
+<===> 189_test_placeholder_descendant_selector/input.scss
+#context %foo a {a: b}
+.bar {@extend %foo}
+
+<===> 189_test_placeholder_descendant_selector/output.css
+#context .bar a {
+  a: b;
+}

@@ -1,0 +1,7 @@
+<===> basic_prop_name_interpolation/input.scss
+foo {bar#{1 + 2}: blip}
+
+<===> basic_prop_name_interpolation/output.css
+foo {
+  bar3: blip;
+}

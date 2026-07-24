@@ -1,0 +1,9 @@
+<===> simple/input.scss
+@error "error";
+<===> simple/error
+Error: "error"
+  ,
+1 | @error "error";
+  | ^^^^^^^^^^^^^^
+  '
+  input.scss 1:1  root stylesheet

@@ -1,0 +1,8 @@
+<===> 01_simple_css/input.scss
+a {
+  color: blue;
+}
+<===> 01_simple_css/output.css
+a {
+  color: blue;
+}

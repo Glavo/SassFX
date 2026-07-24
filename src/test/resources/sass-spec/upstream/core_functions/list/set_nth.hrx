@@ -1,0 +1,227 @@
+<===> 1/of_1/input.scss
+@use "sass:list";
+@use "sass:meta";
+$result: list.set-nth(list.join((), b), 1, c);
+a {
+  result: $result;
+  type: meta.type-of($result);
+}
+
+<===> 1/of_1/output.css
+a {
+  result: c;
+  type: list;
+}
+
+<===> 1/of_2/input.scss
+@use "sass:list";
+a {b: list.set-nth(c d, 1, e)}
+
+<===> 1/of_2/output.css
+a {
+  b: e d;
+}
+
+<===> 2/of_2/input.scss
+@use "sass:list";
+a {b: list.set-nth(c d, 2, e)}
+
+<===> 2/of_2/output.css
+a {
+  b: c e;
+}
+
+<===> 2/of_4/input.scss
+@use "sass:list";
+a {b: list.set-nth(c d e f, 2, g)}
+
+<===> 2/of_4/output.css
+a {
+  b: c g e f;
+}
+
+<===> negative/1/of_1/input.scss
+@use "sass:list";
+@use "sass:meta";
+$result: list.set-nth(list.join((), b), -1, c);
+a {
+  result: $result;
+  type: meta.type-of($result);
+}
+
+<===> negative/1/of_1/output.css
+a {
+  result: c;
+  type: list;
+}
+
+<===> negative/1/of_2/input.scss
+@use "sass:list";
+a {b: list.set-nth(c d, -1, e)}
+
+<===> negative/1/of_2/output.css
+a {
+  b: c e;
+}
+
+<===> negative/2/of_2/input.scss
+@use "sass:list";
+a {b: list.set-nth(c d, -2, e)}
+
+<===> negative/2/of_2/output.css
+a {
+  b: e d;
+}
+
+<===> negative/2/of_4/input.scss
+@use "sass:list";
+a {b: list.set-nth(c d e f, -2, g)}
+
+<===> negative/2/of_4/output.css
+a {
+  b: c d g f;
+}
+
+<===> map/input.scss
+@use "sass:list";
+a {b: list.set-nth((c: d, e: f, g: h), 2, i)}
+
+<===> map/output.css
+a {
+  b: c d, i, g h;
+}
+
+<===> non_list/input.scss
+@use "sass:list";
+@use "sass:meta";
+$result: list.set-nth(b, 1, c);
+a {
+  result: $result;
+  type: meta.type-of($result);
+}
+
+<===> non_list/output.css
+a {
+  result: c;
+  type: list;
+}
+
+<===> named/input.scss
+@use "sass:list";
+a {b: list.set-nth($list: c d, $n: 1, $value: e)}
+
+<===> named/output.css
+a {
+  b: e d;
+}
+
+<===> bracketed/input.scss
+@use "sass:list";
+a {b: list.set-nth([c, d], 2, e)}
+
+<===> bracketed/output.css
+a {
+  b: [c, e];
+}
+
+<===> units/input.scss
+@use "sass:list";
+a {b: list.set-nth(c d, 1px, e)}
+
+<===> units/output.css
+a {
+  b: e d;
+}
+
+<===> units/warning
+DEPRECATION WARNING [function-units]: $n: Passing a number with unit px is deprecated.
+
+To preserve current behavior: calc($n / 1px)
+
+More info: https://sass-lang.com/d/function-units
+
+  ,
+2 | a {b: list.set-nth(c d, 1px, e)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 2:7  root stylesheet
+
+<===> error/type/input.scss
+@use "sass:list";
+a {b: list.set-nth(c d, e, f)}
+
+<===> error/type/error
+Error: $n: e is not a number.
+  ,
+2 | a {b: list.set-nth(c d, e, f)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/index/0/input.scss
+@use "sass:list";
+a {b: list.set-nth(c d, 0, e)}
+
+<===> error/index/0/error
+Error: $n: List index may not be 0.
+  ,
+2 | a {b: list.set-nth(c d, 0, e)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/index/too_high/input.scss
+@use "sass:list";
+a {b: list.set-nth(c d, 3, e)}
+
+<===> error/index/too_high/error
+Error: $n: Invalid index 3 for a list with 2 elements.
+  ,
+2 | a {b: list.set-nth(c d, 3, e)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/index/too_low/input.scss
+@use "sass:list";
+a {b: list.set-nth(c d, -3, e)}
+
+<===> error/index/too_low/error
+Error: $n: Invalid index -3 for a list with 2 elements.
+  ,
+2 | a {b: list.set-nth(c d, -3, e)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/index/too_few_args/input.scss
+@use "sass:list";
+a {b: list.set-nth(c d, 1)}
+
+<===> error/index/too_few_args/error
+Error: Missing argument $value.
+  ,--> input.scss
+2 | a {b: list.set-nth(c d, 1)}
+  |       ^^^^^^^^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:list
+1 | @function set-nth($list, $n, $value) {
+  |           ========================== declaration
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/index/too_many_args/input.scss
+@use "sass:list";
+a {b: list.set-nth(c d, 1, 2, 3)}
+
+<===> error/index/too_many_args/error
+Error: Only 3 arguments allowed, but 4 were passed.
+  ,--> input.scss
+2 | a {b: list.set-nth(c d, 1, 2, 3)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:list
+1 | @function set-nth($list, $n, $value) {
+  |           ========================== declaration
+  '
+  input.scss 2:7  root stylesheet

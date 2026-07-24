@@ -1,0 +1,10 @@
+<===> issue_131/input.scss
+$foo: bar;
+
+div {
+    content: "foo #{$foo}"
+}
+<===> issue_131/output.css
+div {
+  content: "foo bar";
+}

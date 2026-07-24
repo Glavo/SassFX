@@ -1,0 +1,16 @@
+<===> if-in-propset/input.scss
+div {
+  prop: {
+    a: "hello";
+    b: "goodbye";
+    @if true {
+      c: "badbye";
+    }
+  }
+}
+<===> if-in-propset/output.css
+div {
+  prop-a: "hello";
+  prop-b: "goodbye";
+  prop-c: "badbye";
+}

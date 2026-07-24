@@ -1,0 +1,12 @@
+<===> error-mixin-3/input.scss
+// incorectly terminated
+@mixin missing-paren-error($a,$b, {
+}
+
+<===> error-mixin-3/error
+Error: expected ")".
+  ,
+2 | @mixin missing-paren-error($a,$b, {
+  |                                   ^
+  '
+  input.scss 2:35  root stylesheet

@@ -1,0 +1,15 @@
+<===> 133_test_nested_function_def/input.scss
+foo {
+  @function foo() {@return 1}
+  a: foo(); }
+
+bar {b: foo()}
+
+<===> 133_test_nested_function_def/output.css
+foo {
+  a: 1;
+}
+
+bar {
+  b: foo();
+}

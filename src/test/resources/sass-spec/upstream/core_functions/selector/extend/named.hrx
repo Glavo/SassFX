@@ -1,0 +1,8 @@
+<===> named/input.scss
+@use "sass:selector";
+a {b: selector.extend($selector: "c.d", $extendee: "c", $extender: "e")}
+
+<===> named/output.css
+a {
+  b: c.d, e.d;
+}

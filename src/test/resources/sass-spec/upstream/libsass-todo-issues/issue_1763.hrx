@@ -1,0 +1,28 @@
+<===> issue_1763/input.scss
+@import "first.css", "second.css" (max-width: 400px);
+@import "first.scss", "second.scss" (max-width: 400px);
+
+<===> issue_1763/first.scss
+foo { bar: baz }
+
+<===> issue_1763/second.scss
+a { b: c }
+
+<===> issue_1763/output.css
+@import "first.css";
+@import "second.css" (max-width: 400px);
+@import "second.scss" (max-width: 400px);
+foo {
+  bar: baz;
+}
+
+<===> issue_1763/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+2 | @import "first.scss", "second.scss" (max-width: 400px);
+  |         ^^^^^^^^^^^^
+  '
+    input.scss 2:9  root stylesheet

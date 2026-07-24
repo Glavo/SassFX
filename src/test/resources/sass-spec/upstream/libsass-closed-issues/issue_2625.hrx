@@ -1,0 +1,7 @@
+<===> issue_2625/input.scss
+something\:{ padding: 2px; }
+
+<===> issue_2625/output.css
+something\: {
+  padding: 2px;
+}

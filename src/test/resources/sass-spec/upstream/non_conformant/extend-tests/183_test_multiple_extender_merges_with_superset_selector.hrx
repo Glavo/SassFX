@@ -1,0 +1,8 @@
+<===> 183_test_multiple_extender_merges_with_superset_selector/input.scss
+.foo {@extend .bar; @extend .baz}
+a.bar.baz {a: b}
+
+<===> 183_test_multiple_extender_merges_with_superset_selector/output.css
+a.bar.baz, a.foo {
+  a: b;
+}

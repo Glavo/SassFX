@@ -1,0 +1,13 @@
+<===> issue_274/input.scss
+input[type=submit],
+input[type=reset],
+input[type=button]
+{
+       filter:chroma(color=#000000);
+}
+<===> issue_274/output.css
+input[type=submit],
+input[type=reset],
+input[type=button] {
+  filter: chroma(color=#000000);
+}

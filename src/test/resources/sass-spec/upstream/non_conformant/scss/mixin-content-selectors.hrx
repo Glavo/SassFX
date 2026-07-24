@@ -1,0 +1,25 @@
+<===> mixin-content-selectors/input.scss
+@mixin foo($x: 1) {
+  foo-sel {
+    @content;
+  }
+}
+
+div {
+  $x: hey;
+  @include foo() {
+    bar {
+      color: red;
+      hux {
+        msg: $x;
+      }
+    }
+  }
+}
+<===> mixin-content-selectors/output.css
+div foo-sel bar {
+  color: red;
+}
+div foo-sel bar hux {
+  msg: hey;
+}

@@ -1,0 +1,17 @@
+<===> 086.1_test_pseudoelement_goes_lefter_than_not/input.scss
+%a {
+  x:y;
+}
+b:after:not(:first-child) {
+  @extend %a;
+}
+c:s {
+  @extend %a;  
+}
+d::e {
+  @extend c;
+}
+<===> 086.1_test_pseudoelement_goes_lefter_than_not/output.css
+c:s, d:s::e, b:after:not(:first-child) {
+  x: y;
+}

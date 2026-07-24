@@ -1,0 +1,10 @@
+<===> issue_113/input.scss
+// Input
+section {
+    $w: null, 10px;
+    width: $w;
+}
+<===> issue_113/output.css
+section {
+  width: 10px;
+}

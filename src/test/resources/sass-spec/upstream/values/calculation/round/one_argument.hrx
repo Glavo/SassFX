@@ -1,0 +1,176 @@
+<===> README.md
+Most of the same behavior tested for `calc()` applies to `round()`, but for
+terseness' sake isn't tested explicitly.
+
+<===> zero/input.scss
+a {b: round(0)}
+
+<===> zero/output.css
+a {
+  b: 0;
+}
+
+<===> positive/input.scss
+a {b: round(1)}
+
+<===> positive/output.css
+a {
+  b: 1;
+}
+
+<===> negative/input.scss
+a {b: round(-5.6)}
+
+<===> negative/output.css
+a {
+  b: -6;
+}
+
+<===> preserves_units/input.scss
+a {b: round(-7px / 4em) * 1em}
+
+<===> preserves_units/output.css
+a {
+  b: -2px;
+}
+
+<===> preserves_units/warning
+DEPRECATION WARNING [global-builtin]: In future versions of Sass, round() will be interpreted as a CSS round() calculation. This requires an explicit modulus when rounding numbers with units. If you want to use the Sass function, call math.round() instead.
+
+See https://sass-lang.com/d/import
+
+  ,
+1 | a {b: round(-7px / 4em) * 1em}
+  |       ^^^^^^^^^^^^^^^^^
+  '
+    input.scss 1:7  root stylesheet
+
+<===> preserves_single_unit/input.scss
+a {b: round(1 + 1px)}
+
+<===> preserves_single_unit/output.css
+a {
+  b: 2px;
+}
+
+<===> preserves_single_unit/warning
+DEPRECATION WARNING [global-builtin]: In future versions of Sass, round() will be interpreted as the CSS round() calculation. This doesn't allow unitless numbers to be mixed with numbers with units. If you want to use the Sass function, call math.round() instead.
+
+See https://sass-lang.com/d/import
+
+  ,
+1 | a {b: round(1 + 1px)}
+  |             ^^^^^^^
+  '
+    input.scss 1:13  root stylesheet
+
+DEPRECATION WARNING [global-builtin]: In future versions of Sass, round() will be interpreted as a CSS round() calculation. This requires an explicit modulus when rounding numbers with units. If you want to use the Sass function, call math.round() instead.
+
+See https://sass-lang.com/d/import
+
+  ,
+1 | a {b: round(1 + 1px)}
+  |       ^^^^^^^^^^^^^^
+  '
+    input.scss 1:7  root stylesheet
+
+<===> preserved/variable/input.scss
+a {
+  b: round(var(--c))
+}
+
+<===> preserved/variable/output.css
+a {
+  b: round(var(--c));
+}
+
+<===> sass_script/input.scss
+a {b: round($number: -3)}
+
+<===> sass_script/output.css
+a {
+  b: -3;
+}
+
+<===> sass_script/warning
+DEPRECATION WARNING [global-builtin]: Global built-in functions are deprecated and will be removed in Dart Sass 3.0.0.
+Use math.round instead.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | a {b: round($number: -3)}
+  |       ^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 1:7  root stylesheet
+
+<===> math/slash_as_division/input.scss
+b {
+  a: 2px / round(1.5);
+}
+
+<===> math/slash_as_division/output.css
+b {
+  a: 1px;
+}
+
+<===> math/slash_as_division/warning
+DEPRECATION WARNING [slash-div]: Using / for division outside of calc() is deprecated and will be removed in Dart Sass 2.0.0.
+
+Recommendation: math.div(2px, round(1.5)) or calc(2px / round(1.5))
+
+More info and automated migrator: https://sass-lang.com/d/slash-div
+
+  ,
+2 |   a: 2px / round(1.5);
+  |      ^^^^^^^^^^^^^^^^
+  '
+    input.scss 2:6  root stylesheet
+
+<===> calc_unsafe_in_binary_operator/input.scss
+// Regression test for sass/dart-sass#2523
+b {
+  a: round(-(1) + 2);
+}
+
+<===> calc_unsafe_in_binary_operator/output.css
+b {
+  a: 1;
+}
+
+<===> calc_unsafe_in_binary_operator/warning
+DEPRECATION WARNING [global-builtin]: Global built-in functions are deprecated and will be removed in Dart Sass 3.0.0.
+Use math.round instead.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+3 |   a: round(-(1) + 2);
+  |      ^^^^^^^^^^^^^^^
+  '
+    input.scss 3:6  root stylesheet
+
+<===> case_insensitive/input.scss
+a {b: rOuNd(1)}
+
+<===> case_insensitive/output.css
+a {
+  b: 1;
+}
+
+<===> overridden/input.scss
+@function round($arg) {@return $arg}
+a {b: round(1.1)}
+
+<===> overridden/output.css
+a {
+  b: 1.1;
+}
+
+<===> unsimplifiable/input.scss
+a {b: round(1px + 2px - var(--c))}
+
+<===> unsimplifiable/output.css
+a {
+  b: round(3px - var(--c));
+}

@@ -1,0 +1,10 @@
+<===> quoted/input.scss
+@use "sass:string";
+foo {
+  foo: string.to-upper-case("ab\63 d");
+}
+
+<===> quoted/output.css
+foo {
+  foo: "ABCD";
+}

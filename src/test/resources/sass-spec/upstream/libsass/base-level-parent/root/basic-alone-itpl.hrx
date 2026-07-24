@@ -1,0 +1,14 @@
+<===> basic-alone-itpl/input.scss
+#{&} {
+  foo {
+    bar: baz;
+  }
+}
+
+<===> basic-alone-itpl/error
+Error: expected selector.
+  ,
+1 | #{&} {
+  |      ^
+  '
+  input.scss 1:6  root stylesheet

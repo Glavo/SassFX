@@ -1,0 +1,12 @@
+<===> 004_test_basic/input.scss
+.foo {a: b}
+.bar {@extend .foo; c: d}
+
+<===> 004_test_basic/output.css
+.foo, .bar {
+  a: b;
+}
+
+.bar {
+  c: d;
+}

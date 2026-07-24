@@ -1,0 +1,17 @@
+<===> function_name_identifiers/input.scss
+a {
+  b: url;
+  c: calc;
+  d: element;
+  e: expression;
+  f: progid;
+}
+
+<===> function_name_identifiers/output.css
+a {
+  b: url;
+  c: calc;
+  d: element;
+  e: expression;
+  f: progid;
+}

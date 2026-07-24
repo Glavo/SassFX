@@ -1,0 +1,117 @@
+<===> success/input.scss
+@use "sass:list";
+@use "sass:meta";
+@mixin foo($x, $y, $zs...) {
+  grarh: meta.type-of(false);
+  f: $zs;
+  fa: $x, $y, $zs;
+  fv: $zs;
+  ft: meta.type-of($zs);
+  fj: list.join(1 2 3, $zs);
+  fjt: meta.type-of(list.join(1 2 3, $zs));
+  fkt: meta.type-of(list.join($zs, 1 2 3));
+  hoopla: list.length(a b c d e);
+  boopla: meta.type-of(123+234);
+  koopla: meta.type-of(list.length(a b c d));
+}
+
+@mixin bar($x, $y, $z) {
+  ba: $x, $y, $z;
+  bv: $z;
+  bt: meta.type-of($z);
+  bj: list.join(1 2 3, $z);
+  bjt: meta.type-of(list.join(1 2 3, $z));
+}
+
+$stuff: hey hoo ha;
+
+@mixin mudge($x, $y, $zs...) {
+  x: $x;
+  y: $y;
+  z: $zs;
+}
+
+div {
+  @include foo(a, b, c d e f);
+  @include bar(a, b, c d e f);
+  @include foo(a, b, c d e...);
+  @include foo(a, c d e...);
+  @include foo(a, $stuff...);
+  new: meta.type-of("hello");
+}
+
+@mixin bad($x, $y, $z) {
+  first: $x;
+  second: $y;
+  rest: $z;
+}
+
+@mixin foo($x, $y, $z) {
+  a: meta.type-of(list.join($x, $y));
+  b: meta.type-of($z);
+  c: meta.type-of(list.length($x));
+}
+
+div {
+  @include foo(a b c, d e, false);
+}
+
+<===> success/output.css
+div {
+  grarh: bool;
+  f: c d e f;
+  fa: a, b, c d e f;
+  fv: c d e f;
+  ft: arglist;
+  fj: 1 2 3 c d e f;
+  fjt: list;
+  fkt: list;
+  hoopla: 5;
+  boopla: number;
+  koopla: number;
+  ba: a, b, c d e f;
+  bv: c d e f;
+  bt: list;
+  bj: 1 2 3 c d e f;
+  bjt: list;
+  grarh: bool;
+  f: c d e;
+  fa: a, b, c d e;
+  fv: c d e;
+  ft: arglist;
+  fj: 1 2 3 c d e;
+  fjt: list;
+  fkt: list;
+  hoopla: 5;
+  boopla: number;
+  koopla: number;
+  grarh: bool;
+  f: d e;
+  fa: a, c, d e;
+  fv: d e;
+  ft: arglist;
+  fj: 1 2 3 d e;
+  fjt: list;
+  fkt: list;
+  hoopla: 5;
+  boopla: number;
+  koopla: number;
+  grarh: bool;
+  f: hoo ha;
+  fa: a, hey, hoo ha;
+  fv: hoo ha;
+  ft: arglist;
+  fj: 1 2 3 hoo ha;
+  fjt: list;
+  fkt: list;
+  hoopla: 5;
+  boopla: number;
+  koopla: number;
+  new: string;
+}
+
+div {
+  a: list;
+  b: bool;
+  c: number;
+}

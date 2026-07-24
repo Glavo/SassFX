@@ -1,0 +1,8 @@
+<===> lang-bug/input.scss
+div:lang(nb) {
+  color: red;
+}
+<===> lang-bug/output.css
+div:lang(nb) {
+  color: red;
+}

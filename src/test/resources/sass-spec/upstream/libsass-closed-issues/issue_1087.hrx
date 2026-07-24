@@ -1,0 +1,12 @@
+<===> issue_1087/input.scss
+$foo: bar;
+a {
+  foo: url($foo);
+  foo: url(#{$foo});
+}
+
+<===> issue_1087/output.css
+a {
+  foo: url(bar);
+  foo: url(bar);
+}

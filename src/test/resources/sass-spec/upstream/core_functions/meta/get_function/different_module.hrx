@@ -1,0 +1,112 @@
+<===> defined/input.scss
+@use "sass:math";
+@use "sass:meta";
+a {b: meta.call(meta.get-function("round", $module: "math"), 0.6)}
+
+<===> defined/output.css
+a {
+  b: 1;
+}
+
+<===> chosen_prefix/input.scss
+@use "sass:meta";
+@use "sass:math" as a;
+b {c: meta.call(meta.get-function("round", $module: "a"), 0.6)}
+
+<===> chosen_prefix/output.css
+b {
+  c: 1;
+}
+
+<===> through_use/input.scss
+@use "sass:meta";
+@use "other" as *;
+a {b: meta.call(meta.get-function(add-two), 10)}
+
+<===> through_use/other.scss
+@function add-two($v) {@return $v + 2}
+
+<===> through_use/output.css
+a {
+  b: 12;
+}
+
+<===> through_forward/bare/input.scss
+@use "sass:meta";
+@use "midstream" as *;
+a {b: meta.call(meta.get-function(c))}
+
+<===> through_forward/bare/_midstream.scss
+@forward "upstream";
+
+<===> through_forward/bare/_upstream.scss
+@function c() {@return c}
+
+<===> through_forward/bare/output.css
+a {
+  b: c;
+}
+
+<===> through_forward/as/input.scss
+@use "sass:meta";
+@use "midstream" as *;
+a {
+  b: meta.call(meta.get-function(c-d));
+}
+
+<===> through_forward/as/_midstream.scss
+@forward "upstream" as c-*;
+
+<===> through_forward/as/_upstream.scss
+@function d() {@return d}
+
+<===> through_forward/as/output.css
+a {
+  b: d;
+}
+
+<===> through_forward/show/input.scss
+@use "sass:meta";
+@use "midstream" as *;
+a {
+  b: meta.call(meta.get-function(c));
+}
+
+<===> through_forward/show/_midstream.scss
+@forward "upstream" show c;
+
+<===> through_forward/show/_upstream.scss
+@function c() {@return c}
+
+<===> through_forward/show/output.css
+a {
+  b: c;
+}
+
+<===> through_forward/hide/input.scss
+@use "sass:meta";
+@use "midstream" as *;
+a {
+  b: meta.call(meta.get-function(d));
+}
+
+<===> through_forward/hide/_midstream.scss
+@forward "upstream" hide c;
+
+<===> through_forward/hide/_upstream.scss
+@function d() {@return d}
+
+<===> through_forward/hide/output.css
+a {
+  b: d;
+}
+
+<===> named/input.scss
+@use "sass:meta";
+@use "sass:math";
+a {b: meta.call(meta.get-function($name: "round", $module: "math"), 0.6)}
+
+<===> named/output.css
+a {
+  b: 1;
+}

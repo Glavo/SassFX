@@ -1,0 +1,13 @@
+<===> does_not_move_page_block_in_media/input.scss
+@media screen {
+  a { x:y; }
+  @page {}
+}
+<===> does_not_move_page_block_in_media/output.css
+@media screen {
+  a {
+    x: y;
+  }
+
+  @page {}
+}

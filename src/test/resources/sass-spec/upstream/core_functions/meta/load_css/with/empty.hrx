@@ -1,0 +1,11 @@
+<===> empty/input.scss
+@use "sass:meta";
+@include meta.load-css("other", $with: ());
+
+<===> empty/_other.scss
+a {b: c}
+
+<===> empty/output.css
+a {
+  b: c;
+}

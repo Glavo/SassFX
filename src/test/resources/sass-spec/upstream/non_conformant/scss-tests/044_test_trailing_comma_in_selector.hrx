@@ -1,0 +1,15 @@
+<===> 044_test_trailing_comma_in_selector/input.scss
+#foo #bar,,
+,#baz #boom, {a: b}
+
+#bip #bop, ,, {c: d}
+
+<===> 044_test_trailing_comma_in_selector/output.css
+#foo #bar,
+#baz #boom {
+  a: b;
+}
+
+#bip #bop {
+  c: d;
+}

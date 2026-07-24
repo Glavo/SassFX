@@ -1,0 +1,8 @@
+<===> named/input.scss
+@use "sass:color";
+a {b: color.hwb($hue: 0, $whiteness: 30%, $blackness: 40%)}
+
+<===> named/output.css
+a {
+  b: hsl(0, 33.3333333333%, 45%);
+}

@@ -1,0 +1,5 @@
+<===> scss/input.scss
+@namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul")
+
+<===> scss/output.css
+@namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");

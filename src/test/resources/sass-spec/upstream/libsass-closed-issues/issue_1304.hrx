@@ -1,0 +1,21 @@
+<===> issue_1304/input.scss
+foo {
+    a:&;
+    > bar {
+        b:&;
+        > baz {
+            c:&;
+        }
+    }
+}
+
+<===> issue_1304/output.css
+foo {
+  a: foo;
+}
+foo > bar {
+  b: foo > bar;
+}
+foo > bar > baz {
+  c: foo > bar > baz;
+}

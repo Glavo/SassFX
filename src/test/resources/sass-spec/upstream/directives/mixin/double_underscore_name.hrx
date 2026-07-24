@@ -1,0 +1,8 @@
+<===> double_underscore_name/input.scss
+@mixin __a() {b: c}
+d {@include __a}
+
+<===> double_underscore_name/output.css
+d {
+  b: c;
+}

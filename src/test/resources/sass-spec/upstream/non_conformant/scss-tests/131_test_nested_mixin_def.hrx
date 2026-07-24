@@ -1,0 +1,9 @@
+<===> 131_test_nested_mixin_def/input.scss
+foo {
+  @mixin bar {a: b}
+  @include bar; }
+
+<===> 131_test_nested_mixin_def/output.css
+foo {
+  a: b;
+}

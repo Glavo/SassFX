@@ -1,0 +1,8 @@
+<===> 096_test_long_extender_runs_unification/input.scss
+ns|*.foo.bar {a: b}
+a.baz {@extend .foo}
+
+<===> 096_test_long_extender_runs_unification/output.css
+ns|*.foo.bar {
+  a: b;
+}

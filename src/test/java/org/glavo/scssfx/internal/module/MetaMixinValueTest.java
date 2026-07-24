@@ -160,7 +160,7 @@ final class MetaMixinValueTest {
     @Test
     void rejectsInvalidMixinValueOperations() {
         assertEquals(
-                "Mixin not found: \"missing\".",
+                "Mixin not found: \"missing\"",
                 failure("@use \"sass:meta\"; a { value: meta.get-mixin(\"missing\"); }")
         );
         assertEquals(

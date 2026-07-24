@@ -1,0 +1,12 @@
+<===> 180_test_basic_extend_loop/input.scss
+.foo {a: b; @extend .bar}
+.bar {c: d; @extend .foo}
+
+<===> 180_test_basic_extend_loop/output.css
+.foo, .bar {
+  a: b;
+}
+
+.bar, .foo {
+  c: d;
+}

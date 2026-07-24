@@ -1,0 +1,23 @@
+<===> script/input.scss
+@use "sass:string";
+// SassScript functions operate on the normalized form of the identifier.
+.script {
+  unescaped-str-length: string.length(ax) string.length(\61x) string.length(\00061 x);
+  escaped-str-length: string.length(\1Ax) string.length(\0001A x);
+
+  unescaped-slice: string.slice(xaz, 2, 2) string.slice(x\61z, 2, 2) string.slice(x\00061 z, 2, 2);
+  escaped-slice: string.slice(x\1Az, 2, 5) string.slice(x\0001A z, 2, 5);
+
+  unescaped-quote: string.quote(ax) string.quote(\61x) string.quote(\00061 x);
+  escaped-quote: string.quote(\1Ax) string.quote(\0001A x);
+}
+
+<===> script/output.css
+.script {
+  unescaped-str-length: 2 2 2;
+  escaped-str-length: 5 5;
+  unescaped-slice: a a a;
+  escaped-slice: \1a  \1a ;
+  unescaped-quote: "ax" "ax" "ax";
+  escaped-quote: "\\1a x" "\\1a x";
+}

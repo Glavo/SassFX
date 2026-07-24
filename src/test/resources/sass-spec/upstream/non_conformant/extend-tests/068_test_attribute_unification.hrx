@@ -1,0 +1,8 @@
+<===> 068_test_attribute_unification/input.scss
+%-a [foo=bar].baz {a: b}
+[ns|foo=bar] {@extend .baz} -a {@extend %-a}
+
+<===> 068_test_attribute_unification/output.css
+-a [foo=bar].baz, -a [foo=bar][ns|foo=bar] {
+  a: b;
+}

@@ -1,0 +1,15 @@
+<===> zero_args/input.scss
+@use "sass:color";
+a {b: color.hwb()}
+
+<===> zero_args/error
+Error: Missing argument $channels.
+  ,--> input.scss
+2 | a {b: color.hwb()}
+  |       ^^^^^^^^^^^ invocation
+  '
+  ,
+1 | @function hwb($channels) {
+  |           ============== declaration
+  '
+  input.scss 2:7  root stylesheet

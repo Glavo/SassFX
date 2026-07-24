@@ -1,0 +1,9 @@
+<===> property_interpolation_at_dashes/input.scss
+$a : a;
+$b : b;
+div { -foo-#{$a}-#{$b}-foo: foo }
+
+<===> property_interpolation_at_dashes/output.css
+div {
+  -foo-a-b-foo: foo;
+}

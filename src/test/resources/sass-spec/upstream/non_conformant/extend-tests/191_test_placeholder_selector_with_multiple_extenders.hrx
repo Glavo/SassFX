@@ -1,0 +1,9 @@
+<===> 191_test_placeholder_selector_with_multiple_extenders/input.scss
+%foo {color: blue}
+.bar {@extend %foo}
+.baz {@extend %foo}
+
+<===> 191_test_placeholder_selector_with_multiple_extenders/output.css
+.baz, .bar {
+  color: blue;
+}

@@ -1,0 +1,20 @@
+<===> issue_1537/input.scss
+$map: (
+  a: 1, two, 3,
+  foo: 'bar'
+);
+
+test {
+  a: map-get($map, a);
+  type: type-of(map-get($map, a));
+  keys: map-keys($map);
+  try: map-get($map, two);
+}
+
+<===> issue_1537/error
+Error: expected ":".
+  ,
+2 |   a: 1, two, 3,
+  |            ^
+  '
+  input.scss 2:12  root stylesheet

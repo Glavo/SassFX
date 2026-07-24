@@ -1,0 +1,8 @@
+<===> 40_pseudo_class_identifier_starting_with_n/input.scss
+div:lang(nb) {
+  color: blue;
+}
+<===> 40_pseudo_class_identifier_starting_with_n/output.css
+div:lang(nb) {
+  color: blue;
+}

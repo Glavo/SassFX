@@ -1,0 +1,8 @@
+<===> alpha/input.scss
+@use "sass:color";
+a {b: color.alpha(#abcdef)}
+
+<===> alpha/output.css
+a {
+  b: 1;
+}

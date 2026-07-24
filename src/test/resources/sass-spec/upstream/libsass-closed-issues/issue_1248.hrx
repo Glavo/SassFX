@@ -1,0 +1,15 @@
+<===> issue_1248/input.scss
+.a.b .c {
+  top: 0;
+}
+.a {
+  @extend .b;
+}
+.a .d {
+  @extend .c;
+}
+
+<===> issue_1248/output.css
+.a.b .c, .a .c, .a .d {
+  top: 0;
+}

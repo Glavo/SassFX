@@ -1,0 +1,7 @@
+<===> import_with_interpolation/input.scss
+@use "sass:string";
+$family: string.unquote("Droid+Sans");
+@import url("http://fonts.googleapis.com/css?family=#{$family}");
+
+<===> import_with_interpolation/output.css
+@import url("http://fonts.googleapis.com/css?family=Droid+Sans");

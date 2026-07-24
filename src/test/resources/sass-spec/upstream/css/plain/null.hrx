@@ -1,0 +1,12 @@
+<===> null/input.scss
+@use "plain";
+
+<===> null/plain.css
+a {
+  x: null;
+}
+
+<===> null/output.css
+a {
+  x: null;
+}

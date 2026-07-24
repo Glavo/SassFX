@@ -1,0 +1,9 @@
+<===> 213_test_pseudo_element_superselector/input.scss
+%x#bar {a: b}
+%y, %y:before {@extend %x}
+a {@extend %y}
+
+<===> 213_test_pseudo_element_superselector/output.css
+a#bar, a#bar:before {
+  a: b;
+}

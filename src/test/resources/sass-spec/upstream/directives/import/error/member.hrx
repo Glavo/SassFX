@@ -1,0 +1,75 @@
+<===> inaccessible/nested/variable/input.scss
+a {@import "other"}
+
+b {c: $d}
+
+<===> inaccessible/nested/variable/_other.scss
+$d: e;
+
+<===> inaccessible/nested/variable/error
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | a {@import "other"}
+  |            ^^^^^^^
+  '
+    input.scss 1:12  root stylesheet
+
+Error: Undefined variable.
+  ,
+3 | b {c: $d}
+  |       ^^
+  '
+  input.scss 3:7  root stylesheet
+
+<===> inaccessible/nested/mixin/input.scss
+a {@import "other"}
+
+b {@include c}
+
+<===> inaccessible/nested/mixin/_other.scss
+@mixin c() {d: e};
+
+<===> inaccessible/nested/mixin/error
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | a {@import "other"}
+  |            ^^^^^^^
+  '
+    input.scss 1:12  root stylesheet
+
+Error: Undefined mixin.
+  ,
+3 | b {@include c}
+  |    ^^^^^^^^^^
+  '
+  input.scss 3:4  root stylesheet
+
+<===> inaccessible/nested/function/input.scss
+a {@import "other"}
+
+b {c: d()}
+
+<===> inaccessible/nested/function/_other.scss
+@function d() {@return e}
+
+<===> inaccessible/nested/function/output.css
+b {
+  c: d();
+}
+
+<===> inaccessible/nested/function/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | a {@import "other"}
+  |            ^^^^^^^
+  '
+    input.scss 1:12  root stylesheet

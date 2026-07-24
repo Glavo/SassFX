@@ -705,7 +705,7 @@ public final class Environment {
     /// @return the span-free value-layer failure
     private static SassValueException missingModule(String namespace) {
         return new SassValueException(
-                "There is no module with the namespace \"" + namespace + "\"."
+                "There is no module with namespace \"" + namespace + "\"."
         );
     }
 

@@ -1,0 +1,11 @@
+<===> issue_1107/input.scss
+.foo {
+    filter: progid:DXImageTransform.Microsoft.AlphaImageLoader(
+        src="#{foo}",
+        sizingMethod='scale');
+}
+
+<===> issue_1107/output.css
+.foo {
+  filter: progid:DXImageTransform.Microsoft.AlphaImageLoader( src="foo", sizingMethod='scale');
+}

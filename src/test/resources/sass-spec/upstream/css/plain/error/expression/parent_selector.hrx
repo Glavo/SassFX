@@ -1,0 +1,15 @@
+<===> parent_selector/input.scss
+@use 'plain'
+<===> parent_selector/plain.css
+a {
+  x: &;
+}
+
+<===> parent_selector/error
+Error: The parent selector isn't allowed in plain CSS.
+  ,
+2 |   x: &;
+  |      ^
+  '
+  plain.css 2:6   @use
+  input.scss 1:1  root stylesheet

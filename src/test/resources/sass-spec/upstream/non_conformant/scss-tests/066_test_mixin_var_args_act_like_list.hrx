@@ -1,0 +1,14 @@
+<===> 066_test_mixin_var_args_act_like_list/input.scss
+@use "sass:list";
+@mixin foo($a, $b...) {
+  a: list.length($b);
+  b: list.nth($b, 2);
+}
+
+.foo {@include foo(1, 2, 3, 4)}
+
+<===> 066_test_mixin_var_args_act_like_list/output.css
+.foo {
+  a: 3;
+  b: 3;
+}

@@ -1,0 +1,9 @@
+<===> guard_assign/input.scss
+$var: 2 !default;
+
+foo {a: $var}
+
+<===> guard_assign/output.css
+foo {
+  a: 2;
+}

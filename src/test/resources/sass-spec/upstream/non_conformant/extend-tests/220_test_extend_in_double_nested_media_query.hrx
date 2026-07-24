@@ -1,0 +1,14 @@
+<===> 220_test_extend_in_double_nested_media_query/input.scss
+@media all {
+@media (orientation: landscape) {
+  %foo {color: blue}
+  .bar {@extend %foo}
+}
+}
+
+<===> 220_test_extend_in_double_nested_media_query/output.css
+@media (orientation: landscape) {
+  .bar {
+    color: blue;
+  }
+}

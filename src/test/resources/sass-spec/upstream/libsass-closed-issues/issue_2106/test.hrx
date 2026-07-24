@@ -1,0 +1,20 @@
+<===> test/input.scss
+@import "../does-not-exist";
+
+<===> test/error
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import "../does-not-exist";
+  |         ^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 1:9  root stylesheet
+
+Error: Can't find stylesheet to import.
+  ,
+1 | @import "../does-not-exist";
+  |         ^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 1:9  root stylesheet

@@ -1,0 +1,23 @@
+<===> issue_2330/input.scss
+@use "sass:list";
+@use "sass:map";
+@use "sass:meta";
+
+@function test () {
+  $m: ();
+  $abc: (a b c d e f g h i j k);
+
+  @for $index from 1 through list.length($abc) {;
+    $m: map.merge($m, (list.nth($abc, $index):$index) );
+  }
+
+  @return $m;
+}
+
+test {
+  content: meta.inspect(test());
+}
+<===> issue_2330/output.css
+test {
+  content: (a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9, j: 10, k: 11);
+}

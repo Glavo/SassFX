@@ -1,0 +1,55 @@
+<===> issue_1583/input.scss
+@use "sass:list";
+@use "sass:meta";
+@use "sass:string";
+
+$ls: ((foo,));
+
+foo {
+  baz: list.length($ls);
+  baz: meta.type-of($ls);
+  baz: meta.inspect($ls);
+}
+
+bar {
+  baz: list.length(&);
+  baz: meta.type-of(&);
+  baz: meta.inspect(&);
+}
+
+foo {
+  string: meta.inspect(&);
+  str-length: string.length(meta.inspect(&));
+  list-length: list.length(&);
+}
+
+foo, bar {
+  string: meta.inspect(&);
+  str-length: string.length(meta.inspect(&));
+  list-length: list.length(&);
+}
+
+<===> issue_1583/output.css
+foo {
+  baz: 1;
+  baz: list;
+  baz: (foo,);
+}
+
+bar {
+  baz: 1;
+  baz: list;
+  baz: (bar,);
+}
+
+foo {
+  string: (foo,);
+  str-length: 6;
+  list-length: 1;
+}
+
+foo, bar {
+  string: foo, bar;
+  str-length: 8;
+  list-length: 2;
+}

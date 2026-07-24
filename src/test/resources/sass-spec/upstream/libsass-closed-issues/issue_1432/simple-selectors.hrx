@@ -1,0 +1,12 @@
+<===> simple-selectors/input.scss
+@use "sass:selector";
+@debug(selector.simple-selectors(null));
+
+<===> simple-selectors/error
+Error: $selector: null is not a valid selector: it must be a string,
+a list of strings, or a list of lists of strings.
+  ,
+2 | @debug(selector.simple-selectors(null));
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:8  root stylesheet

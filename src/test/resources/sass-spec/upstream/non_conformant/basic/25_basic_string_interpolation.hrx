@@ -1,0 +1,9 @@
+<===> 25_basic_string_interpolation/input.scss
+@use "sass:math";
+div {
+  blah: "hello #{2+2} world #{math.unit(23px)} #{'bloo\n'} blah";
+}
+<===> 25_basic_string_interpolation/output.css
+div {
+  blah: "hello 4 world px bloon blah";
+}

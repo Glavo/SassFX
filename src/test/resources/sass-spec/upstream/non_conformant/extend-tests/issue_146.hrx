@@ -1,0 +1,18 @@
+<===> issue_146/input.scss
+%btn-style-default {
+  background: green;
+  &:hover{
+    background: black;
+  }
+}
+
+button {
+  @extend %btn-style-default;
+}
+<===> issue_146/output.css
+button {
+  background: green;
+}
+button:hover {
+  background: black;
+}

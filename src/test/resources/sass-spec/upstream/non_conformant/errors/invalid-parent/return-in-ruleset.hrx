@@ -1,0 +1,11 @@
+<===> return-in-ruleset/input.scss
+ruleset {
+  @return 42;
+}
+<===> return-in-ruleset/error
+Error: This at-rule is not allowed here.
+  ,
+2 |   @return 42;
+  |   ^^^^^^^^^^
+  '
+  input.scss 2:3  root stylesheet

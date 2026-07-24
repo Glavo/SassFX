@@ -1,0 +1,10 @@
+<===> issue_1484/input.scss
+div {
+
+<===> issue_1484/error
+Error: expected "}".
+  ,
+1 | div {
+  |      ^
+  '
+  input.scss 1:6  root stylesheet

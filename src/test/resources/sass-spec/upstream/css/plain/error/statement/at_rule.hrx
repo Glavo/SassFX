@@ -1,0 +1,277 @@
+<===> at_root/input.scss
+@use 'plain'
+<===> at_root/plain.css
+a {
+  @at-root b {
+    x: y;
+  }
+}
+
+<===> at_root/error
+Error: This at-rule isn't allowed in plain CSS.
+  ,
+2 |   @at-root b {
+  |   ^^^^^^^^^^^
+  '
+  plain.css 2:3   @use
+  input.scss 1:1  root stylesheet
+
+<===> content/input.scss
+@use 'plain'
+<===> content/plain.css
+@content;
+
+<===> content/error
+Error: This at-rule isn't allowed in plain CSS.
+  ,
+1 | @content;
+  | ^^^^^^^^
+  '
+  plain.css 1:1   @use
+  input.scss 1:1  root stylesheet
+
+<===> debug/input.scss
+@use 'plain'
+<===> debug/plain.css
+@debug foo;
+
+<===> debug/error
+Error: This at-rule isn't allowed in plain CSS.
+  ,
+1 | @debug foo;
+  | ^^^^^^^^^^
+  '
+  plain.css 1:1   @use
+  input.scss 1:1  root stylesheet
+
+<===> each/input.scss
+@use 'plain'
+<===> each/plain.css
+@each $i in 1 2 3 {
+  a {
+    x: y;
+  }
+}
+
+<===> each/error
+Error: This at-rule isn't allowed in plain CSS.
+  ,
+1 | @each $i in 1 2 3 {
+  | ^^^^^^^^^^^^^^^^^^
+  '
+  plain.css 1:1   @use
+  input.scss 1:1  root stylesheet
+
+<===> error/input.scss
+@use 'plain'
+<===> error/plain.css
+@error foo;
+
+<===> error/error
+Error: This at-rule isn't allowed in plain CSS.
+  ,
+1 | @error foo;
+  | ^^^^^^^^^^
+  '
+  plain.css 1:1   @use
+  input.scss 1:1  root stylesheet
+
+<===> extend/input.scss
+@use 'plain'
+<===> extend/plain.css
+a {
+  @extend b;
+}
+
+<===> extend/error
+Error: This at-rule isn't allowed in plain CSS.
+  ,
+2 |   @extend b;
+  |   ^^^^^^^^^
+  '
+  plain.css 2:3   @use
+  input.scss 1:1  root stylesheet
+
+<===> for/input.scss
+@use 'plain'
+<===> for/plain.css
+@for $i from 1 to 5 {
+  a {
+    x: y;
+  }
+}
+
+<===> for/error
+Error: This at-rule isn't allowed in plain CSS.
+  ,
+1 | @for $i from 1 to 5 {
+  | ^^^^^^^^^^^^^^^^^^^^
+  '
+  plain.css 1:1   @use
+  input.scss 1:1  root stylesheet
+
+<===> function/input.scss
+@use 'plain'
+<===> function/plain.css
+@function foo() {
+  @return 1;
+}
+
+<===> function/error
+Error: This at-rule isn't allowed in plain CSS.
+  ,
+1 | @function foo() {
+  | ^^^^^^^^^^^^^^^^
+  '
+  plain.css 1:1   @use
+  input.scss 1:1  root stylesheet
+
+<===> if/input.scss
+@use 'plain'
+<===> if/plain.css
+@if true {
+  a {
+    x: y;
+  }
+}
+
+<===> if/error
+Error: This at-rule isn't allowed in plain CSS.
+  ,
+1 | @if true {
+  | ^^^^^^^^^
+  '
+  plain.css 1:1   @use
+  input.scss 1:1  root stylesheet
+
+<===> import/interpolated/input.scss
+@use 'plain'
+<===> import/interpolated/plain.css
+@import url("foo#{bar}baz");
+
+<===> import/interpolated/error
+Error: Interpolation isn't allowed in plain CSS.
+  ,
+1 | @import url("foo#{bar}baz");
+  |                 ^^^^^^
+  '
+  plain.css 1:17  @use
+  input.scss 1:1  root stylesheet
+
+<===> import/nested/input.scss
+@use 'plain'
+<===> import/nested/plain.css
+a {
+  @import "foo";
+}
+
+<===> import/nested/output.css
+a {
+  @import "foo";
+}
+
+<===> import/multi/input.scss
+@use 'plain'
+<===> import/multi/plain.css
+@import "foo", "bar";
+
+<===> import/multi/error
+Error: expected ";".
+  ,
+1 | @import "foo", "bar";
+  |              ^
+  '
+  plain.css 1:14  @use
+  input.scss 1:1  root stylesheet
+
+<===> include/input.scss
+@use 'plain'
+<===> include/plain.css
+@include foo;
+
+<===> include/error
+Error: This at-rule isn't allowed in plain CSS.
+  ,
+1 | @include foo;
+  | ^^^^^^^^^^^^
+  '
+  plain.css 1:1   @use
+  input.scss 1:1  root stylesheet
+
+<===> mixin/input.scss
+@use 'plain'
+<===> mixin/plain.css
+@mixin foo {
+  a {
+    x: y;
+  }
+}
+
+<===> mixin/error
+Error: This at-rule isn't allowed in plain CSS.
+  ,
+1 | @mixin foo {
+  | ^^^^^^^^^^^
+  '
+  plain.css 1:1   @use
+  input.scss 1:1  root stylesheet
+
+<===> return/input.scss
+@use 'plain'
+<===> return/plain.css
+@return foo;
+
+<===> return/error
+Error: This at-rule isn't allowed in plain CSS.
+  ,
+1 | @return foo;
+  | ^^^^^^^^^^^
+  '
+  plain.css 1:1   @use
+  input.scss 1:1  root stylesheet
+
+<===> warn/input.scss
+@use 'plain'
+<===> warn/plain.css
+@warn foo;
+
+<===> warn/error
+Error: This at-rule isn't allowed in plain CSS.
+  ,
+1 | @warn foo;
+  | ^^^^^^^^^
+  '
+  plain.css 1:1   @use
+  input.scss 1:1  root stylesheet
+
+<===> while/input.scss
+@use 'plain'
+<===> while/plain.css
+@while false {
+  a {
+    x: y;
+  }
+}
+
+<===> while/error
+Error: This at-rule isn't allowed in plain CSS.
+  ,
+1 | @while false {
+  | ^^^^^^^^^^^^^
+  '
+  plain.css 1:1   @use
+  input.scss 1:1  root stylesheet
+
+<===> interpolation/input.scss
+@use 'plain'
+<===> interpolation/plain.css
+@foo a#{b}c;
+
+<===> interpolation/error
+Error: Interpolation isn't allowed in plain CSS.
+  ,
+1 | @foo a#{b}c;
+  |       ^^^^
+  '
+  plain.css 1:7   @use
+  input.scss 1:1  root stylesheet

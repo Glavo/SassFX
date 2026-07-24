@@ -1,0 +1,15 @@
+<===> 199_test_extend_within_disparate_nested_directives/input.scss
+@media screen {@flooblehoof {.foo {a: b}}}
+@media screen {@flooblehoof {.bar {@extend .foo}}}
+
+<===> 199_test_extend_within_disparate_nested_directives/output.css
+@media screen {
+  @flooblehoof {
+    .foo, .bar {
+      a: b;
+    }
+  }
+}
+@media screen {
+  @flooblehoof {}
+}

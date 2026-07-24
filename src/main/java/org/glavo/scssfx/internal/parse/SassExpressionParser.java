@@ -13,6 +13,8 @@ import org.glavo.scssfx.internal.ast.FunctionExpression;
 import org.glavo.scssfx.internal.ast.Interpolation;
 import org.glavo.scssfx.internal.ast.InterpolationBuffer;
 import org.glavo.scssfx.internal.ast.InterpolatedFunctionExpression;
+import org.glavo.scssfx.internal.ast.IfConditionExpression;
+import org.glavo.scssfx.internal.ast.IfExpression;
 import org.glavo.scssfx.internal.ast.LegacyIfExpression;
 import org.glavo.scssfx.internal.ast.ListExpression;
 import org.glavo.scssfx.internal.ast.MapEntry;
@@ -1034,10 +1036,23 @@ class SassExpressionParser extends Parser {
         @Nullable String lower = null;
         if (plain != null) {
             if (plain.equals("if") && scanner.peek() == '(') {
-                return new LegacyIfExpression(
-                        argumentInvocation(false),
-                        scanner.spanFrom(start)
-                );
+                // Legacy and modern if() share the leading "if(", so try the
+                // comma-separated Sass form first and fall back to CSS syntax.
+                var beforeParen = scanner.state();
+                var warningCheckpoint = parseTimeWarningCheckpoint();
+                try {
+                    return new LegacyIfExpression(
+                            argumentInvocation(false),
+                            scanner.spanFrom(start)
+                    );
+                } catch (ParseException ignored) {
+                    scanner.restore(beforeParen);
+                    restoreParseTimeWarnings(warningCheckpoint);
+                    return ifExpression(start);
+                }
+            }
+            if (plain.equalsIgnoreCase("if") && scanner.peek() == '(') {
+                return ifExpression(start);
             }
             if (plain.equals("not")) {
                 whitespace(true);
@@ -1473,6 +1488,322 @@ class SassExpressionParser extends Parser {
             throw scanner.error("Expected token.");
         }
         return buffer.interpolation(scanner.spanFrom(start));
+    }
+
+    /// Parses a modern CSS-style {@code if()} expression after the name.
+    ///
+    /// @param start the position before {@code if}
+    /// @return the CSS if expression
+    private IfExpression ifExpression(ScannerState start) {
+        scanner.expect('(');
+        whitespace(true);
+        var branches = new ArrayList<IfExpression.Branch>();
+        while (scanner.peek() != ')') {
+            @Nullable IfConditionExpression condition = scanIdentifier("else")
+                    ? null
+                    : ifConditionExpression();
+            whitespace(true);
+            scanner.expect(':');
+            whitespace(true);
+            var value = expression();
+            branches.add(new IfExpression.Branch(condition, value));
+            whitespace(true);
+            if (!scanner.scan(';')) {
+                break;
+            }
+            whitespace(true);
+        }
+        scanner.expect(')');
+        if (branches.isEmpty()) {
+            throw scanner.error("Expected if() branch.");
+        }
+        return new IfExpression(branches, scanner.spanFrom(start));
+    }
+
+    /// Parses one CSS {@code if()} condition.
+    private IfConditionExpression ifConditionExpression() {
+        var start = scanner.state();
+        if (scanIdentifier("not")) {
+            if (scanner.peek() == '(') {
+                throw scanner.error("Whitespace is required between \"not\" and \"(\"");
+            }
+            whitespace(true);
+            return new IfConditionExpression.Negation(ifGroup(), scanner.spanFrom(start));
+        }
+
+        var groups = new ArrayList<IfConditionExpression>();
+        groups.add(ifGroup());
+        @Nullable IfConditionExpression.BooleanOperator operator = null;
+        whitespace(true);
+        while (true) {
+            if (operator != IfConditionExpression.BooleanOperator.OR
+                    && scanIdentifier("and")) {
+                if (scanner.peek() == '(') {
+                    throw scanner.error("Whitespace is required between \"and\" and \"(\"");
+                }
+                whitespace(true);
+                if (operator == null) {
+                    operator = IfConditionExpression.BooleanOperator.AND;
+                }
+                groups.add(ifGroup());
+            } else if (operator != IfConditionExpression.BooleanOperator.AND
+                    && scanIdentifier("or")) {
+                if (scanner.peek() == '(') {
+                    throw scanner.error("Whitespace is required between \"or\" and \"(\"");
+                }
+                whitespace(true);
+                if (operator == null) {
+                    operator = IfConditionExpression.BooleanOperator.OR;
+                }
+                groups.add(ifGroup());
+            } else {
+                int next = scanner.peek();
+                IfConditionExpression last = groups.get(groups.size() - 1);
+                if (next != ')' && next != ':' && last.isArbitrarySubstitution()) {
+                    return ifConditionRaw(combineIfGroups(groups, operator), ifGroup());
+                }
+                @Nullable IfConditionExpression substitution = tryArbitrarySubstitution();
+                if (substitution != null) {
+                    return ifConditionRaw(combineIfGroups(groups, operator), substitution);
+                }
+                break;
+            }
+            whitespace(true);
+        }
+        return combineIfGroups(groups, operator);
+    }
+
+    /// Combines one or more groups into a single condition.
+    private IfConditionExpression combineIfGroups(
+            List<IfConditionExpression> groups,
+            @Nullable IfConditionExpression.BooleanOperator operator
+    ) {
+        if (groups.size() == 1) {
+            return groups.get(0);
+        }
+        var first = groups.get(0);
+        var last = groups.get(groups.size() - 1);
+        var span = scanner.source().span(
+                scanner.source().generatedStartOffset(first.span()),
+                scanner.source().generatedEndOffset(last.span())
+        );
+        return new IfConditionExpression.Operation(
+                groups,
+                Objects.requireNonNull(operator, "operator"),
+                span
+        );
+    }
+
+    /// Continues a condition as raw text once an arbitrary substitution appears.
+    private IfConditionExpression.Raw ifConditionRaw(
+            IfConditionExpression preceding,
+            IfConditionExpression next
+    ) {
+        var buffer = new InterpolationBuffer();
+        buffer.add(conditionToInterpolation(preceding));
+        buffer.append(' ');
+        buffer.add(conditionToInterpolation(next));
+
+        var lastGroup = next;
+        @Nullable IfConditionExpression.BooleanOperator operator =
+                preceding instanceof IfConditionExpression.Operation operation
+                        ? operation.operator()
+                        : null;
+        whitespace(true);
+        while (true) {
+            if (operator != IfConditionExpression.BooleanOperator.OR
+                    && scanIdentifier("and")) {
+                if (scanner.peek() == '(') {
+                    throw scanner.error("Whitespace is required between \"and\" and \"(\"");
+                }
+                whitespace(true);
+                if (operator == null) {
+                    operator = IfConditionExpression.BooleanOperator.AND;
+                }
+                lastGroup = ifGroup();
+                buffer.append(" and ");
+                buffer.add(conditionToInterpolation(lastGroup));
+            } else if (operator != IfConditionExpression.BooleanOperator.AND
+                    && scanIdentifier("or")) {
+                if (scanner.peek() == '(') {
+                    throw scanner.error("Whitespace is required between \"or\" and \"(\"");
+                }
+                whitespace(true);
+                if (operator == null) {
+                    operator = IfConditionExpression.BooleanOperator.OR;
+                }
+                lastGroup = ifGroup();
+                buffer.append(" or ");
+                buffer.add(conditionToInterpolation(lastGroup));
+            } else {
+                int nextChar = scanner.peek();
+                if (nextChar != ')' && nextChar != ':' && lastGroup.isArbitrarySubstitution()) {
+                    lastGroup = ifGroup();
+                    buffer.append(' ');
+                    buffer.add(conditionToInterpolation(lastGroup));
+                } else {
+                    @Nullable IfConditionExpression substitution = tryArbitrarySubstitution();
+                    if (substitution == null) {
+                        break;
+                    }
+                    lastGroup = substitution;
+                    buffer.append(' ');
+                    buffer.add(conditionToInterpolation(lastGroup));
+                }
+            }
+            whitespace(true);
+        }
+        var span = scanner.source().span(
+                scanner.source().generatedStartOffset(preceding.span()),
+                scanner.position()
+        );
+        return new IfConditionExpression.Raw(buffer.interpolation(span));
+    }
+
+    /// Serializes one condition into an interpolation for raw fallback text.
+    private Interpolation conditionToInterpolation(IfConditionExpression condition) {
+        if (condition instanceof IfConditionExpression.Sass sass) {
+            throw scanner.error(
+                    "if() conditions with arbitrary substitutions may not contain sass() "
+                            + "expressions.",
+                    sass.span()
+            );
+        }
+        if (condition instanceof IfConditionExpression.Raw raw) {
+            return raw.text();
+        }
+        if (condition instanceof IfConditionExpression.Function function) {
+            var buffer = new InterpolationBuffer();
+            buffer.add(function.name());
+            buffer.append('(');
+            buffer.add(function.arguments());
+            buffer.append(')');
+            return buffer.interpolation(function.span());
+        }
+        if (condition instanceof IfConditionExpression.Parenthesized parenthesized) {
+            var buffer = new InterpolationBuffer();
+            buffer.append('(');
+            buffer.add(conditionToInterpolation(parenthesized.expression()));
+            buffer.append(')');
+            return buffer.interpolation(parenthesized.span());
+        }
+        if (condition instanceof IfConditionExpression.Negation negation) {
+            var buffer = new InterpolationBuffer();
+            buffer.append("not ");
+            buffer.add(conditionToInterpolation(negation.expression()));
+            return buffer.interpolation(negation.span());
+        }
+        if (condition instanceof IfConditionExpression.Operation operation) {
+            var buffer = new InterpolationBuffer();
+            for (var index = 0; index < operation.expressions().size(); index++) {
+                if (index > 0) {
+                    buffer.append(' ');
+                    buffer.append(operation.operator().cssName());
+                    buffer.append(' ');
+                }
+                buffer.add(conditionToInterpolation(operation.expressions().get(index)));
+            }
+            return buffer.interpolation(operation.span());
+        }
+        throw new AssertionError("unknown if condition: " + condition);
+    }
+
+    /// Parses one CSS {@code if()} condition group.
+    private IfConditionExpression ifGroup() {
+        var start = scanner.state();
+        if (scanner.scan('(')) {
+            whitespace(true);
+            var expression = ifConditionExpression();
+            whitespace(true);
+            scanner.expect(')');
+            return new IfConditionExpression.Parenthesized(
+                    expression,
+                    scanner.spanFrom(start)
+            );
+        }
+        if (scanIdentifier("sass", true)) {
+            scanner.expect('(');
+            whitespace(true);
+            var expression = expression();
+            whitespace(true);
+            scanner.expect(')');
+            return new IfConditionExpression.Sass(expression, scanner.spanFrom(start));
+        }
+        var identifier = interpolatedIdentifier();
+        @Nullable String plain = identifier.asPlain();
+        if (plain != null
+                && ("and".equalsIgnoreCase(plain)
+                || "or".equalsIgnoreCase(plain)
+                || "not".equalsIgnoreCase(plain))
+                && scanner.peek() == '(') {
+            throw scanner.error(
+                    "Whitespace is required between \"" + plain + "\" and \"(\""
+            );
+        }
+        if (scanner.peek() != '(') {
+            return new IfConditionExpression.Raw(identifier);
+        }
+        scanner.expect('(');
+        whitespace(true);
+        var arguments = interpolatedDeclarationValue(true, true);
+        whitespace(true);
+        scanner.expect(')');
+        return new IfConditionExpression.Function(
+                identifier,
+                arguments,
+                scanner.spanFrom(start)
+        );
+    }
+
+    /// Attempts to parse an arbitrary substitution such as {@code var(...)} or
+    /// {@code #{...}}.
+    private @Nullable IfConditionExpression tryArbitrarySubstitution() {
+        if (scanner.peek() == '#' && scanner.peek(1) == '{') {
+            var interpolationStart = scanner.state();
+            var buffer = new InterpolationBuffer();
+            singleInterpolation(buffer);
+            return new IfConditionExpression.Raw(
+                    buffer.interpolation(scanner.spanFrom(interpolationStart))
+            );
+        }
+        var start = scanner.state();
+        @Nullable String name = null;
+        if (scanIdentifier("if")) {
+            name = "if";
+        } else if (scanIdentifier("var")) {
+            name = "var";
+        } else if (scanIdentifier("attr")) {
+            name = "attr";
+        } else if (lookingAtIdentifier() && scanner.peek() == '-' && scanner.peek(1) == '-') {
+            var ident = interpolatedIdentifier();
+            @Nullable String plain = ident.asPlain();
+            if (plain != null && plain.startsWith("--") && scanner.scan('(')) {
+                whitespace(true);
+                var arguments = interpolatedDeclarationValue(true, true);
+                whitespace(true);
+                scanner.expect(')');
+                return new IfConditionExpression.Function(
+                        ident,
+                        arguments,
+                        scanner.spanFrom(start)
+                );
+            }
+            scanner.restore(start);
+            return null;
+        }
+        if (name == null || !scanner.scan('(')) {
+            scanner.restore(start);
+            return null;
+        }
+        whitespace(true);
+        var arguments = interpolatedDeclarationValue(true, true);
+        whitespace(true);
+        scanner.expect(')');
+        return new IfConditionExpression.Function(
+                Interpolation.plain(name, scanner.spanFrom(start)),
+                arguments,
+                scanner.spanFrom(start)
+        );
     }
 
     /// Attempts to parse a normalized raw URL token with interpolation.

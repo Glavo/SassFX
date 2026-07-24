@@ -1,0 +1,14 @@
+<===> 11_attribute_selectors/input.scss
+[hey  =  'ho'], a > b {
+  blah: blah;
+  c, [hoo *=    "ha" ] {
+    bloo: bloo;
+  }
+}
+<===> 11_attribute_selectors/output.css
+[hey=ho], a > b {
+  blah: blah;
+}
+[hey=ho] c, [hey=ho] [hoo*=ha], a > b c, a > b [hoo*=ha] {
+  bloo: bloo;
+}

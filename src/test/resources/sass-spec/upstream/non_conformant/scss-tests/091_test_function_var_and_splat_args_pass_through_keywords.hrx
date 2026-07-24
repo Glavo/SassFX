@@ -1,0 +1,15 @@
+<===> 091_test_function_var_and_splat_args_pass_through_keywords/input.scss
+@function foo($a...) {
+  @return bar($a...);
+}
+
+@function bar($b, $c, $a) {
+  @return "a: #{$a}, b: #{$b}, c: #{$c}";
+}
+
+.foo {val: foo(1, $c: 2, $a: 3)}
+
+<===> 091_test_function_var_and_splat_args_pass_through_keywords/output.css
+.foo {
+  val: "a: 3, b: 1, c: 2";
+}

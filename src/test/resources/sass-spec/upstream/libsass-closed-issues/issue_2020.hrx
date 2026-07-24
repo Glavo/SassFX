@@ -1,0 +1,15 @@
+<===> issue_2020/input.scss
+@use "sass:list";
+@use "sass:meta";
+
+form {
+  $selector: list.nth(&, 1);
+  sel: meta.inspect($selector);
+  $selector: list.nth($selector, 1);
+  sel: meta.inspect($selector);
+}
+<===> issue_2020/output.css
+form {
+  sel: form;
+  sel: form;
+}

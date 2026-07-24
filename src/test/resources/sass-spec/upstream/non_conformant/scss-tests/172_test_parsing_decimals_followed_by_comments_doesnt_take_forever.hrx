@@ -1,0 +1,9 @@
+<===> 172_test_parsing_decimals_followed_by_comments_doesnt_take_forever/input.scss
+.foo {
+  padding: 4.21052631578947% 4.21052631578947% 5.631578947368421% /**/
+}
+
+<===> 172_test_parsing_decimals_followed_by_comments_doesnt_take_forever/output.css
+.foo {
+  padding: 4.2105263158% 4.2105263158% 5.6315789474%;
+}

@@ -1,0 +1,8 @@
+<===> if_directive/input.scss
+@if "foo" != "foo" {foo {a: b}}
+@else {bar {a: b}}
+
+<===> if_directive/output.css
+bar {
+  a: b;
+}

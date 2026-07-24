@@ -1,0 +1,129 @@
+<===> raw/not/lowercase/input.scss
+@media (not (a)) {x {y: z}}
+
+<===> raw/not/lowercase/output.css
+@media not (a) {
+  x {
+    y: z;
+  }
+}
+
+<===> raw/not/mixed_case/input.scss
+@media (NoT (a)) {x {y: z}}
+
+<===> raw/not/mixed_case/output.css
+@media not (a) {
+  x {
+    y: z;
+  }
+}
+
+<===> raw/and/lowercase/input.scss
+@media ((a) and (b)) {x {y: z}}
+
+<===> raw/and/lowercase/output.css
+@media ((a) and (b)) {
+  x {
+    y: z;
+  }
+}
+
+<===> raw/and/mixed_case/input.scss
+@media ((a) AnD (b)) {x {y: z}}
+
+<===> raw/and/mixed_case/output.css
+@media ((a) and (b)) {
+  x {
+    y: z;
+  }
+}
+
+<===> raw/or/lowercase/input.scss
+@media ((a) or (b)) {x {y: z}}
+
+<===> raw/or/lowercase/output.css
+@media ((a) or (b)) {
+  x {
+    y: z;
+  }
+}
+
+<===> raw/or/mixed_case/input.scss
+@media ((a) Or (b)) {x {y: z}}
+
+<===> raw/or/mixed_case/output.css
+@media ((a) or (b)) {
+  x {
+    y: z;
+  }
+}
+
+<===> raw/different_than_top_level/input.scss
+@media (a) and ((b) or (c)) {x {y: z}}
+
+<===> raw/different_than_top_level/output.css
+@media (a) and ((b) or (c)) {
+  x {
+    y: z;
+  }
+}
+
+<===> interpolated/not/lowercase/input.scss
+@media (#{"not (a)"}) {x {y: z}}
+
+<===> interpolated/not/lowercase/output.css
+@media not (a) {
+  x {
+    y: z;
+  }
+}
+
+<===> interpolated/not/mixed_case/input.scss
+@media (#{"NoT (a)"}) {x {y: z}}
+
+<===> interpolated/not/mixed_case/output.css
+@media (NoT (a)) {
+  x {
+    y: z;
+  }
+}
+
+<===> interpolated/and/lowercase/input.scss
+@media (#{"(a) and (b)"}) {x {y: z}}
+
+<===> interpolated/and/lowercase/output.css
+@media ((a) and (b)) {
+  x {
+    y: z;
+  }
+}
+
+<===> interpolated/and/mixed_case/input.scss
+@media (#{"(a) AnD (b)"}) {x {y: z}}
+
+<===> interpolated/and/mixed_case/output.css
+@media ((a) AnD (b)) {
+  x {
+    y: z;
+  }
+}
+
+<===> interpolated/or/lowercase/input.scss
+@media (#{"(a) or (b)"}) {x {y: z}}
+
+<===> interpolated/or/lowercase/output.css
+@media ((a) or (b)) {
+  x {
+    y: z;
+  }
+}
+
+<===> interpolated/or/mixed_case/input.scss
+@media (#{"(a) oR (b)"}) {x {y: z}}
+
+<===> interpolated/or/mixed_case/output.css
+@media ((a) oR (b)) {
+  x {
+    y: z;
+  }
+}

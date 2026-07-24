@@ -1,0 +1,9 @@
+<===> issue_683/input.scss
+foo {
+    filter: progid:DXImageTransform.Microsoft.AlphaImageLoader(src="data:image/png;base64,ABCD",sizingMethod=crop);
+}
+
+<===> issue_683/output.css
+foo {
+  filter: progid:DXImageTransform.Microsoft.AlphaImageLoader(src="data:image/png;base64,ABCD",sizingMethod=crop);
+}

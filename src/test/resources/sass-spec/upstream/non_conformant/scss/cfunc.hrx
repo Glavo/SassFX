@@ -1,0 +1,8 @@
+<===> cfunc/input.scss
+div {
+  blah: say-something();
+}
+<===> cfunc/output.css
+div {
+  blah: say-something();
+}

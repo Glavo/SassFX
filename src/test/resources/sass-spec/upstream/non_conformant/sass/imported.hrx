@@ -1,0 +1,27 @@
+<===> imported/input.scss
+@import "imported.sass";
+
+<===> imported/imported.sass
+div
+	a
+		color: red
+	li
+		color: green
+<===> imported/output.css
+div a {
+  color: red;
+}
+div li {
+  color: green;
+}
+
+<===> imported/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import "imported.sass";
+  |         ^^^^^^^^^^^^^^^
+  '
+    input.scss 1:9  root stylesheet

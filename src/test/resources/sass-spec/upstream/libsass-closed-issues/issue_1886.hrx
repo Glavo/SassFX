@@ -1,0 +1,8 @@
+<===> issue_1886/input.scss
+body {
+  background: url()
+}
+<===> issue_1886/output.css
+body {
+  background: url();
+}

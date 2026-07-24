@@ -1,0 +1,17 @@
+<===> issue_1960/input.scss
+foo:not(.missing) {
+  a: b;
+
+  &:hover { c: d; }
+}
+
+bar {
+  @extend .missing;
+}
+<===> issue_1960/output.css
+foo:not(.missing):not(bar) {
+  a: b;
+}
+foo:not(.missing):not(bar):hover {
+  c: d;
+}

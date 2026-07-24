@@ -1,0 +1,8 @@
+<===> 082_test_not_remains_at_end_of_selector/input.scss
+.foo:not(.bar) {a: b}
+.baz {@extend .foo}
+
+<===> 082_test_not_remains_at_end_of_selector/output.css
+.foo:not(.bar), .baz:not(.bar) {
+  a: b;
+}

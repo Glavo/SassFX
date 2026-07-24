@@ -1,0 +1,10 @@
+<===> top_level_parent/input.scss
+@use "plain";
+
+<===> top_level_parent/plain.css
+& {a: b}
+
+<===> top_level_parent/output.css
+& {
+  a: b;
+}

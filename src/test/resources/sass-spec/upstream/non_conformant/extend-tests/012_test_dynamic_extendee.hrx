@@ -1,0 +1,8 @@
+<===> 012_test_dynamic_extendee/input.scss
+.foo {a: b}
+.bar {@extend #{".foo"}}
+
+<===> 012_test_dynamic_extendee/output.css
+.foo, .bar {
+  a: b;
+}

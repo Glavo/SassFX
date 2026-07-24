@@ -1,0 +1,9 @@
+<===> issue_2056/input.scss
+:foobar(.baz) {
+    color: red;
+}
+
+<===> issue_2056/output.css
+:foobar(.baz) {
+  color: red;
+}

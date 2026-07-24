@@ -1,0 +1,8 @@
+<===> 008_test_multiple_extends_with_single_extender_and_single_target/input.scss
+.foo.bar {a: b}
+.baz {@extend .foo; @extend .bar}
+
+<===> 008_test_multiple_extends_with_single_extender_and_single_target/output.css
+.foo.bar, .baz {
+  a: b;
+}

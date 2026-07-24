@@ -1,0 +1,10 @@
+<===> 03_simple_variable/input.scss
+$color: red;
+
+a {
+  color: $color;
+}
+<===> 03_simple_variable/output.css
+a {
+  color: red;
+}

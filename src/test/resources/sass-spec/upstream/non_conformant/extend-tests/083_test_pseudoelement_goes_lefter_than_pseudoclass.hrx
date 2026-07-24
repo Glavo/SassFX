@@ -1,0 +1,8 @@
+<===> 083_test_pseudoelement_goes_lefter_than_pseudoclass/input.scss
+.foo::bar {a: b}
+.baz:bang {@extend .foo}
+
+<===> 083_test_pseudoelement_goes_lefter_than_pseudoclass/output.css
+.foo::bar, .baz:bang::bar {
+  a: b;
+}

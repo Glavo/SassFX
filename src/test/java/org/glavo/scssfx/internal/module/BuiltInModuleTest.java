@@ -71,7 +71,7 @@ final class BuiltInModuleTest {
                           width: 1.5rem;
                           color: #036;
                           round: -2;
-                          pi: 3.141592653589793;
+                          pi: 3.1415926536;
                           unitless: true;
                           joined: [a, b];
                           item: b;

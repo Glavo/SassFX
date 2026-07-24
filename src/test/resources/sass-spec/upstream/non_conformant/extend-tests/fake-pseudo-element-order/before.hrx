@@ -1,0 +1,8 @@
+<===> before/input.scss
+%a:before {x: y}
+b:c {@extend %a}
+
+<===> before/output.css
+b:c:before {
+  x: y;
+}

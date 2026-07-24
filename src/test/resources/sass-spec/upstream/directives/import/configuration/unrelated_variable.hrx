@@ -1,0 +1,27 @@
+<===> unrelated_variable/input.scss
+$a: configured;
+$d: other;
+@import "midstream";
+
+<===> unrelated_variable/_midstream.scss
+@forward "upstream";
+
+<===> unrelated_variable/_upstream.scss
+$a: original !default;
+b {c: $a}
+
+<===> unrelated_variable/output.css
+b {
+  c: configured;
+}
+
+<===> unrelated_variable/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+3 | @import "midstream";
+  |         ^^^^^^^^^^^
+  '
+    input.scss 3:9  root stylesheet

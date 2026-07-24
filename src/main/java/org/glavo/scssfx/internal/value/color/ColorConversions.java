@@ -642,8 +642,17 @@ public final class ColorConversions {
                 hue = (hue + 180.0) % 360.0;
                 saturation = Math.abs(saturation);
             }
-            // Legacy HSL colors retain a defined hue even when saturation is zero.
-            return new ConvertedChannels(hue, Math.abs(saturation), lightness * 100.0, alpha);
+            // Zero saturation makes hue powerless; convert it to a missing channel
+            // like dart-sass so later adjustments can reject modifying it.
+            @Nullable Double resolvedHue = SassFuzzy.equals(Math.abs(saturation), 0.0)
+                    ? null
+                    : hue;
+            return new ConvertedChannels(
+                    resolvedHue,
+                    Math.abs(saturation),
+                    lightness * 100.0,
+                    alpha
+            );
         }
 
         var whiteness = min * 100.0;

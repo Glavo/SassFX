@@ -1,0 +1,11 @@
+<===> 179_test_weird_added_space/input.scss
+$value : bip;
+
+foo {
+  bar: -moz-#{$value};
+}
+
+<===> 179_test_weird_added_space/output.css
+foo {
+  bar: -moz-bip;
+}

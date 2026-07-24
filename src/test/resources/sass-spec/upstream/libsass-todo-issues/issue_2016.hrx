@@ -1,0 +1,9 @@
+<===> issue_2016/input.scss
+$_: ___((Classes and IDs must follow a specific grammar. And this thing here doesn’t.));
+<===> issue_2016/error
+Error: Expected identifier.
+  ,
+1 | $_: ___((Classes and IDs must follow a specific grammar. And this thing here doesn’t.));
+  |                                                         ^
+  '
+  input.scss 1:57  root stylesheet

@@ -1,0 +1,15 @@
+<===> issue_1260/input.scss
+@use "sass:list";
+$EQ-Selectors: ();
+
+.el {
+    $EQ-Selectors: list.append($EQ-Selectors, &, 'comma') !global;
+}
+
+html:before {
+  content: "#{$EQ-Selectors}";
+}
+<===> issue_1260/output.css
+html:before {
+  content: ".el";
+}

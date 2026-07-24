@@ -1,0 +1,12 @@
+<===> from_variable/input.scss
+$a: configured;
+@use "other" with ($a: $a);
+
+<===> from_variable/_other.scss
+$a: original a !default;
+b {c: $a}
+
+<===> from_variable/output.css
+b {
+  c: configured;
+}

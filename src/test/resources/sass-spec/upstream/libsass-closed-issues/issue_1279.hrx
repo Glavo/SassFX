@@ -1,0 +1,20 @@
+<===> issue_1279/input.scss
+@use "sass:string";
+@function noop($string) {
+  @return $string;
+}
+
+.foo {
+  upper: string.to-upper-case('f') + string.slice('foo', 2);
+  lower: string.to-lower-case('f') + string.slice('foo', 2);
+  user-upper: string.to-upper-case('f') + noop('oo');
+  user-lower: string.to-lower-case('f') + noop('oo');
+}
+
+<===> issue_1279/output.css
+.foo {
+  upper: "Foo";
+  lower: "foo";
+  user-upper: "Foo";
+  user-lower: "foo";
+}

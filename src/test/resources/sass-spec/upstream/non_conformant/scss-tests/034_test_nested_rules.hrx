@@ -1,0 +1,12 @@
+<===> 034_test_nested_rules/input.scss
+foo {
+  bar {baz {a: b}}
+  bang {bip {a: b}}}
+
+<===> 034_test_nested_rules/output.css
+foo bar baz {
+  a: b;
+}
+foo bang bip {
+  a: b;
+}

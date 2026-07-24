@@ -1,0 +1,17 @@
+<===> 078_test_mixin_list_of_pairs_splat_treated_as_list/input.scss
+@mixin foo($a, $b, $c) {
+  a: $a;
+  b: $b;
+  c: $c;
+}
+
+.foo {
+  @include foo((a 1, b 2, c 3)...);
+}
+
+<===> 078_test_mixin_list_of_pairs_splat_treated_as_list/output.css
+.foo {
+  a: a 1;
+  b: b 2;
+  c: c 3;
+}

@@ -1,0 +1,12 @@
+<===> issue_1061/input.scss
+a {
+  &.div,
+  &.span {
+    display: block;
+  }
+}
+
+<===> issue_1061/output.css
+a.div, a.span {
+  display: block;
+}

@@ -1,0 +1,27 @@
+<===> sass-script/input.scss
+$foo: null;
+
+@mixin bar() {
+   bar: $foo;
+}
+
+@mixin baz() {
+   baz: $foo !important;
+}
+
+foo {
+  baz: $foo;
+}
+
+bar {
+  @include bar;
+}
+
+baz {
+  @include baz;
+}
+
+<===> sass-script/output.css
+baz {
+  baz: !important;
+}

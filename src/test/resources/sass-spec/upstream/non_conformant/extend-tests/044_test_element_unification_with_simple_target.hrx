@@ -1,0 +1,8 @@
+<===> 044_test_element_unification_with_simple_target/input.scss
+%-a .foo.bar {a: b}
+a {@extend .foo} -a {@extend %-a}
+
+<===> 044_test_element_unification_with_simple_target/output.css
+-a .foo.bar, -a a.bar {
+  a: b;
+}

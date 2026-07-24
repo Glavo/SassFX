@@ -1,0 +1,142 @@
+<===> issue_1488/input.scss
+@use "sass:meta";
+@function foo($arg2) {
+  @return meta.type-of($arg2);
+}
+
+@function foo_($arg2...) {
+  @return meta.type-of($arg2);
+}
+
+@function bar($arg1, $arg2) {
+  @return meta.type-of($arg1) + "::" + meta.type-of($arg2);
+}
+
+@function bar_($arg1, $arg2...) {
+  @return meta.type-of($arg1) + "::" + meta.type-of($arg2);
+}
+
+foo {
+  foo: foo(one);
+  foo: foo(one...);
+  bar: bar(one, two);
+  bar: bar(one, two...);
+  foo: meta.call('foo', one);
+  foo: meta.call('foo', one...);
+  bar: meta.call('bar', one, two);
+  bar: meta.call('bar', one, two...);
+}
+
+bar {
+  foo: foo_(one);
+  foo: foo_(one...);
+  bar: bar_(one, two);
+  bar: bar_(one, two...);
+  foo: meta.call('foo_', one);
+  foo: meta.call('foo_', one...);
+  bar: meta.call('bar_', one, two);
+  bar: meta.call('bar_', one, two...);
+}
+<===> issue_1488/output.css
+foo {
+  foo: string;
+  foo: string;
+  bar: string::string;
+  bar: string::string;
+  foo: string;
+  foo: string;
+  bar: string::string;
+  bar: string::string;
+}
+
+bar {
+  foo: arglist;
+  foo: arglist;
+  bar: string::arglist;
+  bar: string::arglist;
+  foo: arglist;
+  foo: arglist;
+  bar: string::arglist;
+  bar: string::arglist;
+}
+
+<===> issue_1488/warning
+DEPRECATION WARNING [call-string]: Passing a string to call() is deprecated and will be illegal in Dart Sass 2.0.0.
+
+Recommendation: call(get-function("foo"))
+
+   ,
+23 |   foo: meta.call('foo', one);
+   |        ^^^^^^^^^^^^^^^^^^^^^
+   '
+    input.scss 23:8  root stylesheet
+
+DEPRECATION WARNING [call-string]: Passing a string to call() is deprecated and will be illegal in Dart Sass 2.0.0.
+
+Recommendation: call(get-function("foo"))
+
+   ,
+24 |   foo: meta.call('foo', one...);
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^
+   '
+    input.scss 24:8  root stylesheet
+
+DEPRECATION WARNING [call-string]: Passing a string to call() is deprecated and will be illegal in Dart Sass 2.0.0.
+
+Recommendation: call(get-function("bar"))
+
+   ,
+25 |   bar: meta.call('bar', one, two);
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   '
+    input.scss 25:8  root stylesheet
+
+DEPRECATION WARNING [call-string]: Passing a string to call() is deprecated and will be illegal in Dart Sass 2.0.0.
+
+Recommendation: call(get-function("bar"))
+
+   ,
+26 |   bar: meta.call('bar', one, two...);
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   '
+    input.scss 26:8  root stylesheet
+
+DEPRECATION WARNING [call-string]: Passing a string to call() is deprecated and will be illegal in Dart Sass 2.0.0.
+
+Recommendation: call(get-function("foo_"))
+
+   ,
+34 |   foo: meta.call('foo_', one);
+   |        ^^^^^^^^^^^^^^^^^^^^^^
+   '
+    input.scss 34:8  root stylesheet
+
+DEPRECATION WARNING [call-string]: Passing a string to call() is deprecated and will be illegal in Dart Sass 2.0.0.
+
+Recommendation: call(get-function("foo_"))
+
+   ,
+35 |   foo: meta.call('foo_', one...);
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+   '
+    input.scss 35:8  root stylesheet
+
+DEPRECATION WARNING [call-string]: Passing a string to call() is deprecated and will be illegal in Dart Sass 2.0.0.
+
+Recommendation: call(get-function("bar_"))
+
+   ,
+36 |   bar: meta.call('bar_', one, two);
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   '
+    input.scss 36:8  root stylesheet
+
+DEPRECATION WARNING [call-string]: Passing a string to call() is deprecated and will be illegal in Dart Sass 2.0.0.
+
+Recommendation: call(get-function("bar_"))
+
+   ,
+37 |   bar: meta.call('bar_', one, two...);
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   '
+    input.scss 37:8  root stylesheet

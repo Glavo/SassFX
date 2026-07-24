@@ -1,0 +1,18 @@
+<===> issue_1269/input.scss
+@use "sass:list";
+@use "sass:meta";
+
+@function push($list, $items...) {
+  @return list.join($list, $items, $separator: auto);
+}
+
+.test {
+  $list: push(1 2 3, 4, 5);
+  list: meta.inspect($list);
+  value: list.nth($list, 4);
+}
+<===> issue_1269/output.css
+.test {
+  list: 1 2 3 4 5;
+  value: 4;
+}

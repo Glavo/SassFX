@@ -1,0 +1,18 @@
+<===> mixin-content-with-no-block/input.scss
+@mixin foo {
+  .foo {
+    color: red;
+    @content;
+  }
+}
+
+div.a {
+  @include foo() {
+    hey: now;
+  }
+}
+<===> mixin-content-with-no-block/output.css
+div.a .foo {
+  color: red;
+  hey: now;
+}

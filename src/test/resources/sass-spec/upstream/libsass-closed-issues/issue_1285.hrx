@@ -1,0 +1,35 @@
+<===> issue_1285/options.yml
+:warning_todo:
+  - libsass
+
+<===> issue_1285/input.scss
+@use "sass:color";
+.container {
+  @for $i from 1 through 3 {
+    @at-root .box-#{$i} {
+      color: color.adjust(red,$lightness: -($i * 5%));
+    }
+  }
+
+ // Control
+ @at-root .outside-child {
+   background-color: blue;
+  }
+}
+
+<===> issue_1285/output.css
+.box-1 {
+  color: rgb(229.5, 0, 0);
+}
+
+.box-2 {
+  color: #cc0000;
+}
+
+.box-3 {
+  color: rgb(178.5, 0, 0);
+}
+
+.outside-child {
+  background-color: blue;
+}

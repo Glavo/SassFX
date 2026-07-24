@@ -1,0 +1,44 @@
+<===> null/input.scss
+@use "sass:list";
+@use "sass:meta";
+$x: 2;
+
+div {
+  $x: null;
+  a: list.length(null null null);
+  b: #{null};
+  d: meta.type-of($x);
+  e: null == null;
+  f: -null;
+  g: -fudge;
+  h: (null null null);
+  i: froo(null, 4);
+  j: (null), (null), 3, 4;
+  k: list.length(((null), (null), 3, 4));
+
+  a2: list.length($x $x $x);
+  b2: #{$x};
+  e2: $x == null;
+  f2: -$x;
+  h2: ($x $x $x);
+  i2: froo($x, 4);
+  j2: ($x), ($x), 3, 4;
+  k2: list.length((($x), ($x), 3, 4));
+}
+<===> null/output.css
+div {
+  a: 3;
+  d: null;
+  e: true;
+  f: -null;
+  g: -fudge;
+  i: froo(, 4);
+  j: 3, 4;
+  k: 4;
+  a2: 3;
+  e2: true;
+  f2: -;
+  i2: froo(, 4);
+  j2: 3, 4;
+  k2: 4;
+}

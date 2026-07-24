@@ -1,0 +1,159 @@
+<===> nest/input.scss
+a {b: selector-nest(c, d)}
+
+<===> nest/output.css
+a {
+  b: c d;
+}
+
+<===> nest/warning
+DEPRECATION WARNING [global-builtin]: Global built-in functions are deprecated and will be removed in Dart Sass 3.0.0.
+Use selector.nest instead.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | a {b: selector-nest(c, d)}
+  |       ^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 1:7  root stylesheet
+
+<===> append/input.scss
+a {b: selector-append(c, d)}
+
+<===> append/output.css
+a {
+  b: cd;
+}
+
+<===> append/warning
+DEPRECATION WARNING [global-builtin]: Global built-in functions are deprecated and will be removed in Dart Sass 3.0.0.
+Use selector.append instead.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | a {b: selector-append(c, d)}
+  |       ^^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 1:7  root stylesheet
+
+<===> replace/input.scss
+a {b: selector-replace(c, c, d)}
+
+<===> replace/output.css
+a {
+  b: d;
+}
+
+<===> replace/warning
+DEPRECATION WARNING [global-builtin]: Global built-in functions are deprecated and will be removed in Dart Sass 3.0.0.
+Use selector.replace instead.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | a {b: selector-replace(c, c, d)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 1:7  root stylesheet
+
+<===> extend/input.scss
+a {b: selector-extend(c, c, d)}
+
+<===> extend/output.css
+a {
+  b: c, d;
+}
+
+<===> extend/warning
+DEPRECATION WARNING [global-builtin]: Global built-in functions are deprecated and will be removed in Dart Sass 3.0.0.
+Use selector.extend instead.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | a {b: selector-extend(c, c, d)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 1:7  root stylesheet
+
+<===> unify/input.scss
+a {b: selector-unify(".c", ".d")}
+
+<===> unify/output.css
+a {
+  b: .c.d;
+}
+
+<===> unify/warning
+DEPRECATION WARNING [global-builtin]: Global built-in functions are deprecated and will be removed in Dart Sass 3.0.0.
+Use selector.unify instead.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | a {b: selector-unify(".c", ".d")}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 1:7  root stylesheet
+
+<===> is_superselector/input.scss
+a {b: is-superselector(c, d)}
+
+<===> is_superselector/output.css
+a {
+  b: false;
+}
+
+<===> is_superselector/warning
+DEPRECATION WARNING [global-builtin]: Global built-in functions are deprecated and will be removed in Dart Sass 3.0.0.
+Use selector.is-superselector instead.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | a {b: is-superselector(c, d)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 1:7  root stylesheet
+
+<===> simple_selectors/input.scss
+a {b: simple-selectors(".c.d")}
+
+<===> simple_selectors/output.css
+a {
+  b: .c, .d;
+}
+
+<===> simple_selectors/warning
+DEPRECATION WARNING [global-builtin]: Global built-in functions are deprecated and will be removed in Dart Sass 3.0.0.
+Use selector.simple-selectors instead.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | a {b: simple-selectors(".c.d")}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 1:7  root stylesheet
+
+<===> parse/input.scss
+a {b: selector-parse(".c, .d")}
+
+<===> parse/output.css
+a {
+  b: .c, .d;
+}
+
+<===> parse/warning
+DEPRECATION WARNING [global-builtin]: Global built-in functions are deprecated and will be removed in Dart Sass 3.0.0.
+Use selector.parse instead.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | a {b: selector-parse(".c, .d")}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 1:7  root stylesheet

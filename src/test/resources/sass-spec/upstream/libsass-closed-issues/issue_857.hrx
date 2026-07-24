@@ -1,0 +1,17 @@
+<===> issue_857/input.scss
+@use "sass:list";
+$list: "item-1" "item-2" "item-3";
+
+#hello {
+  @if list.length($list) % 2 == 0 {
+    color: blue;
+  }
+
+  @else {
+    color: red;
+  }
+}
+<===> issue_857/output.css
+#hello {
+  color: red;
+}

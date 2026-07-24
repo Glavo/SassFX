@@ -1,0 +1,11 @@
+<===> issue_890/input.scss
+.foo {
+  border: {
+    right: 10px solid /*here is a comment*/;
+  }
+}
+
+<===> issue_890/output.css
+.foo {
+  border-right: 10px solid;
+}

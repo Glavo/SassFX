@@ -1,0 +1,12 @@
+<===> issue_1459/input.scss
+@font-face {
+  font-family: "Font Name";
+  src: local("Arial");
+  unicode-range: U+270C;
+}
+<===> issue_1459/output.css
+@font-face {
+  font-family: "Font Name";
+  src: local("Arial");
+  unicode-range: U+270C;
+}

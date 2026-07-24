@@ -1,0 +1,8 @@
+<===> named/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector($super: "c", $sub: "c.d")}
+
+<===> named/output.css
+a {
+  b: true;
+}

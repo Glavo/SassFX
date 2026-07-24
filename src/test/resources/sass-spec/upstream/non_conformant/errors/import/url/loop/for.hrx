@@ -1,0 +1,8 @@
+<===> for/input.scss
+@for $i from 1 through 2 {
+  @import url("http://www.libsass.org");
+}
+
+<===> for/output.css
+@import url("http://www.libsass.org");
+@import url("http://www.libsass.org");

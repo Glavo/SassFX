@@ -1,0 +1,30 @@
+<===> issue_151/input.scss
+@use "sass:color";
+div.colors {
+  background: color.grayscale(red);
+  background: saturate(red);
+  background: color.invert(red);
+  background: color.alpha(red);
+  color: color.grayscale(#369);
+  color: saturate(#369);
+  color: color.adjust(#369, $saturation: 20%);
+  color: color.invert(#369);
+  color: color.alpha(#369);
+}
+
+div.numbers {
+  filter: grayscale(30%);
+  filter: saturate(30%);
+  filter: invert(30%);
+  -webkit-filter: grayscale(0.3);
+  -webkit-filter: saturate(0.3);
+  -webkit-filter: invert(0.3);
+}
+
+<===> issue_151/error
+Error: $amount: red is not a number.
+  ,
+4 |   background: saturate(red);
+  |               ^^^^^^^^^^^^^
+  '
+  input.scss 4:15  root stylesheet

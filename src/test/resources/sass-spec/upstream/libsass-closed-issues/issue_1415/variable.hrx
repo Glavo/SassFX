@@ -1,0 +1,10 @@
+<===> variable/input.scss
+$parent: &;
+
+@if $parent {
+  foo {
+    foo: bar;
+  }
+}
+
+<===> variable/output.css

@@ -1,0 +1,10 @@
+<===> issue_1819/input.scss
+@use "sass:meta";
+@use "sass:selector";
+foo {
+  bar: meta.type-of(selector.unify('p', 'a'));
+}
+<===> issue_1819/output.css
+foo {
+  bar: null;
+}

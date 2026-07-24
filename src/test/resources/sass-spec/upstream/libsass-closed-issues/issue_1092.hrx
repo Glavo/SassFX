@@ -1,0 +1,24 @@
+<===> issue_1092/input.scss
+$bar: "";
+$baz: " ";
+a { a: foo #{""}; }
+b { b: foo #{" "}; }
+c { c: foo #{$bar}; }
+d { d: foo #{$baz}; }
+
+<===> issue_1092/output.css
+a {
+  a: foo;
+}
+
+b {
+  b: foo  ;
+}
+
+c {
+  c: foo;
+}
+
+d {
+  d: foo  ;
+}

@@ -1,0 +1,13 @@
+<===> 064_test_mixin_var_args/input.scss
+@mixin foo($a, $b...) {
+  a: $a;
+  b: $b;
+}
+
+.foo {@include foo(1, 2, 3, 4)}
+
+<===> 064_test_mixin_var_args/output.css
+.foo {
+  a: 1;
+  b: 2, 3, 4;
+}

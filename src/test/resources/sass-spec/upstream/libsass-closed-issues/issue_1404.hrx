@@ -1,0 +1,13 @@
+<===> issue_1404/input.scss
+@use "sass:meta";
+.test {
+    color: #aaabbb--1-2-a;
+    color: meta.type-of(#aaabbb--1-2-a);
+    color: meta.type-of(#aaabbb--1-2);
+}
+<===> issue_1404/output.css
+.test {
+  color: #aaabbb--1-2-a;
+  color: string;
+  color: string;
+}

@@ -1,0 +1,107 @@
+<===> black/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(0% 0 0deg), prophoto-rgb)}
+
+<===> black/output.css
+a {
+  b: color(prophoto-rgb 0 0 0);
+}
+
+<===> white/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(100% 0 0deg), prophoto-rgb)}
+
+<===> white/output.css
+a {
+  b: color(prophoto-rgb 1 1 1);
+}
+
+<===> gray/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(50% 0 0deg), prophoto-rgb)}
+
+<===> gray/output.css
+a {
+  b: color(prophoto-rgb 0.3149802625 0.3149802625 0.3149802625);
+}
+
+<===> middle/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(10% 0.1 30deg), prophoto-rgb)}
+
+<===> middle/output.css
+a {
+  b: color(prophoto-rgb 0.050609646 -0.0137951632 -0.0074760684);
+}
+
+<===> float/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(10.123456789% 0.198765432 30.192837465deg), prophoto-rgb)}
+
+<===> float/output.css
+a {
+  b: color(prophoto-rgb 0.0841896008 -0.0467123987 -0.0138059119);
+}
+
+<===> out_of_range/near/input.scss
+@use "sass:color";
+a {b: color.to-space(color.change(oklch(0% 1 0deg), $lightness: -10%), prophoto-rgb)}
+
+<===> out_of_range/near/output.css
+a {
+  b: color(prophoto-rgb 0.1937443812 -0.1519484557 -0.0725277722);
+}
+
+<===> out_of_range/far/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(10% 999999 0deg), prophoto-rgb)}
+
+<===> out_of_range/far/output.css
+a {
+  b: color(prophoto-rgb 2922139901.256741 -1810418671.4016082 -574654054.8066751);
+}
+
+<===> alpha/partial/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(10% 0.1 30deg / 0.4), prophoto-rgb)}
+
+<===> alpha/partial/output.css
+a {
+  b: color(prophoto-rgb 0.050609646 -0.0137951632 -0.0074760684 / 0.4);
+}
+
+<===> alpha/transparent/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(10% 0.1 30deg / 0.0), prophoto-rgb)}
+
+<===> alpha/transparent/output.css
+a {
+  b: color(prophoto-rgb 0.050609646 -0.0137951632 -0.0074760684 / 0);
+}
+
+<===> missing/lightness/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(none 0.1 30deg), prophoto-rgb)}
+
+<===> missing/lightness/output.css
+a {
+  b: color(prophoto-rgb 0.0010727236 0.000279135 -0.0088387805);
+}
+
+<===> missing/chroma/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(10% none 30deg), prophoto-rgb)}
+
+<===> missing/chroma/output.css
+a {
+  b: color(prophoto-rgb 0.016 0.016 0.016);
+}
+
+<===> missing/hue/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(10% 0.1 none), prophoto-rgb)}
+
+<===> missing/hue/output.css
+a {
+  b: color(prophoto-rgb 0.0479066366 -0.0113980128 0.0096553515);
+}

@@ -1,0 +1,8 @@
+<===> css_invisible_comments/input.scss
+foo {
+  a: d; }
+
+<===> css_invisible_comments/output.css
+foo {
+  a: d;
+}

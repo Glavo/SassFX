@@ -1,0 +1,16 @@
+<===> default-vars-in-default-params/input.scss
+$y: why;
+
+@mixin foo($x, $y: $y) {
+  stuff: $x $y;
+}
+
+div {
+  why: $y;
+  @include foo(ecks);
+}
+<===> default-vars-in-default-params/output.css
+div {
+  why: why;
+  stuff: ecks why;
+}

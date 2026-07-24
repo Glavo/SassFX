@@ -1,0 +1,17 @@
+<===> placeholder-with-media/input.scss
+%a {
+  @media only screen and (max-width: 100px) {
+    color: red;
+  }
+}
+
+b {
+  @extend %a;
+}
+
+<===> placeholder-with-media/output.css
+@media only screen and (max-width: 100px) {
+  b {
+    color: red;
+  }
+}

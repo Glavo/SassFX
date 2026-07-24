@@ -1,0 +1,8 @@
+<===> 013_test_dynamic_extendee/input.scss
+[baz^="blip12px"] {a: b}
+.bar {@extend [baz^="blip#{12px}"]}
+
+<===> 013_test_dynamic_extendee/output.css
+[baz^=blip12px], .bar {
+  a: b;
+}

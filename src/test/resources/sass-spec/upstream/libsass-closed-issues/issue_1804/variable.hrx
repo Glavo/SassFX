@@ -1,0 +1,12 @@
+<===> variable/input.scss
+$foo: 2px;
+$bar: 5in;
+
+foo {
+  bar: #{($foo*$bar)};
+}
+
+<===> variable/output.css
+foo {
+  bar: calc(10px * 1in);
+}

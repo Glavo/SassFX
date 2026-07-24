@@ -1,0 +1,12 @@
+<===> css_property_comments/input.scss
+.foo {
+  /* Foo
+   * Bar */
+  a: b; }
+
+<===> css_property_comments/output.css
+.foo {
+  /* Foo
+   * Bar */
+  a: b;
+}

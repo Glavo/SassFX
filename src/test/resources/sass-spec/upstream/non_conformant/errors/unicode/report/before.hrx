@@ -1,0 +1,9 @@
+<===> before/input.scss
+öüäöüäöü{a:c
+<===> before/error
+Error: expected "}".
+  ,
+1 | öüäöüäöü{a:c
+  |             ^
+  '
+  input.scss 1:13  root stylesheet

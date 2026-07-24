@@ -1,0 +1,18 @@
+<===> issue_1944/input.scss
+$count: 0;
+
+@function foo() {
+    $count: $count + 1 !global;
+    $selector: ('.bar' 'baz');
+    @return $selector;
+}
+
+
+#{foo()} {
+    count: $count;
+}
+
+<===> issue_1944/output.css
+.bar baz {
+  count: 1;
+}

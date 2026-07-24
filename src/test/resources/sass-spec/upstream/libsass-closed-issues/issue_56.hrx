@@ -1,0 +1,12 @@
+<===> issue_56/input.scss
+@media (min-width: 980px) {
+    a {
+        color: red;
+    }
+}
+<===> issue_56/output.css
+@media (min-width: 980px) {
+  a {
+    color: red;
+  }
+}

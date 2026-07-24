@@ -1,0 +1,15 @@
+<===> at-root-alone-itpl/input.scss
+test {
+  @at-root {
+    #{&} {
+      foo {
+        bar: baz;
+      }
+    }
+  }
+}
+
+<===> at-root-alone-itpl/output.css
+test foo {
+  bar: baz;
+}

@@ -1,0 +1,14 @@
+<===> concat/input.scss
+div {
+  a: hello + "goodbye";
+  b: "hello" + goodbye;
+  c: 3 + "hello";
+  d: "hello" + 3;
+}
+<===> concat/output.css
+div {
+  a: hellogoodbye;
+  b: "hellogoodbye";
+  c: "3hello";
+  d: "hello3";
+}

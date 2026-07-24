@@ -1,0 +1,19 @@
+<===> 01_inline/input.scss
+.result {
+  output: "l\\ite\ral";
+  output: #{"l\\ite\ral"};
+  output: "[#{"l\\ite\ral"}]";
+  output: "#{"l\\ite\ral"}";
+  output: '#{"l\\ite\ral"}';
+  output: "['#{"l\\ite\ral"}']";
+}
+
+<===> 01_inline/output.css
+.result {
+  output: "l\\iteral";
+  output: l\iteral;
+  output: "[l\\iteral]";
+  output: "l\\iteral";
+  output: "l\\iteral";
+  output: "['l\\iteral']";
+}

@@ -1,0 +1,15 @@
+<===> issue_1098/input.scss
+div {
+ opacity: 1\9;
+ width: 500px\9;
+ color: #f00000\9\0;
+ color: #f00000\9\0\;
+}
+
+<===> issue_1098/output.css
+div {
+  opacity: 1\9 ;
+  width: 500px\9 ;
+  color: #f00000\9 \0 ;
+  color: #f00000\9 \0 \;;
+}

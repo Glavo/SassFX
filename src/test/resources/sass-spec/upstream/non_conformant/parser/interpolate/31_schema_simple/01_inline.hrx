@@ -1,0 +1,19 @@
+<===> 01_inline/input.scss
+.result {
+  output: "["'foo'"]";
+  output: #{"["'foo'"]"};
+  output: "[#{"["'foo'"]"}]";
+  output: "#{"["'foo'"]"}";
+  output: '#{"["'foo'"]"}';
+  output: "['#{"["'foo'"]"}']";
+}
+
+<===> 01_inline/output.css
+.result {
+  output: "[" "foo" "]";
+  output: [ foo ];
+  output: "[[ foo ]]";
+  output: "[ foo ]";
+  output: "[ foo ]";
+  output: "['[ foo ]']";
+}

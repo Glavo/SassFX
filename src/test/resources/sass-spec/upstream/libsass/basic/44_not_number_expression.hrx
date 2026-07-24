@@ -1,0 +1,25 @@
+<===> 44_not_number_expression/input.scss
+@if 2 {
+  div {
+    background: green;
+  }
+}
+@if not 2 {
+  div {
+    background: red;
+  }
+}
+@if not not 2 {
+  div {
+    background: blue;
+  }
+}
+
+<===> 44_not_number_expression/output.css
+div {
+  background: green;
+}
+
+div {
+  background: blue;
+}

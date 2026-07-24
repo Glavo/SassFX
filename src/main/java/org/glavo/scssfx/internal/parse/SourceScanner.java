@@ -142,7 +142,8 @@ final class SourceScanner {
         if (scan(expected)) {
             return;
         }
-        throw error("Expected \"" + printable(expected) + "\".");
+        // Lowercase "expected" matches dart-sass string_scanner _fail().
+        throw error("expected \"" + printable(expected) + "\".");
     }
 
     /// Consumes and requires the given text.
@@ -154,7 +155,8 @@ final class SourceScanner {
         if (scan(expected)) {
             return;
         }
-        throw error("Expected \"" + expected + "\".");
+        // Lowercase "expected" matches dart-sass string_scanner _fail().
+        throw error("expected \"" + expected + "\".");
     }
 
     /// Returns source text from the given offset to the current position.

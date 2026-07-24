@@ -1,0 +1,19 @@
+<===> 01_inline/input.scss
+.result {
+  output: "\"";
+  output: #{"\""};
+  output: "[#{"\""}]";
+  output: "#{"\""}";
+  output: '#{"\""}';
+  output: "['#{"\""}']";
+}
+
+<===> 01_inline/output.css
+.result {
+  output: '"';
+  output: ";
+  output: '["]';
+  output: '"';
+  output: '"';
+  output: "['\"']";
+}

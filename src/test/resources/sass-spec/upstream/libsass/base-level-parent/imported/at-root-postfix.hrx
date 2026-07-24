@@ -1,0 +1,28 @@
+<===> at-root-postfix/input.scss
+@import "include.scss";
+<===> at-root-postfix/include.scss
+@at-root {
+  &post {
+    foo {
+      bar: baz;
+    }
+  }
+}
+<===> at-root-postfix/error
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import "include.scss";
+  |         ^^^^^^^^^^^^^^
+  '
+    input.scss 1:9  root stylesheet
+
+Error: A top-level selector may not contain a parent selector with a suffix.
+  ,
+2 |   &post {
+  |   ^^^^^
+  '
+  include.scss 2:3  @import
+  input.scss 1:9    root stylesheet

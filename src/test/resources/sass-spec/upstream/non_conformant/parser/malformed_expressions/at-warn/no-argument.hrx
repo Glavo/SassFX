@@ -1,0 +1,10 @@
+<===> no-argument/input.scss
+@warn;
+
+<===> no-argument/error
+Error: Expected expression.
+  ,
+1 | @warn;
+  |      ^
+  '
+  input.scss 1:6  root stylesheet

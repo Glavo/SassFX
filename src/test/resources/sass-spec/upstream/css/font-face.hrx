@@ -1,0 +1,96 @@
+<===> bubble/rules/input.scss
+a {
+  b: c;
+  @font-face { d: e }
+}
+
+<===> bubble/rules/output.css
+a {
+  b: c;
+}
+@font-face {
+  d: e;
+}
+
+<===> bubble/empty/input.scss
+a {
+  @font-face {/**/}
+}
+
+<===> bubble/empty/output.css
+@font-face { /**/ }
+
+<===> bubble/in-mixin/input.scss
+@mixin a {
+  @font-face { b: c }
+}
+d {
+  e: f;
+  @include a;
+}
+
+<===> bubble/in-mixin/output.css
+d {
+  e: f;
+}
+@font-face {
+  b: c;
+}
+
+<===> bubble/deeply-nested/input.scss
+a { b { c { @font-face { e: f } g: h; } } }
+
+<===> bubble/deeply-nested/output.css
+@font-face {
+  e: f;
+}
+a b c {
+  g: h;
+}
+
+<===> bubble/loaded/import/input.scss
+c {
+  @import 'upstream';
+  d: e;
+}
+
+<===> bubble/loaded/import/upstream.scss
+@font-face { a: b }
+
+<===> bubble/loaded/import/output.css
+@font-face {
+  a: b;
+}
+c {
+  d: e;
+}
+
+<===> bubble/loaded/import/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+2 |   @import 'upstream';
+  |           ^^^^^^^^^^
+  '
+    input.scss 2:11  root stylesheet
+
+<===> bubble/loaded/meta-load-css/input.scss
+@use 'sass:meta';
+
+c {
+  @include meta.load-css('upstream');
+  d: e;
+}
+
+<===> bubble/loaded/meta-load-css/upstream.scss
+@font-face { a: b }
+
+<===> bubble/loaded/meta-load-css/output.css
+@font-face {
+  a: b;
+}
+c {
+  d: e;
+}

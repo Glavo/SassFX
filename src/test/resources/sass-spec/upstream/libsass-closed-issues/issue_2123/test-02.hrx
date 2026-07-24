@@ -1,0 +1,7 @@
+<===> test-02/input.scss
+@font-face { font-family:'foo';src:url(//foo.bar) format('woff2'); }
+<===> test-02/output.css
+@font-face {
+  font-family: "foo";
+  src: url(//foo.bar) format("woff2");
+}

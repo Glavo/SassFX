@@ -1,0 +1,6 @@
+<===> issue_67/input.scss
+foo {bar: 70% - 40%}
+<===> issue_67/output.css
+foo {
+  bar: 30%;
+}

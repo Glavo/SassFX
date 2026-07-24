@@ -1,0 +1,13 @@
+<===> 139_test_at_root_in_bubbled_media/input.scss
+.foo {
+  @media screen {
+    @at-root .bar {a: b}
+  }
+}
+
+<===> 139_test_at_root_in_bubbled_media/output.css
+@media screen {
+  .bar {
+    a: b;
+  }
+}

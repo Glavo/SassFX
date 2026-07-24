@@ -1,0 +1,10 @@
+<===> issue_2202/input.scss
+@customAtRule;
+test {
+  content: bar
+}
+<===> issue_2202/output.css
+@customAtRule;
+test {
+  content: bar;
+}

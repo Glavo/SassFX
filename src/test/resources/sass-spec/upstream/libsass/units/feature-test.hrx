@@ -1,0 +1,23 @@
+<===> feature-test/input.scss
+@use "sass:meta";
+@if meta.feature-exists(units-level-3) {
+  div {
+    feature: true;
+  }
+}
+
+<===> feature-test/output.css
+div {
+  feature: true;
+}
+
+<===> feature-test/warning
+DEPRECATION WARNING [feature-exists]: The feature-exists() function is deprecated.
+
+More info: https://sass-lang.com/d/feature-exists
+
+  ,
+2 | @if meta.feature-exists(units-level-3) {
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 2:5  root stylesheet

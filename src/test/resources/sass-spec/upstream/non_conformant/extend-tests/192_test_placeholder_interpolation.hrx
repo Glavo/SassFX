@@ -1,0 +1,10 @@
+<===> 192_test_placeholder_interpolation/input.scss
+$foo: foo;
+
+%#{$foo} {color: blue}
+.bar {@extend %foo}
+
+<===> 192_test_placeholder_interpolation/output.css
+.bar {
+  color: blue;
+}

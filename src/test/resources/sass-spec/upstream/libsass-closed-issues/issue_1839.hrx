@@ -1,0 +1,4 @@
+<===> issue_1839/input.scss
+@custom-media --large-viewport (min-width: 1001px);
+<===> issue_1839/output.css
+@custom-media --large-viewport (min-width: 1001px);

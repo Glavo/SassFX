@@ -1,0 +1,7 @@
+<===> 030_test_block_comment_in_script/input.scss
+foo {a: 1 + /* flang */ bar}
+
+<===> 030_test_block_comment_in_script/output.css
+foo {
+  a: 1bar;
+}

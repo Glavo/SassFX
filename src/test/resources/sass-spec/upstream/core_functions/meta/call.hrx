@@ -1,0 +1,163 @@
+<===> args/none/input.scss
+@use "sass:meta";
+@function a() {@return b}
+c {d: meta.call(meta.get-function("a"))}
+
+<===> args/none/output.css
+c {
+  d: b;
+}
+
+<===> args/positional/input.scss
+@use "sass:meta";
+a {b: meta.call(meta.get-function("rgb"), 1, 2, 3)}
+
+<===> args/positional/output.css
+a {
+  b: rgb(1, 2, 3);
+}
+
+<===> args/named/input.scss
+@use "sass:meta";
+a {b: meta.call(meta.get-function("rgb"), $blue: 1, $green: 2, $red: 3)}
+
+<===> args/named/output.css
+a {
+  b: rgb(3, 2, 1);
+}
+
+<===> args/splat/positional/input.scss
+@use "sass:meta";
+$args: 1, 2, 3;
+a {b: meta.call(meta.get-function("rgb"), $args...)}
+
+<===> args/splat/positional/output.css
+a {
+  b: rgb(1, 2, 3);
+}
+
+<===> args/splat/named/input.scss
+@use "sass:meta";
+$args: ("green": 1, "blue": 2, "red": 3);
+a {b: meta.call(meta.get-function("rgb"), $args...)}
+
+<===> args/splat/named/output.css
+a {
+  b: rgb(3, 1, 2);
+}
+
+<===> args/splat/combined/input.scss
+@use "sass:meta";
+$positional: 1 2;
+$named: ("blue": 3);
+a {b: meta.call(meta.get-function("rgb"), $positional..., $named...)}
+
+<===> args/splat/combined/output.css
+a {
+  b: rgb(1, 2, 3);
+}
+
+<===> string/local/input.scss
+@use "sass:meta";
+@function a($arg) {@return $arg + 1}
+a {b: meta.call("a", 1)}
+
+<===> string/local/output.css
+a {
+  b: 2;
+}
+
+<===> string/local/warning
+DEPRECATION WARNING [call-string]: Passing a string to call() is deprecated and will be illegal in Dart Sass 2.0.0.
+
+Recommendation: call(get-function("a"))
+
+  ,
+3 | a {b: meta.call("a", 1)}
+  |       ^^^^^^^^^^^^^^^^^
+  '
+    input.scss 3:7  root stylesheet
+
+<===> string/built_in/input.scss
+@use "sass:meta";
+a {b: meta.call("rgb", 1, 2, 3)}
+
+<===> string/built_in/output.css
+a {
+  b: rgb(1, 2, 3);
+}
+
+<===> string/built_in/warning
+DEPRECATION WARNING [call-string]: Passing a string to call() is deprecated and will be illegal in Dart Sass 2.0.0.
+
+Recommendation: call(get-function("rgb"))
+
+  ,
+2 | a {b: meta.call("rgb", 1, 2, 3)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 2:7  root stylesheet
+
+<===> named/input.scss
+@use "sass:meta";
+a {b: meta.call($function: meta.get-function("rgb"), $red: 1, $green: 2, $blue: 3)}
+
+<===> named/output.css
+a {
+  b: rgb(1, 2, 3);
+}
+
+<===> error/type/input.scss
+@use "sass:meta";
+a {b: meta.call(1)}
+
+<===> error/type/error
+Error: $function: 1 is not a function reference.
+  ,
+2 | a {b: meta.call(1)}
+  |       ^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/too_few_args/input.scss
+@use "sass:meta";
+a {b: meta.call()}
+
+<===> error/too_few_args/error
+Error: Missing argument $function.
+  ,--> input.scss
+2 | a {b: meta.call()}
+  |       ^^^^^^^^^^^ invocation
+  '
+  ,--> sass:meta
+1 | @function call($function, $args...) {
+  |           ========================= declaration
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/invalid_args/input.scss
+@use "sass:meta";
+a {b: meta.call(meta.get-function("rgb"), 1)}
+
+<===> error/invalid_args/error
+Error: $channels: The rgb color space has 3 channels but 1 has 1.
+  ,
+2 | a {b: meta.call(meta.get-function("rgb"), 1)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/if_args/input.scss
+@use "sass:meta";
+// The if() function has a special behavior to avoid evaluating the
+// non-returned argument but that behavior does not propagate to call()
+// itself when using call() to call if().
+a {b: meta.call(meta.get-function("if"), true, "", $undefined)}
+
+<===> error/if_args/error
+Error: Undefined variable.
+  ,
+5 | a {b: meta.call(meta.get-function("if"), true, "", $undefined)}
+  |                                                    ^^^^^^^^^^
+  '
+  input.scss 5:52  root stylesheet

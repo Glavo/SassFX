@@ -75,7 +75,9 @@ public enum ColorSpace {
     REC2020("rec2020", true, false, false, rgbUnitIntervalChannels()),
 
     /// The XYZ D65 color space.
-    XYZ_D65("xyz-d65", false, false, false, xyzChannels()),
+    ///
+    /// Serialized as the CSS alias {@code xyz}, matching dart-sass and CSS Color 4.
+    XYZ_D65("xyz", false, false, false, xyzChannels()),
 
     /// The XYZ D50 color space.
     XYZ_D50("xyz-d50", false, false, false, xyzChannels()),
@@ -101,7 +103,8 @@ public enum ColorSpace {
             true,
             List.of(
                     ColorChannel.Linear.of("lightness", 0, 100, false, true, true, "%"),
-                    ColorChannel.Linear.of("chroma", 0, 150),
+                    // Chroma is lower-clamped so color.adjust() cannot produce negatives.
+                    ColorChannel.Linear.of("chroma", 0, 150, false, true, false, null),
                     ColorChannel.HUE
             )
     ),
@@ -127,7 +130,8 @@ public enum ColorSpace {
             true,
             List.of(
                     ColorChannel.Linear.percent("lightness", 0, 1, true, true),
-                    ColorChannel.Linear.of("chroma", 0, 0.4),
+                    // Chroma is lower-clamped so color.adjust() cannot produce negatives.
+                    ColorChannel.Linear.of("chroma", 0, 0.4, false, true, false, null),
                     ColorChannel.HUE
             )
     ),

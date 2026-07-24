@@ -1,0 +1,11 @@
+<===> issue_1230/input.scss
+div {
+  transition-property:
+    border-color,
+    box-shadow,
+    color;
+}
+<===> issue_1230/output.css
+div {
+  transition-property: border-color, box-shadow, color;
+}

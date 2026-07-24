@@ -1,0 +1,19 @@
+<===> issue_469/input.scss
+/*!
+*/
+
+@charset "utf-8";
+
+a {
+  color: red;
+}
+
+@import url("x");
+
+<===> issue_469/output.css
+/*!
+*/
+@import url("x");
+a {
+  color: red;
+}

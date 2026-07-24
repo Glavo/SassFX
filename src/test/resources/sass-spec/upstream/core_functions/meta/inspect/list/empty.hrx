@@ -1,0 +1,13 @@
+<===> empty/input.scss
+@use "sass:meta";
+$result: meta.inspect(());
+a {
+  value: $result;
+  type: meta.type-of($result);
+}
+
+<===> empty/output.css
+a {
+  value: ();
+  type: string;
+}

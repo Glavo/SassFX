@@ -1,0 +1,163 @@
+<===> not_found/empty/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.get((), 1))}
+
+<===> not_found/empty/output.css
+a {
+  b: null;
+}
+
+<===> not_found/non_empty/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.get((c: d), d))}
+
+<===> not_found/non_empty/output.css
+a {
+  b: null;
+}
+
+<===> not_found/dash_sensitive/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.get((c-d: e), c_d))}
+
+<===> not_found/dash_sensitive/output.css
+a {
+  b: null;
+}
+
+<===> found/single/input.scss
+@use "sass:map";
+a {b: map.get((c: d), c)}
+
+<===> found/single/output.css
+a {
+  b: d;
+}
+
+<===> found/first/input.scss
+@use "sass:map";
+a {b: map.get((1: 2, 3: 4, 5: 6), 1)}
+
+<===> found/first/output.css
+a {
+  b: 2;
+}
+
+<===> found/middle/input.scss
+@use "sass:map";
+a {b: map.get((1: 2, 3: 4, 5: 6), 3)}
+
+<===> found/middle/output.css
+a {
+  b: 4;
+}
+
+<===> found/last/input.scss
+@use "sass:map";
+a {b: map.get((1: 2, 3: 4, 5: 6), 5)}
+
+<===> found/last/output.css
+a {
+  b: 6;
+}
+
+<===> named/input.scss
+@use "sass:map";
+a {b: map.get($map: (c: d), $key: c)}
+
+<===> named/output.css
+a {
+  b: d;
+}
+
+<===> nested/found/partial_path/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.get((c: (d: (e: f))), c, d))}
+
+<===> nested/found/partial_path/output.css
+a {
+  b: (e: f);
+}
+
+<===> nested/found/full_path/input.scss
+@use "sass:map";
+a {b: map.get((c: (d: (e: f))), c, d, e)}
+
+<===> nested/found/full_path/output.css
+a {
+  b: f;
+}
+
+<===> nested/not_found/top_level/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.get((c: (d: (e: f))), d))}
+
+<===> nested/not_found/top_level/output.css
+a {
+  b: null;
+}
+
+<===> nested/not_found/deep/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.get((c: (d: (e: f))), c, d, g))}
+
+<===> nested/not_found/deep/output.css
+a {
+  b: null;
+}
+
+<===> nested/not_found/too_many_keys/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.get((c: (d: (e: f))), c, d, e, f))}
+
+<===> nested/not_found/too_many_keys/output.css
+a {
+  b: null;
+}
+
+<===> error/wrong_name/input.scss
+@use "sass:map";
+a {b: map.map-get((c: d), c)}
+
+<===> error/wrong_name/error
+Error: Undefined function.
+  ,
+2 | a {b: map.map-get((c: d), c)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/type/map/input.scss
+@use "sass:map";
+a {b: map.get(1, 2)}
+
+<===> error/type/map/error
+Error: $map: 1 is not a map.
+  ,
+2 | a {b: map.get(1, 2)}
+  |       ^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/too_few_args/input.scss
+@use "sass:map";
+a {b: map.get(1)}
+
+<===> error/too_few_args/error
+Error: Missing argument $key.
+  ,--> input.scss
+2 | a {b: map.get(1)}
+  |       ^^^^^^^^^^ invocation
+  '
+  ,--> sass:map
+1 | @function get($map, $key, $keys...) {
+  |           ========================= declaration
+  '
+  input.scss 2:7  root stylesheet

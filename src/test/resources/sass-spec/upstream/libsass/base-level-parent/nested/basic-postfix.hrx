@@ -1,0 +1,12 @@
+<===> basic-postfix/input.scss
+test {
+  &post {
+    foo {
+      bar: baz;
+    }
+  }
+}
+<===> basic-postfix/output.css
+testpost foo {
+  bar: baz;
+}

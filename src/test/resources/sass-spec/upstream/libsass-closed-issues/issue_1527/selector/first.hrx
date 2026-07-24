@@ -1,0 +1,9 @@
+<===> first/input.scss
+& foo {
+  bar: baz;
+}
+
+<===> first/output.css
+& foo {
+  bar: baz;
+}

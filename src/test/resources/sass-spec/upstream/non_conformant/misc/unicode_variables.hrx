@@ -1,0 +1,9 @@
+<===> unicode_variables/input.scss
+$vär: foo;
+
+blat {a: $vär}
+
+<===> unicode_variables/output.css
+blat {
+  a: foo;
+}

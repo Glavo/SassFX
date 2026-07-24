@@ -1,0 +1,32 @@
+<===> issue_2303/input.scss
+.wrapper-class {
+  @import 'module';
+}
+<===> issue_2303/_module.scss
+.okay {
+  background: green;
+}
+
+@if true {
+  .broken {
+    background: red;
+  }
+}
+<===> issue_2303/output.css
+.wrapper-class .okay {
+  background: green;
+}
+.wrapper-class .broken {
+  background: red;
+}
+
+<===> issue_2303/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+2 |   @import 'module';
+  |           ^^^^^^^^
+  '
+    input.scss 2:11  root stylesheet

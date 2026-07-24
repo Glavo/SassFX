@@ -1,0 +1,8 @@
+<===> 39_dash_match_attribute_selector/input.scss
+div[class|="blah"] {
+  color: blue;
+}
+<===> 39_dash_match_attribute_selector/output.css
+div[class|=blah] {
+  color: blue;
+}

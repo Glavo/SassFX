@@ -1,0 +1,4 @@
+<===> http_import/input.scss
+@import "http://fonts.googleapis.com/css?family=Droid+Sans";
+<===> http_import/output.css
+@import "http://fonts.googleapis.com/css?family=Droid+Sans";

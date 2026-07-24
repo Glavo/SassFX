@@ -123,6 +123,10 @@ public record SassMap(@Unmodifiable Map<SassValue, SassValue> contents) implemen
 
     /// Returns the inspect-mode parenthesized map representation.
     ///
+    /// Comma-separated unbracketed lists used as keys or values are wrapped in
+    /// an extra pair of parentheses so nested list separators remain unambiguous,
+    /// matching dart-sass inspect output.
+    ///
     /// @return entries separated by commas
     @Override
     public String toString() {
@@ -133,8 +137,24 @@ public record SassMap(@Unmodifiable Map<SassValue, SassValue> contents) implemen
                 result.append(", ");
             }
             first = false;
-            result.append(entry.getKey()).append(": ").append(entry.getValue());
+            result.append(inspectMapElement(entry.getKey()))
+                    .append(": ")
+                    .append(inspectMapElement(entry.getValue()));
         }
         return result.append(')').toString();
+    }
+
+    /// Serializes one map key or value for inspect mode.
+    private static String inspectMapElement(SassValue value) {
+        if (value instanceof SassList list
+                && list.separator() == ListSeparator.COMMA
+                && !list.hasBrackets()) {
+            return "(" + list + ")";
+        }
+        if (value instanceof SassArgumentList argumentList
+                && argumentList.separator() == ListSeparator.COMMA) {
+            return "(" + argumentList + ")";
+        }
+        return value.toString();
     }
 }

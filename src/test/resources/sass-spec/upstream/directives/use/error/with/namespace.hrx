@@ -1,0 +1,17 @@
+<===> namespace/input.scss
+@use "midstream" with ($a: b);
+
+<===> namespace/_midstream.scss
+@use "upstream";
+upstream.$a: c !default;
+
+<===> namespace/_upstream.scss
+$a: d;
+
+<===> namespace/error
+Error: This variable was not declared with !default in the @used module.
+  ,
+1 | @use "midstream" with ($a: b);
+  |                        ^^^^^
+  '
+  input.scss 1:24  root stylesheet

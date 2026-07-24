@@ -1,0 +1,50 @@
+<===> issue_435/input.scss
+@use "sass:string";
+$skin-name: "CMS_Black";
+
+$QUOTE: string.unquote('"');
+$EMPTY_STRING: string.unquote( "" );
+$SLASH: string.unquote("/");
+
+$SKINS_PATH: string.unquote("/CMS/Skins");
+$URL_SEPARATOR: $SLASH;
+$URL_PREFIX: $EMPTY_STRING;
+$URL_SUFFIX: $EMPTY_STRING;
+
+$_URL_PREFIX: $URL_PREFIX + $EMPTY_STRING;
+$_URL_SUFFIX: $URL_SUFFIX + $EMPTY_STRING;
+$_URL_SEPARATOR: $URL_SEPARATOR + $EMPTY_STRING;
+$_SKINS_PATH: $SKINS_PATH + $EMPTY_STRING;
+
+@function webresource-image-url( $skin, $control, $file ) 
+{
+	$_url: $EMPTY_STRING;
+	$_path: $_SKINS_PATH $skin $control;
+
+	@each $_part in $_path {
+		$_url: $_url + $_part + $_URL_SEPARATOR
+	}
+
+	@return $_URL_PREFIX + $QUOTE + $_url + $file + $QUOTE + $_URL_SUFFIX;
+}
+
+@function global-image-url( $skin, $control, $file ) {
+	@return webresource-image-url( $skin, $control, $file );
+}
+
+@function skin-image-url( $control, $file ) {
+	@return global-image-url( $skin-name, $control, $file );
+}
+
+$actions-sprite: skin-image-url( "Common", "radActionsSprite.png" );
+
+.test 
+{
+	background-image: url( $actions-sprite );
+}
+
+
+<===> issue_435/output.css
+.test {
+  background-image: url("/CMS/Skins/CMS_Black/Common/radActionsSprite.png");
+}

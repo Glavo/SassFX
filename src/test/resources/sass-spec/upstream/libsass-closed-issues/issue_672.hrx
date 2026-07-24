@@ -1,0 +1,42 @@
+<===> issue_672/input.scss
+@use "sass:meta";
+@mixin test($arglist...) {
+    $map: meta.keywords($arglist);
+    answer: if($map, "Yep", "Nope");
+}
+
+with-keyword-args{
+    @include test($arg1: one, $arg2: two, $arg3: three);
+}
+with-no-args {
+    @include test();
+}
+without-keyword-args {
+    @include test(not-a-keyword-arg-1 , not-a-keyword-arg-2);
+}
+
+<===> issue_672/output.css
+with-keyword-args {
+  answer: "Yep";
+}
+
+with-no-args {
+  answer: "Yep";
+}
+
+without-keyword-args {
+  answer: "Yep";
+}
+
+<===> issue_672/warning
+DEPRECATION WARNING [if-function]: The Sass if() syntax is deprecated in favor of the modern CSS syntax.
+
+Suggestion: if(sass($map): "Yep"; else: "Nope")
+
+More info: https://sass-lang.com/d/if-function
+
+  ,
+4 |     answer: if($map, "Yep", "Nope");
+  |             ^^^^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 4:13  root stylesheet

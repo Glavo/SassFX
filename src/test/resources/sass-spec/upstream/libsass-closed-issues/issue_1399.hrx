@@ -1,0 +1,15 @@
+<===> issue_1399/input.scss
+foo {
+  foo: 3 - "bar";
+  foo: (3 - "bar");
+  foo: 3 / "bar";
+  foo: (3 / "bar");
+}
+
+<===> issue_1399/output.css
+foo {
+  foo: 3-"bar";
+  foo: 3-"bar";
+  foo: 3/"bar";
+  foo: 3/"bar";
+}

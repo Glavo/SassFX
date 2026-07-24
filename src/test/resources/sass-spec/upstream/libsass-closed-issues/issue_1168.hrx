@@ -1,0 +1,11 @@
+<===> issue_1168/input.scss
+$namespace: 'test-';
+$column: 1;
+
+.#{$namespace}#{$column}\/#{$column} {
+  width: 100% !important;
+}
+<===> issue_1168/output.css
+.test-1\/1 {
+  width: 100% !important;
+}

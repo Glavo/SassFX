@@ -1,0 +1,19 @@
+<===> issue_344/input.scss
+$variable: 1;
+
+$foo: #{$variable}px;
+$bar: #{1}px;
+$baz: "1px";
+
+div {
+  top: -$foo;
+  top: -$bar;
+  top: -$baz;
+}
+
+<===> issue_344/output.css
+div {
+  top: -1px;
+  top: -1px;
+  top: -"1px";
+}

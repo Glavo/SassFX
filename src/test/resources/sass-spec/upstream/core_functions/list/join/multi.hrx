@@ -1,0 +1,290 @@
+<===> auto/separator/input.scss
+@use "sass:list";
+a {b: list.join((c, d), e f, $separator: auto)}
+
+<===> auto/separator/output.css
+a {
+  b: c, d, e, f;
+}
+
+<===> auto/bracketed/input.scss
+@use "sass:list";
+a {b: list.join(c d, e f, $bracketed: auto)}
+
+<===> auto/bracketed/output.css
+a {
+  b: c d e f;
+}
+
+<===> comma/both/input.scss
+@use "sass:list";
+a {b: list.join((c, d), (e, f))}
+
+<===> comma/both/output.css
+a {
+  b: c, d, e, f;
+}
+
+<===> comma/first/input.scss
+@use "sass:list";
+a {b: list.join((c, d), e f)}
+
+<===> comma/first/output.css
+a {
+  b: c, d, e, f;
+}
+
+<===> comma/second/input.scss
+@use "sass:list";
+a {b: list.join(c d, (e, f))}
+
+<===> comma/second/output.css
+a {
+  b: c d e f;
+}
+
+<===> comma/separator/forces_comma/input.scss
+@use "sass:list";
+a {b: list.join(c, d, $separator: comma)}
+
+<===> comma/separator/forces_comma/output.css
+a {
+  b: c, d;
+}
+
+<===> comma/separator/forces_not_comma/input.scss
+@use "sass:list";
+a {b: list.join((c, d), (e, f), $separator: space)}
+
+<===> comma/separator/forces_not_comma/output.css
+a {
+  b: c d e f;
+}
+
+<===> space/both/input.scss
+@use "sass:list";
+a {b: list.join(c d, e f)}
+
+<===> space/both/output.css
+a {
+  b: c d e f;
+}
+
+<===> space/separator/forces_space/input.scss
+@use "sass:list";
+a {b: list.join(c, d, $separator: space)}
+
+<===> space/separator/forces_space/output.css
+a {
+  b: c d;
+}
+
+<===> space/separator/forces_not_space/input.scss
+@use "sass:list";
+a {b: list.join(c d, e f, $separator: comma)}
+
+<===> space/separator/forces_not_space/output.css
+a {
+  b: c, d, e, f;
+}
+
+<===> slash/both/input.scss
+@use "sass:list";
+a {b: list.join(list.slash(c, d), list.slash(e, f))}
+
+<===> slash/both/output.css
+a {
+  b: c / d / e / f;
+}
+
+<===> slash/first/input.scss
+@use "sass:list";
+a {b: list.join(list.slash(c, d), e f)}
+
+<===> slash/first/output.css
+a {
+  b: c / d / e / f;
+}
+
+<===> slash/second/input.scss
+@use "sass:list";
+a {b: list.join(c d, list.slash(e, f))}
+
+<===> slash/second/output.css
+a {
+  b: c d e f;
+}
+
+<===> slash/separator/forces_slash/input.scss
+@use "sass:list";
+a {b: list.join(c, d, $separator: slash)}
+
+<===> slash/separator/forces_slash/output.css
+a {
+  b: c / d;
+}
+
+<===> slash/separator/forces_not_slash/input.scss
+@use "sass:list";
+a {b: list.join(list.slash(c, d), list.slash(e, f), $separator: space)}
+
+<===> slash/separator/forces_not_slash/output.css
+a {
+  b: c d e f;
+}
+
+<===> bracketed/both/input.scss
+@use "sass:list";
+a {b: list.join([c d], [e f])}
+
+<===> bracketed/both/output.css
+a {
+  b: [c d e f];
+}
+
+<===> bracketed/first/input.scss
+@use "sass:list";
+a {b: list.join([c d], e f)}
+
+<===> bracketed/first/output.css
+a {
+  b: [c d e f];
+}
+
+<===> bracketed/second/input.scss
+@use "sass:list";
+a {b: list.join(c d, [e f])}
+
+<===> bracketed/second/output.css
+a {
+  b: c d e f;
+}
+
+<===> bracketed/true/input.scss
+@use "sass:list";
+a {b: list.join(c, d, $bracketed: true)}
+
+<===> bracketed/true/output.css
+a {
+  b: [c d];
+}
+
+<===> bracketed/false/input.scss
+@use "sass:list";
+a {b: list.join([c], [d], $bracketed: false)}
+
+<===> bracketed/false/output.css
+a {
+  b: c d;
+}
+
+<===> bracketed/and_separator/input.scss
+@use "sass:list";
+a {b: list.join(c, d, $bracketed: true, $separator: comma)}
+
+<===> bracketed/and_separator/output.css
+a {
+  b: [c, d];
+}
+
+<===> bracketed/positional/input.scss
+@use "sass:list";
+a {b: list.join(c, d, comma, true)}
+
+<===> bracketed/positional/output.css
+a {
+  b: [c, d];
+}
+
+<===> bracketed/truthy/input.scss
+@use "sass:list";
+a {b: list.join(c, d, $bracketed: e)}
+
+<===> bracketed/truthy/output.css
+a {
+  b: [c d];
+}
+
+<===> bracketed/falsey/input.scss
+@use "sass:list";
+a {b: list.join([c], [d], $bracketed: null)}
+
+<===> bracketed/falsey/output.css
+a {
+  b: c d;
+}
+
+<===> map/both/input.scss
+@use "sass:list";
+a {b: list.join((c: d, e: f), (g: h, i: j))}
+
+<===> map/both/output.css
+a {
+  b: c d, e f, g h, i j;
+}
+
+<===> map/first/space/input.scss
+@use "sass:list";
+@use "sass:meta";
+a {b: meta.inspect(list.join((c: d, e: f), g h))}
+
+<===> map/first/space/output.css
+a {
+  b: c d, e f, g, h;
+}
+
+<===> map/first/comma/input.scss
+@use "sass:list";
+a {b: list.join((c: d, e: f), (g, h))}
+
+<===> map/first/comma/output.css
+a {
+  b: c d, e f, g, h;
+}
+
+<===> map/first/slash/input.scss
+@use "sass:list";
+a {b: list.join((c: d, e: f), list.slash(g, h))}
+
+<===> map/first/slash/output.css
+a {
+  b: c d, e f, g, h;
+}
+
+<===> map/second/space/input.scss
+@use "sass:list";
+@use "sass:meta";
+// Use inspect() to prove that the map is converted to a list of pairs.
+a {b: meta.inspect(list.join(c d, (e: f, g: h)))}
+
+<===> map/second/space/output.css
+a {
+  b: c d (e f) (g h);
+}
+
+<===> map/second/comma/input.scss
+@use "sass:list";
+a {b: list.join((c, d), (e: f, g: h))}
+
+<===> map/second/comma/output.css
+a {
+  b: c, d, e f, g h;
+}
+
+<===> map/second/slash/input.scss
+@use "sass:list";
+a {b: list.join(list.slash(c, d), (e: f, g: h))}
+
+<===> map/second/slash/output.css
+a {
+  b: c / d / e f / g h;
+}
+
+<===> named/input.scss
+@use "sass:list";
+a {b: list.join($list1: a b, $list2: c d, $separator: comma, $bracketed: true)}
+
+<===> named/output.css
+a {
+  b: [a, b, c, d];
+}

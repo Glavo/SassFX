@@ -1,0 +1,10 @@
+<===> issue_1672/input.scss
+$breakpoint: 'tablet';
+
+.-#{$breakpoint} {
+  color: #FFF;
+}
+<===> issue_1672/output.css
+.-tablet {
+  color: #FFF;
+}

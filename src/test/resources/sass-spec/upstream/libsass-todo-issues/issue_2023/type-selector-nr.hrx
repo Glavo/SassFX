@@ -1,0 +1,12 @@
+<===> type-selector-nr/input.scss
+1 {
+    color: red;
+}
+
+<===> type-selector-nr/error
+Error: expected selector.
+  ,
+1 | 1 {
+  | ^
+  '
+  input.scss 1:1  root stylesheet

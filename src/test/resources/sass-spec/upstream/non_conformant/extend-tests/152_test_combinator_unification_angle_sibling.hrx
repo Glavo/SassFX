@@ -1,0 +1,8 @@
+<===> 152_test_combinator_unification_angle_sibling/input.scss
+.a > x {a: b}
+.b ~ y {@extend x}
+
+<===> 152_test_combinator_unification_angle_sibling/output.css
+.a > x, .a > .b ~ y {
+  a: b;
+}

@@ -1,0 +1,8 @@
+<===> issue_1167/input.scss
+a {
+  b: 3s + 101ms;
+}
+<===> issue_1167/output.css
+a {
+  b: 3.101s;
+}

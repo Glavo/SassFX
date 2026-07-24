@@ -1,0 +1,13 @@
+<===> 047_test_unknown_directive_bubbling/input.scss
+.foo {
+  @fblthp {
+    .bar {a: b}
+  }
+}
+
+<===> 047_test_unknown_directive_bubbling/output.css
+@fblthp {
+  .foo .bar {
+    a: b;
+  }
+}

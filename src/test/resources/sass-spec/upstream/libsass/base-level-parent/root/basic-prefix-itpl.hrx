@@ -1,0 +1,11 @@
+<===> basic-prefix-itpl/input.scss
+pre#{&} {
+  foo {
+    bar: baz;
+  }
+}
+
+<===> basic-prefix-itpl/output.css
+pre foo {
+  bar: baz;
+}

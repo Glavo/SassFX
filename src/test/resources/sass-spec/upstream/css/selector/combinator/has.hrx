@@ -1,0 +1,70 @@
+<===> leading/single/child/input.scss
+:has(> a) {b: c}
+
+<===> leading/single/child/output.css
+:has(> a) {
+  b: c;
+}
+
+<===> leading/single/next_sibling/input.scss
+:has(+ a) {b: c}
+
+<===> leading/single/next_sibling/output.css
+:has(+ a) {
+  b: c;
+}
+
+<===> leading/single/sibling/input.scss
+:has(~ a) {b: c}
+
+<===> leading/single/sibling/output.css
+:has(~ a) {
+  b: c;
+}
+
+<===> leading/single/parent/input.scss
+// Regression test for sass/sass#3546
+a {
+  :has(~ &) {b: c}
+}
+
+<===> leading/single/parent/output.css
+:has(~ a) {
+  b: c;
+}
+
+<===> leading/multiple/direct/input.scss
+:has(+ ~ a) {b: c}
+
+<===> leading/multiple/direct/output.css
+
+<===> leading/multiple/direct/warning
+DEPRECATION WARNING [bogus-combinators]: The selector ":has(+ ~ a)" is invalid CSS. It will be omitted from the generated CSS.
+This will be an error in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/bogus-combinators
+
+  ,
+1 | :has(+ ~ a) {b: c}
+  | ^^^^^^^^^^^
+  '
+    input.scss 1:1  root stylesheet
+
+<===> leading/multiple/parent/input.scss
+~ a {
+  :has(+ &) {b: c}
+}
+
+<===> leading/multiple/parent/output.css
+
+<===> leading/multiple/parent/warning
+DEPRECATION WARNING [bogus-combinators]: The selector ":has(+ ~ a)" is invalid CSS. It will be omitted from the generated CSS.
+This will be an error in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/bogus-combinators
+
+  ,
+2 |   :has(+ &) {b: c}
+  |   ^^^^^^^^^
+  '
+    input.scss 2:3  root stylesheet

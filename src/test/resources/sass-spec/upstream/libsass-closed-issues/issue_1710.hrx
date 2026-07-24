@@ -1,0 +1,11 @@
+<===> issue_1710/input.scss
+ul, ol {
+    & & {
+      display: block;
+    }
+  }
+
+<===> issue_1710/output.css
+ul ul, ul ol, ol ul, ol ol {
+  display: block;
+}

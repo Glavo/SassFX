@@ -1,0 +1,9 @@
+<===> Sáss-UŢF8/input.scss
+span.utf8-in-path {
+  margin: auto;
+}
+
+<===> Sáss-UŢF8/output.css
+span.utf8-in-path {
+  margin: auto;
+}

@@ -1,0 +1,12 @@
+<===> css_rule_comments/input.scss
+/* Foo
+ * Bar */
+.foo {
+  a: b; }
+
+<===> css_rule_comments/output.css
+/* Foo
+ * Bar */
+.foo {
+  a: b;
+}

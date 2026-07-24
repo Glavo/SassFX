@@ -1,0 +1,8 @@
+<===> 079_test_pseudoelement_remains_at_end_of_selector/input.scss
+a.foo::bar {a: b}
+.baz {@extend .foo}
+
+<===> 079_test_pseudoelement_remains_at_end_of_selector/output.css
+a.foo::bar, a.baz::bar {
+  a: b;
+}

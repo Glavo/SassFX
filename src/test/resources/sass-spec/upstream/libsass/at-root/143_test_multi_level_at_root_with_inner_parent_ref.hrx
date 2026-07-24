@@ -1,0 +1,13 @@
+<===> 143_test_multi_level_at_root_with_inner_parent_ref/input.scss
+.foo {
+  @at-root .bar {
+    @at-root & {
+      a: b;
+    }
+  }
+}
+
+<===> 143_test_multi_level_at_root_with_inner_parent_ref/output.css
+.bar {
+  a: b;
+}

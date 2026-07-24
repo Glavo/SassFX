@@ -1,0 +1,13 @@
+<===> issue_1452/input.scss
+foo {
+  foo: foo(());
+}
+
+<===> issue_1452/error
+Error: () isn't a valid CSS value.
+  ,
+2 |   foo: foo(());
+  |            ^^ value
+  |        ======= unknown function treated as plain CSS
+  '
+  input.scss 2:12  root stylesheet

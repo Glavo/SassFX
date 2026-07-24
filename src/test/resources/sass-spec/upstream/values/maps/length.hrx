@@ -1,0 +1,12 @@
+<===> length/input.scss
+@use "sass:list";
+$map: (aaa: 100, bbb: 200, ccc: 300);
+
+a {
+  b: list.length($map);
+}
+
+<===> length/output.css
+a {
+  b: 3;
+}

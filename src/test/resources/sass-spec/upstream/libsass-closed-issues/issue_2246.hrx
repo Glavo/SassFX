@@ -1,0 +1,29 @@
+<===> issue_2246/input.scss
+@use "sass:math";
+@mixin foo($option: 'foo') {
+     // Create a unique, random placeholder to store styles
+    $placeholder : $option + math.random(9999);
+
+    // Store the styles in the placeholder
+    @at-root %#{$placeholder} {
+        content: 'foo';
+    }
+
+    @at-root {
+        .bar {
+            @extend %#{$placeholder};
+        }
+    }
+}
+
+@mixin bar($option) {
+    @include foo($option);
+}
+
+.foo {
+    @include bar('baz');
+}
+<===> issue_2246/output.css
+.bar {
+  content: "foo";
+}

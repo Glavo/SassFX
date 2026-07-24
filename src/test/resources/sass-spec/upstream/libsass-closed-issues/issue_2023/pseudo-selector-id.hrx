@@ -1,0 +1,12 @@
+<===> pseudo-selector-id/input.scss
+#4d {
+    color: red;
+}
+
+<===> pseudo-selector-id/error
+Error: Expected identifier.
+  ,
+1 | #4d {
+  |  ^
+  '
+  input.scss 1:2  root stylesheet

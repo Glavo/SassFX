@@ -1,0 +1,12 @@
+<===> property/input.scss
+foo {
+  bar: #{};
+}
+
+<===> property/error
+Error: Expected expression.
+  ,
+2 |   bar: #{};
+  |        ^^
+  '
+  input.scss 2:8  root stylesheet

@@ -29,6 +29,39 @@ public record SassString(String text, boolean hasQuotes) implements SassValue {
         return !hasQuotes && text.isEmpty();
     }
 
+    /// Returns whether this unquoted string is a special CSS number function call.
+    ///
+    /// @return whether color constructors must preserve this as plain CSS
+    @Override
+    public boolean isSpecialNumber() {
+        if (hasQuotes || text.length() < "min(_)".length()) {
+            return false;
+        }
+        var lower = text.toLowerCase(java.util.Locale.ROOT);
+        return lower.startsWith("calc(")
+                || lower.startsWith("clamp(")
+                || lower.startsWith("min(")
+                || lower.startsWith("max(")
+                || lower.startsWith("var(")
+                || lower.startsWith("env(")
+                || lower.startsWith("attr(")
+                || lower.startsWith("if(");
+    }
+
+    /// Returns whether this unquoted string is a special CSS variable function call.
+    ///
+    /// @return whether the string may expand to multiple arguments after substitution
+    @Override
+    public boolean isSpecialVariable() {
+        if (hasQuotes || text.length() < "var(_)".length()) {
+            return false;
+        }
+        var lower = text.toLowerCase(java.util.Locale.ROOT);
+        return lower.startsWith("var(")
+                || lower.startsWith("attr(")
+                || lower.startsWith("if(");
+    }
+
     /// Returns this string.
     ///
     /// @return this string

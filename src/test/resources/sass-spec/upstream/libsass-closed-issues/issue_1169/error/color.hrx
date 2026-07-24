@@ -1,0 +1,20 @@
+<===> color/input.scss
+@use "sass:meta";
+
+$map: (
+  red: 'foo',
+  red: 'bar',
+);
+
+.foo {
+  content: meta.inspect($map);
+}
+<===> color/error
+Error: Duplicate key.
+  ,
+4 |   red: 'foo',
+  |   === first key
+5 |   red: 'bar',
+  |   ^^^ second key
+  '
+  input.scss 5:3  root stylesheet

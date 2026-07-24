@@ -36,13 +36,14 @@ final class HrxArchiveTest {
                         """, archive.content("core/output.css"));
     }
 
-    /// Rejects duplicate, conflicting, and unsafe virtual paths.
+    /// Keeps the last body when a path is redeclared and rejects conflicts.
     @Test
     void rejectsInvalidVirtualPaths() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> HrxArchive.parse("<===> input.scss\na {}\n<===> input.scss\nb {}\n", "duplicate.hrx")
+        var archive = HrxArchive.parse(
+                "<===> input.scss\na {}\n<===> input.scss\nb {}\n",
+                "duplicate.hrx"
         );
+        assertEquals("b {}\n", archive.content("input.scss"));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> HrxArchive.parse("<===> node\n<===> node/input.scss\na {}\n", "conflict.hrx")
@@ -51,5 +52,24 @@ final class HrxArchiveTest {
                 IllegalArgumentException.class,
                 () -> HrxArchive.parse("<===> ../input.scss\na {}\n", "unsafe.hrx")
         );
+    }
+
+    /// Discards bare HRX comment sections between files.
+    @Test
+    void ignoresBareCommentSections() {
+        var archive = HrxArchive.parse(
+                """
+                        <===> a/input.scss
+                        a {b: c}
+                        <===>
+                        ================================================================================
+                        <===> a/output.css
+                        a {
+                          b: c;
+                        }
+                        """,
+                "comments.hrx"
+        );
+        assertEquals(List.of("a/input.scss", "a/output.css"), List.copyOf(archive.paths()));
     }
 }

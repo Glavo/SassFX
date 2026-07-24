@@ -1,0 +1,96 @@
+<===> mixin/input.scss
+@use "used";
+
+@include used.a;
+
+<===> mixin/_used.scss
+@import "imported";
+
+<===> mixin/_imported.scss
+@forward "forwarded";
+
+<===> mixin/_forwarded.scss
+@mixin a() {b {c: d}}
+
+<===> mixin/output.css
+b {
+  c: d;
+}
+
+<===> mixin/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import "imported";
+  |         ^^^^^^^^^^
+  '
+    _used.scss 1:9  @use
+    input.scss 1:1  root stylesheet
+
+<===> variable_assignment/input.scss
+@use "used";
+
+used.$a: new value;
+
+b {c: used.get-a()}
+
+<===> variable_assignment/_used.scss
+@import "imported";
+
+<===> variable_assignment/_imported.scss
+@forward "forwarded";
+
+<===> variable_assignment/_forwarded.scss
+$a: old value;
+
+@function get-a() {@return $a}
+
+<===> variable_assignment/output.css
+b {
+  c: new value;
+}
+
+<===> variable_assignment/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import "imported";
+  |         ^^^^^^^^^^
+  '
+    _used.scss 1:9  @use
+    input.scss 1:1  root stylesheet
+
+<===> variable_use/input.scss
+@use "used";
+
+a {b: used.$c}
+
+<===> variable_use/_used.scss
+@import "imported";
+
+<===> variable_use/_imported.scss
+@forward "forwarded";
+
+<===> variable_use/_forwarded.scss
+$c: d;
+
+<===> variable_use/output.css
+a {
+  b: d;
+}
+
+<===> variable_use/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import "imported";
+  |         ^^^^^^^^^^
+  '
+    _used.scss 1:9  @use
+    input.scss 1:1  root stylesheet

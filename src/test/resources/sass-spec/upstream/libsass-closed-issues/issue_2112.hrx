@@ -1,0 +1,15 @@
+<===> issue_2112/input.scss
+@use "sass:color";
+$color: #1caf9a;
+
+body {
+  test-01: color.change($color, $hue: -240);
+  test-03: color.change($color, $hue: 120);
+  test-02: color.change($color, $hue: 480);
+}
+<===> issue_2112/output.css
+body {
+  test-01: #1caf1c;
+  test-03: #1caf1c;
+  test-02: #1caf1c;
+}

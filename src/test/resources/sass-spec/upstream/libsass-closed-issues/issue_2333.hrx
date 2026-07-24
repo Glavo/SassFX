@@ -1,0 +1,8 @@
+<===> issue_2333/input.scss
+@use "sass:meta";
+
+test { test: meta.inspect((a:1,b:(foo,bar),c:3)); }
+<===> issue_2333/output.css
+test {
+  test: (a: 1, b: (foo, bar), c: 3);
+}

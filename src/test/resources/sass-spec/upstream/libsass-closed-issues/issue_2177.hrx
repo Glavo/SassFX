@@ -1,0 +1,9 @@
+<===> issue_2177/input.sass
+.a
+  +
+    .c, .b
+      margin: 10px
+<===> issue_2177/output.css
+.a + .c, .a + .b {
+  margin: 10px;
+}

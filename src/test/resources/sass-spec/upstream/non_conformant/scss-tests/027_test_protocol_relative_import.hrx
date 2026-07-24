@@ -1,0 +1,4 @@
+<===> 027_test_protocol_relative_import/input.scss
+@import "//fonts.googleapis.com/css?family=Droid+Sans";
+<===> 027_test_protocol_relative_import/output.css
+@import "//fonts.googleapis.com/css?family=Droid+Sans";

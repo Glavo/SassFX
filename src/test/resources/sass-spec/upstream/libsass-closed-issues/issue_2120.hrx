@@ -1,0 +1,5 @@
+<===> issue_2120/input.scss
+@import url(//xyz.cöm/ürl)
+<===> issue_2120/output.css
+@charset "UTF-8";
+@import url(//xyz.cöm/ürl);

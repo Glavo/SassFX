@@ -1,0 +1,35 @@
+<===> unquoted/input.scss
+@use "sass:meta";
+$result: meta.inspect(foo);
+a {
+  value: $result;
+  type: meta.type-of($result);
+}
+
+<===> unquoted/output.css
+a {
+  value: foo;
+  type: string;
+}
+
+<===> quoted/input.scss
+@use "sass:meta";
+@use "sass:string";
+$result: meta.inspect("foo");
+a {
+  value: $result;
+  type: meta.type-of($result);
+
+  // inspect() should always return an unquoted string, so when it's passed a
+  // quoted string its return value should contain quote characters. We check
+  // the length to verify that the quotes are included, since there's no
+  // built-in way to check whether a string is quoted.
+  length: string.length($result);
+}
+
+<===> quoted/output.css
+a {
+  value: "foo";
+  type: string;
+  length: 5;
+}

@@ -1,0 +1,13 @@
+<===> issue_738/input.scss
+.foo {
+  &--bar { color: red; }
+  &--1bar { color: blue;}
+}
+
+<===> issue_738/output.css
+.foo--bar {
+  color: red;
+}
+.foo--1bar {
+  color: blue;
+}

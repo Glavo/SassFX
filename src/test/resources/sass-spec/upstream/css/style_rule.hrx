@@ -1,0 +1,336 @@
+<===> comment/after_selector/loud/input.scss
+a /**/ {b: c}
+
+<===> comment/after_selector/loud/output.css
+a {
+  b: c;
+}
+
+<===> comment/after_selector/silent/input.scss
+a //
+  {b: c}
+
+<===> comment/after_selector/silent/output.css
+a {
+  b: c;
+}
+
+<===> declaration/interleaved/before_style_rule/input.scss
+.a {
+  b: c;
+  .d {e: f}
+}
+
+<===> declaration/interleaved/before_style_rule/output.css
+.a {
+  b: c;
+}
+.a .d {
+  e: f;
+}
+
+<===> declaration/interleaved/around_style_rule/input.scss
+.a {
+  b: c;
+  .d {e: f}
+  g: h;
+}
+
+<===> declaration/interleaved/around_style_rule/output.css
+.a {
+  b: c;
+}
+.a .d {
+  e: f;
+}
+.a {
+  g: h;
+}
+
+<===> declaration/interleaved/after_style_rule/higher_specificity/input.scss
+.a {
+  .b {c: d}
+  e: f;
+}
+
+<===> declaration/interleaved/after_style_rule/higher_specificity/output.css
+.a .b {
+  c: d;
+}
+.a {
+  e: f;
+}
+
+<===> declaration/interleaved/after_style_rule/same_specificity/input.scss
+.a {
+  :where(.b) {c: d}
+  e: f;
+}
+
+<===> declaration/interleaved/after_style_rule/same_specificity/output.css
+.a :where(.b) {
+  c: d;
+}
+.a {
+  e: f;
+}
+
+<===> declaration/interleaved/after_style_rule/mixed_specificity_parent/input.scss
+.a, :where(.a) {
+  .b {c: d}
+  e: f;
+}
+
+<===> declaration/interleaved/after_style_rule/mixed_specificity_parent/output.css
+.a .b, :where(.a) .b {
+  c: d;
+}
+.a, :where(.a) {
+  e: f;
+}
+
+<===> declaration/interleaved/after_style_rule/mixed_specificity_child/input.scss
+.a {
+  .b, :where(.b) {c: d}
+  e: f;
+}
+
+<===> declaration/interleaved/after_style_rule/mixed_specificity_child/output.css
+.a .b, .a :where(.b) {
+  c: d;
+}
+.a {
+  e: f;
+}
+
+<===> declaration/interleaved/after_style_rule/extended_parent/input.scss
+.a {
+  .b {c: d}
+  e: f;
+}
+
+:where(.g) {@extend .a}
+
+<===> declaration/interleaved/after_style_rule/extended_parent/output.css
+.a .b, :where(.g) .b {
+  c: d;
+}
+.a, :where(.g) {
+  e: f;
+}
+
+<===> declaration/interleaved/after_style_rule/extended_child/input.scss
+.a {
+  .b {c: d}
+  e: f;
+}
+
+:where(.g) {@extend .b}
+
+<===> declaration/interleaved/after_style_rule/extended_child/output.css
+.a .b, .a :where(.g) {
+  c: d;
+}
+.a {
+  e: f;
+}
+
+<===> declaration/interleaved/in_at_rule/input.scss
+@a {
+  .b {
+    .c {d: e}
+    f: g;
+  }
+}
+
+<===> declaration/interleaved/in_at_rule/output.css
+@a {
+  .b .c {
+    d: e;
+  }
+  .b {
+    f: g;
+  }
+}
+
+<===> declaration/interleaved/in_bubbled_rule/input.scss
+.a {
+  .b {c: d}
+  @e {f: g}
+}
+
+<===> declaration/interleaved/in_bubbled_rule/output.css
+.a .b {
+  c: d;
+}
+@e {
+  .a {
+    f: g;
+  }
+}
+
+<===> declaration/comment/before_colon/loud/input.scss
+a {b /**/ : c}
+
+<===> declaration/comment/before_colon/loud/output.css
+a {
+  b: c;
+}
+
+<===> declaration/comment/before_colon/silent/input.scss
+a {b //
+  : c}
+
+<===> declaration/comment/before_colon/silent/output.css
+a {
+  b: c;
+}
+
+<===> declaration/comment/after_colon/loud/input.scss
+a {b: /**/ c}
+
+<===> declaration/comment/after_colon/loud/output.css
+a {
+  b: c;
+}
+
+<===> declaration/comment/after_colon/silent/input.scss
+a {b: //
+  c}
+
+<===> declaration/comment/after_colon/silent/output.css
+a {
+  b: c;
+}
+
+<===> declaration/comment/after_value/loud/input.scss
+a {b: c /**/}
+
+<===> declaration/comment/after_value/loud/output.css
+a {
+  b: c;
+}
+
+<===> declaration/comment/after_value/silent/input.scss
+a {b: c //
+  }
+
+<===> declaration/comment/after_value/silent/output.css
+a {
+  b: c;
+}
+
+<===> declaration/result/input.scss
+a {
+  // Outside of a plain CSS `@function`, `result` is parsed like any other
+  // declaration.
+  result: 1 + 1;
+}
+
+<===> declaration/result/output.css
+a {
+  result: 2;
+}
+
+<===> sass/declaration/semicolon/input.sass
+a
+  b: c;
+
+
+<===> sass/declaration/semicolon/output.css
+a {
+  b: c;
+}
+
+<===> sass/multiple/cr/input.sass
+a
+  b: c;
+  d: e;
+
+<===> sass/multiple/cr/output.css
+a {
+  b: c;
+  d: e;
+}
+
+<===> sass/multiple/ff/input.sass
+a
+  b: c;
+  d: e;
+
+<===> sass/multiple/ff/output.css
+a {
+  b: c;
+  d: e;
+}
+
+<===> sass/trailing_whitespace/input.sass
+a
+  b: c; 
+  d: e;
+
+<===> sass/trailing_whitespace/output.css
+a {
+  b: c;
+  d: e;
+}
+
+<===> sass/preceding_whitespace/input.sass
+a
+  b: c ;
+  d: e;
+
+<===> sass/preceding_whitespace/output.css
+a {
+  b: c;
+  d: e;
+}
+
+<===> sass/trailing_comment/input.sass
+a
+  b: c; // f
+  d: e;
+
+<===> sass/trailing_comment/output.css
+a {
+  b: c;
+  d: e;
+}
+
+<===> sass/trailing_inline_comment/input.sass
+a
+  b: c; /* f */
+  d: e;
+
+<===> sass/trailing_inline_comment/output.css
+a {
+  b: c;
+  d: e;
+}
+
+<===> sass/trailing_loud_comment/input.sass
+a
+  b: c;
+  /* f */
+  d: e;
+
+<===> sass/trailing_loud_comment/output.css
+a {
+  b: c;
+  /* f */
+  d: e;
+}
+
+<===> sass/nested/input.sass
+a
+  b: c;
+  d
+    e: f;
+
+<===> sass/nested/output.css
+a {
+  b: c;
+}
+a d {
+  e: f;
+}

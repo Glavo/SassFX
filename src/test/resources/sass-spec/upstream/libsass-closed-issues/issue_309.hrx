@@ -1,0 +1,7 @@
+<===> issue_309/input.scss
+$zzz: zzz;
+a[data-foo="#{$zzz}"] { a: b; }
+<===> issue_309/output.css
+a[data-foo=zzz] {
+  a: b;
+}

@@ -1,0 +1,8 @@
+<===> issue_2096/input.scss
+@mixin foo() {
+  @import "https://foo";
+}
+@include foo;
+
+<===> issue_2096/output.css
+@import "https://foo";

@@ -1,0 +1,8 @@
+<===> issue_1231/input.scss
+div::before {
+  content: #{"\""+\e600+"\""};
+}
+<===> issue_1231/output.css
+div::before {
+  content: "\e600";
+}

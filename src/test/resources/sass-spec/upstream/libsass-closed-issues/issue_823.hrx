@@ -1,0 +1,23 @@
+<===> issue_823/input.scss
+%test {
+  > {
+    .red {
+      color: #F00;
+    }
+  }
+}
+
+p {
+  @extend %test;
+
+  > {
+    a {
+      @extend %test;
+    }
+  }
+}
+
+<===> issue_823/output.css
+p > a > .red, p > .red {
+  color: #F00;
+}

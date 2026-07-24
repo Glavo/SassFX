@@ -1,0 +1,14 @@
+<===> dash_insensitive/input.scss
+@use "midstream";
+
+<===> dash_insensitive/_midstream.scss
+@forward "upstream" with ($a_b: configured);
+
+<===> dash_insensitive/_upstream.scss
+$a-b: original !default;
+b {c: $a-b}
+
+<===> dash_insensitive/output.css
+b {
+  c: configured;
+}

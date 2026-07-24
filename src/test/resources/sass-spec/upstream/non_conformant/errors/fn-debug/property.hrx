@@ -1,0 +1,14 @@
+<===> property/input.scss
+a {
+  b: {
+    @debug "debug";
+    foo: bar;
+  }
+}
+<===> property/output.css
+a {
+  b-foo: bar;
+}
+
+<===> property/warning
+spec/errors/fn-debug/property-dart-sass/input.scss:3 DEBUG: debug

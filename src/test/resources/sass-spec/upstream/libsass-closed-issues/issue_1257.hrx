@@ -1,0 +1,9 @@
+<===> issue_1257/input.scss
+@use "sass:color";
+.foo {
+  color: color.invert(red...);
+}
+<===> issue_1257/output.css
+.foo {
+  color: aqua;
+}

@@ -1,0 +1,18 @@
+<===> 134_test_nested_function_shadow/input.scss
+@function foo() {@return 1}
+
+foo {
+  @function foo() {@return 2}
+  a: foo();
+}
+
+baz {b: foo()}
+
+<===> 134_test_nested_function_shadow/output.css
+foo {
+  a: 2;
+}
+
+baz {
+  b: 1;
+}

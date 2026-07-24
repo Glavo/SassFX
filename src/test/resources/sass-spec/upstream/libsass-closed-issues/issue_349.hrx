@@ -1,0 +1,9 @@
+<===> issue_349/input.scss
+div {
+  blah: not true;
+}
+
+<===> issue_349/output.css
+div {
+  blah: false;
+}

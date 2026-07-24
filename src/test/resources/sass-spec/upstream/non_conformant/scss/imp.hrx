@@ -1,0 +1,7 @@
+<===> imp/input.scss
+div { color: red; }
+
+<===> imp/output.css
+div {
+  color: red;
+}

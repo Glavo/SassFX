@@ -1,0 +1,11 @@
+<===> issue_1153/input.scss
+/* precision: 0 */
+$foo: 123px;
+foo {
+  bar: $foo;
+}
+<===> issue_1153/output.css
+/* precision: 0 */
+foo {
+  bar: 123px;
+}

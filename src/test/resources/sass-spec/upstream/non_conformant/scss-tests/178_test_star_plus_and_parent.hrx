@@ -1,0 +1,7 @@
+<===> 178_test_star_plus_and_parent/input.scss
+foo {*+html & {a: b}}
+
+<===> 178_test_star_plus_and_parent/output.css
+* + html foo {
+  a: b;
+}

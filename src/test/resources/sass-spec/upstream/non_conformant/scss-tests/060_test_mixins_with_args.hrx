@@ -1,0 +1,9 @@
+<===> 060_test_mixins_with_args/input.scss
+@mixin foo($a) {a: $a}
+
+.foo {@include foo(bar)}
+
+<===> 060_test_mixins_with_args/output.css
+.foo {
+  a: bar;
+}

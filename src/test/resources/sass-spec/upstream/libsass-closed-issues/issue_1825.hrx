@@ -1,0 +1,12 @@
+<===> issue_1825/input.scss
+foo {
+  &-- {
+    &baz {
+      color: red;
+    } 
+  } 
+} 
+<===> issue_1825/output.css
+foo--baz {
+  color: red;
+}

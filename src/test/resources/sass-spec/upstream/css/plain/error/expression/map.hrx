@@ -1,0 +1,15 @@
+<===> map/input.scss
+@use 'plain'
+<===> map/plain.css
+a {
+  x: (y: z);
+}
+
+<===> map/error
+Error: expected ")".
+  ,
+2 |   x: (y: z);
+  |        ^
+  '
+  plain.css 2:8   @use
+  input.scss 1:1  root stylesheet

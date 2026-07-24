@@ -1,0 +1,176 @@
+<===> position/top_level/input.scss
+@warn "w";
+
+<===> position/top_level/output.css
+
+<===> position/top_level/warning
+WARNING: w
+    input.scss 1:1  root stylesheet
+
+<===> position/ruleset/input.scss
+a {
+  @warn "w";
+  b: c;
+}
+
+<===> position/ruleset/output.css
+a {
+  b: c;
+}
+
+<===> position/ruleset/warning
+WARNING: w
+    input.scss 2:3  root stylesheet
+
+<===> position/property/input.scss
+a {
+  b: {
+    @warn "w";
+    c: d;
+  }
+}
+
+<===> position/property/output.css
+a {
+  b-c: d;
+}
+
+<===> position/property/warning
+WARNING: w
+    input.scss 3:5  root stylesheet
+
+<===> position/mixin/input.scss
+@mixin b() {
+  @warn test;
+  c: d;
+}
+
+a {
+  @include b();
+}
+
+<===> position/mixin/output.css
+a {
+  c: d;
+}
+
+<===> position/mixin/warning
+WARNING: test
+    input.scss 2:3  b()
+    input.scss 7:3  root stylesheet
+
+<===> position/function/input.scss
+@function c() {
+  @warn test;
+  @return d;
+}
+
+a {
+  b: c();
+}
+
+<===> position/function/output.css
+a {
+  b: d;
+}
+
+<===> position/function/warning
+WARNING: test
+    input.scss 2:3  c()
+    input.scss 7:6  root stylesheet
+
+<===> escaped/input.scss
+@w\61rn warning;
+a {b: c}
+
+<===> escaped/output.css
+a {
+  b: c;
+}
+
+<===> escaped/warning
+WARNING: warning
+    input.scss 1:1  root stylesheet
+
+<===> functions_in_stack/input.scss
+@use "sass:meta";
+
+@function issues-warning($a) {
+  @warn "From function: #{meta.inspect($a)}";
+  @return $a;
+}
+
+@mixin calls-function-that-warns($a) {
+  warned: issues-warning($a);
+}
+
+.test {
+  @include calls-function-that-warns(testing);
+}
+
+<===> functions_in_stack/output.css
+.test {
+  warned: testing;
+}
+
+<===> functions_in_stack/warning
+WARNING: From function: testing
+    input.scss 4:3   issues-warning()
+    input.scss 9:11  calls-function-that-warns()
+    input.scss 13:3  root stylesheet
+
+<===> comment/before_expression/loud/input.scss
+@warn /**/ a
+
+<===> comment/before_expression/loud/output.css
+
+<===> comment/before_expression/loud/warning
+WARNING: a
+    input.scss 1:1  root stylesheet
+
+<===> comment/before_expression/silent/input.scss
+@warn //
+  a
+
+<===> comment/before_expression/silent/output.css
+
+<===> comment/before_expression/silent/warning
+WARNING: a
+    input.scss 1:1  root stylesheet
+
+<===> comment/after_expression/loud/input.scss
+@warn a /**/
+
+<===> comment/after_expression/loud/output.css
+
+<===> comment/after_expression/loud/warning
+WARNING: a
+    input.scss 1:1  root stylesheet
+
+<===> comment/after_expression/silent/input.scss
+@warn a //
+
+<===> comment/after_expression/silent/output.css
+
+<===> comment/after_expression/silent/warning
+WARNING: a
+    input.scss 1:1  root stylesheet
+
+<===> sass/semicolon/input.sass
+@warn a;
+
+<===> sass/semicolon/output.css
+
+<===> sass/semicolon/warning
+WARNING: a
+    input.sass 1:1  root stylesheet
+
+<===> sass/multiline/input.sass
+@warn
+a
+
+<===> sass/multiline/output.css
+
+<===> sass/multiline/warning
+WARNING: a
+    input.sass 1:1  root stylesheet

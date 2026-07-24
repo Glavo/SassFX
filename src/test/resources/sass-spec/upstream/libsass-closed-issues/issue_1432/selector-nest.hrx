@@ -1,0 +1,12 @@
+<===> selector-nest/input.scss
+@use "sass:selector";
+@debug(selector.nest("foo", null));
+
+<===> selector-nest/error
+Error: null is not a valid selector: it must be a string,
+a list of strings, or a list of lists of strings.
+  ,
+2 | @debug(selector.nest("foo", null));
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:8  root stylesheet

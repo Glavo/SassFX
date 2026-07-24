@@ -20,6 +20,7 @@ public sealed interface SassExpression extends SassNode permits
         FunctionExpression,
         InterpolatedFunctionExpression,
         LegacyIfExpression,
+        IfExpression,
         MapExpression,
         ColorExpression {
     /// Dispatches this expression to its type-specific visitor method.

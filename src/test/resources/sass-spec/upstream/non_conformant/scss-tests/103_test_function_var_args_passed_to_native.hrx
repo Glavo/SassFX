@@ -1,0 +1,12 @@
+<===> 103_test_function_var_args_passed_to_native/input.scss
+@use "sass:color";
+@function foo($args...) {
+  @return color.adjust($args...);
+}
+
+.foo {val: foo(#102030, $blue: 5)}
+
+<===> 103_test_function_var_args_passed_to_native/output.css
+.foo {
+  val: #102035;
+}

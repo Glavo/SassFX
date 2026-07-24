@@ -1,0 +1,11 @@
+<===> mixin-in-function/input.scss
+@function foo () {
+  @mixin bar() {}
+}
+<===> mixin-in-function/error
+Error: This at-rule is not allowed here.
+  ,
+2 |   @mixin bar() {}
+  |   ^^^^^^^^^^^^^
+  '
+  input.scss 2:3  root stylesheet

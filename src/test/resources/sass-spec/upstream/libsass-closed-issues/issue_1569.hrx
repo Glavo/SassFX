@@ -1,0 +1,18 @@
+<===> issue_1569/input.scss
+$common-border: "foo";
+.nihilo & {
+  .dijitMenu {
+    border: $common-border;
+    .dijitMenuItem {
+      color: getColor('text-dark-main');
+    }
+  }
+}
+
+<===> issue_1569/output.css
+.nihilo & .dijitMenu {
+  border: "foo";
+}
+.nihilo & .dijitMenu .dijitMenuItem {
+  color: getColor("text-dark-main");
+}

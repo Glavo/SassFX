@@ -1,0 +1,21 @@
+<===> ampersand/input.scss
+foo {
+  @at-root {
+    & {
+      color: blue;
+    }
+
+    &--modifier {
+      color: red;
+    }
+  }
+}
+
+<===> ampersand/output.css
+foo {
+  color: blue;
+}
+
+foo--modifier {
+  color: red;
+}

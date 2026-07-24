@@ -1,0 +1,10 @@
+<===> 41_slashy_urls/input.scss
+div {
+  blah: url(//some/absolute/path);
+  blee: url(/*looks-like-a*/comment);
+}
+<===> 41_slashy_urls/output.css
+div {
+  blah: url(//some/absolute/path);
+  blee: url(/*looks-like-a*/comment);
+}

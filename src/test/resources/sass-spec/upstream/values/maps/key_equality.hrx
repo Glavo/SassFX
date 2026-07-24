@@ -1,0 +1,35 @@
+<===> nan/input.scss
+@use "sass:map";
+@use "sass:math";
+@use "sass:meta";
+
+a {b: meta.inspect(map.get((math.div(0, 0): b), math.div(0, 0)))}
+
+<===> nan/output.css
+a {
+  b: null;
+}
+
+<===> infinity/positive/input.scss
+@use "sass:map";
+@use "sass:math";
+@use "sass:meta";
+
+a {b: meta.inspect(map.get(((math.div(1, 0)): b), math.div(1, 0)))}
+
+<===> infinity/positive/output.css
+a {
+  b: b;
+}
+
+<===> infinity/negative/input.scss
+@use "sass:map";
+@use "sass:math";
+@use "sass:meta";
+
+a {b: meta.inspect(map.get(((math.div(-1, 0)): b), math.div(-1, 0)))}
+
+<===> infinity/negative/output.css
+a {
+  b: b;
+}

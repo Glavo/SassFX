@@ -1,0 +1,25 @@
+<===> mixin/input.scss
+$foo: 42;
+
+@mixin foo {
+  $foo: 1337 !global;
+}
+
+.foo {
+  content: $foo;
+}
+
+@include foo;
+
+.bar {
+  content: $foo;
+}
+
+<===> mixin/output.css
+.foo {
+  content: 42;
+}
+
+.bar {
+  content: 1337;
+}

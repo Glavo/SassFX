@@ -1,0 +1,17 @@
+<===> issue_2150/input.scss
+@media (min-width: 100px) {
+  .parent > %child {
+    color: blue;
+  }
+}
+
+.foo {
+  @extend %child;
+}
+
+<===> issue_2150/output.css
+@media (min-width: 100px) {
+  .parent > .foo {
+    color: blue;
+  }
+}

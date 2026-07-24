@@ -1,0 +1,15 @@
+<===> issue_59/input.scss
+@mixin apply-to-ie6-only {
+  * html {
+    @content;
+  }
+}
+@include apply-to-ie6-only {
+  #logo {
+    background-image: url(/logo.gif);
+  }
+}
+<===> issue_59/output.css
+* html #logo {
+  background-image: url(/logo.gif);
+}

@@ -1,0 +1,11 @@
+<===> issue_2000/input.scss
+.m__exhibit-header--medium {
+    @extend #{&}--plain;
+    &--plain {
+        font-size: --&;
+    }
+}
+<===> issue_2000/output.css
+.m__exhibit-header--medium--plain, .m__exhibit-header--medium {
+  font-size: -- .m__exhibit-header--medium--plain;
+}

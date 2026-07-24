@@ -1,0 +1,10 @@
+<===> extend-result-of-extend/input.scss
+// The result of :not(.c) being extended should itself be extendable.
+.a {@extend :not(.b)}
+.b {@extend .c}
+:not(.c) {x: y}
+
+<===> extend-result-of-extend/output.css
+:not(.c):not(.b), .a:not(.c) {
+  x: y;
+}

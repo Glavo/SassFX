@@ -1,0 +1,8 @@
+<===> 099_test_nested_extender_alternates_parents/input.scss
+.baz .bip .foo {a: b}
+foo .grank bar {@extend .foo}
+
+<===> 099_test_nested_extender_alternates_parents/output.css
+.baz .bip .foo, .baz .bip foo .grank bar, foo .grank .baz .bip bar {
+  a: b;
+}

@@ -1,0 +1,21 @@
+<===> escaped_selector/input.scss
+// Escapes in selectors' identifiers should be normalized before `@extend` is
+// applied.
+.foo {escape: none}
+\.foo {escape: slash dot}
+\2E foo {escape: hex}
+
+.bar {@extend \02e foo}
+
+<===> escaped_selector/output.css
+.foo {
+  escape: none;
+}
+
+\.foo, .bar {
+  escape: slash dot;
+}
+
+\.foo, .bar {
+  escape: hex;
+}

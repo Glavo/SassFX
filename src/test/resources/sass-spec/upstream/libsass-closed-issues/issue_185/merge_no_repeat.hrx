@@ -1,0 +1,27 @@
+<===> merge_no_repeat/input.scss
+.foo {
+  content: foo;
+
+  @media only screen and (min-width: 1337px) {
+    content: bar;
+
+    @media only screen and (max-width: 42em) {
+      content: baz;
+    }
+  }
+}
+
+<===> merge_no_repeat/output.css
+.foo {
+  content: foo;
+}
+@media only screen and (min-width: 1337px) {
+  .foo {
+    content: bar;
+  }
+}
+@media only screen and (min-width: 1337px) and (max-width: 42em) {
+  .foo {
+    content: baz;
+  }
+}

@@ -1,0 +1,11 @@
+<===> lt/input.scss
+test {
+  err: 2px < red;
+}
+<===> lt/error
+Error: Undefined operation "2px < red".
+  ,
+2 |   err: 2px < red;
+  |        ^^^^^^^^^
+  '
+  input.scss 2:8  root stylesheet

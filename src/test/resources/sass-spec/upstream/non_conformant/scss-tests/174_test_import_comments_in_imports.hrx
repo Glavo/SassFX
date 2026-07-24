@@ -1,0 +1,9 @@
+<===> 174_test_import_comments_in_imports/input.scss
+@import "foo.css", // this is a comment
+        "bar.css", /* this is another comment */
+        "baz.css"; // this is a third comment
+
+<===> 174_test_import_comments_in_imports/output.css
+@import "foo.css";
+@import "bar.css";
+@import "baz.css";

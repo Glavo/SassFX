@@ -1,0 +1,29 @@
+<===> issue_2304/input.scss
+@import "module";
+<===> issue_2304/_module.scss
+.foo, & {
+  background: red;
+}
+
+.foo, &:before {
+  background: red;
+}
+<===> issue_2304/output.css
+.foo, & {
+  background: red;
+}
+
+.foo, &:before {
+  background: red;
+}
+
+<===> issue_2304/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import "module";
+  |         ^^^^^^^^
+  '
+    input.scss 1:9  root stylesheet

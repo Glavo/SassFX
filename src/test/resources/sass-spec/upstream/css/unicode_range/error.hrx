@@ -1,0 +1,131 @@
+<===> ident_minus_space_ident/input.scss
+a {b: U+abc- def}
+
+<===> ident_minus_space_ident/error
+Error: Expected hex digit.
+  ,
+1 | a {b: U+abc- def}
+  |             ^
+  '
+  input.scss 1:13  root stylesheet
+
+<===> minus_ident_minus/input.scss
+a {b: u+123-abc-def}
+
+<===> minus_ident_minus/error
+Error: Expected end of identifier.
+  ,
+1 | a {b: u+123-abc-def}
+  |                ^
+  '
+  input.scss 1:16  root stylesheet
+
+<===> minus_number_minus_ident/input.scss
+a {b: U+123-456-ABC}
+
+<===> minus_number_minus_ident/error
+Error: Expected end of identifier.
+  ,
+1 | a {b: U+123-456-ABC}
+  |                ^
+  '
+  input.scss 1:16  root stylesheet
+
+<===> no_digits/input.scss
+a {b: U+}
+
+<===> no_digits/error
+Error: Expected hex digit or "?".
+  ,
+1 | a {b: U+}
+  |         ^
+  '
+  input.scss 1:9  root stylesheet
+
+<===> nothing_after_minus/input.scss
+a {b: U+abc-}
+
+<===> nothing_after_minus/error
+Error: Expected hex digit.
+  ,
+1 | a {b: U+abc-}
+  |             ^
+  '
+  input.scss 1:13  root stylesheet
+
+<===> question_mark_after_minus/input.scss
+a {b: u+abc-de?}
+
+<===> question_mark_after_minus/error
+Error: expected ";".
+  ,
+1 | a {b: u+abc-de?}
+  |               ^
+  '
+  input.scss 1:15  root stylesheet
+
+<===> too_many/after_minus/decimal_digits/input.scss
+a {b: U+abc-1234567}
+
+<===> too_many/after_minus/decimal_digits/error
+Error: Expected at most 6 digits.
+  ,
+1 | a {b: U+abc-1234567}
+  |             ^^^^^^^
+  '
+  input.scss 1:13  root stylesheet
+
+<===> too_many/after_minus/hex_digits/input.scss
+a {b: U+abc-abcdefa}
+
+<===> too_many/after_minus/hex_digits/error
+Error: Expected at most 6 digits.
+  ,
+1 | a {b: U+abc-abcdefa}
+  |             ^^^^^^^
+  '
+  input.scss 1:13  root stylesheet
+
+<===> too_many/decimal_digits/input.scss
+a {b: U+1234567}
+
+<===> too_many/decimal_digits/error
+Error: Expected at most 6 digits.
+  ,
+1 | a {b: U+1234567}
+  |       ^^^^^^^^^
+  '
+  input.scss 1:7  root stylesheet
+
+<===> too_many/hex_digits/input.scss
+a {b: U+ABCDEFA}
+
+<===> too_many/hex_digits/error
+Error: Expected at most 6 digits.
+  ,
+1 | a {b: U+ABCDEFA}
+  |       ^^^^^^^^^
+  '
+  input.scss 1:7  root stylesheet
+
+<===> too_many/question_marks/after_question_mark/input.scss
+a {b: U+???????}
+
+<===> too_many/question_marks/after_question_mark/error
+Error: Expected at most 6 digits.
+  ,
+1 | a {b: U+???????}
+  |       ^^^^^^^^^
+  '
+  input.scss 1:7  root stylesheet
+
+<===> too_many/question_marks/after_decimal/input.scss
+a {b: U+12345??}
+
+<===> too_many/question_marks/after_decimal/error
+Error: Expected at most 6 digits.
+  ,
+1 | a {b: U+12345??}
+  |       ^^^^^^^^^
+  '
+  input.scss 1:7  root stylesheet

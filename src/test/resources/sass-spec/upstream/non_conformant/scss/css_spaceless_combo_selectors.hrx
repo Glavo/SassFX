@@ -1,0 +1,8 @@
+<===> css_spaceless_combo_selectors/input.scss
+E + F {
+  a: b; }
+
+<===> css_spaceless_combo_selectors/output.css
+E + F {
+  a: b;
+}

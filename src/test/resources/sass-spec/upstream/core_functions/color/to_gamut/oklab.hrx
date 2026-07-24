@@ -1,0 +1,27 @@
+<===> clip/input.scss
+@use "sass:color";
+a {
+  b: color.to-gamut(
+    color.change(oklab(50% 500 -999999), $lightness: 150%),
+    $method: clip
+  );
+}
+
+<===> clip/output.css
+a {
+  b: color-mix(in oklab, color(xyz 593644542057412224 -153762246556647904 3418717351297831936) 100%, black);
+}
+
+<===> local_minde/input.scss
+@use "sass:color";
+a {
+  b: color.to-gamut(
+    color.change(oklab(50% 500 -999999), $lightness: 150%),
+    $method: local-minde
+  );
+}
+
+<===> local_minde/output.css
+a {
+  b: color-mix(in oklab, color(xyz 593644542057412224 -153762246556647904 3418717351297831936) 100%, black);
+}

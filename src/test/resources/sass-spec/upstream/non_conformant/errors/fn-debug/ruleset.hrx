@@ -1,0 +1,12 @@
+<===> ruleset/input.scss
+a {
+  @debug "debug";
+  foo: bar;
+}
+<===> ruleset/output.css
+a {
+  foo: bar;
+}
+
+<===> ruleset/warning
+input.scss:2 DEBUG: debug

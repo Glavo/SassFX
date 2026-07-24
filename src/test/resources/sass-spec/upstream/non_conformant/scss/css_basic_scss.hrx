@@ -1,0 +1,8 @@
+<===> css_basic_scss/input.scss
+sel {
+  p: v; }
+
+<===> css_basic_scss/output.css
+sel {
+  p: v;
+}

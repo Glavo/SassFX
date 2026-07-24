@@ -1,0 +1,22 @@
+<===> issue_1448/input.scss
+.md-card
+{
+    .md-info-card-highlight
+    {
+        background: red;
+        color: blue;
+
+        .ng-md-icon
+        {
+            color: green;
+        }
+    }
+}
+<===> issue_1448/output.css
+.md-card .md-info-card-highlight {
+  background: red;
+  color: blue;
+}
+.md-card .md-info-card-highlight .ng-md-icon {
+  color: green;
+}

@@ -1,0 +1,18 @@
+<===> hacks/input.scss
+@use "plain";
+
+<===> hacks/plain.css
+.hacks {
+  *x: y;
+  :x: y;
+  #x: y;
+  .x: y;
+}
+
+<===> hacks/output.css
+.hacks {
+  *x: y;
+  :x: y;
+  #x: y;
+  .x: y;
+}

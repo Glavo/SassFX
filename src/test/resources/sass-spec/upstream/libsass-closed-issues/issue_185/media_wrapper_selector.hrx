@@ -1,0 +1,47 @@
+<===> media_wrapper_selector/input.scss
+@media all {
+  .bar { content: baz; }
+
+  @media (min-width: 1337px) {
+    .foo { content: bar; }
+  }
+}
+
+@media all {
+  .bar { content: baz; }
+
+  @media (min-width: 1337px) {
+    .baz { content: foo; }
+
+    @media (max-width: 42em) {
+      .foo { content: bar; }
+    }
+  }
+}
+
+<===> media_wrapper_selector/output.css
+@media all {
+  .bar {
+    content: baz;
+  }
+}
+@media (min-width: 1337px) {
+  .foo {
+    content: bar;
+  }
+}
+@media all {
+  .bar {
+    content: baz;
+  }
+}
+@media (min-width: 1337px) {
+  .baz {
+    content: foo;
+  }
+}
+@media (min-width: 1337px) and (max-width: 42em) {
+  .foo {
+    content: bar;
+  }
+}

@@ -1,0 +1,8 @@
+<===> 231_test_extend_redundancy_elimination_when_it_would_preserve_specificity/input.scss
+.bar a {a: b}
+a.foo {@extend a}
+
+<===> 231_test_extend_redundancy_elimination_when_it_would_preserve_specificity/output.css
+.bar a {
+  a: b;
+}

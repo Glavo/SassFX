@@ -1,0 +1,8 @@
+<===> issue_2429/input.scss
+input[type=url] {
+  content: bar
+}
+<===> issue_2429/output.css
+input[type=url] {
+  content: bar;
+}

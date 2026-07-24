@@ -1,0 +1,7 @@
+<===> blimp/input.scss
+blimp { color: green }
+
+<===> blimp/output.css
+blimp {
+  color: green;
+}

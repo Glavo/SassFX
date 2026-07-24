@@ -1,0 +1,8 @@
+<===> interpolated-selectors/input.scss
+foo#{bar} hux {
+  color: red;
+}
+<===> interpolated-selectors/output.css
+foobar hux {
+  color: red;
+}

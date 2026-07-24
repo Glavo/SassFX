@@ -1,0 +1,24 @@
+<===> issue_622/input.scss
+@media screen {
+    a {
+        color: red;
+    }
+}
+
+.link {
+    @media (foo: bar) {
+        display: flex;
+    }
+}
+
+<===> issue_622/output.css
+@media screen {
+  a {
+    color: red;
+  }
+}
+@media (foo: bar) {
+  .link {
+    display: flex;
+  }
+}

@@ -1,0 +1,24 @@
+<===> functioncall/input.scss
+@use "sass:meta";
+
+@function fncall($void) {
+  @return "key";
+}
+
+$map: (
+  fncall(1+2): 'foo',
+  fncall(1+2): 'bar',
+);
+
+.foo {
+  content: meta.inspect($map);
+}
+<===> functioncall/error
+Error: Duplicate key.
+  ,
+8 |   fncall(1+2): 'foo',
+  |   =========== first key
+9 |   fncall(1+2): 'bar',
+  |   ^^^^^^^^^^^ second key
+  '
+  input.scss 9:3  root stylesheet

@@ -1,0 +1,16 @@
+<===> and/input.scss
+@function and() {
+  @return "and";
+}
+
+test {
+  and: and();
+}
+
+<===> and/error
+Error: Invalid function name.
+  ,
+1 | @function and() {
+  |           ^^^
+  '
+  input.scss 1:11  root stylesheet

@@ -1,0 +1,8 @@
+<===> 12_double_escaped_interpolated_value_todo/input.scss
+$key: 'bar';
+.test12#{'\\@#{$key}'} { content: '1.2'; }
+
+<===> 12_double_escaped_interpolated_value_todo/output.css
+.test12\@bar {
+  content: "1.2";
+}

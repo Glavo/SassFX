@@ -1,0 +1,22 @@
+<===> ruleset/input.scss
+$foo: 42;
+
+.foo {
+  content: $foo;
+  $foo: 1337 !global;
+  content: $foo;
+}
+
+.bar {
+  content: $foo;
+}
+
+<===> ruleset/output.css
+.foo {
+  content: 42;
+  content: 1337;
+}
+
+.bar {
+  content: 1337;
+}

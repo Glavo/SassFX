@@ -1,0 +1,13 @@
+<===> issue_945/input.scss
+.a {
+  b: c;
+  d:
+}
+
+<===> issue_945/error
+Error: Expected expression.
+  ,
+3 |   d:
+  |     ^
+  '
+  input.scss 3:5  root stylesheet

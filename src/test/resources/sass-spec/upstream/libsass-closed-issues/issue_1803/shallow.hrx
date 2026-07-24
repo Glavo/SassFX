@@ -1,0 +1,14 @@
+<===> shallow/input.scss
+a {
+  display: block
+
+  b {
+    foo: bar;
+  }
+}
+
+<===> shallow/output.css
+a {
+  display: block b;
+  display-foo: bar;
+}

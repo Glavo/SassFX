@@ -1,0 +1,11 @@
+<===> bare/input.scss
+.foo a,
+.bar p {
+  $bar: &;
+  content: $bar;
+}
+<===> bare/output.css
+.foo a,
+.bar p {
+  content: .foo a, .bar p;
+}

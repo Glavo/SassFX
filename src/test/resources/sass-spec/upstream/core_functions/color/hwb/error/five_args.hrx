@@ -1,0 +1,15 @@
+<===> five_args/input.scss
+@use "sass:color";
+a {b: color.hwb(0, 30%, 40%, 0.5, 0)}
+
+<===> five_args/error
+Error: Only 4 arguments allowed, but 5 were passed.
+  ,--> input.scss
+2 | a {b: color.hwb(0, 30%, 40%, 0.5, 0)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ invocation
+  '
+  ,
+1 | @function hwb($hue, $whiteness, $blackness, $alpha: 1) {
+  |           ============================================ declaration
+  '
+  input.scss 2:7  root stylesheet

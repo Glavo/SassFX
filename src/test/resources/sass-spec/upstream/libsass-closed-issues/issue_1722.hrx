@@ -1,0 +1,12 @@
+<===> issue_1722/input.scss
+@use "sass:map";
+$score: (item-height: 1.12em);
+.test {
+    background-position: 0 -#{map.get($score, item-height)};
+}
+
+
+<===> issue_1722/output.css
+.test {
+  background-position: 0 -1.12em;
+}

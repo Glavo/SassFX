@@ -1,0 +1,27 @@
+<===> issue_1215/input.scss
+foo {
+  -quotes: 'this-string' == 'this-string';
+  -quotes: this-string == 'this-string';
+  -quotes: 'this-string' == "this-string";
+  -quotes: 'this-string' == '"this-string"';
+  -quotes: '"this-string"' == "'this-string'";
+  foo: this-string;
+  foo: 'this-string';
+  foo: "this-string";
+  foo: '"this-string"';
+  foo: "'this-string'";
+}
+
+<===> issue_1215/output.css
+foo {
+  -quotes: true;
+  -quotes: true;
+  -quotes: true;
+  -quotes: false;
+  -quotes: false;
+  foo: this-string;
+  foo: "this-string";
+  foo: "this-string";
+  foo: '"this-string"';
+  foo: "'this-string'";
+}

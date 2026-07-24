@@ -1,0 +1,13 @@
+<===> 005_test_multiple_targets/input.scss
+.foo {a: b}
+.bar {@extend .foo}
+.blip .foo {c: d}
+
+<===> 005_test_multiple_targets/output.css
+.foo, .bar {
+  a: b;
+}
+
+.blip .foo, .blip .bar {
+  c: d;
+}

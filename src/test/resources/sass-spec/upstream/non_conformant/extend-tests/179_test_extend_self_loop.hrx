@@ -1,0 +1,7 @@
+<===> 179_test_extend_self_loop/input.scss
+.foo {a: b; @extend .foo}
+
+<===> 179_test_extend_self_loop/output.css
+.foo {
+  a: b;
+}

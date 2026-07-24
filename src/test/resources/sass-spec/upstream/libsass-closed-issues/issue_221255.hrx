@@ -1,0 +1,10 @@
+<===> issue_221255/input.scss
+'#{)'{
+
+<===> issue_221255/error
+Error: Expected expression.
+  ,
+1 | '#{)'{
+  |  ^^
+  '
+  input.scss 1:2  root stylesheet

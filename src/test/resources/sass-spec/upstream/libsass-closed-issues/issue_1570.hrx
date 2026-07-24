@@ -1,0 +1,17 @@
+<===> issue_1570/input.scss
+a {
+    font: 12px/normal serif;
+}
+
+b {
+    font: normal 12px/normal serif;
+}
+
+<===> issue_1570/output.css
+a {
+  font: 12px/normal serif;
+}
+
+b {
+  font: normal 12px/normal serif;
+}

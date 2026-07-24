@@ -1,0 +1,91 @@
+<===> no_extension/input.scss
+@import "other";
+
+<===> no_extension/other
+a {b: c}
+
+<===> no_extension/error
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import "other";
+  |         ^^^^^^^
+  '
+    input.scss 1:9  root stylesheet
+
+Error: Can't find stylesheet to import.
+  ,
+1 | @import "other";
+  |         ^^^^^^^
+  '
+  input.scss 1:9  root stylesheet
+
+<===> directory_dot_import/input.scss
+// Import-only file extensions only apply to individual files, not to
+// directories.
+@import "other";
+
+<===> directory_dot_import/other.import/index.scss
+a {b: c}
+
+<===> directory_dot_import/error
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+3 | @import "other";
+  |         ^^^^^^^
+  '
+    input.scss 3:9  root stylesheet
+
+Error: Can't find stylesheet to import.
+  ,
+3 | @import "other";
+  |         ^^^^^^^
+  '
+  input.scss 3:9  root stylesheet
+
+<===> parent_relative/input.scss
+// A file in a subdirectory shouldn't be able to load a URL relative
+// to the importing file.
+// Regression test for scssphp/scssphp#242
+@import "dir/child"
+
+<===> parent_relative/sibling.scss
+a {b: ""}
+
+<===> parent_relative/dir/child.scss
+@import "sibling"
+
+<===> parent_relative/error
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+4 | @import "dir/child"
+  |         ^^^^^^^^^^^
+  '
+    input.scss 4:9  root stylesheet
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import "sibling"
+  |         ^^^^^^^^^
+  '
+    dir/child.scss 1:9  @import
+    input.scss 4:9      root stylesheet
+
+Error: Can't find stylesheet to import.
+  ,
+1 | @import "sibling"
+  |         ^^^^^^^^^
+  '
+  dir/child.scss 1:9  @import
+  input.scss 4:9      root stylesheet

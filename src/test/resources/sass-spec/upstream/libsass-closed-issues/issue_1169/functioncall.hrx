@@ -1,0 +1,22 @@
+<===> functioncall/input.scss
+@use "sass:meta";
+
+$count: 0;
+
+@function counter() {
+  $count: $count + 1 !global;
+  @return $count;
+}
+
+$map: (
+  counter(): 'bar',
+  counter(): 'foo',
+);
+
+.foo {
+  content: meta.inspect($map);
+}
+<===> functioncall/output.css
+.foo {
+  content: (1: "bar", 2: "foo");
+}

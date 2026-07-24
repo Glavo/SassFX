@@ -1,0 +1,18 @@
+<===> 03_inline_double/input.scss
+.result {
+  output: #{#{'\0_\a_\A'}};
+  output: #{"[#{'\0_\a_\A'}]"};
+  output: #{"#{'\0_\a_\A'}"};
+  output: #{'#{'\0_\a_\A'}'};
+  output: #{"['#{'\0_\a_\A'}']"};
+}
+
+<===> 03_inline_double/output.css
+@charset "UTF-8";
+.result {
+  output: �_ _ ;
+  output: [�_ _ ];
+  output: �_ _ ;
+  output: �_ _ ;
+  output: ['�_ _ '];
+}

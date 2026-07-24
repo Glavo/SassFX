@@ -1,0 +1,4 @@
+<===> 023_test_css_import_directive/input.scss
+@import url(foo.css);
+<===> 023_test_css_import_directive/output.css
+@import url(foo.css);

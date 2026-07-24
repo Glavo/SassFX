@@ -1,0 +1,9 @@
+<===> 3/input.scss
+a  {
+  content: "#{ a /*#{"}*/ }";
+}
+
+<===> 3/output.css
+a {
+  content: "a";
+}

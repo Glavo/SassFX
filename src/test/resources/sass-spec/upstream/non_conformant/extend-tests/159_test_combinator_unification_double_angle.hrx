@@ -1,0 +1,8 @@
+<===> 159_test_combinator_unification_double_angle/input.scss
+a.a > x {a: b}
+b.b > y {@extend x}
+
+<===> 159_test_combinator_unification_double_angle/output.css
+a.a > x {
+  a: b;
+}

@@ -1,0 +1,10 @@
+<===> 054_test_basic_mixins/input.scss
+@mixin foo {
+  .foo {a: b}}
+
+@include foo;
+
+<===> 054_test_basic_mixins/output.css
+.foo {
+  a: b;
+}

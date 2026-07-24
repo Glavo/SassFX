@@ -1,0 +1,5 @@
+<===> issue_1993/input.scss
+.test {
+  @extend #{'%test'} !optional
+}
+<===> issue_1993/output.css

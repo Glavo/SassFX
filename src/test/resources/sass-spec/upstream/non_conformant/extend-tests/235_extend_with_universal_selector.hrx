@@ -1,0 +1,17 @@
+<===> 235_extend_with_universal_selector/input.scss
+%-a *.foo1 {a: b}
+a {@extend .foo1}
+-a {@extend %-a}
+
+%-b *|*.foo2 {b: b}
+b {@extend .foo2}
+-b {@extend %-b}
+
+<===> 235_extend_with_universal_selector/output.css
+-a *.foo1, -a a {
+  a: b;
+}
+
+-b *|*.foo2, -b b {
+  b: b;
+}

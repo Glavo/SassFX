@@ -1,0 +1,16 @@
+<===> or/input.scss
+@function or() {
+  @return "or";
+}
+
+test {
+  or: or();
+}
+
+<===> or/error
+Error: Invalid function name.
+  ,
+1 | @function or() {
+  |           ^^
+  '
+  input.scss 1:11  root stylesheet

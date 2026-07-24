@@ -1,0 +1,8 @@
+<===> 187_test_basic_placeholder_selector/input.scss
+%foo {a: b}
+.bar {@extend %foo}
+
+<===> 187_test_basic_placeholder_selector/output.css
+.bar {
+  a: b;
+}

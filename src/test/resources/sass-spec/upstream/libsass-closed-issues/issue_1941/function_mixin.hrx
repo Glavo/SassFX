@@ -1,0 +1,21 @@
+<===> function_mixin/input.scss
+@function parent() {
+  @mixin nested {
+    foo: bar;
+  }
+
+  @include nested;
+}
+
+
+test {
+  foo: parent();
+}
+
+<===> function_mixin/error
+Error: This at-rule is not allowed here.
+  ,
+2 |   @mixin nested {
+  |   ^^^^^^^^^^^^^^
+  '
+  input.scss 2:3  root stylesheet

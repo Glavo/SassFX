@@ -1,0 +1,301 @@
+<===> inclusive_forward/scss/input.scss
+a {
+  @for $i from 1 through 5 {b: $i;}
+}
+
+<===> inclusive_forward/scss/output.css
+a {
+  b: 1;
+  b: 2;
+  b: 3;
+  b: 4;
+  b: 5;
+}
+
+<===> inclusive_forward/sass/input.sass
+a
+  @for $i from 1 through 5
+    b: $i
+
+<===> inclusive_forward/sass/output.css
+a {
+  b: 1;
+  b: 2;
+  b: 3;
+  b: 4;
+  b: 5;
+}
+
+<===> inclusive_backward/input.scss
+a {
+  @for $i from 5 through 1 {b: $i;}
+}
+
+<===> inclusive_backward/output.css
+a {
+  b: 5;
+  b: 4;
+  b: 3;
+  b: 2;
+  b: 1;
+}
+
+<===> empty/scss/input.scss
+a {
+  @for $i from 1 to 1 {b: $i;}
+}
+
+<===> empty/scss/output.css
+
+<===> empty/sass/input.sass
+a
+  @for $i from 1 to 1
+    b: $i
+
+<===> empty/sass/output.css
+
+<===> exclusive_forward/input.scss
+a {
+  @for $i from 1 to 5 {b: $i;}
+}
+
+<===> exclusive_forward/output.css
+a {
+  b: 1;
+  b: 2;
+  b: 3;
+  b: 4;
+}
+
+<===> exclusive_backward/scss/input.scss
+a {
+  @for $i from 5 to 1 {b: $i;}
+}
+
+<===> exclusive_backward/scss/output.css
+a {
+  b: 5;
+  b: 4;
+  b: 3;
+  b: 2;
+}
+
+<===> exclusive_backward/sass/input.sass
+a 
+  @for $i from 5 to 1
+    b: $i
+
+<===> exclusive_backward/sass/output.css
+a {
+  b: 5;
+  b: 4;
+  b: 3;
+  b: 2;
+}
+
+<===> negative_to_positive/input.scss
+a {
+  @for $i from -1 through 3 {b: $i;}
+}
+
+<===> negative_to_positive/output.css
+a {
+  b: -1;
+  b: 0;
+  b: 1;
+  b: 2;
+  b: 3;
+}
+
+<===> positive_to_negative/input.scss
+a {
+  @for $i from 2 through -1 {b: $i;}
+}
+
+<===> positive_to_negative/output.css
+a {
+  b: 2;
+  b: 1;
+  b: 0;
+  b: -1;
+}
+
+<===> negative_to_negative/input.scss
+a {
+  @for $i from -5 through -1 {b: $i;}
+}
+
+<===> negative_to_negative/output.css
+a {
+  b: -5;
+  b: -4;
+  b: -3;
+  b: -2;
+  b: -1;
+}
+
+<===> in_declaration/input.scss
+a {
+  b: {
+    @for $i from 1 through 5 {c: $i}
+  }
+}
+
+<===> in_declaration/output.css
+a {
+  b-c: 1;
+  b-c: 2;
+  b-c: 3;
+  b-c: 4;
+  b-c: 5;
+}
+
+<===> to_scope/input.scss
+// Overriding the variable inside the loop will not impact the end of the loop.
+$limit: 4;
+
+@for $i from 1 through $limit {
+  $limit: 2;
+  a {
+    limit: $limit;
+    i: $i;
+  }
+}
+
+<===> to_scope/output.css
+a {
+  limit: 2;
+  i: 1;
+}
+
+a {
+  limit: 2;
+  i: 2;
+}
+
+a {
+  limit: 2;
+  i: 3;
+}
+
+a {
+  limit: 2;
+  i: 4;
+}
+
+<===> unit/same/input.scss
+a {
+  @for $i from 1px through 5px {b: $i;}
+}
+
+<===> unit/same/output.css
+a {
+  b: 1px;
+  b: 2px;
+  b: 3px;
+  b: 4px;
+  b: 5px;
+}
+
+<===> unit/to_unitless/input.scss
+a {
+  @for $i from 1px through 5 {b: $i;}
+}
+
+<===> unit/to_unitless/output.css
+a {
+  b: 1px;
+  b: 2px;
+  b: 3px;
+  b: 4px;
+  b: 5px;
+}
+
+<===> unit/from_unitless/input.scss
+a {
+  @for $i from 1 through 5px {b: $i;}
+}
+
+<===> unit/from_unitless/output.css
+a {
+  b: 1;
+  b: 2;
+  b: 3;
+  b: 4;
+  b: 5;
+}
+
+<===> unit/compatible/input.scss
+a {
+  @for $i from 5mm through 1cm {b: $i;}
+}
+
+<===> unit/compatible/output.css
+a {
+  b: 5mm;
+  b: 6mm;
+  b: 7mm;
+  b: 8mm;
+  b: 9mm;
+  b: 10mm;
+}
+
+<===> error/from_type/input.scss
+@for $i from "foo" through 4 {}
+<===> error/from_type/error
+Error: "foo" is not a number.
+  ,
+1 | @for $i from "foo" through 4 {}
+  |              ^^^^^
+  '
+  input.scss 1:14  root stylesheet
+
+<===> error/from_float/input.scss
+@for $i from 1.5 through 4 {}
+<===> error/from_float/error
+Error: 1.5 is not an int.
+  ,
+1 | @for $i from 1.5 through 4 {}
+  |              ^^^
+  '
+  input.scss 1:14  root stylesheet
+
+<===> error/to_type/input.scss
+@for $i from 1 through "foo" {}
+<===> error/to_type/error
+Error: "foo" is not a number.
+  ,
+1 | @for $i from 1 through "foo" {}
+  |                        ^^^^^
+  '
+  input.scss 1:24  root stylesheet
+
+<===> error/to_float/input.scss
+@for $i from 1 through 1.5 {}
+<===> error/to_float/error
+Error: 1.5 is not an int.
+  ,
+1 | @for $i from 1 through 1.5 {}
+  |                        ^^^
+  '
+  input.scss 1:24  root stylesheet
+
+<===> error/unit_coersion_to_float/input.scss
+@for $i from 1cm through 5mm {}
+<===> error/unit_coersion_to_float/error
+Error: 0.5cm is not an int.
+  ,
+1 | @for $i from 1cm through 5mm {}
+  |                          ^^^
+  '
+  input.scss 1:26  root stylesheet
+
+<===> error/incompatible_units/input.scss
+@for $i from 100% through 42px {}
+<===> error/incompatible_units/error
+Error: Expected 42px to have unit %.
+  ,
+1 | @for $i from 100% through 42px {}
+  |                           ^^^^
+  '
+  input.scss 1:27  root stylesheet

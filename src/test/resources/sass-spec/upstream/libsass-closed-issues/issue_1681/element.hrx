@@ -1,0 +1,12 @@
+<===> element/input.scss
+@function element() {
+  @return null;
+}
+
+<===> element/error
+Error: Invalid function name.
+  ,
+1 | @function element() {
+  |           ^^^^^^^
+  '
+  input.scss 1:11  root stylesheet

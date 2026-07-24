@@ -1,0 +1,16 @@
+<===> mixin/input.scss
+@mixin foo($bar) {
+  a: $bar;
+}
+
+foo {
+  @include foo(#{});
+}
+
+<===> mixin/error
+Error: Expected expression.
+  ,
+6 |   @include foo(#{});
+  |                ^^
+  '
+  input.scss 6:16  root stylesheet

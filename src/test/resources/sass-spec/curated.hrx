@@ -121,7 +121,7 @@ $null_value: null;
   absent-function: false;
   local-mixin: true;
   absent-mixin: false;
-  math-pi: 3.141592653589793;
+  math-pi: 3.1415926536;
 }
 <===> modules/meta-function-values/input.scss
 @use "sass:map";

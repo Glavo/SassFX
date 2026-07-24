@@ -1,0 +1,10 @@
+<===> issue_1669/input.scss
+foo {
+  bar: #{100%/3}
+}
+
+
+<===> issue_1669/output.css
+foo {
+  bar: 100%/3;
+}

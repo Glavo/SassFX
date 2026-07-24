@@ -1,0 +1,13 @@
+<===> property_only/input.scss
+@media print {
+  a {
+    @at-root (without: media) {
+      b: c;
+    }
+  }
+}
+
+<===> property_only/output.css
+a {
+  b: c;
+}

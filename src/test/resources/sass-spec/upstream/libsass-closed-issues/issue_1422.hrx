@@ -1,0 +1,13 @@
+<===> issue_1422/input.scss
+.foo {
+  /*foo*/foo/*foo*/: /*foo*/bar/*foo*/;
+  /*foo*/ foo /*foo*/ : /*foo*/ bar /*foo*/;
+}
+
+<===> issue_1422/output.css
+.foo {
+  /*foo*/
+  foo/*foo*/: bar;
+  /*foo*/
+  foo: bar;
+}

@@ -1,0 +1,149 @@
+<===> issue_2374/input.scss
+@use "sass:color";
+$colors: (
+    yellow: #ffeb3b
+);
+@each $name, $color in $colors {
+    $amount: 40%;
+    @for $i from 0 through 9 {
+        .#{$name}-#{($i*100)} { background-color: color.adjust($color, $lightness: $amount) };
+        $amount: $amount - 2;
+    }
+}
+
+$colors: (
+    yellow: yellow,
+    red: red,
+    blue: blue,
+
+);
+@each $name, $color in $colors {
+    @for $i from 0 through 2 {
+        .#{$name}-#{($i*100)} {
+          background-color: color.adjust($color, $lightness: 10%)
+        };
+    }
+}
+
+
+<===> issue_2374/output.css
+.yellow-0 {
+  background-color: hsl(53.8775510204, 100%, 101.568627451%);
+}
+
+.yellow-100 {
+  background-color: rgb(255, 254.7755102041, 252.8);
+}
+
+.yellow-200 {
+  background-color: rgb(255, 253.7346938776, 242.6);
+}
+
+.yellow-300 {
+  background-color: rgb(255, 252.693877551, 232.4);
+}
+
+.yellow-400 {
+  background-color: rgb(255, 251.6530612245, 222.2);
+}
+
+.yellow-500 {
+  background-color: rgb(255, 250.612244898, 212);
+}
+
+.yellow-600 {
+  background-color: rgb(255, 249.5714285714, 201.8);
+}
+
+.yellow-700 {
+  background-color: rgb(255, 248.5306122449, 191.6);
+}
+
+.yellow-800 {
+  background-color: rgb(255, 247.4897959184, 181.4);
+}
+
+.yellow-900 {
+  background-color: rgb(255, 246.4489795918, 171.2);
+}
+
+.yellow-0 {
+  background-color: #ffff33;
+}
+
+.yellow-100 {
+  background-color: #ffff33;
+}
+
+.yellow-200 {
+  background-color: #ffff33;
+}
+
+.red-0 {
+  background-color: #ff3333;
+}
+
+.red-100 {
+  background-color: #ff3333;
+}
+
+.red-200 {
+  background-color: #ff3333;
+}
+
+.blue-0 {
+  background-color: #3333ff;
+}
+
+.blue-100 {
+  background-color: #3333ff;
+}
+
+.blue-200 {
+  background-color: #3333ff;
+}
+
+<===> issue_2374/warning
+WARNING: You probably don't mean to use the color value yellow in interpolation here.
+It may end up represented as yellow, which will likely produce invalid CSS.
+Always quote color names when using them as strings or map keys (for example, "yellow").
+If you really want to use the color value here, use '"" + $name'.
+
+  ,
+8 |         .#{$name}-#{($i*100)} { background-color: color.adjust($color, $lightness: $amount) };
+  |            ^^^^^
+  '
+    input.scss 8:12  root stylesheet
+
+WARNING: You probably don't mean to use the color value yellow in interpolation here.
+It may end up represented as yellow, which will likely produce invalid CSS.
+Always quote color names when using them as strings or map keys (for example, "yellow").
+If you really want to use the color value here, use '"" + $name'.
+
+   ,
+21 |         .#{$name}-#{($i*100)} {
+   |            ^^^^^
+   '
+    input.scss 21:12  root stylesheet
+
+WARNING: You probably don't mean to use the color value red in interpolation here.
+It may end up represented as red, which will likely produce invalid CSS.
+Always quote color names when using them as strings or map keys (for example, "red").
+If you really want to use the color value here, use '"" + $name'.
+
+   ,
+21 |         .#{$name}-#{($i*100)} {
+   |            ^^^^^
+   '
+    input.scss 21:12  root stylesheet
+
+WARNING: You probably don't mean to use the color value blue in interpolation here.
+It may end up represented as blue, which will likely produce invalid CSS.
+Always quote color names when using them as strings or map keys (for example, "blue").
+If you really want to use the color value here, use '"" + $name'.
+
+   ,
+21 |         .#{$name}-#{($i*100)} {
+   |            ^^^^^
+   '
+    input.scss 21:12  root stylesheet

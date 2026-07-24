@@ -1,0 +1,22 @@
+<===> issue_1030/input.scss
+@mixin will-change() {
+  @supports (will-change: transform) {
+    will-change: transform;
+  }
+}
+div {
+  a {
+    top: 10px;
+    @include will-change();
+  }
+}
+
+<===> issue_1030/output.css
+div a {
+  top: 10px;
+}
+@supports (will-change: transform) {
+  div a {
+    will-change: transform;
+  }
+}

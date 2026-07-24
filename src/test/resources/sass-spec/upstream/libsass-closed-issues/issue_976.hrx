@@ -1,0 +1,12 @@
+<===> issue_976/input.scss
+.debug {
+  @debug-this {
+    foo: bar;
+  }
+}
+<===> issue_976/output.css
+@debug-this {
+  .debug {
+    foo: bar;
+  }
+}

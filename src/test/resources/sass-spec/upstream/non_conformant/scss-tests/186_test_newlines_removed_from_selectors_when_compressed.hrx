@@ -1,0 +1,13 @@
+<===> 186_test_newlines_removed_from_selectors_when_compressed/input.scss
+a
+, b {
+  z & {
+    display: block;
+  }
+}
+
+<===> 186_test_newlines_removed_from_selectors_when_compressed/output.css
+z a,
+z b {
+  display: block;
+}

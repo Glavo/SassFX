@@ -1,0 +1,114 @@
+<===> 0/input.scss
+@use "sass:list";
+a {b: list.length(())}
+
+<===> 0/output.css
+a {
+  b: 0;
+}
+
+<===> 1/input.scss
+@use "sass:list";
+a {b: list.length(list.join((), 1))}
+
+<===> 1/output.css
+a {
+  b: 1;
+}
+
+<===> 2/input.scss
+@use "sass:list";
+a {b: list.length(c d)}
+
+<===> 2/output.css
+a {
+  b: 2;
+}
+
+<===> many/input.scss
+@use "sass:list";
+a {b: list.length((1, 2, 3, 4, 5))}
+
+<===> many/output.css
+a {
+  b: 5;
+}
+
+<===> map/empty/input.scss
+@use "sass:list";
+@use "core_functions/list/utils";
+a {b: list.length(utils.$empty-map)}
+
+<===> map/empty/output.css
+a {
+  b: 0;
+}
+
+<===> map/non_empty/input.scss
+@use "sass:list";
+a {b: list.length((1: 2, 3: 4))}
+
+<===> map/non_empty/output.css
+a {
+  b: 2;
+}
+
+<===> non_list/input.scss
+@use "sass:list";
+a {b: list.length(c)}
+
+<===> non_list/output.css
+a {
+  b: 1;
+}
+
+<===> null_list_item/input.scss
+@use "sass:list";
+// regression test for scssphp/scssphp#403
+a {b: list.length((null))}
+
+<===> null_list_item/output.css
+a {
+  b: 1;
+}
+
+<===> named/input.scss
+@use "sass:list";
+a {b: list.length($list: 1 2 3)}
+
+<===> named/output.css
+a {
+  b: 3;
+}
+
+<===> error/too_few_args/input.scss
+@use "sass:list";
+a {b: list.length()}
+
+<===> error/too_few_args/error
+Error: Missing argument $list.
+  ,--> input.scss
+2 | a {b: list.length()}
+  |       ^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:list
+1 | @function length($list) {
+  |           ============= declaration
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/too_many_args/input.scss
+@use "sass:list";
+a {b: list.length(1, 2)}
+
+<===> error/too_many_args/error
+Error: Only 1 argument allowed, but 2 were passed.
+  ,--> input.scss
+2 | a {b: list.length(1, 2)}
+  |       ^^^^^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:list
+1 | @function length($list) {
+  |           ============= declaration
+  '
+  input.scss 2:7  root stylesheet

@@ -1,0 +1,10 @@
+<===> incomplete-expression/input.scss
+@warn("foo";
+
+<===> incomplete-expression/error
+Error: expected ")".
+  ,
+1 | @warn("foo";
+  |            ^
+  '
+  input.scss 1:12  root stylesheet

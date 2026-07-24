@@ -1,0 +1,12 @@
+<===> 004_test_variables/input.scss
+foo {
+  $var: 2;
+  $another-var: 4;
+  a: $var;
+  b: $var + $another-var;}
+
+<===> 004_test_variables/output.css
+foo {
+  a: 2;
+  b: 6;
+}

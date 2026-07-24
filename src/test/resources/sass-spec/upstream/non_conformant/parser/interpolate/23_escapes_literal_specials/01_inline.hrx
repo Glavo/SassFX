@@ -1,0 +1,19 @@
+<===> 01_inline/input.scss
+.result {
+  output: \0_\a_\A;
+  output: #{\0_\a_\A};
+  output: "[#{\0_\a_\A}]";
+  output: "#{\0_\a_\A}";
+  output: '#{\0_\a_\A}';
+  output: "['#{\0_\a_\A}']";
+}
+
+<===> 01_inline/output.css
+.result {
+  output: \0 _\a _\a ;
+  output: \0 _\a _\a ;
+  output: "[\\0 _\\a _\\a ]";
+  output: "\\0 _\\a _\\a ";
+  output: "\\0 _\\a _\\a ";
+  output: "['\\0 _\\a _\\a ']";
+}

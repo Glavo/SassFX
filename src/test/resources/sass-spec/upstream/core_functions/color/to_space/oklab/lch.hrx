@@ -1,0 +1,98 @@
+<===> black/input.scss
+@use "sass:color";
+a {b: color.to-space(oklab(0% 0 0), lch)}
+
+<===> black/output.css
+a {
+  b: lch(0% 0 none);
+}
+
+<===> white/input.scss
+@use "sass:color";
+a {b: color.to-space(oklab(100% 0 0), lch)}
+
+<===> white/output.css
+a {
+  b: lch(100% 0 none);
+}
+
+<===> gray/input.scss
+@use "sass:color";
+a {b: color.to-space(oklab(50% 0 0), lch)}
+
+<===> gray/output.css
+a {
+  b: lch(42% 0 none);
+}
+
+<===> middle/input.scss
+@use "sass:color";
+a {b: color.to-space(oklab(50% 0.2 -0.3), lch)}
+
+<===> middle/output.css
+a {
+  b: lch(33.0422508304% 152.17262357 314.7965708386deg);
+}
+
+<===> out_of_range/near/input.scss
+@use "sass:color";
+a {b: color.to-space(color.change(oklab(0% -2 2), $lightness: -50%), lch)}
+
+<===> out_of_range/near/output.css
+a {
+  b: color-mix(in lch, color(xyz -7.6342505681 1.7017041167 -38.7847424763) 100%, black);
+}
+
+<===> out_of_range/far/input.scss
+@use "sass:color";
+a {b: color.to-space(oklab(50% -999999 0), lch)}
+
+<===> out_of_range/far/output.css
+a {
+  b: color-mix(in lch, color(xyz -76842630370707152 3781391026799106.5 5284386836914415) 100%, black);
+}
+
+<===> alpha/partial/input.scss
+@use "sass:color";
+a {b: color.to-space(oklab(10% 0.2 0.3 / 0.4), lch)}
+
+<===> alpha/partial/output.css
+a {
+  b: lch(2.4858193746% 79.7774738311 61.6719273047deg / 0.4);
+}
+
+<===> alpha/transparent/input.scss
+@use "sass:color";
+a {b: color.to-space(oklab(10% 0.2 0.3 / 0.0), lch)}
+
+<===> alpha/transparent/output.css
+a {
+  b: lch(2.4858193746% 79.7774738311 61.6719273047deg / 0);
+}
+
+<===> missing/lightness/input.scss
+@use "sass:color";
+a {b: color.to-space(oklab(none 0.2 0.3), lch)}
+
+<===> missing/lightness/output.css
+a {
+  b: lch(none 171.7356819929 112.1415375319deg);
+}
+
+<===> missing/a/input.scss
+@use "sass:color";
+a {b: color.to-space(oklab(10% none 0.3), lch)}
+
+<===> missing/a/output.css
+a {
+  b: lch(2.437258194% 59.0755577593 98.6375859968deg);
+}
+
+<===> missing/b/input.scss
+@use "sass:color";
+a {b: color.to-space(oklab(10% 0.2 none), lch)}
+
+<===> missing/b/output.css
+a {
+  b: lch(0.4263319735% 27.552760822 1.0818405487deg);
+}

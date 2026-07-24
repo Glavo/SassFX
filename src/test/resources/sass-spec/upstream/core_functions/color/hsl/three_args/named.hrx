@@ -1,0 +1,7 @@
+<===> named/input.scss
+a {b: hsl($hue: 0, $saturation: 100%, $lightness: 50%)}
+
+<===> named/output.css
+a {
+  b: hsl(0, 100%, 50%);
+}

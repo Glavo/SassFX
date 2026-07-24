@@ -1,0 +1,19 @@
+<===> function/input.scss
+@function c() {
+  @error test;
+  @return d;
+}
+
+a {
+  b: {
+    c: c();
+  }
+}
+
+<===> function/error
+Error: test
+  ,
+8 |     c: c();
+  |        ^^^
+  '
+  input.scss 8:8  root stylesheet

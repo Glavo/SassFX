@@ -1,0 +1,14 @@
+<===> 065_test_mixin_empty_var_args/input.scss
+@use "sass:list";
+@mixin foo($a, $b...) {
+  a: $a;
+  b: list.length($b);
+}
+
+.foo {@include foo(1)}
+
+<===> 065_test_mixin_empty_var_args/output.css
+.foo {
+  a: 1;
+  b: 0;
+}

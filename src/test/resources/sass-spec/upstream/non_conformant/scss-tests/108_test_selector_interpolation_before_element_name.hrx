@@ -1,0 +1,7 @@
+<===> 108_test_selector_interpolation_before_element_name/input.scss
+#{"foo" + " bar"}baz {a: b}
+
+<===> 108_test_selector_interpolation_before_element_name/output.css
+foo barbaz {
+  a: b;
+}

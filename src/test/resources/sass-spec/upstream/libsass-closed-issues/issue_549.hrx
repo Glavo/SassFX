@@ -1,0 +1,11 @@
+<===> issue_549/input.scss
+$value: 10;
+
+foo {
+  filter: foo(opacity=$value*100);
+}
+
+<===> issue_549/output.css
+foo {
+  filter: foo(opacity=1000);
+}

@@ -1,0 +1,3 @@
+<===> issue_1086/input.scss
+$map: (-1px: 12);
+<===> issue_1086/output.css

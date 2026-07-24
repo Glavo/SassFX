@@ -1,0 +1,10 @@
+<===> parse/input.scss
+el {
+  @if (& + '' == 'el') {
+    content: "It works!";
+  }
+}
+<===> parse/output.css
+el {
+  content: "It works!";
+}

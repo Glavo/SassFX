@@ -1,0 +1,20 @@
+<===> 01_inline/input.scss
+.result {
+  output: '\0_\a_\A';
+  output: #{'\0_\a_\A'};
+  output: "[#{'\0_\a_\A'}]";
+  output: "#{'\0_\a_\A'}";
+  output: '#{'\0_\a_\A'}';
+  output: "['#{'\0_\a_\A'}']";
+}
+
+<===> 01_inline/output.css
+@charset "UTF-8";
+.result {
+  output: "�_\a_\a";
+  output: �_ _ ;
+  output: "[�_\a_\a]";
+  output: "�_\a_\a";
+  output: "�_\a_\a";
+  output: "['�_\a_\a']";
+}

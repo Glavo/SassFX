@@ -1,0 +1,14 @@
+<===> backslash/input.scss
+div, span {
+	color: red;
+	\ foo {
+		color: blue;
+	}
+}
+<===> backslash/output.css
+div, span {
+  color: red;
+}
+div \ foo, span \ foo {
+  color: blue;
+}

@@ -1,0 +1,10 @@
+<===> issue_1996/input.scss
+$foo: "bar";
+
+%class //#{$foo}
+{
+  &_baz {
+    color: red;
+  }
+}
+<===> issue_1996/output.css

@@ -1,0 +1,247 @@
+<===> empty/both/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.merge((), ()))}
+
+<===> empty/both/output.css
+a {
+  b: ();
+}
+
+<===> empty/first/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.merge((), (c: d, e: f)))}
+
+<===> empty/first/output.css
+a {
+  b: (c: d, e: f);
+}
+
+<===> empty/second/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.merge((c: d, e: f), ()))}
+
+<===> empty/second/output.css
+a {
+  b: (c: d, e: f);
+}
+
+<===> different_keys/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.merge((c: d, e: f), (1: 2, 3: 4)))}
+
+<===> different_keys/output.css
+a {
+  b: (c: d, e: f, 1: 2, 3: 4);
+}
+
+<===> same_keys/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.merge((c: d, e: f), (c: 1, e: 2)))}
+
+<===> same_keys/output.css
+a {
+  b: (c: 1, e: 2);
+}
+
+<===> overlapping_keys/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.merge((c: d, e: f, g: h), (i: 1, e: 2, j: 3)))}
+
+<===> overlapping_keys/output.css
+a {
+  b: (c: d, e: 2, g: h, i: 1, j: 3);
+}
+
+<===> nested/empty/both/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.merge((c: ()), c, ()))}
+
+<===> nested/empty/both/output.css
+a {
+  b: (c: ());
+}
+
+<===> nested/empty/first/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.merge((c: ()), c, (d: e, f: g)))}
+
+<===> nested/empty/first/output.css
+a {
+  b: (c: (d: e, f: g));
+}
+
+<===> nested/empty/second/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.merge((c: (d: e, f: g)), c, ()))}
+
+<===> nested/empty/second/output.css
+a {
+  b: (c: (d: e, f: g));
+}
+
+<===> nested/different_keys/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.merge((c: (d: e, f: g)), c, (1: 2, 3: 4)))}
+
+<===> nested/different_keys/output.css
+a {
+  b: (c: (d: e, f: g, 1: 2, 3: 4));
+}
+
+<===> nested/same_keys/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.merge((c: (d: e, f: g)), c, (d: 1, f: 2)))}
+
+<===> nested/same_keys/output.css
+a {
+  b: (c: (d: 1, f: 2));
+}
+
+<===> nested/overlapping_keys/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.merge((c: (d: e, f: g, h: i)), c, (j: 1, f: 2, k: 3)))}
+
+<===> nested/overlapping_keys/output.css
+a {
+  b: (c: (d: e, f: 2, h: i, j: 1, k: 3));
+}
+
+<===> nested/intermediate_value_is_not_a_map/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.merge((c: 1), c, d, (e: f)))}
+
+<===> nested/intermediate_value_is_not_a_map/output.css
+a {
+  b: (c: (d: (e: f)));
+}
+
+<===> nested/leaf_value_is_not_a_map/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.merge((c: 1), c, (d: e)))}
+
+<===> nested/leaf_value_is_not_a_map/output.css
+a {
+  b: (c: (d: e));
+}
+
+<===> nested/multiple_keys/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.merge((c: (d: (e: (f: (g: h))))), c, d, e, f, (g: 1)))}
+
+<===> nested/multiple_keys/output.css
+a {
+  b: (c: (d: (e: (f: (g: 1)))));
+}
+
+<===> named/input.scss
+@use "sass:map";
+@use "sass:meta";
+a {b: meta.inspect(map.merge($map1: (c: d), $map2: (1: 2)))}
+
+<===> named/output.css
+a {
+  b: (c: d, 1: 2);
+}
+
+<===> error/wrong_name/input.scss
+@use "sass:map";
+a {b: map.map-merge((c: d), (1: 2))}
+
+<===> error/wrong_name/error
+Error: Undefined function.
+  ,
+2 | a {b: map.map-merge((c: d), (1: 2))}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/type/map1/input.scss
+@use "sass:map";
+a {b: map.merge(1, (c: d))}
+
+<===> error/type/map1/error
+Error: $map1: 1 is not a map.
+  ,
+2 | a {b: map.merge(1, (c: d))}
+  |       ^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/type/map2/input.scss
+@use "sass:map";
+a {b: map.merge((c: d), 1)}
+
+<===> error/type/map2/error
+Error: $map2: 1 is not a map.
+  ,
+2 | a {b: map.merge((c: d), 1)}
+  |       ^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/type/nested/map1/input.scss
+@use "sass:map";
+a {b: map.merge(1, c, (d: e))}
+
+<===> error/type/nested/map1/error
+Error: $map1: 1 is not a map.
+  ,
+2 | a {b: map.merge(1, c, (d: e))}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/type/nested/map2/input.scss
+@use "sass:map";
+a {b: map.merge((c: d), e, 1)}
+
+<===> error/type/nested/map2/error
+Error: $map2: 1 is not a map.
+  ,
+2 | a {b: map.merge((c: d), e, 1)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/zero_args/input.scss
+@use "sass:map";
+a {b: map.merge()}
+
+<===> error/zero_args/error
+Error: Missing argument $map1.
+  ,--> input.scss
+2 | a {b: map.merge()}
+  |       ^^^^^^^^^^^ invocation
+  '
+  ,
+1 | @function merge($map1, $args...) {
+  |           ====================== declaration
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/one_arg/input.scss
+@use "sass:map";
+a {b: map.merge((c: d))}
+
+<===> error/one_arg/error
+Error: Expected $args to contain a key.
+  ,
+2 | a {b: map.merge((c: d))}
+  |       ^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet

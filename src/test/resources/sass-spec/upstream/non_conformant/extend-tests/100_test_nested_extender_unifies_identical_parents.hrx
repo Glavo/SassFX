@@ -1,0 +1,8 @@
+<===> 100_test_nested_extender_unifies_identical_parents/input.scss
+.baz .bip .foo {a: b}
+.baz .bip bar {@extend .foo}
+
+<===> 100_test_nested_extender_unifies_identical_parents/output.css
+.baz .bip .foo, .baz .bip bar {
+  a: b;
+}

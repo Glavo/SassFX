@@ -1,0 +1,18 @@
+<===> simple/input.scss
+@import "hey1.css", "cookie.css", url("hey2.css"), "fudge.css";
+
+$foo:"goodbye";
+div[name="hello"] {
+  color: blue;
+}
+
+@import "bludge.css";
+<===> simple/output.css
+@import "hey1.css";
+@import "cookie.css";
+@import url("hey2.css");
+@import "fudge.css";
+@import "bludge.css";
+div[name=hello] {
+  color: blue;
+}

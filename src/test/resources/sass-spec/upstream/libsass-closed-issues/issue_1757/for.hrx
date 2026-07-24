@@ -1,0 +1,34 @@
+<===> for/input.scss
+@use "sass:list";
+.test .nest {
+  length: list.length(&);
+  @for $i from 1 through list.length(&) {
+    $list: list.nth(&, $i);
+    list: $list;
+    length: list.length($list);
+  }
+}
+
+.test, .other {
+  length: list.length(&);
+  @for $i from 1 through list.length(&) {
+    $list: list.nth(&, $i);
+    list: $list;
+    length: list.length($list);
+  }
+}
+
+<===> for/output.css
+.test .nest {
+  length: 1;
+  list: .test .nest;
+  length: 2;
+}
+
+.test, .other {
+  length: 2;
+  list: .test;
+  length: 1;
+  list: .other;
+  length: 1;
+}

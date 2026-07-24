@@ -1,0 +1,13 @@
+<===> issue_1398/input.scss
+@media screen and (hux: 3/4) {
+  foo {
+    bar: baz;
+  }
+}
+
+<===> issue_1398/output.css
+@media screen and (hux: 3/4) {
+  foo {
+    bar: baz;
+  }
+}

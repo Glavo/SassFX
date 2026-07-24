@@ -1,0 +1,9 @@
+<===> issue_2149/input.scss
+.foo {
+  background: url('background.png') -10px -10px/110% no-repeat
+}
+
+<===> issue_2149/output.css
+.foo {
+  background: url("background.png") -10px -10px/110% no-repeat;
+}

@@ -1,0 +1,21 @@
+<===> green/input.scss
+@use "sass:color";
+a {b: color.green(#abcdef)}
+
+<===> green/output.css
+a {
+  b: 205;
+}
+
+<===> green/warning
+DEPRECATION WARNING [color-functions]: color.green() is deprecated. Suggestion:
+
+color.channel($color, "green", $space: rgb)
+
+More info: https://sass-lang.com/d/color-functions
+
+  ,
+2 | a {b: color.green(#abcdef)}
+  |       ^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 2:7  root stylesheet

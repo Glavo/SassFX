@@ -1,0 +1,134 @@
+<===> empty/input.scss
+@use "sass:string";
+a {b: string.length("")}
+
+<===> empty/output.css
+a {
+  b: 0;
+}
+
+<===> one_character/input.scss
+@use "sass:string";
+a {b: string.length("c")}
+
+<===> one_character/output.css
+a {
+  b: 1;
+}
+
+<===> multiple_characters/input.scss
+@use "sass:string";
+a {b: string.length("fblthp abatement")}
+
+<===> multiple_characters/output.css
+a {
+  b: 16;
+}
+
+<===> private_use_character/input.scss
+@use "sass:string";
+// Dart Sass emits private-use characters as escapes in expanded mode, but it
+// should stil treat them as single characters for the purpose of functions.
+a {b: string.length("\E000")}
+
+<===> private_use_character/output.css
+a {
+  b: 1;
+}
+
+<===> double_width_character/input.scss
+@use "sass:string";
+// Sass treats strings as sequences of Unicode codepoint; it doesn't care if a
+// character is represented as two UTF-16 code units.
+a {b: string.length("👭")}
+
+<===> double_width_character/output.css
+a {
+  b: 1;
+}
+
+<===> combining_character/input.scss
+@use "sass:string";
+// Sass does *not* treat strings as sequences of glyphs, so this string which
+// contains "c" followed by a combining umlaut should be considered two separate
+// characters even though it's rendered as only one.
+a {b: string.length("c\0308")}
+
+<===> combining_character/output.css
+a {
+  b: 2;
+}
+
+<===> unquoted/input.scss
+@use "sass:string";
+a {b: string.length(loofamonster)}
+
+<===> unquoted/output.css
+a {
+  b: 12;
+}
+
+<===> named/input.scss
+@use "sass:string";
+a {b: string.length($string: "c")}
+
+<===> named/output.css
+a {
+  b: 1;
+}
+
+<===> error/wrong_name/input.scss
+@use "sass:string";
+a {b: string.str-length("c")}
+
+<===> error/wrong_name/error
+Error: Undefined function.
+  ,
+2 | a {b: string.str-length("c")}
+  |       ^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/type/input.scss
+@use "sass:string";
+a {b: string.length(1)}
+
+<===> error/type/error
+Error: $string: 1 is not a string.
+  ,
+2 | a {b: string.length(1)}
+  |       ^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/too_few_args/input.scss
+@use "sass:string";
+a {b: string.length()}
+
+<===> error/too_few_args/error
+Error: Missing argument $string.
+  ,--> input.scss
+2 | a {b: string.length()}
+  |       ^^^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:string
+1 | @function length($string) {
+  |           =============== declaration
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/too_many_args/input.scss
+@use "sass:string";
+a {b: string.length(c, d)}
+
+<===> error/too_many_args/error
+Error: Only 1 argument allowed, but 2 were passed.
+  ,--> input.scss
+2 | a {b: string.length(c, d)}
+  |       ^^^^^^^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:string
+1 | @function length($string) {
+  |           =============== declaration
+  '
+  input.scss 2:7  root stylesheet

@@ -1,0 +1,12 @@
+<===> error-mixin-1/input.scss
+// double comma in middle of arglist
+@mixin double-comma-error($a,,$b) {
+}
+
+<===> error-mixin-1/error
+Error: expected ")".
+  ,
+2 | @mixin double-comma-error($a,,$b) {
+  |                              ^
+  '
+  input.scss 2:30  root stylesheet

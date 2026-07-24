@@ -1,0 +1,19 @@
+<===> 072_test_mixin_var_and_splat_args_pass_through_keywords/input.scss
+@mixin foo($a...) {
+  @include bar($a...);
+}
+
+@mixin bar($b, $c, $a) {
+  a: $a;
+  b: $b;
+  c: $c;
+}
+
+.foo {@include foo(1, $c: 2, $a: 3)}
+
+<===> 072_test_mixin_var_and_splat_args_pass_through_keywords/output.css
+.foo {
+  a: 3;
+  b: 1;
+  c: 2;
+}

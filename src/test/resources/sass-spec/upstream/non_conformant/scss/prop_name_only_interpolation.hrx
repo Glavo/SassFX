@@ -1,0 +1,7 @@
+<===> prop_name_only_interpolation/input.scss
+foo {#{"baz" + "bang"}: blip}
+
+<===> prop_name_only_interpolation/output.css
+foo {
+  bazbang: blip;
+}

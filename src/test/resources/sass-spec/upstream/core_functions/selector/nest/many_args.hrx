@@ -1,0 +1,8 @@
+<===> many_args/input.scss
+@use "sass:selector";
+a {b: selector.nest("c", "d", "e", "f", "g")}
+
+<===> many_args/output.css
+a {
+  b: c d e f g;
+}

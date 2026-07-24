@@ -1,0 +1,10 @@
+<===> 122_test_nested_extender_with_child_selector_unifies/input.scss
+.foo {
+.bar {a: b}
+> .baz {@extend .bar}
+}
+
+<===> 122_test_nested_extender_with_child_selector_unifies/output.css
+.foo .bar, .foo > .baz {
+  a: b;
+}

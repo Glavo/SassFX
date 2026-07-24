@@ -1,0 +1,10 @@
+<===> issue_1101/input.scss
+@use "sass:color";
+$foo: white;
+foo {
+  bar: color.adjust($foo, $hue: -6deg, $lightness: -16%, $saturation: -7%);
+}
+<===> issue_1101/output.css
+foo {
+  bar: rgb(214.2, 214.2, 214.2);
+}

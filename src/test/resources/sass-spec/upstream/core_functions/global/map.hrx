@@ -1,0 +1,121 @@
+<===> get/input.scss
+a {b: map-get((c: d), c)}
+
+<===> get/output.css
+a {
+  b: d;
+}
+
+<===> get/warning
+DEPRECATION WARNING [global-builtin]: Global built-in functions are deprecated and will be removed in Dart Sass 3.0.0.
+Use map.get instead.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | a {b: map-get((c: d), c)}
+  |       ^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 1:7  root stylesheet
+
+<===> merge/input.scss
+@use "sass:meta";
+a {b: meta.inspect(map-merge((c: d), (e: f)))}
+
+<===> merge/output.css
+a {
+  b: (c: d, e: f);
+}
+
+<===> merge/warning
+DEPRECATION WARNING [global-builtin]: Global built-in functions are deprecated and will be removed in Dart Sass 3.0.0.
+Use map.merge instead.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+2 | a {b: meta.inspect(map-merge((c: d), (e: f)))}
+  |                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 2:20  root stylesheet
+
+<===> remove/input.scss
+@use "sass:meta";
+a {b: meta.inspect(map-remove((c: d), c))}
+
+<===> remove/output.css
+a {
+  b: ();
+}
+
+<===> remove/warning
+DEPRECATION WARNING [global-builtin]: Global built-in functions are deprecated and will be removed in Dart Sass 3.0.0.
+Use map.remove instead.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+2 | a {b: meta.inspect(map-remove((c: d), c))}
+  |                    ^^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 2:20  root stylesheet
+
+<===> keys/input.scss
+a {b: map-keys((c: d))}
+
+<===> keys/output.css
+a {
+  b: c;
+}
+
+<===> keys/warning
+DEPRECATION WARNING [global-builtin]: Global built-in functions are deprecated and will be removed in Dart Sass 3.0.0.
+Use map.keys instead.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | a {b: map-keys((c: d))}
+  |       ^^^^^^^^^^^^^^^^
+  '
+    input.scss 1:7  root stylesheet
+
+<===> values/input.scss
+a {b: map-values((c: d))}
+
+<===> values/output.css
+a {
+  b: d;
+}
+
+<===> values/warning
+DEPRECATION WARNING [global-builtin]: Global built-in functions are deprecated and will be removed in Dart Sass 3.0.0.
+Use map.values instead.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | a {b: map-values((c: d))}
+  |       ^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 1:7  root stylesheet
+
+<===> has_key/input.scss
+a {b: map-has-key((c: d), c)}
+
+<===> has_key/output.css
+a {
+  b: true;
+}
+
+<===> has_key/warning
+DEPRECATION WARNING [global-builtin]: Global built-in functions are deprecated and will be removed in Dart Sass 3.0.0.
+Use map.has-key instead.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | a {b: map-has-key((c: d), c)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 1:7  root stylesheet

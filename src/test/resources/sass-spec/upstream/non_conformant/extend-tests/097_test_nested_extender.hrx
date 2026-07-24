@@ -1,0 +1,8 @@
+<===> 097_test_nested_extender/input.scss
+.foo {a: b}
+foo bar {@extend .foo}
+
+<===> 097_test_nested_extender/output.css
+.foo, foo bar {
+  a: b;
+}

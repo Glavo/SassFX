@@ -1,0 +1,17 @@
+<===> css_selector_hacks/input.scss
+> > E {
+  a: b; }
+
+<===> css_selector_hacks/output.css
+
+<===> css_selector_hacks/warning
+DEPRECATION WARNING [bogus-combinators]: The selector "> > E" is invalid CSS. It will be omitted from the generated CSS.
+This will be an error in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/bogus-combinators
+
+  ,
+1 | > > E {
+  | ^^^^^
+  '
+    input.scss 1:1  root stylesheet

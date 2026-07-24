@@ -1,0 +1,110 @@
+<===> README.md
+These tests verify that `_utils.scss` works as intended.
+
+<===> real_separator/empty/undecided/input.scss
+@use "core_functions/list/utils";
+a {b: utils.real-separator(())}
+
+<===> real_separator/empty/undecided/output.css
+a {
+  b: undecided;
+}
+
+<===> real_separator/empty/space/input.scss
+@use "core_functions/list/utils";
+a {b: utils.real-separator(utils.$empty-space-list)}
+
+<===> real_separator/empty/space/output.css
+a {
+  b: space;
+}
+
+<===> real_separator/empty/comma/input.scss
+@use "core_functions/list/utils";
+a {b: utils.real-separator(utils.$empty-comma-list)}
+
+<===> real_separator/empty/comma/output.css
+a {
+  b: comma;
+}
+
+<===> real_separator/single/undecided/input.scss
+@use "core_functions/list/utils";
+a {b: utils.real-separator([1])}
+
+<===> real_separator/single/undecided/output.css
+a {
+  b: undecided;
+}
+
+<===> real_separator/single/comma/input.scss
+@use "core_functions/list/utils";
+a {b: utils.real-separator((1,))}
+
+<===> real_separator/single/comma/output.css
+a {
+  b: comma;
+}
+
+<===> real_separator/multi/space/input.scss
+@use "core_functions/list/utils";
+a {b: utils.real-separator(1 2)}
+
+<===> real_separator/multi/space/output.css
+a {
+  b: space;
+}
+
+<===> real_separator/multi/comma/input.scss
+@use "core_functions/list/utils";
+a {b: utils.real-separator((1, 2))}
+
+<===> real_separator/multi/comma/output.css
+a {
+  b: comma;
+}
+
+<===> with_separator/single/space/input.scss
+@use "core_functions/list/utils";
+a {b: utils.real-separator(utils.with-separator((1,), space))}
+
+<===> with_separator/single/space/output.css
+a {
+  b: space;
+}
+
+<===> with_separator/single/comma/input.scss
+@use "core_functions/list/utils";
+a {b: utils.real-separator(utils.with-separator([1], comma))}
+
+<===> with_separator/single/comma/output.css
+a {
+  b: comma;
+}
+
+<===> with_separator/multi/space/input.scss
+@use "core_functions/list/utils";
+a {b: utils.with-separator((1, 2), space)}
+
+<===> with_separator/multi/space/output.css
+a {
+  b: 1 2;
+}
+
+<===> with_separator/multi/comma/input.scss
+@use "core_functions/list/utils";
+a {b: utils.with-separator(1 2, comma)}
+
+<===> with_separator/multi/comma/output.css
+a {
+  b: 1, 2;
+}
+
+<===> empty_map/same_as_empty_list/input.scss
+@use "core_functions/list/utils";
+a {b: utils.$empty-map == ()}
+
+<===> empty_map/same_as_empty_list/output.css
+a {
+  b: true;
+}

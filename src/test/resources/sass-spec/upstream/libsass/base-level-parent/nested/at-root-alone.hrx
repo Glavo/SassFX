@@ -1,0 +1,14 @@
+<===> at-root-alone/input.scss
+test {
+  @at-root {
+    & {
+      foo {
+        bar: baz;
+      }
+    }
+  }
+}
+<===> at-root-alone/output.css
+test foo {
+  bar: baz;
+}

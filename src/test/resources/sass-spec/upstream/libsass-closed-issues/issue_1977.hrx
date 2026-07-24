@@ -1,0 +1,17 @@
+<===> issue_1977/input.scss
+body#some-\(selector\) {
+color: red;
+}
+
+#äöü  {
+  color: reds;
+}
+<===> issue_1977/output.css
+@charset "UTF-8";
+body#some-\(selector\) {
+  color: red;
+}
+
+#äöü {
+  color: reds;
+}

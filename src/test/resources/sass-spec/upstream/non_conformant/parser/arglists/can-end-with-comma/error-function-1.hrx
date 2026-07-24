@@ -1,0 +1,12 @@
+<===> error-function-1/input.scss
+// double comma in middle of arglist
+@function double-comma-error($a,,$b) {
+}
+
+<===> error-function-1/error
+Error: expected ")".
+  ,
+2 | @function double-comma-error($a,,$b) {
+  |                                 ^
+  '
+  input.scss 2:33  root stylesheet

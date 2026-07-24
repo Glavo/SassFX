@@ -1,0 +1,31 @@
+<===> issue_1622/input.scss
+@use "sass:list";
+@use "sass:meta";
+@function foo($list) {
+    @return meta.call(bar, $list);
+}
+
+@function bar($list, $args...) {
+    @return list.length($list);
+}
+
+test {
+  test: foo(1 2 3);
+}
+
+<===> issue_1622/output.css
+test {
+  test: 3;
+}
+
+<===> issue_1622/warning
+DEPRECATION WARNING [call-string]: Passing a string to call() is deprecated and will be illegal in Dart Sass 2.0.0.
+
+Recommendation: call(get-function(bar))
+
+  ,
+4 |     @return meta.call(bar, $list);
+  |             ^^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 4:13  foo()
+    input.scss 12:9  root stylesheet

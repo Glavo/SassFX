@@ -1,0 +1,32 @@
+<===> 33_ambiguous_imports/input.scss
+@use "sass:meta";
+main {
+  color: red;
+}
+
+@include meta.load-css("dir");
+<===> 33_ambiguous_imports/dir.scss
+@use "sass:meta";
+dir {
+  color: blue;
+}
+
+@include meta.load-css("blir/fudge");
+<===> 33_ambiguous_imports/blir/_fudge.scss
+fudge {
+  color: brown;
+}
+<===> 33_ambiguous_imports/dir/whatever
+
+<===> 33_ambiguous_imports/output.css
+main {
+  color: red;
+}
+
+dir {
+  color: blue;
+}
+
+fudge {
+  color: brown;
+}

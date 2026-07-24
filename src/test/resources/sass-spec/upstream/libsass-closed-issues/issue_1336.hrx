@@ -1,0 +1,7 @@
+<===> issue_1336/input.scss
+@debug null;
+
+<===> issue_1336/output.css
+
+<===> issue_1336/warning
+input.scss:1 DEBUG: null

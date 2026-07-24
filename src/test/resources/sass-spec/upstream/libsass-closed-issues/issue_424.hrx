@@ -1,0 +1,45 @@
+<===> issue_424/input.scss
+footer {
+    color: red;
+}
+
+// Ampersand in SassScript:
+/*.button {
+    &-primary {
+        background: orange;
+    }
+
+    &-secondary {
+        background: blue;
+    }
+}*/
+
+// Output:
+.button-primary {
+    background: orange;
+}
+
+.button-secondary {
+    background: blue;
+}
+<===> issue_424/output.css
+footer {
+  color: red;
+}
+
+/*.button {
+    &-primary {
+        background: orange;
+    }
+
+    &-secondary {
+        background: blue;
+    }
+}*/
+.button-primary {
+  background: orange;
+}
+
+.button-secondary {
+  background: blue;
+}

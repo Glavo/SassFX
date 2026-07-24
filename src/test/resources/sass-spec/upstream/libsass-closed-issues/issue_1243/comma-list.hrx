@@ -1,0 +1,4 @@
+<===> comma-list/input.scss
+$a: 1, 2
+
+<===> comma-list/output.css

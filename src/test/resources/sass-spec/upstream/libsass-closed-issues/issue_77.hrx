@@ -1,0 +1,14 @@
+<===> issue_77/input.scss
+@mixin m {
+  .m {
+    color: red;
+    @content;
+  }
+}
+div.a {
+  @include m;
+}
+<===> issue_77/output.css
+div.a .m {
+  color: red;
+}

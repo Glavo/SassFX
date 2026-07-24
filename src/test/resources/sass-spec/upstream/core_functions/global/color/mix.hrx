@@ -1,0 +1,19 @@
+<===> mix/input.scss
+a {b: mix(#abcdef, #daddee)}
+
+<===> mix/output.css
+a {
+  b: rgb(194.5, 213, 238.5);
+}
+
+<===> mix/warning
+DEPRECATION WARNING [global-builtin]: Global built-in functions are deprecated and will be removed in Dart Sass 3.0.0.
+Use color.mix instead.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | a {b: mix(#abcdef, #daddee)}
+  |       ^^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 1:7  root stylesheet

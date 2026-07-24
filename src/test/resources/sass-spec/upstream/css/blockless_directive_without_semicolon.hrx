@@ -1,0 +1,5 @@
+<===> blockless_directive_without_semicolon/input.scss
+@foo "bar";
+
+<===> blockless_directive_without_semicolon/output.css
+@foo "bar";

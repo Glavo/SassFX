@@ -1,0 +1,11 @@
+<===> mixin-in-while/input.scss
+@while (false) {
+  @mixin foo() {}
+}
+<===> mixin-in-while/error
+Error: Mixins may not be declared in control directives.
+  ,
+2 |   @mixin foo() {}
+  |   ^^^^^^^^^^^^
+  '
+  input.scss 2:3  root stylesheet

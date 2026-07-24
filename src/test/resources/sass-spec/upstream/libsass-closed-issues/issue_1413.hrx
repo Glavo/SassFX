@@ -1,0 +1,86 @@
+<===> issue_1413/input.scss
+@use "sass:list";
+@use "sass:meta";
+div {
+    foo: 'A'#{B};
+    foo: #{A}'B';
+    foo: 'A'#{B}'C';
+    foo: #{A}'B'#{C};
+    foo: A#{B}'C';
+    foo: 'A'#{B}C;
+    foo: #{A}B'C';
+    foo: 'A'#{B}C'D';
+    foo: 'A'B#{C}D'E';
+    foo: A'B'#{C}D'E';
+    foo: #{A}'B'C'D''E';
+}
+
+div {
+    foo: meta.type-of('A'#{B});
+    foo: meta.type-of(#{A}'B');
+    foo: meta.type-of('A'#{B}'C');
+    foo: meta.type-of(#{A}'B'#{C});
+    foo: meta.type-of(A#{B}'C');
+    foo: meta.type-of('A'#{B}C);
+    foo: meta.type-of(#{A}B'C');
+    foo: meta.type-of('A'#{B}C'D');
+    foo: meta.type-of('A'B#{C}D'E');
+    foo: meta.type-of(A'B'#{C}D'E');
+    foo: meta.type-of(#{A}'B'C'D''E');
+}
+
+div {
+    foo: list.length('A'#{B});
+    foo: list.length(#{A}'B');
+    foo: list.length('A'#{B}'C');
+    foo: list.length(#{A}'B'#{C});
+    foo: list.length(A#{B}'C');
+    foo: list.length('A'#{B}C);
+    foo: list.length(#{A}B'C');
+    foo: list.length('A'#{B}C'D');
+    foo: list.length('A'B#{C}D'E');
+    foo: list.length(A'B'#{C}D'E');
+    foo: list.length(#{A}'B'C'D''E');
+}
+<===> issue_1413/output.css
+div {
+  foo: "A" B;
+  foo: A "B";
+  foo: "A" B "C";
+  foo: A "B" C;
+  foo: AB "C";
+  foo: "A" BC;
+  foo: AB "C";
+  foo: "A" BC "D";
+  foo: "A" BCD "E";
+  foo: A "B" CD "E";
+  foo: A "B" C "D" "E";
+}
+
+div {
+  foo: list;
+  foo: list;
+  foo: list;
+  foo: list;
+  foo: list;
+  foo: list;
+  foo: list;
+  foo: list;
+  foo: list;
+  foo: list;
+  foo: list;
+}
+
+div {
+  foo: 2;
+  foo: 2;
+  foo: 3;
+  foo: 3;
+  foo: 2;
+  foo: 2;
+  foo: 2;
+  foo: 3;
+  foo: 3;
+  foo: 4;
+  foo: 5;
+}

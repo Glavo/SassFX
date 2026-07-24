@@ -1,0 +1,8 @@
+<===> complement/input.scss
+@use "sass:color";
+a {b: color.complement(#abcdef)}
+
+<===> complement/output.css
+a {
+  b: #efcdab;
+}

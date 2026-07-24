@@ -166,7 +166,18 @@ public record SassList(
                 result.append(delimiter);
             }
             first = false;
-            result.append(css ? element.toCssString(quote) : element.toString());
+            if (css) {
+                result.append(element.toCssString(quote));
+            } else {
+                var needsParens = elementNeedsParens(separator, element);
+                if (needsParens) {
+                    result.append('(');
+                }
+                result.append(element.toString());
+                if (needsParens) {
+                    result.append(')');
+                }
+            }
         }
         if (singleton) {
             result.append(Objects.requireNonNull(separator.source(), "singleton separator"));
@@ -178,5 +189,18 @@ public record SassList(
             result.append(']');
         }
         return result.toString();
+    }
+
+    /// Returns whether a nested list element needs grouping parentheses in inspect mode.
+    private static boolean elementNeedsParens(ListSeparator separator, SassValue value) {
+        if (!(value instanceof SassList nested) || nested.hasBrackets() || nested.contents().size() <= 1) {
+            return false;
+        }
+        return switch (separator) {
+            case COMMA -> nested.separator() == ListSeparator.COMMA;
+            case SLASH -> nested.separator() == ListSeparator.COMMA
+                    || nested.separator() == ListSeparator.SLASH;
+            case SPACE, UNDECIDED -> nested.separator() != ListSeparator.UNDECIDED;
+        };
     }
 }

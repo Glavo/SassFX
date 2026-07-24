@@ -1,0 +1,12 @@
+<===> selector-unify/input.scss
+@use "sass:selector";
+@debug(selector.unify("foo", null));
+
+<===> selector-unify/error
+Error: $selector2: null is not a valid selector: it must be a string,
+a list of strings, or a list of lists of strings.
+  ,
+2 | @debug(selector.unify("foo", null));
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:8  root stylesheet

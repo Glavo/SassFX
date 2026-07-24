@@ -1,0 +1,65 @@
+<===> inner-combinator/input.scss
+foo {
+    & bar baz {
+        bam: true;
+    }
+    bar baz & {
+        bam: true;
+    }
+}
+
+foo {
+    & bar + baz {
+        bam: true;
+    }
+    bar + baz & {
+        bam: true;
+    }
+}
+
+foo {
+    & bar > baz {
+        bam: true;
+    }
+    bar > baz & {
+        bam: true;
+    }
+}
+
+foo {
+    & bar ~ baz {
+        bam: true;
+    }
+    bar ~ baz & {
+        bam: true;
+    }
+}
+
+<===> inner-combinator/output.css
+foo bar baz {
+  bam: true;
+}
+bar baz foo {
+  bam: true;
+}
+
+foo bar + baz {
+  bam: true;
+}
+bar + baz foo {
+  bam: true;
+}
+
+foo bar > baz {
+  bam: true;
+}
+bar > baz foo {
+  bam: true;
+}
+
+foo bar ~ baz {
+  bam: true;
+}
+bar ~ baz foo {
+  bam: true;
+}

@@ -1,0 +1,19 @@
+<===> 01_inline/input.scss
+.result {
+  output: literal;
+  output: #{literal};
+  output: "[#{literal}]";
+  output: "#{literal}";
+  output: '#{literal}';
+  output: "['#{literal}']";
+}
+
+<===> 01_inline/output.css
+.result {
+  output: literal;
+  output: literal;
+  output: "[literal]";
+  output: "literal";
+  output: "literal";
+  output: "['literal']";
+}

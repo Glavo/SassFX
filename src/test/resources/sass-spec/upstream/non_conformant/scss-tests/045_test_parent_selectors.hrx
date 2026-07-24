@@ -1,0 +1,12 @@
+<===> 045_test_parent_selectors/input.scss
+foo {
+  &:hover {a: b}
+  bar &.baz {c: d}}
+
+<===> 045_test_parent_selectors/output.css
+foo:hover {
+  a: b;
+}
+bar foo.baz {
+  c: d;
+}

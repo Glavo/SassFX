@@ -1,0 +1,17 @@
+<===> 06_escape_interpolation/input.scss
+$input: \0_\a_\A;
+.result {
+  output: "[\#{\0_\a_\A}]";
+  output: "\#{\0_\a_\A}";
+  output: '\#{\0_\a_\A}';
+  output: "['\#{\0_\a_\A}']";
+}
+
+<===> 06_escape_interpolation/output.css
+@charset "UTF-8";
+.result {
+  output: "[#{�_\a_\a}]";
+  output: "#{�_\a_\a}";
+  output: "#{�_\a_\a}";
+  output: "['#{�_\a_\a}']";
+}

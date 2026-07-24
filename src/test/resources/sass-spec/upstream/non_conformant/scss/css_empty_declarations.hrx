@@ -1,0 +1,8 @@
+<===> css_empty_declarations/input.scss
+foo {
+  bar: baz; }
+
+<===> css_empty_declarations/output.css
+foo {
+  bar: baz;
+}

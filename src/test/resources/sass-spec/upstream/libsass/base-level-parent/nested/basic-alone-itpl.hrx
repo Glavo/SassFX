@@ -1,0 +1,13 @@
+<===> basic-alone-itpl/input.scss
+test {
+  #{&} {
+    foo {
+      bar: baz;
+    }
+  }
+}
+
+<===> basic-alone-itpl/output.css
+test test foo {
+  bar: baz;
+}

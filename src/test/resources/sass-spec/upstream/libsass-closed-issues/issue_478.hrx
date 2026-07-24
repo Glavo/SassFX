@@ -1,0 +1,11 @@
+<===> issue_478/input.scss
+$x: "x";
+$y: "y";
+#{$x}--#{$y} {
+  a: 1
+}
+
+<===> issue_478/output.css
+x--y {
+  a: 1;
+}

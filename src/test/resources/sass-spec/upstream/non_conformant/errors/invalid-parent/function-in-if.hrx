@@ -1,0 +1,11 @@
+<===> function-in-if/input.scss
+@if (true) {
+  @function foo() {}
+}
+<===> function-in-if/error
+Error: Functions may not be declared in control directives.
+  ,
+2 |   @function foo() {}
+  |   ^^^^^^^^^^^^^^^
+  '
+  input.scss 2:3  root stylesheet

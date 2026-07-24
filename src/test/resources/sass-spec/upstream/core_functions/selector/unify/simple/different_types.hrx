@@ -1,0 +1,8 @@
+<===> different_types/input.scss
+@use "sass:selector";
+a {b: selector.unify("c", "#d")}
+
+<===> different_types/output.css
+a {
+  b: c#d;
+}

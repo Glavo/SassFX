@@ -1,0 +1,11 @@
+<===> child/input.scss
+.child {
+    & > & {
+        foo: bar;
+    }
+}
+
+<===> child/output.css
+.child > .child {
+  foo: bar;
+}

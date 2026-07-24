@@ -1,0 +1,7 @@
+<===> issue_1685/input.scss
+@function foo($x, $y...) { @return null }
+
+a {
+  b: foo(1 2 3...);
+}
+<===> issue_1685/output.css

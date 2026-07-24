@@ -1,0 +1,119 @@
+<===> README.md
+If a module is first loaded with a configuration, future loads with no
+configuration will use the configured module.
+
+<===> use/input.scss
+@forward "upstream" with ($a: configured);
+@use "midstream";
+
+<===> use/_midstream.scss
+@use "upstream";
+b {c: upstream.$a}
+
+<===> use/_upstream.scss
+$a: original !default;
+
+<===> use/output.css
+b {
+  c: configured;
+}
+
+<===> forward/input.scss
+@forward "upstream" with ($a: configured);
+@use "midstream";
+b {c: midstream.$a}
+
+<===> forward/_midstream.scss
+@forward "upstream";
+
+<===> forward/_upstream.scss
+$a: original !default;
+
+<===> forward/output.css
+b {
+  c: configured;
+}
+
+<===> transitive/input.scss
+@use "downstream";
+
+b {
+  midstream1: downstream.$m1-a;
+  midstream2: downstream.$m2-a;
+}
+
+<===> transitive/_downstream.scss
+// Regression test for sass/dart-sass#854.
+@forward "midstream1" as m1-* with ($a: overridden 1);
+@forward "midstream2" as m2-* with ($a: overridden 2);
+
+<===> transitive/_midstream1.scss
+@use "upstream";
+$a: default 1 !default;
+
+<===> transitive/_midstream2.scss
+@use "upstream";
+$a: default 2 !default;
+
+<===> transitive/_upstream.scss
+c {d: e}
+
+<===> transitive/output.css
+c {
+  d: e;
+}
+
+b {
+  midstream1: overridden 1;
+  midstream2: overridden 2;
+}
+
+<===> through_forward/input.scss
+@use "downstream";
+
+b {
+  midstream: downstream.$a;
+}
+
+<===> through_forward/_downstream.scss
+@use "upstream";
+@forward "midstream" with ($a: overridden);
+
+<===> through_forward/_midstream.scss
+@forward "upstream";
+
+$a: default !default;
+
+<===> through_forward/_upstream.scss
+// This file defines no variables, so it's allowed to be loaded with and without
+// configuration.
+
+<===> through_forward/output.css
+b {
+  midstream: overridden;
+}
+
+<===> already_configred_empty/input.scss
+// Regression test for sass/dart-sass#2598
+@use "downstream";
+
+b {
+  midstream: downstream.$a;
+}
+
+<===> already_configred_empty/_downstream.scss
+@use "upstream";
+@forward "midstream" with ($a: overridden);
+
+<===> already_configred_empty/_midstream.scss
+$a: default !default;
+@forward "upstream";
+
+<===> already_configred_empty/_upstream.scss
+// This file defines no variables, so it's allowed to be loaded with and without
+// configuration.
+
+<===> already_configred_empty/output.css
+b {
+  midstream: overridden;
+}

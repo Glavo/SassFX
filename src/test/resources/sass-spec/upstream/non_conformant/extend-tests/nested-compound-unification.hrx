@@ -1,0 +1,11 @@
+<===> nested-compound-unification/input.scss
+// Make sure compound unification properly handles weaving together parent
+// selectors.
+.a .b {@extend .e}
+.c .d {@extend .f}
+.e.f {x: y}
+
+<===> nested-compound-unification/output.css
+.e.f, .a .f.b, .c .e.d, .a .c .b.d, .c .a .b.d {
+  x: y;
+}

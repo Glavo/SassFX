@@ -66,6 +66,27 @@ public final class SassFuzzy {
         return first < second || equals(first, second);
     }
 
+    /// Returns whether {@code first} is strictly less than {@code second} under Sass
+    /// fuzzy semantics.
+    ///
+    /// @param first  the first value
+    /// @param second the second value
+    /// @return whether {@code first < second} and the values are not fuzzy equal
+    public static boolean lessThan(double first, double second) {
+        return first < second && !equals(first, second);
+    }
+
+    /// Returns whether {@code value} lies within {@code [min, max]} under Sass fuzzy
+    /// semantics.
+    ///
+    /// @param value the value to test
+    /// @param min   the inclusive minimum
+    /// @param max   the inclusive maximum
+    /// @return whether the value is inside the range
+    public static boolean inRange(double value, double min, double max) {
+        return greaterThanOrEquals(value, min) && lessThanOrEquals(value, max);
+    }
+
     /// Returns a hash consistent with Sass fuzzy equality.
     ///
     /// @param value the value to hash

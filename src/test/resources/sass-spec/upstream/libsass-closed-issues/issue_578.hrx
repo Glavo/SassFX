@@ -1,0 +1,16 @@
+<===> issue_578/input.scss
+@use "sass:list";
+$list: one foo three bar six seven;
+$pos: list.set-nth($list, 2, two);
+$neg: list.set-nth($pos, -3, four five);
+
+.test {
+  -positive: $pos;
+  -negative: $neg;
+}
+
+<===> issue_578/output.css
+.test {
+  -positive: one two three bar six seven;
+  -negative: one two three four five six seven;
+}

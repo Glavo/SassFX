@@ -1,0 +1,8 @@
+<===> 017_test_class_unification/input.scss
+%-a .foo.baz {a: b}
+.baz {@extend .foo} -a {@extend %-a}
+
+<===> 017_test_class_unification/output.css
+-a .baz {
+  a: b;
+}

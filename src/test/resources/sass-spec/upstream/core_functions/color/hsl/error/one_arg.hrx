@@ -1,0 +1,225 @@
+<===> list/empty/input.scss
+a {
+  b: hsl(());
+}
+
+<===> list/empty/error
+Error: $channels: Color component list may not be empty.
+  ,
+2 |   b: hsl(());
+  |      ^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> list/comma_separated/input.scss
+a {
+  b: hsl((0, 100%, 50%));
+}
+
+<===> list/comma_separated/error
+Error: $channels: Expected a space- or slash-separated list, was (0, 100%, 50%)
+  ,
+2 |   b: hsl((0, 100%, 50%));
+  |      ^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> list/bracketed/input.scss
+a {
+  b: hsl([0 100% 50%]);
+}
+
+<===> list/bracketed/error
+Error: $channels: Expected an unbracketed list, was [0 100% 50%]
+  ,
+2 |   b: hsl([0 100% 50%]);
+  |      ^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> list/one_element/input.scss
+a {
+  b: hsl(0);
+}
+
+<===> list/one_element/error
+Error: $channels: The hsl color space has 3 channels but 0 has 1.
+  ,
+2 |   b: hsl(0);
+  |      ^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> list/two_elements/input.scss
+a {
+  b: hsl(0 100%);
+}
+
+<===> list/two_elements/error
+Error: $channels: The hsl color space has 3 channels but (0 100%) has 2.
+  ,
+2 |   b: hsl(0 100%);
+  |      ^^^^^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> list/four_elements/input.scss
+a {
+  b: hsl(0 100% 50% 0.4);
+}
+
+<===> list/four_elements/error
+Error: $channels: The hsl color space has 3 channels but (0 100% 50% 0.4) has 4.
+  ,
+2 |   b: hsl(0 100% 50% 0.4);
+  |      ^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> type/hue/input.scss
+a {
+  b: hsl("foo" 100% 50%);
+}
+
+<===> type/hue/error
+Error: $channels: Expected hue channel to be a number, was "foo".
+  ,
+2 |   b: hsl("foo" 100% 50%);
+  |      ^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> type/saturation/input.scss
+a {
+  b: hsl(0 "foo" 50%);
+}
+
+<===> type/saturation/error
+Error: $channels: Expected saturation channel to be a number, was "foo".
+  ,
+2 |   b: hsl(0 "foo" 50%);
+  |      ^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> type/lightness/input.scss
+a {
+  b: hsl(0 100% "foo");
+}
+
+<===> type/lightness/error
+Error: $channels: Expected lightness channel to be a number, was "foo".
+  ,
+2 |   b: hsl(0 100% "foo");
+  |      ^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> quoted_var_slash/input.scss
+a {
+  b: hsl(0 100% "var(--foo) / 0.4");
+}
+
+<===> quoted_var_slash/error
+Error: $channels: Expected lightness channel to be a number, was "var(--foo) / 0.4".
+  ,
+2 |   b: hsl(0 100% "var(--foo) / 0.4");
+  |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> slash_list/too_few_elements/input.scss
+@use "sass:list";
+a {b: hsl(list.append((), 0 100% 100%, $separator: slash))}
+
+<===> slash_list/too_few_elements/error
+Error: $channels: Only 2 slash-separated elements allowed, but 1 was passed.
+  ,
+2 | a {b: hsl(list.append((), 0 100% 100%, $separator: slash))}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> slash_list/too_many_elements/input.scss
+@use "sass:list";
+a {b: hsl(list.slash(0 100% 100%, 0.4, 1))}
+
+<===> slash_list/too_many_elements/error
+Error: $channels: Only 2 slash-separated elements allowed, but 3 were passed.
+  ,
+2 | a {b: hsl(list.slash(0 100% 100%, 0.4, 1))}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> slash_list/channels/empty/input.scss
+@use "sass:list";
+a {b: hsl(list.slash((), 1))}
+
+<===> slash_list/channels/empty/error
+Error: $channels: Color component list may not be empty.
+  ,
+2 | a {b: hsl(list.slash((), 1))}
+  |       ^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> slash_list/channels/comma_separated/input.scss
+@use "sass:list";
+a {b: hsl(list.slash((0, 100%, 50%), 1))}
+
+<===> slash_list/channels/comma_separated/error
+Error: $channels: Expected a space-separated list, was (0, 100%, 50%)
+  ,
+2 | a {b: hsl(list.slash((0, 100%, 50%), 1))}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> slash_list/channels/bracketed/input.scss
+@use "sass:list";
+a {b: hsl(list.slash([0 100% 50%], 1))}
+
+<===> slash_list/channels/bracketed/error
+Error: $channels: Expected an unbracketed list, was [0 100% 50%]
+  ,
+2 | a {b: hsl(list.slash([0 100% 50%], 1))}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> slash_list/channels/one_element/input.scss
+@use "sass:list";
+a {b: hsl(list.slash(0, 1))}
+
+<===> slash_list/channels/one_element/error
+Error: $channels: The hsl color space has 3 channels but (0 / 1) has 1.
+  ,
+2 | a {b: hsl(list.slash(0, 1))}
+  |       ^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> slash_list/channels/two_elements/input.scss
+@use "sass:list";
+a {b: hsl(list.slash(0 100%, 1))}
+
+<===> slash_list/channels/two_elements/error
+Error: $channels: The hsl color space has 3 channels but (0 100% / 1) has 2.
+  ,
+2 | a {b: hsl(list.slash(0 100%, 1))}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> slash_list/channels/four_elements/input.scss
+@use "sass:list";
+a {b: hsl(list.slash(0 100% 50% 0.4, 1))}
+
+<===> slash_list/channels/four_elements/error
+Error: $channels: The hsl color space has 3 channels but (0 100% 50% 0.4 / 1) has 4.
+  ,
+2 | a {b: hsl(list.slash(0 100% 50% 0.4, 1))}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet

@@ -1,0 +1,19 @@
+<===> bool/input.scss
+@use "sass:string";
+div {
+  a: (false and "hey");
+  b: ("hey" and "ho");
+  b: ("hey" or "ho");
+  a: false and "hey";
+  b: "hey" and "ho";
+  b: string.unquote("hey") or "ho";
+}
+<===> bool/output.css
+div {
+  a: false;
+  b: "ho";
+  b: "hey";
+  a: false;
+  b: "ho";
+  b: hey;
+}

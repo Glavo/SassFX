@@ -1,0 +1,33 @@
+<===> issue_1192/input.scss
+@use "sass:meta";
+
+$keyword: foobar;
+
+@mixin test($arglist...){
+  $map: meta.keywords($arglist);
+  /*#{meta.inspect($map)}*/
+  /*#{meta.inspect($arglist)}*/
+}
+
+// Works
+@include test(foo, bar, baz);
+// Ruby Sass:  /*foo, bar, baz*/
+// LibSass  :  /*foo, bar, baz*/
+
+// LibSass does not inspect as ()
+@include test;
+// Ruby Sass:  /*()*/
+// LibSass  :  /**/
+
+// Ruby Sass throws error – LibSass shows keywords in arglist
+// (keywords should not show in arglist – see below)
+@include test(foo, bar, baz, $keyword: keyword);
+// Ruby Sass:  "Mixin test1 doesn't have an argument named $keyword."
+// LibSass  :  /*foo, bar, baz, $keyword: keyword*/
+<===> issue_1192/output.css
+/*()*/
+/*foo, bar, baz*/
+/*()*/
+/*()*/
+/*(keyword: keyword)*/
+/*foo, bar, baz*/

@@ -1,0 +1,12 @@
+<===> issue_1277/input.scss
+$foo: foo;
+$bar: bar;
+
+.foo {
+  foo: foo #{$foo}, bar #{$bar};
+}
+
+<===> issue_1277/output.css
+.foo {
+  foo: foo foo, bar bar;
+}

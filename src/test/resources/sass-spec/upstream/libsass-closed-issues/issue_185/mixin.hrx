@@ -1,0 +1,48 @@
+<===> mixin/input.scss
+@use "sass:list";
+@function shift($list) {
+  @if list.length($list) == 1 { @return (); }
+
+  $new: ();
+  @for $i from 2 through list.length($list) {
+    $new: list.append($new, list.nth($list, $i));
+  }
+  @return $new;
+}
+
+@mixin media($medias...) {
+  @if list.length($medias) == 0 {
+    @content;
+  } @else {
+    @media #{list.nth($medias, 1)} {
+      @include media(shift($medias)...) {
+        @content;
+      }
+    }
+  }
+}
+
+.foo {
+  @include media('only screen', '(color)', '(orientation: portrait)') {
+    content: bar;
+  }
+}
+
+@include media('all', '(min-width: 42em)') {
+  .foo {
+    content: bar;
+  }
+}
+
+<===> mixin/output.css
+@media only screen and (color) and (orientation: portrait) {
+  .foo {
+    content: bar;
+  }
+}
+
+@media (min-width: 42em) {
+  .foo {
+    content: bar;
+  }
+}

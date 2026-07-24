@@ -1,0 +1,5 @@
+<===> warning/input.scss
+@warning "foo"
+
+<===> warning/output.css
+@warning "foo";

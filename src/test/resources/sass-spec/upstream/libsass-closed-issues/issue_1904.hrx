@@ -1,0 +1,10 @@
+<===> issue_1904/input.scss
+.foo {
+  &--#{'bar'} {
+    color: red;
+  }
+}
+<===> issue_1904/output.css
+.foo--bar {
+  color: red;
+}

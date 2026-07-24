@@ -1,0 +1,30 @@
+<===> issue_1923/input.scss
+%btnBase {
+  display: none;
+}
+
+@mixin mobile {
+  @media only screen and (min-width:300px) {
+    @content;
+  }
+}
+
+@include mobile {
+  a {
+    @extend %btnBase;
+  }
+}
+<===> issue_1923/error
+Error: From line 1, column 1 of input.scss: 
+  ,
+1 | %btnBase {
+  | ^^^^^^^^^
+  '
+You may not @extend selectors across media queries.
+   ,
+13 |     @extend %btnBase;
+   |     ^^^^^^^^^^^^^^^^
+   '
+  input.scss 13:5  @content
+  input.scss 7:5   mobile()
+  input.scss 11:1  root stylesheet

@@ -1,0 +1,13 @@
+<===> namespace_properties/input.scss
+foo {
+  bar: baz;
+  bang: {
+    bip: 1px;
+    bop: bar;}}
+
+<===> namespace_properties/output.css
+foo {
+  bar: baz;
+  bang-bip: 1px;
+  bang-bop: bar;
+}

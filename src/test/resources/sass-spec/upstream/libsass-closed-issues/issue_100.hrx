@@ -1,0 +1,10 @@
+<===> issue_100/input.scss
+@use "sass:color";
+$endColor: red;
+test {
+  background-color: color.adjust($endColor, $lightness: -10%) \9;
+}
+<===> issue_100/output.css
+test {
+  background-color: #cc0000 \9 ;
+}

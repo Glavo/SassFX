@@ -1,0 +1,22 @@
+<===> placeholder-nested/input.scss
+%x {
+  width: 100px;
+
+  %y {
+    height: 100px;
+  }
+}
+
+.foo {
+  @extend %x;
+
+  .bar { @extend %y }
+}
+
+<===> placeholder-nested/output.css
+.foo {
+  width: 100px;
+}
+.foo .bar {
+  height: 100px;
+}

@@ -1,0 +1,6 @@
+<===> test-01/input.scss
+.class{background-image:url(//foo.bar/favicon.ico)}
+<===> test-01/output.css
+.class {
+  background-image: url(//foo.bar/favicon.ico);
+}

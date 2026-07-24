@@ -1,0 +1,20 @@
+<===> some_unconfigured/input.scss
+@use "midstream";
+
+<===> some_unconfigured/_midstream.scss
+@forward "upstream" with ($a: configured a);
+
+<===> some_unconfigured/_upstream.scss
+$a: original a !default;
+$b: original b !default;
+
+c {
+  a: $a;
+  b: $b;
+}
+
+<===> some_unconfigured/output.css
+c {
+  a: configured a;
+  b: original b;
+}

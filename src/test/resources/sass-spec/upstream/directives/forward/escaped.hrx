@@ -1,0 +1,10 @@
+<===> escaped/input.scss
+@fo\72ward "other"
+
+<===> escaped/other.scss
+a {b: c}
+
+<===> escaped/output.css
+a {
+  b: c;
+}

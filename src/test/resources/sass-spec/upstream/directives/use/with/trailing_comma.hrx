@@ -1,0 +1,11 @@
+<===> trailing_comma/input.scss
+@use "other" with ($a: configured,);
+
+<===> trailing_comma/_other.scss
+$a: original !default;
+b {c: $a}
+
+<===> trailing_comma/output.css
+b {
+  c: configured;
+}

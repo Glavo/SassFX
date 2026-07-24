@@ -1,0 +1,14 @@
+<===> issue_6/input.scss
+*[class|="has-background"] {
+    background: #efefef;
+    padding: 7px;
+    border: 1px solid #888;
+    margin-bottom: 5px;
+    }
+<===> issue_6/output.css
+*[class|=has-background] {
+  background: #efefef;
+  padding: 7px;
+  border: 1px solid #888;
+  margin-bottom: 5px;
+}

@@ -1,0 +1,187 @@
+<===> _utils.scss
+@use "sass:meta";
+/// Returns the keyword arguments passed to this function as a map.
+@function args-to-keywords($args...) {
+  @return meta.keywords($args);
+}
+
+<===> empty/no_args/input.scss
+@use "sass:meta";
+@use "../../utils";
+a {b: meta.inspect(utils.args-to-keywords())}
+
+<===> empty/no_args/output.css
+a {
+  b: ();
+}
+
+<===> empty/positional/input.scss
+@use "sass:meta";
+@use "../../utils";
+a {b: meta.inspect(utils.args-to-keywords(1, 2, 3))}
+
+<===> empty/positional/output.css
+a {
+  b: ();
+}
+
+<===> one_arg/input.scss
+@use "sass:meta";
+@use "../utils";
+a {b: meta.inspect(utils.args-to-keywords($c: d))}
+
+<===> one_arg/output.css
+a {
+  b: (c: d);
+}
+
+<===> multi_arg/input.scss
+@use "sass:meta";
+@use "../utils";
+a {b: meta.inspect(utils.args-to-keywords($c: d, $e: f, $g: h))}
+
+<===> multi_arg/output.css
+a {
+  b: (c: d, e: f, g: h);
+}
+
+<===> forwarded/function/input.scss
+@use "sass:meta";
+@use "../../utils";
+
+@function args-to-keywords-forward($args...) {
+  @return utils.args-to-keywords($args...);
+}
+
+a {b: meta.inspect(args-to-keywords-forward($c: d))}
+
+<===> forwarded/function/output.css
+a {
+  b: (c: d);
+}
+
+<===> forwarded/call/input.scss
+@use "sass:meta";
+@use "../../utils";
+
+@function args-to-keywords-forward($args...) {
+  @return meta.call(meta.get-function("args-to-keywords", $module: "utils"), $args...);
+}
+
+a {b: meta.inspect(args-to-keywords-forward($c: d))}
+
+<===> forwarded/call/output.css
+a {
+  b: (c: d);
+}
+
+<===> forwarded/mixin/input.scss
+@use "sass:meta";
+@use "../../utils";
+
+@mixin args-to-keywords-forward($args...) {
+  a {b: meta.inspect(utils.args-to-keywords($args...))}
+}
+
+@include args-to-keywords-forward($c: d);
+
+<===> forwarded/mixin/output.css
+a {
+  b: (c: d);
+}
+
+<===> forwarded/content/input.scss
+@use "sass:meta";
+@use "../../utils";
+
+@mixin args-to-keywords-forward($args...) {
+  @content($args...);
+}
+
+@include args-to-keywords-forward($c: d) using ($args...) {
+  a {b: meta.inspect(utils.args-to-keywords($args...))}
+}
+
+<===> forwarded/content/output.css
+a {
+  b: (c: d);
+}
+
+<===> dash_insensitive/input.scss
+@use "sass:meta";
+@use "../utils";
+a {b: meta.inspect(utils.args-to-keywords($c-d: e, $f_g: h))}
+
+<===> dash_insensitive/output.css
+a {
+  b: (c-d: e, f-g: h);
+}
+
+<===> named/input.scss
+@use "sass:meta";
+@function args-to-keywords($args...) {
+  @return meta.keywords($args: $args);
+}
+
+a {b: meta.inspect(args-to-keywords($c: d))}
+
+<===> named/output.css
+a {
+  b: (c: d);
+}
+
+<===> error/type/non_arg_list/input.scss
+@use "sass:meta";
+a {b: meta.keywords(1 2 3)}
+
+<===> error/type/non_arg_list/error
+Error: $args: (1 2 3) is not an argument list.
+  ,
+2 | a {b: meta.keywords(1 2 3)}
+  |       ^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/type/non_list/input.scss
+@use "sass:meta";
+a {b: meta.keywords(1)}
+
+<===> error/type/non_list/error
+Error: $args: 1 is not an argument list.
+  ,
+2 | a {b: meta.keywords(1)}
+  |       ^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/too_few_args/input.scss
+@use "sass:meta";
+a {b: meta.keywords()}
+
+<===> error/too_few_args/error
+Error: Missing argument $args.
+  ,--> input.scss
+2 | a {b: meta.keywords()}
+  |       ^^^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:meta
+1 | @function keywords($args) {
+  |           =============== declaration
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/too_many_args/input.scss
+@use "sass:meta";
+a {b: meta.keywords(1, 2)}
+
+<===> error/too_many_args/error
+Error: Only 1 argument allowed, but 2 were passed.
+  ,--> input.scss
+2 | a {b: meta.keywords(1, 2)}
+  |       ^^^^^^^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:meta
+1 | @function keywords($args) {
+  |           =============== declaration
+  '
+  input.scss 2:7  root stylesheet

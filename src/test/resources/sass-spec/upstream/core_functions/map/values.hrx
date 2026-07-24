@@ -1,0 +1,108 @@
+<===> empty/input.scss
+@use "sass:list";
+@use "sass:map";
+@use "sass:meta";
+$result: map.values(());
+a {
+  value: meta.inspect($result);
+  separator: list.separator($result);
+}
+
+<===> empty/output.css
+a {
+  value: ();
+  separator: comma;
+}
+
+<===> single/input.scss
+@use "sass:list";
+@use "sass:map";
+@use "sass:meta";
+$result: map.values((1: 2));
+a {
+  value: $result;
+  type: meta.type-of($result);
+  separator: list.separator($result);
+}
+
+<===> single/output.css
+a {
+  value: 2;
+  type: list;
+  separator: comma;
+}
+
+<===> multiple/input.scss
+@use "sass:map";
+a {b: map.values((c: d, e: f, g: h))}
+
+<===> multiple/output.css
+a {
+  b: d, f, h;
+}
+
+<===> named/input.scss
+@use "sass:map";
+a {b: map.values($map: (1: 2, 3: 4))}
+
+<===> named/output.css
+a {
+  b: 2, 4;
+}
+
+<===> error/wrong_name/input.scss
+@use "sass:map";
+a {b: map.map-values((c: d))}
+
+<===> error/wrong_name/error
+Error: Undefined function.
+  ,
+2 | a {b: map.map-values((c: d))}
+  |       ^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/type/input.scss
+@use "sass:map";
+a {b: map.values(1)}
+
+<===> error/type/error
+Error: $map: 1 is not a map.
+  ,
+2 | a {b: map.values(1)}
+  |       ^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/too_few_args/input.scss
+@use "sass:map";
+a {b: map.values()}
+
+<===> error/too_few_args/error
+Error: Missing argument $map.
+  ,--> input.scss
+2 | a {b: map.values()}
+  |       ^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:map
+1 | @function values($map) {
+  |           ============ declaration
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/too_many_args/input.scss
+@use "sass:map";
+a {b: map.values((c: d), (e: f))}
+
+
+<===> error/too_many_args/error
+Error: Only 1 argument allowed, but 2 were passed.
+  ,--> input.scss
+2 | a {b: map.values((c: d), (e: f))}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:map
+1 | @function values($map) {
+  |           ============ declaration
+  '
+  input.scss 2:7  root stylesheet

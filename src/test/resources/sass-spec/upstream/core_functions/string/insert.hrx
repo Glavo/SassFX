@@ -1,0 +1,273 @@
+<===> empty_destination/empty_source/input.scss
+@use "sass:string";
+a {b: string.insert("", "", 1)}
+
+<===> empty_destination/empty_source/output.css
+a {
+  b: "";
+}
+
+<===> empty_destination/index_0/input.scss
+@use "sass:string";
+a {b: string.insert("", "c", 0)}
+
+<===> empty_destination/index_0/output.css
+a {
+  b: "c";
+}
+
+<===> empty_destination/index_1/input.scss
+@use "sass:string";
+a {b: string.insert("", "c", 1)}
+
+<===> empty_destination/index_1/output.css
+a {
+  b: "c";
+}
+
+<===> empty_destination/index_2/input.scss
+@use "sass:string";
+a {b: string.insert("", "c", 2)}
+
+<===> empty_destination/index_2/output.css
+a {
+  b: "c";
+}
+
+<===> empty_destination/index_negative_1/input.scss
+@use "sass:string";
+a {b: string.insert("", "c", -1)}
+
+<===> empty_destination/index_negative_1/output.css
+a {
+  b: "c";
+}
+
+<===> empty_insertion/input.scss
+@use "sass:string";
+a {b: string.insert("cde", "", 1)}
+
+<===> empty_insertion/output.css
+a {
+  b: "cde";
+}
+
+<===> index/positive/0/input.scss
+@use "sass:string";
+a {b: string.insert("cde", "f", 0)}
+
+<===> index/positive/0/output.css
+a {
+  b: "fcde";
+}
+
+<===> index/positive/1/input.scss
+@use "sass:string";
+a {b: string.insert("cde", "f", 1)}
+
+<===> index/positive/1/output.css
+a {
+  b: "fcde";
+}
+
+<===> index/positive/2/input.scss
+@use "sass:string";
+a {b: string.insert("cde", "f", 2)}
+
+<===> index/positive/2/output.css
+a {
+  b: "cfde";
+}
+
+<===> index/positive/last/input.scss
+@use "sass:string";
+a {b: string.insert("cde", "f", 4)}
+
+<===> index/positive/last/output.css
+a {
+  b: "cdef";
+}
+
+<===> index/positive/after_last/input.scss
+@use "sass:string";
+a {b: string.insert("cde", "f", 100)}
+
+<===> index/positive/after_last/output.css
+a {
+  b: "cdef";
+}
+
+<===> index/negative/1/input.scss
+@use "sass:string";
+a {b: string.insert("cde", "f", -1)}
+
+<===> index/negative/1/output.css
+a {
+  b: "cdef";
+}
+
+<===> index/negative/2/input.scss
+@use "sass:string";
+a {b: string.insert("cde", "f", -2)}
+
+<===> index/negative/2/output.css
+a {
+  b: "cdfe";
+}
+
+<===> index/negative/last/input.scss
+@use "sass:string";
+a {b: string.insert("cde", "f", -4)}
+
+<===> index/negative/last/output.css
+a {
+  b: "fcde";
+}
+
+<===> index/negative/after_last/less_than_double/input.scss
+@use "sass:string";
+// Regression test for sass/dart-sass#1568
+a {b: string.insert("cdefghijkl", "mno", -15)}
+
+<===> index/negative/after_last/less_than_double/output.css
+a {
+  b: "mnocdefghijkl";
+}
+
+<===> index/negative/after_last/more_than_double/input.scss
+@use "sass:string";
+a {b: string.insert("cde", "f", -100)}
+
+<===> index/negative/after_last/more_than_double/output.css
+a {
+  b: "fcde";
+}
+
+<===> double_width_character/input.scss
+@use "sass:string";
+// Sass treats strings as sequences of Unicode codepoint; it doesn't care if a
+// character is represented as two UTF-16 code units, so inserting a character
+// at index 2 shouldn't break this emoji in two.
+a {b: string.insert("👭", "c", 2)}
+
+<===> double_width_character/output.css
+@charset "UTF-8";
+a {
+  b: "👭c";
+}
+
+<===> combining_character/input.scss
+@use "sass:string";
+// Sass does *not* treat strings as sequences of glyphs, so this string which
+// contains "c" followed by a combining umlaut should be considered two separate
+// characters even though it's rendered as only one and the "d" should be
+// injected between the two.
+a {b: string.insert("c\0308", "d", 2)}
+
+<===> combining_character/output.css
+@charset "UTF-8";
+a {
+  b: "cd̈";
+}
+
+<===> named/input.scss
+@use "sass:string";
+a {b: string.insert($string: "cde", $insert: "f", $index: 2)}
+
+<===> named/output.css
+a {
+  b: "cfde";
+}
+
+<===> error/wrong_name/input.scss
+@use "sass:string";
+a {b: string.str-insert("c", 1, "d")}
+
+<===> error/wrong_name/error
+Error: Undefined function.
+  ,
+2 | a {b: string.str-insert("c", 1, "d")}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+
+<===> error/type/string/input.scss
+@use "sass:string";
+a {b: string.insert(1, "", 1)}
+
+<===> error/type/string/error
+Error: $string: 1 is not a string.
+  ,
+2 | a {b: string.insert(1, "", 1)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/type/insert/input.scss
+@use "sass:string";
+a {b: string.insert("", 1, 1)}
+
+<===> error/type/insert/error
+Error: $insert: 1 is not a string.
+  ,
+2 | a {b: string.insert("", 1, 1)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/type/index/input.scss
+@use "sass:string";
+a {b: string.insert("", "", "")}
+
+<===> error/type/index/error
+Error: $index: "" is not a number.
+  ,
+2 | a {b: string.insert("", "", "")}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/decimal/input.scss
+@use "sass:string";
+a {b: string.insert("", "", 0.5)}
+
+<===> error/decimal/error
+Error: $index: 0.5 is not an int.
+  ,
+2 | a {b: string.insert("", "", 0.5)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/too_few_args/input.scss
+@use "sass:string";
+a {b: string.insert("", "")}
+
+<===> error/too_few_args/error
+Error: Missing argument $index.
+  ,--> input.scss
+2 | a {b: string.insert("", "")}
+  |       ^^^^^^^^^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:string
+1 | @function insert($string, $insert, $index) {
+  |           ================================ declaration
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/too_many_args/input.scss
+@use "sass:string";
+a {b: string.insert("", "", 1, 2)}
+
+<===> error/too_many_args/error
+Error: Only 3 arguments allowed, but 4 were passed.
+  ,--> input.scss
+2 | a {b: string.insert("", "", 1, 2)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:string
+1 | @function insert($string, $insert, $index) {
+  |           ================================ declaration
+  '
+  input.scss 2:7  root stylesheet

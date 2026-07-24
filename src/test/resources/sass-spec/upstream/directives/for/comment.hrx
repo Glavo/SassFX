@@ -1,0 +1,137 @@
+<===> before_var/loud/scss/input.scss
+@for /**/ $i from 1 through 10 {}
+
+<===> before_var/loud/scss/output.css
+
+<===> before_var/loud/sass/input.sass
+@for /**/ $i from 1 through 10
+
+
+<===> before_var/loud/sass/output.css
+
+<===> before_var/silent/scss/input.scss
+@for //
+  $i from 1 through 10 {}
+
+<===> before_var/silent/scss/output.css
+
+<===> before_var/silent/sass/input.sass
+@for //
+  $i from 1 through 10
+
+<===> before_var/silent/sass/output.css
+
+<===> before_from/silent/sass/input.sass
+@for $i //
+  from 1 through 10
+
+<===> before_from/silent/sass/output.css
+
+<===> before_from/silent/scss/input.scss
+@for $i //
+  from 1 through 10 {}
+
+<===> before_from/silent/scss/output.css
+
+<===> before_from/loud/scss/input.scss
+@for $i /**/ from 1 through 10 {}
+
+<===> before_from/loud/scss/output.css
+
+<===> before_from/loud/sass/input.sass
+@for $i /**/ from 1 through 10
+
+
+<===> before_from/loud/sass/output.css
+
+<===> after_from/silent/sass/input.sass
+@for $i from //
+  1 through 10
+
+<===> after_from/silent/sass/output.css
+
+<===> after_from/silent/scss/input.scss
+@for $i from //
+  1 through 10 {}
+
+<===> after_from/silent/scss/output.css
+
+<===> after_from/loud/scss/input.scss
+@for $i from /**/ 1 through 10 {}
+
+<===> after_from/loud/scss/output.css
+
+<===> after_from/loud/sass/input.sass
+@for $i from /**/ 1 through 10
+
+
+<===> after_from/loud/sass/output.css
+
+<===> before_through/silent/sass/input.sass
+@for $i from 1 //
+  through 10
+
+<===> before_through/silent/sass/output.css
+
+<===> before_through/silent/scss/input.scss
+@for $i from 1 //
+  through 10 {}
+
+<===> before_through/silent/scss/output.css
+
+<===> before_through/loud/scss/input.scss
+@for $i from 1 /**/ through 10 {}
+
+<===> before_through/loud/scss/output.css
+
+<===> before_through/loud/sass/input.sass
+@for $i from 1 /**/ through 10
+
+
+<===> before_through/loud/sass/output.css
+
+<===> after_through/silent/sass/input.sass
+@for $i from 1 through //
+  10
+
+
+<===> after_through/silent/sass/output.css
+
+<===> after_through/silent/scss/input.scss
+@for $i from 1 through //
+  10 {}
+
+<===> after_through/silent/scss/output.css
+
+<===> after_through/loud/scss/input.scss
+@for $i from 1 through /**/ 10 {}
+
+<===> after_through/loud/scss/output.css
+
+<===> after_through/loud/sass/input.sass
+@for $i from 1 through /**/ 10
+
+<===> after_through/loud/sass/output.css
+
+<===> before_block/loud/scss/input.scss
+@for $i from 1 through 10 /**/ {}
+
+<===> before_block/loud/scss/output.css
+
+<===> before_block/loud/sass/input.sass
+@for $i from 1 through 10 /**/
+
+
+<===> before_block/loud/sass/output.css
+
+<===> before_block/silent/scss/input.scss
+@for $i from 1 through 10 //
+  {}
+
+<===> before_block/silent/scss/output.css
+
+<===> before_block/silent/sass/input.sass
+@for $i from 1 through 10 //
+  
+
+<===> before_block/silent/sass/output.css

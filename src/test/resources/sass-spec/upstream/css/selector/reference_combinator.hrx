@@ -1,0 +1,14 @@
+<===> reference_combinator/input.scss
+// Reference combinators used to be supported by Sass when they were part of the
+// CSS spec, but they're no longer supported and should now produce errors.
+.foo /bar/ .baz {
+  a: b;
+}
+
+<===> reference_combinator/error
+Error: expected selector.
+  ,
+3 | .foo /bar/ .baz {
+  |      ^
+  '
+  input.scss 3:6  root stylesheet

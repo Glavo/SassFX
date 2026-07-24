@@ -1,0 +1,12 @@
+<===> 194_test_extend_within_media/input.scss
+@media screen {
+.foo {a: b}
+.bar {@extend .foo}
+}
+
+<===> 194_test_extend_within_media/output.css
+@media screen {
+  .foo, .bar {
+    a: b;
+  }
+}

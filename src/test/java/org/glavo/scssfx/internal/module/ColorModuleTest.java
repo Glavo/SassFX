@@ -132,7 +132,7 @@ final class ColorModuleTest {
                           modern-legacy: false;
                           converted-space: oklch;
                           red-channel: 255;
-                          oklab-l: 62.79553639214311%;
+                          oklab-l: 62.7955363921%;
                           same-self: true;
                           same-spaces: true;
                           in-gamut: true;

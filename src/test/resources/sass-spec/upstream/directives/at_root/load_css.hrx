@@ -1,0 +1,18 @@
+<===> load_css/input.scss
+@use "sass:meta";
+
+a {
+  @include meta.load-css("other");
+}
+
+<===> load_css/other.scss
+@at-root {
+  b {
+    c: d;
+  }
+}
+
+<===> load_css/output.css
+a b {
+  c: d;
+}

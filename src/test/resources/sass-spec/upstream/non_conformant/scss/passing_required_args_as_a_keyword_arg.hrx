@@ -1,0 +1,13 @@
+<===> passing_required_args_as_a_keyword_arg/input.scss
+@mixin a-mixin($required, $arg1: default-val1, $arg2: default-val2) {
+  required: $required;
+  arg1: $arg1;
+  arg2: $arg2; }
+.mixed { @include a-mixin($required: foo); }
+
+<===> passing_required_args_as_a_keyword_arg/output.css
+.mixed {
+  required: foo;
+  arg1: default-val1;
+  arg2: default-val2;
+}

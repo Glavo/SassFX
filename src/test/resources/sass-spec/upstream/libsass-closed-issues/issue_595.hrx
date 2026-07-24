@@ -1,0 +1,9 @@
+<===> issue_595/input.scss
+a {
+    color: red;
+};
+
+<===> issue_595/output.css
+a {
+  color: red;
+}

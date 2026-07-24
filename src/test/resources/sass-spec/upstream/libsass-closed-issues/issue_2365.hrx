@@ -1,0 +1,16 @@
+<===> issue_2365/input.scss
+a {
+    b {
+        color: red;
+    },
+    c {
+        color: blue;
+    }
+}
+<===> issue_2365/error
+Error: expected selector.
+  ,
+4 |     },
+  |      ^
+  '
+  input.scss 4:6  root stylesheet

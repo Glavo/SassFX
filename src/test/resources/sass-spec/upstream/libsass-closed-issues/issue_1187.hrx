@@ -1,0 +1,23 @@
+<===> issue_1187/input.scss
+@use "sass:meta";
+
+$a: 'foo';
+$b: 'foo';
+$map: (
+  $a: 1,
+  $b: 2
+);
+
+.foo {
+  content: $a == $b;
+  content: meta.inspect($map);
+}
+<===> issue_1187/error
+Error: Duplicate key.
+  ,
+6 |   $a: 1,
+  |   == first key
+7 |   $b: 2
+  |   ^^ second key
+  '
+  input.scss 7:3  root stylesheet

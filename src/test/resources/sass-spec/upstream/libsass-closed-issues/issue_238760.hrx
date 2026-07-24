@@ -1,0 +1,12 @@
+<===> issue_238760/input.scss
+@use "sass:meta";
+
+$id: meta.inspect((a#b:c)...)
+<===> issue_238760/error
+Error: Variable keyword argument map must have string keys.
+(a #b) is not a string in (a #b: c).
+  ,
+3 | $id: meta.inspect((a#b:c)...)
+  |                   ^^^^^^^
+  '
+  input.scss 3:19  root stylesheet

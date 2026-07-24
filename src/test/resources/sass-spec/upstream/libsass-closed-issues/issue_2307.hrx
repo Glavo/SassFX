@@ -1,0 +1,11 @@
+<===> issue_2307/input.scss
+0//#{
+{
+
+<===> issue_2307/error
+Error: expected "}".
+  ,
+2 | {
+  |  ^
+  '
+  input.scss 2:2  root stylesheet

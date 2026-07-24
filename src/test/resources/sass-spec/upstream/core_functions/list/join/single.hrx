@@ -1,0 +1,280 @@
+<===> both/undecided/input.scss
+@use "sass:list";
+a {b: list.join([1], [2])}
+
+<===> both/undecided/output.css
+a {
+  b: [1 2];
+}
+
+<===> both/space/first/input.scss
+@use "sass:list";
+@use "core_functions/list/utils";
+a {b: list.join(utils.with-separator(1, space), [2])}
+
+<===> both/space/first/output.css
+a {
+  b: 1 2;
+}
+
+<===> both/space/last/input.scss
+@use "sass:list";
+@use "core_functions/list/utils";
+a {b: list.join([1], utils.with-separator(2, space))}
+
+<===> both/space/last/output.css
+a {
+  b: [1 2];
+}
+
+<===> both/comma/first/input.scss
+@use "sass:list";
+@use "core_functions/list/utils";
+a {b: list.join((1,), [2])}
+
+<===> both/comma/first/output.css
+a {
+  b: 1, 2;
+}
+
+<===> both/comma/last/input.scss
+@use "sass:list";
+@use "core_functions/list/utils";
+
+a {b: list.join([1], (2,))}
+
+<===> both/comma/last/output.css
+a {
+  b: [1, 2];
+}
+
+<===> both/slash/first/input.scss
+@use "sass:list";
+a {b: list.join(list.join(1, (), $separator: slash), [2])}
+
+<===> both/slash/first/output.css
+a {
+  b: 1 / 2;
+}
+
+<===> both/slash/last/input.scss
+@use "sass:list";
+a {b: list.join([1], list.join(2, (), $separator: slash))}
+
+<===> both/slash/last/output.css
+a {
+  b: [1 / 2];
+}
+
+<===> first/undecided/and_space/input.scss
+@use "sass:list";
+a {b: list.join([1], 2 3 4)}
+
+<===> first/undecided/and_space/output.css
+a {
+  b: [1 2 3 4];
+}
+
+<===> first/undecided/and_comma/input.scss
+@use "sass:list";
+a {b: list.join([1], (2, 3, 4))}
+
+<===> first/undecided/and_comma/output.css
+a {
+  b: [1, 2, 3, 4];
+}
+
+<===> first/undecided/and_slash/input.scss
+@use "sass:list";
+a {b: list.join([1], list.slash(2, 3, 4))}
+
+<===> first/undecided/and_slash/output.css
+a {
+  b: [1 / 2 / 3 / 4];
+}
+
+<===> first/space/input.scss
+@use "sass:list";
+@use "core_functions/list/utils";
+a {b: list.join(utils.with-separator(1, space), (2, 3, 4))}
+
+<===> first/space/output.css
+a {
+  b: 1 2 3 4;
+}
+
+<===> first/comma/input.scss
+@use "sass:list";
+a {b: list.join((1,), 2 3 4)}
+
+<===> first/comma/output.css
+a {
+  b: 1, 2, 3, 4;
+}
+
+<===> first/slash/input.scss
+@use "sass:list";
+a {b: list.join(list.join(1, (), $separator: slash), 2 3 4)}
+
+<===> first/slash/output.css
+a {
+  b: 1 / 2 / 3 / 4;
+}
+
+<===> second/undecided/space/input.scss
+@use "sass:list";
+a {b: list.join(1 2 3, [4])}
+
+<===> second/undecided/space/output.css
+a {
+  b: 1 2 3 4;
+}
+
+<===> second/undecided/comma/input.scss
+@use "sass:list";
+a {b: list.join((1, 2, 3), [4])}
+
+<===> second/undecided/comma/output.css
+a {
+  b: 1, 2, 3, 4;
+}
+
+<===> second/undecided/slash/input.scss
+@use "sass:list";
+a {b: list.join(list.slash(1, 2, 3), [4])}
+
+<===> second/undecided/slash/output.css
+a {
+  b: 1 / 2 / 3 / 4;
+}
+
+<===> second/space/input.scss
+@use "sass:list";
+@use "core_functions/list/utils";
+a {b: list.join((1, 2, 3), utils.with-separator(4, space))}
+
+<===> second/space/output.css
+a {
+  b: 1, 2, 3, 4;
+}
+
+<===> second/comma/input.scss
+@use "sass:list";
+a {b: list.join(1 2 3, (4,))}
+
+<===> second/comma/output.css
+a {
+  b: 1 2 3 4;
+}
+
+<===> second/slash/input.scss
+@use "sass:list";
+a {b: list.join(1 2 3, list.join(4, (), $separator: slash))}
+
+<===> second/slash/output.css
+a {
+  b: 1 2 3 4;
+}
+
+<===> non_list/both/input.scss
+@use "sass:list";
+a {b: list.join(c, d)}
+
+<===> non_list/both/output.css
+a {
+  b: c d;
+}
+
+<===> non_list/first/space/input.scss
+@use "sass:list";
+@use "sass:meta";
+a {b: meta.inspect(list.join(c, d e))}
+
+<===> non_list/first/space/output.css
+a {
+  b: c d e;
+}
+
+<===> non_list/first/comma/input.scss
+@use "sass:list";
+a {b: list.join(c, (d, e))}
+
+<===> non_list/first/comma/output.css
+a {
+  b: c, d, e;
+}
+
+<===> non_list/first/slash/input.scss
+@use "sass:list";
+a {b: list.join(c, list.slash(d, e))}
+
+<===> non_list/first/slash/output.css
+a {
+  b: c / d / e;
+}
+
+<===> non_list/first/undecided/input.scss
+@use "sass:list";
+@use "sass:meta";
+@use "core_functions/list/utils";
+
+$result: list.join(c, ());
+a {
+  value: meta.inspect($result);
+  type: meta.type-of($result);
+  separator: utils.real-separator($result);
+}
+
+<===> non_list/first/undecided/output.css
+a {
+  value: c;
+  type: list;
+  separator: space;
+}
+
+<===> non_list/second/space/input.scss
+@use "sass:list";
+@use "sass:meta";
+a {b: meta.inspect(list.join(c d, e))}
+
+<===> non_list/second/space/output.css
+a {
+  b: c d e;
+}
+
+<===> non_list/second/comma/input.scss
+@use "sass:list";
+a {b: list.join((c, d), e)}
+
+<===> non_list/second/comma/output.css
+a {
+  b: c, d, e;
+}
+
+<===> non_list/second/slash/input.scss
+@use "sass:list";
+a {b: list.join(list.slash(c, d), e)}
+
+<===> non_list/second/slash/output.css
+a {
+  b: c / d / e;
+}
+
+<===> non_list/second/undecided/input.scss
+@use "sass:list";
+@use "sass:meta";
+@use "core_functions/list/utils";
+
+$result: list.join((), c);
+a {
+  value: meta.inspect($result);
+  type: meta.type-of($result);
+  separator: utils.real-separator($result);
+}
+
+<===> non_list/second/undecided/output.css
+a {
+  value: c;
+  type: list;
+  separator: space;
+}

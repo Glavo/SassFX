@@ -49,6 +49,7 @@ final class HrxArchive {
         var files = new LinkedHashMap<String, String>();
         @Nullable String currentPath = null;
         var currentContent = new StringBuilder();
+        boolean inComment = false;
         int offset = 0;
 
         while (offset < source.length()) {
@@ -57,20 +58,26 @@ final class HrxArchive {
             String lineWithoutTerminator = stripLineTerminator(line);
 
             if (lineWithoutTerminator.startsWith(HEADER_MARKER)) {
-                if (!lineWithoutTerminator.startsWith(HEADER_PREFIX)) {
-                    throw malformed(sourceName, "HRX headers must use '<===> ' followed by a path.");
-                }
                 if (currentPath != null) {
                     addFile(files, currentPath, currentContent.toString(), sourceName);
-                } else if (offset != 0) {
-                    throw malformed(sourceName, "HRX archives must begin with a file header.");
+                    currentPath = null;
+                    currentContent.setLength(0);
                 }
 
-                String path = lineWithoutTerminator.substring(HEADER_PREFIX.length());
-                validateRelativePath(path, "HRX file path");
-                currentPath = path;
-                currentContent.setLength(0);
-            } else {
+                if (lineWithoutTerminator.equals(HEADER_MARKER)
+                        || lineWithoutTerminator.equals(HEADER_MARKER + " ")) {
+                    // Bare <===> starts an HRX comment that is discarded.
+                    inComment = true;
+                } else if (lineWithoutTerminator.startsWith(HEADER_PREFIX)) {
+                    String path = lineWithoutTerminator.substring(HEADER_PREFIX.length());
+                    validateRelativePath(path, "HRX file path");
+                    currentPath = path;
+                    currentContent.setLength(0);
+                    inComment = false;
+                } else {
+                    throw malformed(sourceName, "HRX headers must use '<===> ' followed by a path.");
+                }
+            } else if (!inComment) {
                 if (currentPath == null) {
                     throw malformed(sourceName, "HRX archives must begin with a file header.");
                 }
@@ -80,10 +87,12 @@ final class HrxArchive {
             offset = lineEnd;
         }
 
-        if (currentPath == null) {
+        if (currentPath != null) {
+            addFile(files, currentPath, currentContent.toString(), sourceName);
+        }
+        if (files.isEmpty()) {
             throw malformed(sourceName, "HRX archives must contain at least one file.");
         }
-        addFile(files, currentPath, currentContent.toString(), sourceName);
         return new HrxArchive(files);
     }
 
@@ -162,7 +171,11 @@ final class HrxArchive {
         return line.substring(0, end);
     }
 
-    /// Adds a file while rejecting duplicate paths and file-directory conflicts.
+    /// Adds a file while rejecting file-directory path conflicts.
+    ///
+    /// When the same path is declared more than once, the later body replaces
+    /// the earlier one. A few upstream sass-spec archives contain empty
+    /// accidental re-declarations that rely on last-write-wins behavior.
     ///
     /// @param files the destination file map
     /// @param path the validated path to add
@@ -174,12 +187,11 @@ final class HrxArchive {
             String content,
             String sourceName
     ) {
-        if (files.containsKey(path)) {
-            throw malformed(sourceName, "HRX archives must not declare a file more than once: " + path);
-        }
-        for (String existing : files.keySet()) {
-            if (existing.startsWith(path + "/") || path.startsWith(existing + "/")) {
-                throw malformed(sourceName, "HRX paths must not be both files and directories: " + path);
+        if (!files.containsKey(path)) {
+            for (String existing : files.keySet()) {
+                if (existing.startsWith(path + "/") || path.startsWith(existing + "/")) {
+                    throw malformed(sourceName, "HRX paths must not be both files and directories: " + path);
+                }
             }
         }
         files.put(path, content);

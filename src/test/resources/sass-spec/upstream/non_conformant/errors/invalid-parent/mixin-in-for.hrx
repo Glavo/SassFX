@@ -1,0 +1,11 @@
+<===> mixin-in-for/input.scss
+@for $i from 1 through 1 {
+  @mixin foo() {}
+}
+<===> mixin-in-for/error
+Error: Mixins may not be declared in control directives.
+  ,
+2 |   @mixin foo() {}
+  |   ^^^^^^^^^^^^
+  '
+  input.scss 2:3  root stylesheet

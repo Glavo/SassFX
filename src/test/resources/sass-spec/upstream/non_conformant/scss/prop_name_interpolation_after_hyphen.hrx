@@ -1,0 +1,7 @@
+<===> prop_name_interpolation_after_hyphen/input.scss
+a { -#{"foo"}-bar: b; }
+
+<===> prop_name_interpolation_after_hyphen/output.css
+a {
+  -foo-bar: b;
+}

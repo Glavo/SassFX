@@ -1,0 +1,15 @@
+<===> inline/input.scss
+a {
+  b: {
+    @error test;
+    c: d;
+  }
+}
+
+<===> inline/error
+Error: test
+  ,
+3 |     @error test;
+  |     ^^^^^^^^^^^
+  '
+  input.scss 3:5  root stylesheet

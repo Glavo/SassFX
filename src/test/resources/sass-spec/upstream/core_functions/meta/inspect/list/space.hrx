@@ -1,0 +1,13 @@
+<===> space/input.scss
+@use "sass:meta";
+$result: meta.inspect(1 2 3);
+a {
+  value: $result;
+  type: meta.type-of($result);
+}
+
+<===> space/output.css
+a {
+  value: 1 2 3;
+  type: string;
+}

@@ -1,0 +1,14 @@
+<===> at-root-postfix/input.scss
+test {
+  @at-root {
+    &post {
+      foo {
+        bar: baz;
+      }
+    }
+  }
+}
+<===> at-root-postfix/output.css
+testpost foo {
+  bar: baz;
+}

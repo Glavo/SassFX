@@ -1,0 +1,12 @@
+<===> issue_1208/input.scss
+foo {
+  &.bar, /* */
+  &.baz {
+    color: red;
+  }
+}
+
+<===> issue_1208/output.css
+foo.bar, foo.baz {
+  color: red;
+}

@@ -1,0 +1,107 @@
+<===> black/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(0% 0 0deg), rec2020)}
+
+<===> black/output.css
+a {
+  b: color(rec2020 0 0 0);
+}
+
+<===> white/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(100% 0 0deg), rec2020)}
+
+<===> white/output.css
+a {
+  b: color(rec2020 1 1 1);
+}
+
+<===> gray/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(50% 0 0deg), rec2020)}
+
+<===> gray/output.css
+a {
+  b: color(rec2020 0.3319485778 0.3319485778 0.3319485778);
+}
+
+<===> middle/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(10% 0.1 30deg), rec2020)}
+
+<===> middle/output.css
+a {
+  b: color(rec2020 0.0256576861 -0.0056343194 -0.0019025126);
+}
+
+<===> float/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(10.123456789% 0.198765432 30.192837465deg), rec2020)}
+
+<===> float/output.css
+a {
+  b: color(rec2020 0.0644187624 -0.0232002199 -0.0029907847);
+}
+
+<===> out_of_range/near/input.scss
+@use "sass:color";
+a {b: color.to-space(color.change(oklch(0% 1 0deg), $lightness: -10%), rec2020)}
+
+<===> out_of_range/near/output.css
+a {
+  b: color(rec2020 0.2237639314 -0.1587187275 -0.0339392463);
+}
+
+<===> out_of_range/far/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(10% 999999 0deg), rec2020)}
+
+<===> out_of_range/far/output.css
+a {
+  b: color(rec2020 56131775.40788209 -38257539.11466927 -10955271.733469665);
+}
+
+<===> alpha/partial/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(10% 0.1 30deg / 0.4), rec2020)}
+
+<===> alpha/partial/output.css
+a {
+  b: color(rec2020 0.0256576861 -0.0056343194 -0.0019025126 / 0.4);
+}
+
+<===> alpha/transparent/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(10% 0.1 30deg / 0.0), rec2020)}
+
+<===> alpha/transparent/output.css
+a {
+  b: color(rec2020 0.0256576861 -0.0056343194 -0.0019025126 / 0);
+}
+
+<===> missing/lightness/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(none 0.1 30deg), rec2020)}
+
+<===> missing/lightness/output.css
+a {
+  b: color(rec2020 0.0007134353 0.0000902746 -0.002575042);
+}
+
+<===> missing/chroma/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(10% none 30deg), rec2020)}
+
+<===> missing/chroma/output.css
+a {
+  b: color(rec2020 0.0045 0.0045 0.0045);
+}
+
+<===> missing/hue/input.scss
+@use "sass:color";
+a {b: color.to-space(oklch(10% 0.1 none), rec2020)}
+
+<===> missing/hue/output.css
+a {
+  b: color(rec2020 0.0225650019 -0.0048194752 0.0030470885);
+}

@@ -1,0 +1,8 @@
+<===> 103_test_nested_extender_chooses_first_subseq/input.scss
+.a .b .c .d .foo {a: b}
+.c .d .a .b .bar {@extend .foo}
+
+<===> 103_test_nested_extender_chooses_first_subseq/output.css
+.a .b .c .d .foo, .a .b .c .d .a .b .bar {
+  a: b;
+}

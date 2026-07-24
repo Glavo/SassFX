@@ -1,0 +1,16 @@
+<===> 216_test_nested_sibling_extend/input.scss
+.foo {@extend .bar}
+
+.parent {
+.bar {
+  width: 2000px;
+}
+.foo {
+  @extend .bar
+}
+}
+
+<===> 216_test_nested_sibling_extend/output.css
+.parent .bar, .parent .foo {
+  width: 2000px;
+}

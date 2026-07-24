@@ -1,0 +1,8 @@
+<===> 058_test_element_unification_with_namespaceless_element_target/input.scss
+%-a *|a.foo {a: b}
+a {@extend .foo} -a {@extend %-a}
+
+<===> 058_test_element_unification_with_namespaceless_element_target/output.css
+-a *|a.foo, -a a {
+  a: b;
+}

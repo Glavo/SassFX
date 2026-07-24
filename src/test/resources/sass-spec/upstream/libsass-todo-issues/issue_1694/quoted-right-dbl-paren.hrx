@@ -1,0 +1,9 @@
+<===> quoted-right-dbl-paren/input.scss
+test {
+  filter: progid:DXImageTransform.Microsoft.Alpha(opacity=20\));
+}
+
+<===> quoted-right-dbl-paren/output.css
+test {
+  filter: progid:DXImageTransform.Microsoft.Alpha(opacity=20\));
+}

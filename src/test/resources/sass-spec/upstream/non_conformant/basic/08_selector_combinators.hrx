@@ -1,0 +1,18 @@
+<===> 08_selector_combinators/input.scss
+a   +   b  >  c {
+  d e {
+    color: blue;
+    background: white;
+  }
+  color: red;
+  background: gray;
+}
+<===> 08_selector_combinators/output.css
+a + b > c d e {
+  color: blue;
+  background: white;
+}
+a + b > c {
+  color: red;
+  background: gray;
+}

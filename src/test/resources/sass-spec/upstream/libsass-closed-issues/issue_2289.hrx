@@ -1,0 +1,13 @@
+<===> issue_2289/input.scss
+.foo:baz:baz {
+  float: left;
+}
+
+.bar {
+  @extend .foo;
+}
+
+<===> issue_2289/output.css
+.foo:baz:baz, .bar:baz:baz {
+  float: left;
+}

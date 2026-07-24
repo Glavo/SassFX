@@ -1,0 +1,14 @@
+<===> no_content/input.scss
+// A content block may not be passed to a mixin that doesn't include `@content`.
+@mixin no-content {}
+@include no-content {}
+
+<===> no_content/error
+Error: Mixin doesn't accept a content block.
+  ,
+2 | @mixin no-content {}
+  |        ========== declaration
+3 | @include no-content {}
+  | ^^^^^^^^^^^^^^^^^^^ invocation
+  '
+  input.scss 3:1  root stylesheet

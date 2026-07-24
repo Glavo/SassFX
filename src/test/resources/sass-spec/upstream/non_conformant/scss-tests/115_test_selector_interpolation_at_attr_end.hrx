@@ -1,0 +1,8 @@
+<===> 115_test_selector_interpolation_at_attr_end/input.scss
+$zzz: zzz;
+[foo=#{$zzz}] { a: b; }
+
+<===> 115_test_selector_interpolation_at_attr_end/output.css
+[foo=zzz] {
+  a: b;
+}

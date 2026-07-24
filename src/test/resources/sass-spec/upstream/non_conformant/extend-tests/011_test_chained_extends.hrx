@@ -1,0 +1,10 @@
+<===> 011_test_chained_extends/input.scss
+.foo {a: b}
+.bar {@extend .foo}
+.baz {@extend .bar}
+.bip {@extend .bar}
+
+<===> 011_test_chained_extends/output.css
+.foo, .bar, .bip, .baz {
+  a: b;
+}

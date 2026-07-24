@@ -1,0 +1,11 @@
+<===> issue_2346/input.scss
+$items: 3;
+li {
+  &:nth-child(#{$items}n - #{$items}) {
+    color: red;
+  }
+}
+<===> issue_2346/output.css
+li:nth-child(3n-3) {
+  color: red;
+}

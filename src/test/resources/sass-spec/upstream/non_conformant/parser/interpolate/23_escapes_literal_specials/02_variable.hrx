@@ -1,0 +1,20 @@
+<===> 02_variable/input.scss
+$input: \0_\a_\A;
+.result {
+  output: $input;
+  output: #{$input};
+  output: "[#{$input}]";
+  output: "#{$input}";
+  output: '#{$input}';
+  output: "['#{$input}']";
+}
+
+<===> 02_variable/output.css
+.result {
+  output: \0 _\a _\a ;
+  output: \0 _\a _\a ;
+  output: "[\\0 _\\a _\\a ]";
+  output: "\\0 _\\a _\\a ";
+  output: "\\0 _\\a _\\a ";
+  output: "['\\0 _\\a _\\a ']";
+}

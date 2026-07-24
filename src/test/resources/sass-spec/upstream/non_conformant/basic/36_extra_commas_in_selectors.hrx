@@ -1,0 +1,8 @@
+<===> 36_extra_commas_in_selectors/input.scss
+div,, , span, ,, {
+  color: red;
+}
+<===> 36_extra_commas_in_selectors/output.css
+div, span {
+  color: red;
+}

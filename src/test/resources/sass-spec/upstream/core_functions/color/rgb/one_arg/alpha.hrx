@@ -1,0 +1,184 @@
+<===> in_gamut/transparent/input.scss
+a {b: rgb(0 255 127 / 0)}
+
+<===> in_gamut/transparent/output.css
+a {
+  b: rgba(0, 255, 127, 0);
+}
+
+<===> in_gamut/opaque/input.scss
+a {b: rgb(190 173 237 / 1)}
+
+<===> in_gamut/opaque/output.css
+a {
+  b: rgb(190, 173, 237);
+}
+
+<===> in_gamut/partial/input.scss
+a {b: rgb(18 52 86 / 0.5)}
+
+<===> in_gamut/partial/output.css
+a {
+  b: rgba(18, 52, 86, 0.5);
+}
+
+<===> in_gamut/percent/input.scss
+a {b: rgb(18 52 86 / 50%)}
+
+<===> in_gamut/percent/output.css
+a {
+  b: rgba(18, 52, 86, 0.5);
+}
+
+<===> in_gamut/named/input.scss
+a {b: rgb($channels: 0 255 127 / 0.3)}
+
+<===> in_gamut/named/output.css
+a {
+  b: rgba(0, 255, 127, 0.3);
+}
+
+<===> in_gamut/parenthesized/input.scss
+// Extra parens shouldn't cause the slash to be forced into division.
+a {b: rgb(0 255 127 / 0.3)}
+
+<===> in_gamut/parenthesized/output.css
+a {
+  b: rgba(0, 255, 127, 0.3);
+}
+
+<===> bounds/red/above/input.scss
+@use 'core_functions/color/utils';
+@include utils.inspect(rgb(256 0 0));
+
+<===> bounds/red/above/output.css
+a {
+  value: rgb(255, 0, 0);
+  space: rgb;
+  channels: 255 0 0 / 1;
+}
+
+<===> bounds/red/below/input.scss
+@use 'core_functions/color/utils';
+@include utils.inspect(rgb(-1 0 0));
+
+<===> bounds/red/below/output.css
+a {
+  value: rgb(0, 0, 0);
+  space: rgb;
+  channels: 0 0 0 / 1;
+}
+
+<===> bounds/green/above/input.scss
+@use 'core_functions/color/utils';
+@include utils.inspect(rgb(0 500 0));
+
+<===> bounds/green/above/output.css
+a {
+  value: rgb(0, 255, 0);
+  space: rgb;
+  channels: 0 255 0 / 1;
+}
+
+<===> bounds/green/below/input.scss
+@use 'core_functions/color/utils';
+@include utils.inspect(rgb(0 -100 0));
+
+<===> bounds/green/below/output.css
+a {
+  value: rgb(0, 0, 0);
+  space: rgb;
+  channels: 0 0 0 / 1;
+}
+
+<===> bounds/blue/above/input.scss
+@use 'core_functions/color/utils';
+@include utils.inspect(rgb(0 0 999));
+
+<===> bounds/blue/above/output.css
+a {
+  value: rgb(0, 0, 255);
+  space: rgb;
+  channels: 0 0 255 / 1;
+}
+
+<===> bounds/blue/below/input.scss
+@use 'core_functions/color/utils';
+@include utils.inspect(rgb(0 0 -500));
+
+<===> bounds/blue/below/output.css
+a {
+  value: rgb(0, 0, 0);
+  space: rgb;
+  channels: 0 0 0 / 1;
+}
+
+<===> bounds/alpha/unitless/above/input.scss
+@use 'core_functions/color/utils';
+@include utils.inspect(rgb(0 0 0 / 1.1));
+
+<===> bounds/alpha/unitless/above/output.css
+a {
+  value: rgb(0, 0, 0);
+  space: rgb;
+  channels: 0 0 0 / 1;
+}
+
+<===> bounds/alpha/unitless/below/input.scss
+@use 'core_functions/color/utils';
+@include utils.inspect(rgb(0 0 0 / -0.1));
+
+<===> bounds/alpha/unitless/below/output.css
+a {
+  value: rgba(0, 0, 0, 0);
+  space: rgb;
+  channels: 0 0 0 / 0;
+}
+
+<===> bounds/alpha/percent/above/input.scss
+@use 'core_functions/color/utils';
+@include utils.inspect(rgb(0 0 0 / 250%));
+
+<===> bounds/alpha/percent/above/output.css
+a {
+  value: rgb(0, 0, 0);
+  space: rgb;
+  channels: 0 0 0 / 1;
+}
+
+<===> bounds/alpha/percent/below/input.scss
+@use 'core_functions/color/utils';
+@include utils.inspect(rgb(0 0 0 / -10%));
+
+<===> bounds/alpha/percent/below/output.css
+a {
+  value: rgba(0, 0, 0, 0);
+  space: rgb;
+  channels: 0 0 0 / 0;
+}
+
+<===> slash_list/input.scss
+@use "sass:list";
+a {b: rgb(list.slash(0 255 127, 0))}
+
+<===> slash_list/output.css
+a {
+  b: rgba(0, 255, 127, 0);
+}
+
+<===> missing/slash/input.scss
+a {b: rgb(0 255 127 / none)}
+
+<===> missing/slash/output.css
+a {
+  b: rgb(0 255 127 / none);
+}
+
+<===> missing/slash_list/input.scss
+@use 'sass:list';
+a {b: rgb(list.slash(0 255 127, none))}
+
+<===> missing/slash_list/output.css
+a {
+  b: rgb(0 255 127 / none);
+}

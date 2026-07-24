@@ -1,0 +1,13 @@
+<===> error-include-3/input.scss
+// incorectly terminated
+.error {
+  @include incorrectly-terminated($a,$b,;
+}
+
+<===> error-include-3/error
+Error: expected ")".
+  ,
+3 |   @include incorrectly-terminated($a,$b,;
+  |                                         ^
+  '
+  input.scss 3:41  root stylesheet

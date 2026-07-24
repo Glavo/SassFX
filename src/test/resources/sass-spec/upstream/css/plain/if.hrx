@@ -1,0 +1,10 @@
+<===> if/input.scss
+@use "plain";
+
+<===> if/plain.css
+a {b: if(css(1): c; css(2): d; else: e)}
+
+<===> if/output.css
+a {
+  b: if(css(1): c; css(2): d; else: e);
+}

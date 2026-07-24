@@ -1,0 +1,11 @@
+<===> issue_760/input.scss
+@use "sass:string";
+foo {
+  quoted: string.slice("abcd", 1, 0);
+  unquoted: string.slice(abcd, 1, 0);
+}
+
+<===> issue_760/output.css
+foo {
+  quoted: "";
+}

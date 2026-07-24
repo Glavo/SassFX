@@ -1,0 +1,5 @@
+<===> empty_block_directive/input.scss
+@foo {}
+
+<===> empty_block_directive/output.css
+@foo {}

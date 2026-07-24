@@ -1,0 +1,7 @@
+<===> 104_test_basic_selector_interpolation/input.scss
+foo#{1 + 2} baz {a: b}
+
+<===> 104_test_basic_selector_interpolation/output.css
+foo3 baz {
+  a: b;
+}

@@ -1,0 +1,17 @@
+<===> issue_512/input.scss
+@use "sass:list";
+@use "sass:meta";
+$list: a b c;
+.css {
+  debug: list.index($list, a);
+
+  @if meta.type-of(list.index($list, 2)) == "null" {
+    debug: foo;
+  }
+}
+
+<===> issue_512/output.css
+.css {
+  debug: 1;
+  debug: foo;
+}

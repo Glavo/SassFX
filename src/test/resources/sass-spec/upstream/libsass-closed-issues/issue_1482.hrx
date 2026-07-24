@@ -1,0 +1,21 @@
+<===> issue_1482/input.scss
+.mango {
+  color: red;
+}
+
+type {
+  &__else {
+    @extend .mango;
+  }
+}
+
+.qualified {
+  &__else {
+    @extend .mango;
+  }
+}
+
+<===> issue_1482/output.css
+.mango, .qualified__else, type__else {
+  color: red;
+}

@@ -1,0 +1,11 @@
+<===> issue_1793/input.scss
+@media (max-width: (2px*5in)) {
+  foo { bar: baz; }
+}
+
+<===> issue_1793/output.css
+@media (max-width: calc(10px * 1in)) {
+  foo {
+    bar: baz;
+  }
+}

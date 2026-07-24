@@ -1,0 +1,4 @@
+<===> 024_test_media_import/input.scss
+@import "./fonts.sass" all;
+<===> 024_test_media_import/output.css
+@import "./fonts.sass" all;

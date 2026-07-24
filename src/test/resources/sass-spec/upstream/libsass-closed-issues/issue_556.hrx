@@ -1,0 +1,19 @@
+<===> issue_556/input.scss
+$test: (
+  one: 1,
+  two: 2,
+);
+
+$expect: (
+  two: 2,
+  one: 1,
+);
+
+.test {
+  equal: $test == $expect;
+}
+
+<===> issue_556/output.css
+.test {
+  equal: true;
+}

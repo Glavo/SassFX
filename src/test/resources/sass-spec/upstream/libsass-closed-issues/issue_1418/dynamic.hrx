@@ -1,0 +1,23 @@
+<===> dynamic/input.scss
+@use "sass:meta";
+foo {
+    color: meta.call(missing, $a: b);
+}
+
+<===> dynamic/error
+DEPRECATION WARNING [call-string]: Passing a string to call() is deprecated and will be illegal in Dart Sass 2.0.0.
+
+Recommendation: call(get-function(missing))
+
+  ,
+3 |     color: meta.call(missing, $a: b);
+  |            ^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 3:12  root stylesheet
+
+Error: Plain CSS functions don't support keyword arguments.
+  ,
+3 |     color: meta.call(missing, $a: b);
+  |            ^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 3:12  root stylesheet

@@ -1,0 +1,13 @@
+<===> 041_test_newlines_in_selectors/input.scss
+foo,
+bar {
+  baz,
+  bang {a: b}}
+
+<===> 041_test_newlines_in_selectors/output.css
+foo baz,
+foo bang,
+bar baz,
+bar bang {
+  a: b;
+}

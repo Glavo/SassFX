@@ -1,0 +1,13 @@
+<===> 006_test_multiple_extendees/input.scss
+.foo {a: b}
+.bar {c: d}
+.baz {@extend .foo; @extend .bar}
+
+<===> 006_test_multiple_extendees/output.css
+.foo, .baz {
+  a: b;
+}
+
+.bar, .baz {
+  c: d;
+}

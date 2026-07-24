@@ -1,0 +1,9 @@
+<===> issue_700/input.scss
+@use "sass:color";
+.selector {
+  color: color.invert(transparent);
+}
+<===> issue_700/output.css
+.selector {
+  color: rgba(255, 255, 255, 0);
+}

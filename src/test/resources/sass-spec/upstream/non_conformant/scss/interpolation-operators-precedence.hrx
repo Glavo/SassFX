@@ -1,0 +1,257 @@
+<===> interpolation-operators-precedence/input.scss
+.test {
+  a01: (#{a}+5.0% + 2);
+  a02: (#{a}+ 5.0% + 2);
+  a03: (#{a}  +5.0% + 2);
+  a04: (#{a} +  5.0% + 2);
+  b01: (5 + 2.0%+#{a});
+  b02: (5 + 2.0%+ #{a});
+  b03: (5 + 2.0%  +#{a});
+  b04: (5 + 2.0% +  #{a});
+  c01: (#{a} +5.0% + 2);
+  c02: (#{a} -5.0% + 2);
+  c03: (#{a} /5.0% + 2);
+  c04: (#{a} *5.0% + 2);
+  c05: (#{a} +5.0% - 2);
+  c06: (#{a} -5.0% - 2);
+  c07: (#{a} /5.0% - 2);
+  c08: (#{a} *5.0% - 2);
+  c09: (#{a} +5.0% / 2);
+  c10: (#{a} -5.0% / 2);
+  c11: (#{a} /5.0% / 2);
+  c12: (#{a} *5.0% / 2);
+  c13: (#{a} +5.0% * 2);
+  c14: (#{a} -5.0% * 2);
+  c15: (#{a} /5.0% * 2);
+  c16: (#{a} *5.0% * 2);
+  d01: (5 + 2.0% +#{a});
+  d02: (5 + 2.0% -#{a});
+  d03: (5 + 2.0% /#{a});
+  d04: (5 + 2.0% *#{a});
+  d05: (5 - 2.0% +#{a});
+  d06: (5 - 2.0% -#{a});
+  d07: (5 - 2.0% /#{a});
+  d08: (5 - 2.0% *#{a});
+  d09: (5% / 2.0 +#{a});
+  d10: (5% / 2.0 -#{a});
+  d11: (5% / 2.0 /#{a});
+  d12: (5% / 2.0 *#{a});
+  d13: (5 * 2.0% +#{a});
+  d14: (5 * 2.0% -#{a});
+  d15: (5 * 2.0% /#{a});
+  d16: (5 * 2.0% *#{a});
+  e01: (#{a} ==5.0% == 2);
+  e02: (#{a} >5.0% > 2);
+  e03: (#{a} <5.0% < 2);
+  e04: (#{a} >=5.0% >= 2);
+  e05: (#{a} <=5.0% <= 2);
+  e06: (#{a} !=5.0% != 2);
+}
+
+<===> interpolation-operators-precedence/error
+DEPRECATION WARNING [strict-unary]: This operation is parsed as:
+
+    #{a} + 5%
+
+but you may have intended it to mean:
+
+    #{a} (+5%)
+
+Add a space after + to clarify that it's meant to be a binary operation, or wrap
+it in parentheses to make it a unary operation. This will be an error in future
+versions of Sass.
+
+More info and automated migrator: https://sass-lang.com/d/strict-unary
+
+  ,
+4 |   a03: (#{a}  +5.0% + 2);
+  |         ^^^^^^^^^^^
+  '
+    input.scss 4:9  root stylesheet
+
+DEPRECATION WARNING [strict-unary]: This operation is parsed as:
+
+    5 + 2% + #{a}
+
+but you may have intended it to mean:
+
+    5 + 2% (+#{a})
+
+Add a space after + to clarify that it's meant to be a binary operation, or wrap
+it in parentheses to make it a unary operation. This will be an error in future
+versions of Sass.
+
+More info and automated migrator: https://sass-lang.com/d/strict-unary
+
+  ,
+8 |   b03: (5 + 2.0%  +#{a});
+  |         ^^^^^^^^^^^^^^^
+  '
+    input.scss 8:9  root stylesheet
+
+DEPRECATION WARNING [strict-unary]: This operation is parsed as:
+
+    #{a} + 5%
+
+but you may have intended it to mean:
+
+    #{a} (+5%)
+
+Add a space after + to clarify that it's meant to be a binary operation, or wrap
+it in parentheses to make it a unary operation. This will be an error in future
+versions of Sass.
+
+More info and automated migrator: https://sass-lang.com/d/strict-unary
+
+   ,
+10 |   c01: (#{a} +5.0% + 2);
+   |         ^^^^^^^^^^
+   '
+    input.scss 10:9  root stylesheet
+
+DEPRECATION WARNING [strict-unary]: This operation is parsed as:
+
+    #{a} + 5%
+
+but you may have intended it to mean:
+
+    #{a} (+5%)
+
+Add a space after + to clarify that it's meant to be a binary operation, or wrap
+it in parentheses to make it a unary operation. This will be an error in future
+versions of Sass.
+
+More info and automated migrator: https://sass-lang.com/d/strict-unary
+
+   ,
+14 |   c05: (#{a} +5.0% - 2);
+   |         ^^^^^^^^^^
+   '
+    input.scss 14:9  root stylesheet
+
+DEPRECATION WARNING [strict-unary]: This operation is parsed as:
+
+    #{a} + 5% / 2
+
+but you may have intended it to mean:
+
+    #{a} (+5% / 2)
+
+Add a space after + to clarify that it's meant to be a binary operation, or wrap
+it in parentheses to make it a unary operation. This will be an error in future
+versions of Sass.
+
+More info and automated migrator: https://sass-lang.com/d/strict-unary
+
+   ,
+18 |   c09: (#{a} +5.0% / 2);
+   |         ^^^^^^^^^^^^^^
+   '
+    input.scss 18:9  root stylesheet
+
+DEPRECATION WARNING [strict-unary]: This operation is parsed as:
+
+    #{a} + 5% * 2
+
+but you may have intended it to mean:
+
+    #{a} (+5% * 2)
+
+Add a space after + to clarify that it's meant to be a binary operation, or wrap
+it in parentheses to make it a unary operation. This will be an error in future
+versions of Sass.
+
+More info and automated migrator: https://sass-lang.com/d/strict-unary
+
+   ,
+22 |   c13: (#{a} +5.0% * 2);
+   |         ^^^^^^^^^^^^^^
+   '
+    input.scss 22:9  root stylesheet
+
+DEPRECATION WARNING [strict-unary]: This operation is parsed as:
+
+    5 + 2% + #{a}
+
+but you may have intended it to mean:
+
+    5 + 2% (+#{a})
+
+Add a space after + to clarify that it's meant to be a binary operation, or wrap
+it in parentheses to make it a unary operation. This will be an error in future
+versions of Sass.
+
+More info and automated migrator: https://sass-lang.com/d/strict-unary
+
+   ,
+26 |   d01: (5 + 2.0% +#{a});
+   |         ^^^^^^^^^^^^^^
+   '
+    input.scss 26:9  root stylesheet
+
+DEPRECATION WARNING [strict-unary]: This operation is parsed as:
+
+    5 - 2% + #{a}
+
+but you may have intended it to mean:
+
+    5 - 2% (+#{a})
+
+Add a space after + to clarify that it's meant to be a binary operation, or wrap
+it in parentheses to make it a unary operation. This will be an error in future
+versions of Sass.
+
+More info and automated migrator: https://sass-lang.com/d/strict-unary
+
+   ,
+30 |   d05: (5 - 2.0% +#{a});
+   |         ^^^^^^^^^^^^^^
+   '
+    input.scss 30:9  root stylesheet
+
+DEPRECATION WARNING [strict-unary]: This operation is parsed as:
+
+    5% / 2 + #{a}
+
+but you may have intended it to mean:
+
+    5% / 2 (+#{a})
+
+Add a space after + to clarify that it's meant to be a binary operation, or wrap
+it in parentheses to make it a unary operation. This will be an error in future
+versions of Sass.
+
+More info and automated migrator: https://sass-lang.com/d/strict-unary
+
+   ,
+34 |   d09: (5% / 2.0 +#{a});
+   |         ^^^^^^^^^^^^^^
+   '
+    input.scss 34:9  root stylesheet
+
+DEPRECATION WARNING [strict-unary]: This operation is parsed as:
+
+    5 * 2% + #{a}
+
+but you may have intended it to mean:
+
+    5 * 2% (+#{a})
+
+Add a space after + to clarify that it's meant to be a binary operation, or wrap
+it in parentheses to make it a unary operation. This will be an error in future
+versions of Sass.
+
+More info and automated migrator: https://sass-lang.com/d/strict-unary
+
+   ,
+38 |   d13: (5 * 2.0% +#{a});
+   |         ^^^^^^^^^^^^^^
+   '
+    input.scss 38:9  root stylesheet
+
+Error: Undefined operation "a * 5%".
+   ,
+13 |   c04: (#{a} *5.0% + 2);
+   |         ^^^^^^^^^^
+   '
+  input.scss 13:9  root stylesheet

@@ -1,0 +1,12 @@
+<===> url/input.scss
+@function url() {
+  @return null;
+}
+
+<===> url/error
+Error: Invalid function name.
+  ,
+1 | @function url() {
+  |           ^^^
+  '
+  input.scss 1:11  root stylesheet

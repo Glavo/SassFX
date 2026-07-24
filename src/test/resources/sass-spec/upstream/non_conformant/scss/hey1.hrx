@@ -1,0 +1,7 @@
+<===> hey1/input.scss
+div { width: 1px; }
+
+<===> hey1/output.css
+div {
+  width: 1px;
+}

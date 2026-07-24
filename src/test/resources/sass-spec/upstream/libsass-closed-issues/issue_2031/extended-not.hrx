@@ -1,0 +1,20 @@
+<===> extended-not/input.scss
+@use "sass:selector";
+:not(.foo) {
+  content: test;
+}
+.bar, .baz {
+  @extend .foo;
+}
+
+test {
+  content: selector.extend(":not(.foo)", ".foo", ".bar");
+}
+<===> extended-not/output.css
+:not(.foo):not(.bar):not(.baz) {
+  content: test;
+}
+
+test {
+  content: :not(.foo):not(.bar);
+}

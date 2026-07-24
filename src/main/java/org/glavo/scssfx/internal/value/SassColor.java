@@ -13,7 +13,6 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
-import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -529,6 +528,22 @@ public final class SassColor implements SassValue {
         return legacyChannel(ColorSpace.HSL, "lightness");
     }
 
+    /// Returns this color's HWB whiteness as a percentage.
+    ///
+    /// @return the whiteness percentage
+    /// @throws SassValueException if this color is not legacy
+    public double whiteness() {
+        return legacyChannel(ColorSpace.HWB, "whiteness");
+    }
+
+    /// Returns this color's HWB blackness as a percentage.
+    ///
+    /// @return the blackness percentage
+    /// @throws SassValueException if this color is not legacy
+    public double blackness() {
+        return legacyChannel(ColorSpace.HWB, "blackness");
+    }
+
     /// Returns whether this color is in-gamut for its space.
     ///
     /// Unbounded spaces always return {@code true}. Missing channels are treated
@@ -860,13 +875,72 @@ public final class SassColor implements SassValue {
         ).toSpace(space, false);
     }
 
-    /// Returns this color with zero HSL saturation in the original space.
+    /// Returns this color with zero chroma/saturation in the original space.
+    ///
+    /// Legacy colors convert through HSL. Modern colors convert through OKLCH so
+    /// rectangular and polar Color 4 spaces keep their native appearance.
     ///
     /// @return the grayscale color without source serialization metadata
     public SassColor grayscale() {
+        if (isLegacy()) {
+            var hsl = toSpace(ColorSpace.HSL, false);
+            return forSpace(
+                    ColorSpace.HSL,
+                    hsl.channel0OrNull(),
+                    0.0,
+                    hsl.channel2OrNull(),
+                    hsl.alphaOrNull()
+            ).toSpace(space, false);
+        }
+        var oklch = toSpace(ColorSpace.OKLCH);
+        return forSpace(
+                ColorSpace.OKLCH,
+                oklch.channel0OrNull(),
+                0.0,
+                oklch.channel2OrNull(),
+                oklch.alphaOrNull()
+        ).toSpace(space);
+    }
+
+    /// Returns a legacy color with selected HSL channels replaced.
+    ///
+    /// Unspecified channels keep their current HSL values after conversion.
+    ///
+    /// @param hue the replacement hue in degrees, or {@code null} to keep the current hue
+    /// @param saturation the replacement saturation percentage, or {@code null}
+    /// @param lightness the replacement lightness percentage, or {@code null}
+    /// @param alpha the replacement alpha, or {@code null}
+    /// @return the rewritten RGB color in the HSL-equivalent legacy form
+    /// @throws SassValueException if this color is not legacy
+    public SassColor changeHsl(
+            @Nullable Double hue,
+            @Nullable Double saturation,
+            @Nullable Double lightness,
+            @Nullable Double alpha
+    ) {
+        if (!isLegacy()) {
+            throw new SassValueException(
+                    "changeHsl() is only supported for legacy colors. Please use "
+                            + "color.change() instead with an explicit $space argument."
+            );
+        }
         var hsl = toSpace(ColorSpace.HSL, false);
-        return forSpace(ColorSpace.HSL, hsl.channel0OrNull(), 0.0, hsl.channel2OrNull(), hsl.alphaOrNull())
-                .toSpace(space, false);
+        // Convert back into the original legacy space so CSS serialization keeps
+        // the caller's RGB/HWB spelling preferences (names/hex), matching dart-sass.
+        return SassColor.hsl(
+                hue != null ? hue : hsl.channel0(),
+                saturation != null ? saturation : hsl.channel1(),
+                lightness != null ? lightness : hsl.channel2(),
+                alpha != null ? alpha : hsl.alpha()
+        ).toSpace(space, false);
+    }
+
+    /// Returns a copy of this color with a replacement alpha channel.
+    ///
+    /// @param alpha the replacement alpha between zero and one
+    /// @return the color with the same space and non-alpha channels
+    public SassColor changeAlpha(double alpha) {
+        return forSpace(space, channel0, channel1, channel2, alpha);
     }
 
     /// Returns the HSL complement of this color in the original space.
@@ -974,120 +1048,241 @@ public final class SassColor implements SassValue {
                 ^ SassFuzzy.hashCode(alpha());
     }
 
+    /// Returns this color's CSS representation for stylesheet emission.
+    ///
+    /// Expanded CSS follows dart-sass serialization: complete legacy colors use
+    /// the shortest compatible form, out-of-gamut legacy colors serialize as
+    /// {@code hsl()}/{@code hsla()}, out-of-range Lab-family colors may use
+    /// {@code color-mix()}, and channel numbers are truncated to
+    /// [SassNumber#PRECISION] digits.
+    ///
+    /// @return the CSS color text
+    @Override
+    public String toCssString() {
+        return serialize(true);
+    }
+
     /// Returns the inspect-mode Sass representation of this color.
     ///
     /// Source-backed legacy RGB literals retain their original spelling.
-    /// Legacy colors without a retained format use a canonical name,
-    /// hexadecimal spelling, or RGB function. Modern colors use their CSS
-    /// function or {@code color()} serialization.
+    /// Inspect mode preserves full channel precision and does not rewrite
+    /// out-of-range Lab-family colors as {@code color-mix()}.
     ///
     /// @return the Sass color source
     @Override
     public String toString() {
+        return serialize(false);
+    }
+
+    /// Serializes this color for CSS emission or inspect output.
+    ///
+    /// @param css whether CSS emission rules and precision should be used
+    /// @return the serialized color
+    private String serialize(boolean css) {
         if (format instanceof SpanColorFormat sourceFormat) {
             return sourceFormat.original();
         }
-        if (isLegacy() && !hasMissingChannel()) {
-            return serializeLegacy();
+        if (isLegacy()
+                && !isChannel0Missing()
+                && !isChannel1Missing()
+                && !isChannel2Missing()
+                && !isAlphaMissing()) {
+            return serializeLegacy(css);
         }
-        return serializeModern();
-    }
-
-    /// Serializes a complete legacy color.
-    private String serializeLegacy() {
-        var rgb = toSpace(ColorSpace.RGB, false);
-        var packedRgb = rgb.packedRgb();
-        var opaque = Double.compare(rgb.alpha(), 1.0) == 0;
-        if (opaque && packedRgb >= 0) {
-            @Nullable String name = CANONICAL_NAMES_BY_RGB.get(packedRgb);
-            if (name != null) {
-                return name;
-            }
-            var result = new StringBuilder("#");
-            appendHexByte(result, packedRgb >>> 16);
-            appendHexByte(result, packedRgb >>> 8);
-            appendHexByte(result, packedRgb);
-            return result.toString();
-        }
-        return (opaque ? "rgb(" : "rgba(")
-                + formatNumber(rgb.channel0()) + ", "
-                + formatNumber(rgb.channel1()) + ", "
-                + formatNumber(rgb.channel2())
-                + (opaque ? ")" : ", " + formatNumber(rgb.alpha()) + ")");
-    }
-
-    /// Serializes a modern or incomplete color.
-    private String serializeModern() {
         return switch (space) {
             case RGB -> "rgb("
-                    + formatChannel(channel0) + " "
-                    + formatChannel(channel1) + " "
-                    + formatChannel(channel2)
-                    + formatSlashAlpha()
+                    + formatChannel(channel0, null, css) + " "
+                    + formatChannel(channel1, null, css) + " "
+                    + formatChannel(channel2, null, css)
+                    + formatSlashAlpha(css)
                     + ")";
             case HSL, HWB -> space.spaceName() + "("
-                    + formatChannel(channel0, "deg") + " "
-                    + formatChannel(channel1, "%") + " "
-                    + formatChannel(channel2, "%")
-                    + formatSlashAlpha()
+                    + formatChannel(channel0, "deg", css) + " "
+                    + formatChannel(channel1, "%", css) + " "
+                    + formatChannel(channel2, "%", css)
+                    + formatSlashAlpha(css)
                     + ")";
-            case LAB, LCH, OKLAB, OKLCH -> {
-                var lightness = channel0;
-                var builder = new StringBuilder(space.spaceName()).append('(');
-                if (lightness == null) {
-                    builder.append("none");
-                } else {
-                    var max = ((ColorChannel.Linear) space.channels().get(0)).max();
-                    builder.append(formatNumber(lightness * 100.0 / max)).append('%');
-                }
-                builder.append(' ')
-                        .append(formatChannel(channel1))
-                        .append(' ');
-                if (space == ColorSpace.LCH || space == ColorSpace.OKLCH) {
-                    builder.append(formatChannel(channel2, "deg"));
-                } else {
-                    builder.append(formatChannel(channel2));
-                }
-                builder.append(formatSlashAlpha()).append(')');
-                yield builder.toString();
-            }
-            default -> {
-                var builder = new StringBuilder("color(")
-                        .append(space.spaceName())
-                        .append(' ')
-                        .append(formatChannel(channel0))
-                        .append(' ')
-                        .append(formatChannel(channel1))
-                        .append(' ')
-                        .append(formatChannel(channel2));
-                builder.append(formatSlashAlpha()).append(')');
-                yield builder.toString();
-            }
+            case LAB, LCH, OKLAB, OKLCH -> serializeLabFamily(css);
+            default -> serializeColorFunction(this, css);
         };
     }
 
+    /// Serializes a complete legacy RGB, HSL, or HWB color.
+    ///
+    /// @param css whether CSS emission rules should be used
+    /// @return the serialized legacy color
+    private String serializeLegacy(boolean css) {
+        // rgb()/rgba() constructors keep function form even when channels are
+        // out of gamut after clamping (dart-sass ColorFormat.rgbFunction).
+        if (format == RgbFunctionColorFormat.INSTANCE) {
+            return serializeRgbFunction(css);
+        }
+
+        // Out-of-gamut colors can only be represented accurately as HSL in CSS.
+        if (css && !isInGamut()) {
+            return serializeHslFunction(css);
+        }
+
+        if (space == ColorSpace.HSL) {
+            return serializeHslFunction(css);
+        }
+        if (!css && space == ColorSpace.HWB) {
+            return serializeHwbFunction(css);
+        }
+
+        var opaque = SassFuzzy.equals(alpha(), 1.0);
+
+        // Always emit generated transparent colors in rgba format.
+        if (opaque) {
+            var rgb = toSpace(ColorSpace.RGB, false);
+            if (canUseHex(rgb)) {
+                var packed = rgb.packedRgb();
+                @Nullable String name = CANONICAL_NAMES_BY_RGB.get(packed);
+                if (name != null) {
+                    return name;
+                }
+                var result = new StringBuilder("#");
+                appendHexByte(result, packed >>> 16);
+                appendHexByte(result, packed >>> 8);
+                appendHexByte(result, packed);
+                return result.toString();
+            }
+        }
+
+        // HWB that cannot become a named/hex color serializes as HSL so the
+        // author's polar intent remains clearer than an RGB triple.
+        if (space == ColorSpace.HWB) {
+            return serializeHslFunction(css);
+        }
+        return serializeRgbFunction(css);
+    }
+
+    /// Serializes this color as a legacy {@code rgb()}/{@code rgba()} function.
+    private String serializeRgbFunction(boolean css) {
+        var opaque = SassFuzzy.equals(alpha(), 1.0);
+        var rgb = toSpace(ColorSpace.RGB, false);
+        return (opaque ? "rgb(" : "rgba(")
+                + formatNumber(rgb.channel0(), css) + ", "
+                + formatNumber(rgb.channel1(), css) + ", "
+                + formatNumber(rgb.channel2(), css)
+                + (opaque ? ")" : ", " + formatNumber(alpha(), css) + ")");
+    }
+
+    /// Serializes this color as a legacy {@code hsl()}/{@code hsla()} function.
+    private String serializeHslFunction(boolean css) {
+        var opaque = SassFuzzy.equals(alpha(), 1.0);
+        var hsl = toSpace(ColorSpace.HSL, false);
+        return (opaque ? "hsl(" : "hsla(")
+                + formatChannel(hsl.channel0OrNull(), null, css) + ", "
+                + formatChannel(hsl.channel1OrNull(), "%", css) + ", "
+                + formatChannel(hsl.channel2OrNull(), "%", css)
+                + (opaque ? ")" : ", " + formatNumber(alpha(), css) + ")");
+    }
+
+    /// Serializes this color as a modern {@code hwb()} function for inspect mode.
+    private String serializeHwbFunction(boolean css) {
+        var hwb = toSpace(ColorSpace.HWB, false);
+        var builder = new StringBuilder("hwb(")
+                .append(formatNumber(hwb.channel0(), css))
+                .append(' ')
+                .append(formatNumber(hwb.channel1(), css))
+                .append("% ")
+                .append(formatNumber(hwb.channel2(), css))
+                .append('%');
+        if (!SassFuzzy.equals(alpha(), 1.0)) {
+            builder.append(" / ").append(formatNumber(alpha(), css));
+        }
+        return builder.append(')').toString();
+    }
+
+    /// Serializes Lab, OKLab, LCH, or OKLCH colors, including CSS color-mix fallback.
+    private String serializeLabFamily(boolean css) {
+        var polar = space == ColorSpace.LCH || space == ColorSpace.OKLCH;
+        var lightnessMax = space == ColorSpace.OKLAB || space == ColorSpace.OKLCH ? 1.0 : 100.0;
+        var lightnessOutOfRange = channel0 != null
+                && !SassFuzzy.inRange(channel0, 0.0, lightnessMax);
+        var chromaNegative = polar
+                && channel1 != null
+                && SassFuzzy.lessThan(channel1, 0.0);
+
+        // color-mix() preserves the authored space for complete out-of-range colors.
+        if (css
+                && lightnessOutOfRange
+                && !isChannel1Missing()
+                && !isChannel2Missing()) {
+            return "color-mix(in " + space.spaceName() + ", "
+                    + serializeColorFunction(toSpace(ColorSpace.XYZ_D65, false), css)
+                    + " 100%, black)";
+        }
+        if (css
+                && chromaNegative
+                && !isChannel0Missing()
+                && !isChannel1Missing()) {
+            return "color-mix(in " + space.spaceName() + ", "
+                    + serializeColorFunction(toSpace(ColorSpace.XYZ_D65, false), css)
+                    + " 100%, black)";
+        }
+
+        var builder = new StringBuilder(space.spaceName()).append('(');
+        // Relative color syntax for incomplete out-of-range Lab-family colors.
+        if (css && (lightnessOutOfRange || chromaNegative)) {
+            builder.append("from black ");
+        }
+        if (channel0 == null) {
+            builder.append("none");
+        } else {
+            var max = ((ColorChannel.Linear) space.channels().get(0)).max();
+            builder.append(formatNumber(channel0 * 100.0 / max, css)).append('%');
+        }
+        builder.append(' ')
+                .append(formatChannel(channel1, null, css))
+                .append(' ');
+        if (polar) {
+            builder.append(formatChannel(channel2, "deg", css));
+        } else {
+            builder.append(formatChannel(channel2, null, css));
+        }
+        builder.append(formatSlashAlpha(css)).append(')');
+        return builder.toString();
+    }
+
+    /// Serializes {@code color} using the {@code color()} function syntax.
+    private static String serializeColorFunction(SassColor color, boolean css) {
+        return "color("
+                + color.space.spaceName() + " "
+                + formatChannel(color.channel0, null, css) + " "
+                + formatChannel(color.channel1, null, css) + " "
+                + formatChannel(color.channel2, null, css)
+                + color.formatSlashAlpha(css)
+                + ")";
+    }
+
     /// Formats an optional alpha suffix using slash syntax.
-    private String formatSlashAlpha() {
+    private String formatSlashAlpha(boolean css) {
         if (alpha == null) {
             return " / none";
         }
-        if (Double.compare(alpha, 1.0) == 0) {
+        if (SassFuzzy.equals(alpha, 1.0)) {
             return "";
         }
-        return " / " + formatNumber(alpha);
-    }
-
-    /// Formats one channel that may be missing.
-    private static String formatChannel(@Nullable Double channel) {
-        return formatChannel(channel, null);
+        return " / " + formatNumber(alpha, css);
     }
 
     /// Formats one channel that may be missing, optionally with a unit.
-    private static String formatChannel(@Nullable Double channel, @Nullable String unit) {
+    private static String formatChannel(
+            @Nullable Double channel,
+            @Nullable String unit,
+            boolean css
+    ) {
         if (channel == null) {
             return "none";
         }
-        return formatNumber(channel) + (unit == null ? "" : unit);
+        // Non-finite channel values serialize as calculations so units attach
+        // inside calc(...), e.g. calc(NaN * 1%) rather than calc(NaN)%.
+        if (!Double.isFinite(channel) && unit != null) {
+            return SassNumber.of(channel, unit).toCssString();
+        }
+        return formatNumber(channel, css) + (unit == null ? "" : unit);
     }
 
     /// Packs integral in-range RGB channels.
@@ -1095,15 +1290,26 @@ public final class SassColor implements SassValue {
     /// @return the packed RGB value, or {@code -1} if hexadecimal output is
     /// unavailable
     private int packedRgb() {
-        if (!isByte(channel0()) || !isByte(channel1()) || !isByte(channel2())) {
+        if (!canUseHex(this)) {
             return -1;
         }
-        return (int) channel0() << 16 | (int) channel1() << 8 | (int) channel2();
+        return (int) Math.rint(channel0()) << 16
+                | (int) Math.rint(channel1()) << 8
+                | (int) Math.rint(channel2());
     }
 
-    /// Returns whether a channel is an integer in the byte range.
-    private static boolean isByte(double value) {
-        return value >= 0.0 && value < 256.0 && value == Math.rint(value);
+    /// Returns whether this RGB color can be written as a hex code.
+    private static boolean canUseHex(SassColor rgb) {
+        return canUseHexForChannel(rgb.channel0())
+                && canUseHexForChannel(rgb.channel1())
+                && canUseHexForChannel(rgb.channel2());
+    }
+
+    /// Returns whether a channel is a fuzzy integer in the byte range.
+    private static boolean canUseHexForChannel(double value) {
+        return SassFuzzy.isInt(value)
+                && SassFuzzy.greaterThanOrEquals(value, 0.0)
+                && SassFuzzy.lessThan(value, 256.0);
     }
 
     /// Appends one lowercase hexadecimal byte.
@@ -1112,13 +1318,9 @@ public final class SassColor implements SassValue {
         target.append(Character.forDigit(value & 0xf, 16));
     }
 
-    /// Formats a literal color channel without an unnecessary decimal suffix.
-    private static String formatNumber(double value) {
-        if (!Double.isFinite(value)) {
-            return Double.toString(value);
-        }
-        var decimal = BigDecimal.valueOf(value).stripTrailingZeros();
-        return decimal.signum() == 0 ? "0" : decimal.toPlainString();
+    /// Formats a color channel for inspect or CSS emission.
+    private static String formatNumber(double value, boolean css) {
+        return SassNumber.formatNumber(value, css);
     }
 
     /// Creates the immutable named-color lookup table.

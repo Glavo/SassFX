@@ -1,0 +1,10 @@
+<===> 006_test_guard_assign/input.scss
+$var: 1;
+$var: 2 !default;
+
+foo {a: $var}
+
+<===> 006_test_guard_assign/output.css
+foo {
+  a: 1;
+}

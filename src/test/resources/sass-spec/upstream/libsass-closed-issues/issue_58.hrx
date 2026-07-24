@@ -1,0 +1,8 @@
+<===> issue_58/input.scss
+test {
+  background: url(/static_loc/img/beta.png);
+}
+<===> issue_58/output.css
+test {
+  background: url(/static_loc/img/beta.png);
+}

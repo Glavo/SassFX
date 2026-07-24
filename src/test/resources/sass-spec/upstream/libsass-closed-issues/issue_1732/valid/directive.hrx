@@ -1,0 +1,12 @@
+<===> directive/input.scss
+@media all {
+  .foo {
+	color: red;
+  }
+}
+<===> directive/output.css
+@media all {
+  .foo {
+    color: red;
+  }
+}

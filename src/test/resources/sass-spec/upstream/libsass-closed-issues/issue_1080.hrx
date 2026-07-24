@@ -1,0 +1,17 @@
+<===> issue_1080/input.scss
+/** comment 1 */
+@import url("import-1");
+/** comment 2 */
+@import url("import-2");
+/** comment 3 */
+foo { bar: baz; }
+
+<===> issue_1080/output.css
+/** comment 1 */
+@import url("import-1");
+/** comment 2 */
+@import url("import-2");
+/** comment 3 */
+foo {
+  bar: baz;
+}

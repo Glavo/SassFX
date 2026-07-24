@@ -1,0 +1,17 @@
+<===> issue_1947/input.scss
+@use "sass:string";
+.a-#{string.quote('' + b)} {
+  c: d;
+}
+
+.a-#{'' + b} {
+  c: d;
+}
+<===> issue_1947/output.css
+.a-b {
+  c: d;
+}
+
+.a-b {
+  c: d;
+}

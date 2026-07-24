@@ -1,0 +1,137 @@
+<===> in_gamut/red/input.scss
+a {b: hsl(0 100% 50%)}
+
+<===> in_gamut/red/output.css
+a {
+  b: hsl(0, 100%, 50%);
+}
+
+<===> in_gamut/blue/input.scss
+a {b: hsl(240 100% 50%)}
+
+<===> in_gamut/blue/output.css
+a {
+  b: hsl(240, 100%, 50%);
+}
+
+<===> in_gamut/grayish/yellow/input.scss
+a {b: hsl(60 60% 50%)}
+
+<===> in_gamut/grayish/yellow/output.css
+a {
+  b: hsl(60, 60%, 50%);
+}
+
+<===> out_of_gamut/saturation/above/input.scss
+a {b: hsl(0 500% 50%)}
+
+<===> out_of_gamut/saturation/above/output.css
+a {
+  b: hsl(0, 500%, 50%);
+}
+
+<===> clamped/saturation/below/input.scss
+a {b: hsl(0 -100% 50%)}
+
+<===> clamped/saturation/below/output.css
+a {
+  b: hsl(0, 0%, 50%);
+}
+
+<===> clamped/lightness/above/input.scss
+a {b: hsl(0 100% 500%)}
+
+<===> clamped/lightness/above/output.css
+a {
+  b: hsl(0, 100%, 500%);
+}
+
+<===> clamped/lightness/below/input.scss
+a {b: hsl(0 100% -100%)}
+
+<===> clamped/lightness/below/output.css
+a {
+  b: hsl(0, 100%, -100%);
+}
+
+<===> units/hue/deg/input.scss
+a {b: hsl(0deg 100% 50%)}
+
+<===> units/hue/deg/output.css
+a {
+  b: hsl(0, 100%, 50%);
+}
+
+<===> units/saturation/unitless/input.scss
+a {b: hsl(0 50 50%)}
+
+<===> units/saturation/unitless/output.css
+a {
+  b: hsl(0, 50%, 50%);
+}
+
+<===> units/saturation/unitless/warning
+DEPRECATION WARNING [function-units]: $saturation: Passing a number without unit % (50) is deprecated.
+
+To preserve current behavior: $saturation * 1%
+
+More info: https://sass-lang.com/d/function-units
+
+  ,
+1 | a {b: hsl(0 50 50%)}
+  |       ^^^^^^^^^^^^^
+  '
+    input.scss 1:7  root stylesheet
+
+<===> units/lightness/unitless/input.scss
+a {b: hsl(0 100% 50)}
+
+<===> units/lightness/unitless/output.css
+a {
+  b: hsl(0, 100%, 50%);
+}
+
+<===> units/lightness/unitless/warning
+DEPRECATION WARNING [function-units]: $lightness: Passing a number without unit % (50) is deprecated.
+
+To preserve current behavior: $lightness * 1%
+
+More info: https://sass-lang.com/d/function-units
+
+  ,
+1 | a {b: hsl(0 100% 50)}
+  |       ^^^^^^^^^^^^^^
+  '
+    input.scss 1:7  root stylesheet
+
+<===> missing/hue/input.scss
+a {b: hsl(none 100% 50%)}
+
+<===> missing/hue/output.css
+a {
+  b: hsl(none 100% 50%);
+}
+
+<===> missing/saturation/input.scss
+a {b: hsl(0 none 50%)}
+
+<===> missing/saturation/output.css
+a {
+  b: hsl(0deg none 50%);
+}
+
+<===> missing/lightness/input.scss
+a {b: hsl(0 100% none)}
+
+<===> missing/lightness/output.css
+a {
+  b: hsl(0deg 100% none);
+}
+
+<===> named/input.scss
+a {b: hsl($channels: 0 100% 50%)}
+
+<===> named/output.css
+a {
+  b: hsl(0, 100%, 50%);
+}

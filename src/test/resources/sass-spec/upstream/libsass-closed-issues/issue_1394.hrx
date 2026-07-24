@@ -1,0 +1,9 @@
+<===> issue_1394/input.scss
+foo {
+  width: \10 + \20 \ ;
+}
+
+<===> issue_1394/output.css
+foo {
+  width: \10 \ \ ;
+}

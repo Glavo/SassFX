@@ -1,0 +1,9 @@
+<===> 1/input.scss
+a /*#{"}*/ {
+  margin: 2px;
+}
+
+<===> 1/output.css
+a {
+  margin: 2px;
+}

@@ -1,0 +1,11 @@
+<===> 190_test_semi_placeholder_selector/input.scss
+#context %foo, .bar .baz {color: blue}
+
+.bat {
+  @extend %foo;
+}
+
+<===> 190_test_semi_placeholder_selector/output.css
+#context .bat, .bar .baz {
+  color: blue;
+}

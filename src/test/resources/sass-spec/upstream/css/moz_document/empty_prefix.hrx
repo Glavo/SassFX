@@ -1,0 +1,32 @@
+<===> empty_prefix/input.scss
+// An empty url-prefix() should not be deprecated yet, as it's still supported
+// in Firefox's release channel at time of writing.
+
+@-moz-document url-prefix() {
+  a {b: c}
+}
+
+@-moz-document url-prefix("") {
+  a {b: c}
+}
+
+@-moz-document url-prefix('') {
+  a {b: c}
+}
+
+<===> empty_prefix/output.css
+@-moz-document url-prefix() {
+  a {
+    b: c;
+  }
+}
+@-moz-document url-prefix("") {
+  a {
+    b: c;
+  }
+}
+@-moz-document url-prefix('') {
+  a {
+    b: c;
+  }
+}

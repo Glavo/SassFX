@@ -1,0 +1,14 @@
+<===> each_embedded/input.scss
+@each $i in (1) {
+  @function foo() {
+    @return 'foo';
+  }
+}
+
+<===> each_embedded/error
+Error: Functions may not be declared in control directives.
+  ,
+2 |   @function foo() {
+  |   ^^^^^^^^^^^^^^^
+  '
+  input.scss 2:3  root stylesheet

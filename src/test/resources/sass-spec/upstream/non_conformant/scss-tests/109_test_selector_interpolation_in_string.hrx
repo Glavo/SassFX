@@ -1,0 +1,7 @@
+<===> 109_test_selector_interpolation_in_string/input.scss
+foo[val="bar #{"foo" + " bar"} baz"] {a: b}
+
+<===> 109_test_selector_interpolation_in_string/output.css
+foo[val="bar foo bar baz"] {
+  a: b;
+}

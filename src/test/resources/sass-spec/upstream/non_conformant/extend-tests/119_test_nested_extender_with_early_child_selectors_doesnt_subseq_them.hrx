@@ -1,0 +1,8 @@
+<===> 119_test_nested_extender_with_early_child_selectors_doesnt_subseq_them/input.scss
+.bap > .bip .foo {a: b}
+.bap > .grip .bar {@extend .foo}
+
+<===> 119_test_nested_extender_with_early_child_selectors_doesnt_subseq_them/output.css
+.bap > .bip .foo, .bap > .bip .bap > .grip .bar, .bap > .grip .bap > .bip .bar {
+  a: b;
+}

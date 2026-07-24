@@ -1,0 +1,11 @@
+<===> function-in-function/input.scss
+@function foo () {
+  @function bar() {}
+}
+<===> function-in-function/error
+Error: This at-rule is not allowed here.
+  ,
+2 |   @function bar() {}
+  |   ^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:3  root stylesheet

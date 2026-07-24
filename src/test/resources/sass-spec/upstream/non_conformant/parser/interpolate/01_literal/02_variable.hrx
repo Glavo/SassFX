@@ -1,0 +1,20 @@
+<===> 02_variable/input.scss
+$input: literal;
+.result {
+  output: $input;
+  output: #{$input};
+  output: "[#{$input}]";
+  output: "#{$input}";
+  output: '#{$input}';
+  output: "['#{$input}']";
+}
+
+<===> 02_variable/output.css
+.result {
+  output: literal;
+  output: literal;
+  output: "[literal]";
+  output: "literal";
+  output: "literal";
+  output: "['literal']";
+}

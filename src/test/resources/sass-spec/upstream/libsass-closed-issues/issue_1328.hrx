@@ -1,0 +1,13 @@
+<===> issue_1328/input.scss
+#{bar},
+[foo="#{bar}"],
+[foo="#{bar}"] {
+    content: "foo";
+}
+
+<===> issue_1328/output.css
+bar,
+[foo=bar],
+[foo=bar] {
+  content: "foo";
+}

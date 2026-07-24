@@ -1,0 +1,12 @@
+<===> fn-change-color-1/input.scss
+@use "sass:color";
+foo {
+  test: color.change(red, $red: 0.5, $hue: 0.2);
+}
+<===> fn-change-color-1/error
+Error: $hue: Color space rgb doesn't have a channel with this name.
+  ,
+3 |   test: color.change(red, $red: 0.5, $hue: 0.2);
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 3:9  root stylesheet

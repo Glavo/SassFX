@@ -1,0 +1,7 @@
+<===> debug/input.scss
+@debug("foo")
+
+<===> debug/output.css
+
+<===> debug/warning
+input.scss:1 DEBUG: foo

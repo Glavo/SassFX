@@ -1,0 +1,8 @@
+<===> 105_test_nested_extender_counts_extended_superselectors/input.scss
+.a .bip .foo {a: b}
+.b .bip.bop .bar {@extend .foo}
+
+<===> 105_test_nested_extender_counts_extended_superselectors/output.css
+.a .bip .foo, .a .b .bip.bop .bar, .b .a .bip.bop .bar {
+  a: b;
+}

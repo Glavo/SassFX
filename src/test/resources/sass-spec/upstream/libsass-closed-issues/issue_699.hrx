@@ -1,0 +1,9 @@
+<===> issue_699/input.scss
+@use "sass:color";
+.selector {
+  color: color.invert(rebeccapurple);
+}
+<===> issue_699/output.css
+.selector {
+  color: #99cc66;
+}

@@ -1,0 +1,62 @@
+<===> positional/input.scss
+@use "sass:color";
+a {b: color.scale(red)}
+
+<===> positional/output.css
+a {
+  b: red;
+}
+
+<===> named/input.scss
+@use "sass:color";
+a {b: color.scale($color: red)}
+
+<===> named/output.css
+a {
+  b: red;
+}
+
+<===> alpha/max/input.scss
+@use "sass:color";
+a {b: color.scale(rgba(red, 0.5), $alpha: 100%)}
+
+<===> alpha/max/output.css
+a {
+  b: red;
+}
+
+<===> alpha/zero/input.scss
+@use "sass:color";
+a {b: color.scale(rgba(red, 0.5), $alpha: 0%)}
+
+<===> alpha/zero/output.css
+a {
+  b: rgba(255, 0, 0, 0.5);
+}
+
+<===> alpha/min/input.scss
+@use "sass:color";
+a {b: color.scale(rgba(red, 0.5), $alpha: -100%)}
+
+<===> alpha/min/output.css
+a {
+  b: rgba(255, 0, 0, 0);
+}
+
+<===> alpha/high/input.scss
+@use "sass:color";
+a {b: color.scale(rgba(red, 0.5), $alpha: 14%)}
+
+<===> alpha/high/output.css
+a {
+  b: rgba(255, 0, 0, 0.57);
+}
+
+<===> alpha/low/input.scss
+@use "sass:color";
+a {b: color.scale(rgba(red, 0.3), $alpha: -36%)}
+
+<===> alpha/low/output.css
+a {
+  b: rgba(255, 0, 0, 0.192);
+}

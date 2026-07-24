@@ -1,0 +1,6 @@
+<===> mixin-def/input.scss
+@mixin a {
+  b: c;
+}
+
+<===> mixin-def/output.css

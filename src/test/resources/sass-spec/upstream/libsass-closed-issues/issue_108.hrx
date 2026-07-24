@@ -1,0 +1,22 @@
+<===> issue_108/input.scss
+$a: red;
+
+@mixin f($a: $a) {
+  color: $a;
+}
+
+h1 {
+  @include f;
+}
+
+h2 {
+  @include f(blue);
+}
+<===> issue_108/output.css
+h1 {
+  color: red;
+}
+
+h2 {
+  color: blue;
+}

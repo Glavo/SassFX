@@ -1,0 +1,17 @@
+<===> issue_1969/input.scss
+@use "sass:color";
+$base-text-color: #666;
+
+@function calcNavbarTextColor ($base-text-color) {
+        @return $base-text-color;
+}
+
+$header-text-color: calcNavbarTextColor($base-text-color);
+
+.test_class {
+        color: color.adjust($header-text-color, $lightness: 20%);
+}
+<===> issue_1969/output.css
+.test_class {
+  color: #999999;
+}

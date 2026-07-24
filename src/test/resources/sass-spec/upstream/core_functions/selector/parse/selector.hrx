@@ -1,0 +1,320 @@
+<===> simple/type/input.scss
+@use "sass:selector";
+a {b: selector.parse("c")}
+
+<===> simple/type/output.css
+a {
+  b: c;
+}
+
+<===> simple/class/input.scss
+@use "sass:selector";
+a {b: selector.parse(".c")}
+
+<===> simple/class/output.css
+a {
+  b: .c;
+}
+
+<===> simple/id/input.scss
+@use "sass:selector";
+a {b: selector.parse("#c")}
+
+<===> simple/id/output.css
+a {
+  b: #c;
+}
+
+<===> simple/placeholder/input.scss
+@use "sass:selector";
+a {b: selector.parse("%c")}
+
+<===> simple/placeholder/output.css
+a {
+  b: %c;
+}
+
+<===> simple/attribute/input.scss
+@use "sass:selector";
+a {b: selector.parse("[c^=d]")}
+
+<===> simple/attribute/output.css
+a {
+  b: [c^=d];
+}
+
+<===> simple/universal/input.scss
+@use "sass:selector";
+a {b: selector.parse("*")}
+
+<===> simple/universal/output.css
+a {
+  b: *;
+}
+
+<===> simple/pseudo/class/no_arg/input.scss
+@use "sass:selector";
+a {b: selector.parse(":c")}
+
+<===> simple/pseudo/class/no_arg/output.css
+a {
+  b: :c;
+}
+
+<===> simple/pseudo/class/arg/input.scss
+@use "sass:selector";
+a {b: selector.parse(":c(@#$)")}
+
+<===> simple/pseudo/class/arg/output.css
+a {
+  b: :c(@#$);
+}
+
+<===> simple/pseudo/class/selector_arg/is/input.scss
+@use "sass:list";
+@use "sass:selector";
+$result: selector.parse(":is(b, c)");
+a {
+  result: $result;
+  structure: $result == (list.append((), ":is(b, c)"),);
+}
+
+<===> simple/pseudo/class/selector_arg/is/output.css
+a {
+  result: :is(b, c);
+  structure: true;
+}
+
+<===> simple/pseudo/class/selector_arg/where/input.scss
+@use "sass:list";
+@use "sass:selector";
+$result: selector.parse(":where(b, c)");
+a {
+  result: $result;
+  structure: $result == (list.append((), ":where(b, c)"),);
+}
+
+<===> simple/pseudo/class/selector_arg/where/output.css
+a {
+  result: :where(b, c);
+  structure: true;
+}
+
+<===> simple/pseudo/class/selector_arg/matches/input.scss
+@use "sass:list";
+@use "sass:selector";
+$result: selector.parse(":matches(b, c)");
+a {
+  result: $result;
+  structure: $result == (list.append((), ":matches(b, c)"),);
+}
+
+<===> simple/pseudo/class/selector_arg/matches/output.css
+a {
+  result: :matches(b, c);
+  structure: true;
+}
+
+<===> simple/pseudo/class/combined_arg/input.scss
+@use "sass:list";
+@use "sass:selector";
+$result: selector.parse(":nth-child(2n+1 of b, c)");
+a {
+  result: $result;
+  structure: $result == (list.append((), ":nth-child(2n+1 of b, c)"),);
+}
+
+<===> simple/pseudo/class/combined_arg/output.css
+a {
+  result: :nth-child(2n+1 of b, c);
+  structure: true;
+}
+
+<===> simple/pseudo/element/no_arg/input.scss
+@use "sass:selector";
+a {b: selector.parse("::c")}
+
+<===> simple/pseudo/element/no_arg/output.css
+a {
+  b: ::c;
+}
+
+<===> simple/pseudo/element/arg/input.scss
+@use "sass:selector";
+a {b: selector.parse("::c(@#$)")}
+
+<===> simple/pseudo/element/arg/output.css
+a {
+  b: ::c(@#$);
+}
+
+<===> simple/pseudo/element/selector_arg/input.scss
+@use "sass:list";
+@use "sass:selector";
+$result: selector.parse("::slotted(b, c)");
+a {
+  result: $result;
+  structure: $result == (list.append((), "::slotted(b, c)"),);
+}
+
+<===> simple/pseudo/element/selector_arg/output.css
+a {
+  result: ::slotted(b, c);
+  structure: true;
+}
+
+<===> compound/input.scss
+@use "sass:list";
+@use "sass:selector";
+$result: selector.parse("b.c:d");
+a {
+  result: $result;
+  structure: $result == (list.append((), "b.c:d"),);
+}
+
+<===> compound/output.css
+a {
+  result: b.c:d;
+  structure: true;
+}
+
+<===> complex/descendant/input.scss
+@use "sass:selector";
+$result: selector.parse("b c d");
+a {
+  result: $result;
+  structure: $result == (b c d,);
+}
+
+<===> complex/descendant/output.css
+a {
+  result: b c d;
+  structure: true;
+}
+
+<===> complex/sibling/input.scss
+@use "sass:selector";
+$result: selector.parse("b ~ c ~ d");
+a {
+  result: $result;
+  structure: $result == (b "~" c "~" d,);
+}
+
+<===> complex/sibling/output.css
+a {
+  result: b ~ c ~ d;
+  structure: true;
+}
+
+<===> complex/adjacent_sibling/input.scss
+@use "sass:selector";
+$result: selector.parse("b + c + d");
+a {
+  result: $result;
+  structure: $result == (b "+" c "+" d,);
+}
+
+<===> complex/adjacent_sibling/output.css
+a {
+  result: b + c + d;
+  structure: true;
+}
+
+<===> complex/child/input.scss
+@use "sass:selector";
+$result: selector.parse("b > c > d");
+a {
+  result: $result;
+  structure: $result == (b ">" c ">" d,);
+}
+
+<===> complex/child/output.css
+a {
+  result: b > c > d;
+  structure: true;
+}
+
+<===> complex/bogus/leading/input.scss
+@use "sass:selector";
+$result: selector.parse("> b");
+a {
+  result: $result;
+  structure: $result == (">" b,);
+}
+
+<===> complex/bogus/leading/output.css
+a {
+  result: > b;
+  structure: true;
+}
+
+<===> complex/bogus/trailing/input.scss
+@use "sass:selector";
+$result: selector.parse("b +");
+a {
+  result: $result;
+  structure: $result == (b "+",);
+}
+
+<===> complex/bogus/trailing/output.css
+a {
+  result: b +;
+  structure: true;
+}
+
+<===> complex/bogus/multiple/middle/input.scss
+@use "sass:selector";
+$result: selector.parse("b + ~ c");
+a {
+  result: $result;
+  structure: $result == (b "+" "~" c,);
+}
+
+<===> complex/bogus/multiple/middle/output.css
+a {
+  result: b + ~ c;
+  structure: true;
+}
+
+<===> complex/bogus/multiple/trailing/input.scss
+@use "sass:selector";
+$result: selector.parse("b ~~");
+a {
+  result: $result;
+  structure: $result == (b "~" "~",);
+}
+
+<===> complex/bogus/multiple/trailing/output.css
+a {
+  result: b ~ ~;
+  structure: true;
+}
+
+<===> complex/bogus/only/input.scss
+@use "sass:list";
+@use "sass:selector";
+$result: selector.parse(">");
+a {
+  result: $result;
+  structure: $result == (list.append((), ">"),);
+}
+
+<===> complex/bogus/only/output.css
+a {
+  result: >;
+  structure: true;
+}
+
+<===> list/input.scss
+@use "sass:selector";
+$result: selector.parse("b c, d e, f g");
+a {
+  result: $result;
+  structure: $result == (b c, d e, f g);
+}
+
+<===> list/output.css
+a {
+  result: b c, d e, f g;
+  structure: true;
+}

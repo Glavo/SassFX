@@ -1,0 +1,44 @@
+<===> degenerate/modulus/infinity/positive_and_positive/input.scss
+a {b: 1px % calc(infinity * 1px)}
+
+<===> degenerate/modulus/infinity/positive_and_positive/output.css
+a {
+  b: 1px;
+}
+
+<===> degenerate/modulus/infinity/positive_and_negative/input.scss
+a {b: 1px % calc(-infinity * 1px)}
+
+<===> degenerate/modulus/infinity/positive_and_negative/output.css
+a {
+  b: calc(NaN * 1px);
+}
+
+<===> degenerate/modulus/infinity/negative_and_negative/input.scss
+a {b: -1px % calc(-infinity * 1px)}
+
+<===> degenerate/modulus/infinity/negative_and_negative/output.css
+a {
+  b: -1px;
+}
+
+<===> degenerate/modulus/infinity/negative_and_positive/input.scss
+a {b: -1px % calc(infinity * 1px)}
+
+<===> degenerate/modulus/infinity/negative_and_positive/output.css
+a {
+  b: calc(NaN * 1px);
+}
+
+<===> error/syntax/whitespace/newline/after_percent/input.sass
+a
+  b: 1%
+    1
+
+<===> error/syntax/whitespace/newline/after_percent/error
+Error: Expected identifier.
+  ,
+2 |   b: 1%
+  |        ^
+  '
+  input.sass 2:8  root stylesheet

@@ -1,0 +1,8 @@
+<===> issue_1945/input.scss
+foo {
+  bar: #{"\\"}#{"baz"};
+}
+<===> issue_1945/output.css
+foo {
+  bar: \baz;
+}

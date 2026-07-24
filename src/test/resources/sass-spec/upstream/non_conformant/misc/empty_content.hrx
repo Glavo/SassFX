@@ -1,0 +1,8 @@
+<===> empty_content/input.scss
+@mixin foo { @content }
+a { b: c; @include foo {} }
+
+<===> empty_content/output.css
+a {
+  b: c;
+}

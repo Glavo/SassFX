@@ -1,0 +1,17 @@
+<===> no-parent-with-compound/input.scss
+@mixin test() {
+  @at-root {
+    @content;
+  }
+}
+
+@include test {
+  .test & {
+    property: value;
+   }
+}
+
+<===> no-parent-with-compound/output.css
+.test & {
+  property: value;
+}

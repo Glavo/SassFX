@@ -1,0 +1,12 @@
+<===> namespace_properties_with_script_value/input.scss
+foo {
+  bar: baz + bang {
+    bip: bop;
+    bing: bop; }}
+
+<===> namespace_properties_with_script_value/output.css
+foo {
+  bar: bazbang;
+  bar-bip: bop;
+  bar-bing: bop;
+}

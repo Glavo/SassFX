@@ -1,0 +1,12 @@
+<===> 178_test_combinator_unification_with_newlines/input.scss
+.a >
+.b
++ x {a: b}
+.c
+> .d +
+y {@extend x}
+
+<===> 178_test_combinator_unification_with_newlines/output.css
+.a > .b + x, .a.c > .b.d + y {
+  a: b;
+}

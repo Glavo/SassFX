@@ -1,0 +1,12 @@
+<===> 195_test_extend_within_unknown_directive/input.scss
+@flooblehoof {
+.foo {a: b}
+.bar {@extend .foo}
+}
+
+<===> 195_test_extend_within_unknown_directive/output.css
+@flooblehoof {
+  .foo, .bar {
+    a: b;
+  }
+}

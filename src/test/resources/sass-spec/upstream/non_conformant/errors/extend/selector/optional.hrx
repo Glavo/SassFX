@@ -1,0 +1,10 @@
+<===> optional/input.scss
+.baz {
+  @extend .foo !optional;
+  color: green;
+}
+
+<===> optional/output.css
+.baz {
+  color: green;
+}

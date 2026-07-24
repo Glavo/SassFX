@@ -1,0 +1,8 @@
+<===> unquoted/input.scss
+@use "sass:string";
+a {b: string.slice(cdefgh, 3, 5)}
+
+<===> unquoted/output.css
+a {
+  b: efg;
+}

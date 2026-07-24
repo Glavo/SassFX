@@ -1,0 +1,9 @@
+<===> 091_test_redundant_selector_elimination/input.scss
+.foo.bar {a: b}
+.x {@extend .foo, .bar}
+.y {@extend .foo, .bar}
+
+<===> 091_test_redundant_selector_elimination/output.css
+.foo.bar, .y, .x {
+  a: b;
+}

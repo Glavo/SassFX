@@ -1,0 +1,14 @@
+<===> issue_646/input.scss
+@function foo() {
+  /* $bar: 1; */
+ @return true;
+}
+
+foo {
+  foo: foo();
+}
+
+<===> issue_646/output.css
+foo {
+  foo: true;
+}

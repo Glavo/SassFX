@@ -1,0 +1,131 @@
+<===> empty/input.scss
+a {b: []}
+
+<===> empty/output.css
+a {
+  b: [];
+}
+
+<===> whitespace/empty/sass/input.sass
+a
+  b: [
+  ]
+
+<===> whitespace/empty/sass/output.css
+a {
+  b: [];
+}
+
+<===> whitespace/single/after_lbracket/sass/input.sass
+a
+  b: [
+    c]
+
+<===> whitespace/single/after_lbracket/sass/output.css
+a {
+  b: [c];
+}
+
+<===> whitespace/single/after_val/sass/input.sass
+a
+  b: [c
+    ]
+
+<===> whitespace/single/after_val/sass/output.css
+a {
+  b: [c];
+}
+
+<===> whitespace/multiple/after_lbracket/sass/input.sass
+a
+  b: [
+    c d]
+
+<===> whitespace/multiple/after_lbracket/sass/output.css
+a {
+  b: [c d];
+}
+
+<===> whitespace/multiple/after_val/sass/input.sass
+a
+  b: [c
+    d]
+
+<===> whitespace/multiple/after_val/sass/output.css
+a {
+  b: [c d];
+}
+
+<===> whitespace/multiple/before_rbracket/sass/input.sass
+a
+  b: [c d
+    ]
+
+<===> whitespace/multiple/before_rbracket/sass/output.css
+a {
+  b: [c d];
+}
+
+<===> single/input.scss
+a {b: [c]}
+
+<===> single/output.css
+a {
+  b: [c];
+}
+
+<===> multiple/input.scss
+a {b: [c d]}
+
+<===> multiple/output.css
+a {
+  b: [c d];
+}
+
+<===> nested/empty/input.scss
+a {b: [[]]}
+
+<===> nested/empty/output.css
+a {
+  b: [[]];
+}
+
+<===> nested/single/input.scss
+a {b: [[c]]}
+
+<===> nested/single/output.css
+a {
+  b: [[c]];
+}
+
+<===> nested/multiple/input.scss
+a {b: [[c] [d]]}
+
+<===> nested/multiple/output.css
+a {
+  b: [[c] [d]];
+}
+
+<===> nested/unbracketed/empty/input.scss
+a {b: [()]}
+
+<===> nested/unbracketed/empty/output.css
+a {
+  b: [];
+}
+
+<===> nested/unbracketed/single/input.scss
+a {b: [(c,)]}
+
+<===> nested/unbracketed/single/output.css
+a {
+  b: [c];
+}
+
+<===> nested/unbracketed/multiple/input.scss
+a {b: [(c,) (d e)]}
+
+<===> nested/unbracketed/multiple/output.css
+a {
+  b: [c d e];
+}

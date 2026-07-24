@@ -1,0 +1,21 @@
+<===> issue_1026/input.scss
+div {
+  a {
+    /**
+     * a
+     * multiline
+     * comment
+     */
+    top: 10px;
+  }
+}
+
+<===> issue_1026/output.css
+div a {
+  /**
+   * a
+   * multiline
+   * comment
+   */
+  top: 10px;
+}

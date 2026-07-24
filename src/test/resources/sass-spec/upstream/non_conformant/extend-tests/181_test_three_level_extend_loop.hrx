@@ -1,0 +1,17 @@
+<===> 181_test_three_level_extend_loop/input.scss
+.foo {a: b; @extend .bar}
+.bar {c: d; @extend .baz}
+.baz {e: f; @extend .foo}
+
+<===> 181_test_three_level_extend_loop/output.css
+.foo, .baz, .bar {
+  a: b;
+}
+
+.bar, .foo, .baz {
+  c: d;
+}
+
+.baz, .bar, .foo {
+  e: f;
+}

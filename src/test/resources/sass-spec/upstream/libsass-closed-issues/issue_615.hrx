@@ -1,0 +1,14 @@
+<===> issue_615/input.scss
+$foo: "bar";
+%#{"foo--#{$foo}"} {
+  foo: bar;
+}
+
+a {
+  @extend %foo--bar;
+}
+
+<===> issue_615/output.css
+a {
+  foo: bar;
+}

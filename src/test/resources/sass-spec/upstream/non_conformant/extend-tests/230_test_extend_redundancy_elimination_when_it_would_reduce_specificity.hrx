@@ -1,0 +1,8 @@
+<===> 230_test_extend_redundancy_elimination_when_it_would_reduce_specificity/input.scss
+a {a: b}
+a.foo {@extend a}
+
+<===> 230_test_extend_redundancy_elimination_when_it_would_reduce_specificity/output.css
+a, a.foo {
+  a: b;
+}

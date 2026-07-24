@@ -1,0 +1,35 @@
+<===> interpolated/input.scss
+@use "sass:map";
+@use "sass:meta";
+
+$map1: ( red: 'literal', transparent: 'literal' );
+$map2: ( 'red': 'quoted', transparent: 'quoted' );
+$map3: ( #{re}#{d}: 'interpolated', #{trans}#{parent}: 'quoted' );
+
+foo {
+  content: meta.inspect($map1);
+  content: meta.inspect($map2);
+  content: meta.inspect($map3);
+}
+
+$merge1: map.merge($map1, $map2);
+$merge2: map.merge($map1, $map3);
+$merge3: map.merge($map2, $map3);
+
+bar {
+  content: meta.inspect($merge1);
+  content: meta.inspect($merge2);
+  content: meta.inspect($merge3);
+}
+<===> interpolated/output.css
+foo {
+  content: (red: "literal", transparent: "literal");
+  content: ("red": "quoted", transparent: "quoted");
+  content: (red: "interpolated", transparent: "quoted");
+}
+
+bar {
+  content: (red: "literal", transparent: "quoted", "red": "quoted");
+  content: (red: "literal", transparent: "literal", red: "interpolated", transparent: "quoted");
+  content: ("red": "interpolated", transparent: "quoted", transparent: "quoted");
+}

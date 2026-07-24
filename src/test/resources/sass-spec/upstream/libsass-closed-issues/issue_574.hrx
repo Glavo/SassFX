@@ -1,0 +1,17 @@
+<===> issue_574/input.scss
+@use "sass:map";
+$flow: left;
+
+$map: (
+  margin-#{$flow}: 3em,
+  foo: bar,
+);
+
+.test {
+  margin-left: map.get($map, margin-left);
+}
+
+<===> issue_574/output.css
+.test {
+  margin-left: 3em;
+}

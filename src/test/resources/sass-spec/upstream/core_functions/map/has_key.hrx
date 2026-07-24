@@ -1,0 +1,147 @@
+<===> not_found/empty/input.scss
+@use "sass:map";
+a {b: map.has-key((), 1)}
+
+<===> not_found/empty/output.css
+a {
+  b: false;
+}
+
+<===> not_found/non_empty/input.scss
+@use "sass:map";
+a {b: map.has-key((c: d), d)}
+
+<===> not_found/non_empty/output.css
+a {
+  b: false;
+}
+
+<===> found/single/input.scss
+@use "sass:map";
+a {b: map.has-key((c: d), c)}
+
+<===> found/single/output.css
+a {
+  b: true;
+}
+
+<===> found/first/input.scss
+@use "sass:map";
+a {b: map.has-key((1: 2, 3: 4, 5: 6), 1)}
+
+<===> found/first/output.css
+a {
+  b: true;
+}
+
+<===> found/middle/input.scss
+@use "sass:map";
+a {b: map.has-key((1: 2, 3: 4, 5: 6), 3)}
+
+<===> found/middle/output.css
+a {
+  b: true;
+}
+
+<===> found/last/input.scss
+@use "sass:map";
+a {b: map.has-key((1: 2, 3: 4, 5: 6), 5)}
+
+<===> found/last/output.css
+a {
+  b: true;
+}
+
+<===> named/input.scss
+@use "sass:map";
+a {b: map.has-key($map: (c: d), $key: c)}
+
+<===> named/output.css
+a {
+  b: true;
+}
+
+<===> nested/found/partial_path/input.scss
+@use "sass:map";
+a {b: map.has-key((c: (d: (e: f))), c, d)}
+
+<===> nested/found/partial_path/output.css
+a {
+  b: true;
+}
+
+<===> nested/found/full_path/input.scss
+@use "sass:map";
+a {b: map.has-key((c: (d: (e: f))), c, d, e)}
+
+<===> nested/found/full_path/output.css
+a {
+  b: true;
+}
+
+<===> nested/not_found/top_level/input.scss
+@use "sass:map";
+a {b: map.has-key((c: (d: (e: f))), d)}
+
+<===> nested/not_found/top_level/output.css
+a {
+  b: false;
+}
+
+<===> nested/not_found/deep/input.scss
+@use "sass:map";
+a {b: map.has-key((c: (d: (e: f))), c, d, g)}
+
+<===> nested/not_found/deep/output.css
+a {
+  b: false;
+}
+
+<===> nested/not_found/too_many_keys/input.scss
+@use "sass:map";
+a {b: map.has-key((c: (d: (e: f))), c, d, e, f)}
+
+<===> nested/not_found/too_many_keys/output.css
+a {
+  b: false;
+}
+
+<===> error/wrong_name/input.scss
+@use "sass:map";
+a {b: map.map-has-key((c: d), c)}
+
+<===> error/wrong_name/error
+Error: Undefined function.
+  ,
+2 | a {b: map.map-has-key((c: d), c)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/type/map/input.scss
+@use "sass:map";
+a {b: map.has-key(1, 2)}
+
+<===> error/type/map/error
+Error: $map: 1 is not a map.
+  ,
+2 | a {b: map.has-key(1, 2)}
+  |       ^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/too_few_args/input.scss
+@use "sass:map";
+a {b: map.has-key(1)}
+
+<===> error/too_few_args/error
+Error: Missing argument $key.
+  ,--> input.scss
+2 | a {b: map.has-key(1)}
+  |       ^^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:map
+1 | @function has-key($map, $key, $keys...) {
+  |           ============================= declaration
+  '
+  input.scss 2:7  root stylesheet

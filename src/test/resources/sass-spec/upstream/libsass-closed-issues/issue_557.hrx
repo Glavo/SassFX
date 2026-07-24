@@ -1,0 +1,11 @@
+<===> issue_557/input.scss
+@use "sass:map";
+
+a {
+  foo: map.get((foo: 1, bar: 2), "bar");
+}
+
+<===> issue_557/output.css
+a {
+  foo: 2;
+}

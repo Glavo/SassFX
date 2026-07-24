@@ -1,0 +1,14 @@
+<===> css_block_directive_with_semicolon/input.scss
+@foo {
+  a: b; }
+
+@bar {
+  a: b; }
+
+<===> css_block_directive_with_semicolon/output.css
+@foo {
+  a: b;
+}
+@bar {
+  a: b;
+}

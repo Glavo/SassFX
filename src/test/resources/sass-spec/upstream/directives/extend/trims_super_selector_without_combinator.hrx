@@ -1,0 +1,21 @@
+<===> trims_super_selector_without_combinator/options.yml
+:todo:
+  - dart-sass
+
+<===> trims_super_selector_without_combinator/input.scss
+a b {
+  @extend %c;
+}
+
+a > b {
+  @extend %c;
+}
+
+%c {
+  color: red;
+}
+
+<===> trims_super_selector_without_combinator/output.css
+a b {
+  color: red;
+}

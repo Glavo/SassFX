@@ -1,0 +1,14 @@
+<===> css_unary_ops/input.scss
+foo {
+  a: -0.5em;
+  b: 0.5em;
+  c: -foo(12px);
+  d: +foo(12px); }
+
+<===> css_unary_ops/output.css
+foo {
+  a: -0.5em;
+  b: 0.5em;
+  c: -foo(12px);
+  d: +foo(12px);
+}

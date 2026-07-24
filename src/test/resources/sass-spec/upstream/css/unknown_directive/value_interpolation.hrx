@@ -1,0 +1,22 @@
+<===> value_interpolation/input.scss
+// Unknown directives should support interpolation in plain text, strings,
+// identifiers, and URLs.
+@asdf #{1 + 2};
+
+@asdf foo#{"bar"}baz;
+
+@asdf "foo #{"bar"} baz";
+
+@asdf 'foo #{'bar'} baz';
+
+@asdf url(http://#{")"}.com/);
+
+@asdf url("http://#{")"}.com/");
+
+<===> value_interpolation/output.css
+@asdf 3;
+@asdf foobarbaz;
+@asdf "foo bar baz";
+@asdf 'foo bar baz';
+@asdf url(http://).com/);
+@asdf url("http://).com/");

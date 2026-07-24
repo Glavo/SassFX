@@ -1,0 +1,8 @@
+<===> 080_test_pseudoclass_remains_at_end_of_selector/input.scss
+.foo:bar {a: b}
+.baz {@extend .foo}
+
+<===> 080_test_pseudoclass_remains_at_end_of_selector/output.css
+.foo:bar, .baz:bar {
+  a: b;
+}

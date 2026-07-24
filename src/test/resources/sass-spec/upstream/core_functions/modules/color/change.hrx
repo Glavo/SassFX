@@ -1,0 +1,8 @@
+<===> change/input.scss
+@use "sass:color";
+a {b: color.change(#abcdef, $red: 10)}
+
+<===> change/output.css
+a {
+  b: #0acdef;
+}

@@ -1,0 +1,18 @@
+<===> nested/input.scss
+a {
+  display: block
+
+  b {
+    c {
+      foo: bar;
+    }
+  }
+}
+
+<===> nested/error
+Error: expected ":".
+  ,
+5 |     c {
+  |       ^
+  '
+  input.scss 5:7  root stylesheet

@@ -1,0 +1,6 @@
+<===> simple/input.scss
+@debug "debug";
+<===> simple/output.css
+
+<===> simple/warning
+input.scss:1 DEBUG: debug

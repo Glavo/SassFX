@@ -1,0 +1,10 @@
+<===> issue_978/input.scss
+.foo {
+  [baz="#{&}"] {
+    foo: bar;
+  }
+}
+<===> issue_978/output.css
+.foo [baz=".foo"] {
+  foo: bar;
+}

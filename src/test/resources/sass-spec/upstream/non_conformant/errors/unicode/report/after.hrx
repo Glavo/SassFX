@@ -1,0 +1,9 @@
+<===> after/input.scss
+foo{;öüäöüäöü
+<===> after/error
+Error: expected "{".
+  ,
+1 | foo{;öüäöüäöü
+  |              ^
+  '
+  input.scss 1:14  root stylesheet

@@ -1,0 +1,47 @@
+<===> issue_246/input.scss
+$content-width: 960px;
+
+/* demo.css: */
+.selector {
+  padding: 0 calc(100%/2 - #{$content-width/2})
+}
+
+
+/* bin/sassc demo.scss */
+.selector {
+  padding: 0 calc(100%/2 - #{$content-width/2}); }
+<===> issue_246/output.css
+/* demo.css: */
+.selector {
+  padding: 0 calc(50% - 480px);
+}
+
+/* bin/sassc demo.scss */
+.selector {
+  padding: 0 calc(50% - 480px);
+}
+
+<===> issue_246/warning
+DEPRECATION WARNING [slash-div]: Using / for division outside of calc() is deprecated and will be removed in Dart Sass 2.0.0.
+
+Recommendation: math.div($content-width, 2) or calc($content-width / 2)
+
+More info and automated migrator: https://sass-lang.com/d/slash-div
+
+  ,
+5 |   padding: 0 calc(100%/2 - #{$content-width/2})
+  |                              ^^^^^^^^^^^^^^^^
+  '
+    input.scss 5:30  root stylesheet
+
+DEPRECATION WARNING [slash-div]: Using / for division outside of calc() is deprecated and will be removed in Dart Sass 2.0.0.
+
+Recommendation: math.div($content-width, 2) or calc($content-width / 2)
+
+More info and automated migrator: https://sass-lang.com/d/slash-div
+
+   ,
+11 |   padding: 0 calc(100%/2 - #{$content-width/2}); }
+   |                              ^^^^^^^^^^^^^^^^
+   '
+    input.scss 11:30  root stylesheet

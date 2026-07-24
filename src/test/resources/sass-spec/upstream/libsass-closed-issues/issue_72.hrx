@@ -1,0 +1,13 @@
+<===> issue_72/input.scss
+test {
+  filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#223344', endColorstr='#112233',GradientType=0 );
+}
+
+@mixin opacity($opacity) {
+    opacity: $opacity / 100;
+    filter: alpha(opacity=$opacity);
+}
+<===> issue_72/output.css
+test {
+  filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#223344', endColorstr='#112233',GradientType=0 );
+}

@@ -1,0 +1,33 @@
+<===> basic/input.scss
+foo {
+  color: blue;
+
+  @at-root {
+    bar {
+      color: red;
+    }
+  }
+}
+
+foo {
+  color: blue;
+
+  @at-root bar {
+    color: red;
+  }
+}
+
+<===> basic/output.css
+foo {
+  color: blue;
+}
+bar {
+  color: red;
+}
+
+foo {
+  color: blue;
+}
+bar {
+  color: red;
+}

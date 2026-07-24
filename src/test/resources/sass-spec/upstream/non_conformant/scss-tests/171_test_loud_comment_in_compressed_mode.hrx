@@ -1,0 +1,5 @@
+<===> 171_test_loud_comment_in_compressed_mode/input.scss
+/*! foo */
+
+<===> 171_test_loud_comment_in_compressed_mode/output.css
+/*! foo */

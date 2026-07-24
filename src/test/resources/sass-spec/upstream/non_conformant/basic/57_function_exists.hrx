@@ -1,0 +1,114 @@
+<===> 57_function_exists/input.scss
+@use "sass:meta";
+@function exists($name) {
+  @return meta.function-exists($name);
+}
+
+@function f() {
+  $foo: hi;
+  @return g();
+}
+
+@function g() {
+  @return meta.function-exists(foo);
+}
+
+@function h() {
+  @return meta.function-exists(lighten);
+}
+
+div {
+  foo: meta.function-exists(lighten); 
+  foo: meta.function-exists("lighten"); 
+  foo: meta.function-exists(exists);
+  foo: meta.function-exists("exists"); 
+  foo: meta.function-exists(f);
+  foo: meta.function-exists("f"); 
+  foo: meta.function-exists(g);
+  foo: meta.function-exists("g"); 
+  foo: meta.function-exists(nope);
+  foo: meta.function-exists("nope"); 
+  foo: g();
+  foo: f();
+  foo: h();
+
+
+  span {
+    foo: meta.function-exists(lighten); 
+    foo: meta.function-exists("lighten"); 
+    foo: meta.function-exists(exists);
+    foo: meta.function-exists("exists"); 
+    foo: meta.function-exists(f);
+    foo: meta.function-exists("f"); 
+    foo: meta.function-exists(g);
+    foo: meta.function-exists("g"); 
+    foo: meta.function-exists(nope);
+    foo: meta.function-exists("nope"); 
+    foo: g();
+    foo: f();
+    foo: h();
+    p {
+      foo: meta.function-exists(lighten); 
+      foo: meta.function-exists("lighten"); 
+      foo: meta.function-exists(exists);
+      foo: meta.function-exists("exists"); 
+      foo: meta.function-exists(f);
+      foo: meta.function-exists("f"); 
+      foo: meta.function-exists(g);
+      foo: meta.function-exists("g"); 
+      foo: meta.function-exists(nope);
+      foo: meta.function-exists("nope"); 
+      foo: g();
+      foo: f();
+      foo: h();
+    }
+  }
+
+}
+
+<===> 57_function_exists/output.css
+div {
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: false;
+  foo: false;
+  foo: false;
+  foo: false;
+  foo: true;
+}
+div span {
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: false;
+  foo: false;
+  foo: false;
+  foo: false;
+  foo: true;
+}
+div span p {
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: true;
+  foo: false;
+  foo: false;
+  foo: false;
+  foo: false;
+  foo: true;
+}

@@ -1,0 +1,8 @@
+<===> 128_test_nested_extender_with_sibling_selector/input.scss
+.baz .foo {a: b}
+foo + bar {@extend .foo}
+
+<===> 128_test_nested_extender_with_sibling_selector/output.css
+.baz .foo, .baz foo + bar {
+  a: b;
+}

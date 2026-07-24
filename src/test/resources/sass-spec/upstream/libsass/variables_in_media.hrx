@@ -1,0 +1,13 @@
+<===> variables_in_media/input.scss
+$media1: screen;
+$media2: print;
+$var: -webkit-min-device-pixel-ratio;
+$val: 20;
+@media #{$media1} and ($var: $val), only #{$media2} {a {b: c}}
+
+<===> variables_in_media/output.css
+@media screen and (-webkit-min-device-pixel-ratio: 20), only print {
+  a {
+    b: c;
+  }
+}

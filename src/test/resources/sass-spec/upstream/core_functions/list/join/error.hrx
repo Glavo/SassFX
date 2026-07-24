@@ -1,0 +1,93 @@
+<===> README.md
+`join()` is unique in that it takes multiple optional arguments that can be
+passed independently of one another. This may necessitate unusual
+implementation, so we go out of our way to verify that it disallows unusual
+invalid calls.
+
+<===> type/separator/input.scss
+@use "sass:list";
+a {b: list.join(c, d, $separator: 1)}
+
+<===> type/separator/error
+Error: $separator: 1 is not a string.
+  ,
+2 | a {b: list.join(c, d, $separator: 1)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> too_many_args/input.scss
+@use "sass:list";
+a {b: list.join(c, d, comma, true, false)}
+
+<===> too_many_args/error
+Error: Only 4 arguments allowed, but 5 were passed.
+  ,--> input.scss
+2 | a {b: list.join(c, d, comma, true, false)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:list
+1 | @function join($list1, $list2, $separator: auto, $bracketed: auto) {
+  |           ======================================================== declaration
+  '
+  input.scss 2:7  root stylesheet
+
+<===> too_few_args/input.scss
+@use "sass:list";
+a {b: list.join(c)}
+
+<===> too_few_args/error
+Error: Missing argument $list2.
+  ,--> input.scss
+2 | a {b: list.join(c)}
+  |       ^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:list
+1 | @function join($list1, $list2, $separator: auto, $bracketed: auto) {
+  |           ======================================================== declaration
+  '
+  input.scss 2:7  root stylesheet
+
+<===> named/input.scss
+@use "sass:list";
+a {b: list.join(c, d, $invalid: true)}
+
+<===> named/error
+Error: No parameter named $invalid.
+  ,--> input.scss
+2 | a {b: list.join(c, d, $invalid: true)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:list
+1 | @function join($list1, $list2, $separator: auto, $bracketed: auto) {
+  |           ======================================================== declaration
+  '
+  input.scss 2:7  root stylesheet
+
+<===> positional_and_named/input.scss
+@use "sass:list";
+a {b: list.join(c, d, comma, true, false, $invalid: true)}
+
+<===> positional_and_named/error
+Error: Only 4 positional arguments allowed, but 5 were passed.
+  ,--> input.scss
+2 | a {b: list.join(c, d, comma, true, false, $invalid: true)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:list
+1 | @function join($list1, $list2, $separator: auto, $bracketed: auto) {
+  |           ======================================================== declaration
+  '
+  input.scss 2:7  root stylesheet
+
+<===> unknown_separator/input.scss
+@use "sass:list";
+a {b: list.join(c, d, $separator: e)}
+
+<===> unknown_separator/error
+Error: $separator: Must be "space", "comma", "slash", or "auto".
+  ,
+2 | a {b: list.join(c, d, $separator: e)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet

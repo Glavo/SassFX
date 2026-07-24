@@ -1,0 +1,8 @@
+<===> directive_interpolation/input.scss
+$baz: 12;
+@foo bar#{$baz} qux {a: b}
+
+<===> directive_interpolation/output.css
+@foo bar12 qux {
+  a: b;
+}

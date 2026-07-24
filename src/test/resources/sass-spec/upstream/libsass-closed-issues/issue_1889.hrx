@@ -1,0 +1,19 @@
+<===> issue_1889/input.scss
+@media (min-width: 640px) { 
+  /* comment */
+}
+
+div {
+  @media (min-width: 320px) { 
+    /* comment */
+  }
+}
+<===> issue_1889/output.css
+@media (min-width: 640px) {
+  /* comment */
+}
+@media (min-width: 320px) {
+  div {
+    /* comment */
+  }
+}

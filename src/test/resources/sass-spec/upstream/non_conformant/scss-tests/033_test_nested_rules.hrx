@@ -1,0 +1,12 @@
+<===> 033_test_nested_rules/input.scss
+foo {
+  bar {a: b}
+  baz {b: c}}
+
+<===> 033_test_nested_rules/output.css
+foo bar {
+  a: b;
+}
+foo baz {
+  b: c;
+}

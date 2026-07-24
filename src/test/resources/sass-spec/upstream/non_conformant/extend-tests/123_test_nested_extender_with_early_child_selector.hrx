@@ -1,0 +1,10 @@
+<===> 123_test_nested_extender_with_early_child_selector/input.scss
+.foo {
+.bar {a: b}
+.bip > .baz {@extend .bar}
+}
+
+<===> 123_test_nested_extender_with_early_child_selector/output.css
+.foo .bar, .foo .bip > .baz {
+  a: b;
+}

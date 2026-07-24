@@ -1,0 +1,4 @@
+<===> url_import/input.scss
+@import url(fonts.sass);
+<===> url_import/output.css
+@import url(fonts.sass);

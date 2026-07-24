@@ -1,0 +1,11 @@
+<===> issue_1546/input.sass
+@mixin foo($foo:red)
+  color: $foo
+
+.foo
+  @include foo(green)
+
+<===> issue_1546/output.css
+.foo {
+  color: green;
+}

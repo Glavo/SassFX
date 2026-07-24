@@ -1,0 +1,41 @@
+<===> outer-pseudo/input.scss
+foo bar {
+    &:baz {
+        bam: true;
+    }
+}
+
+foo + bar {
+    &:baz {
+        bam: true;
+    }
+}
+
+foo > bar {
+    &:baz {
+        bam: true;
+    }
+}
+
+foo ~ bar {
+    &:baz {
+        bam: true;
+    }
+}
+
+<===> outer-pseudo/output.css
+foo bar:baz {
+  bam: true;
+}
+
+foo + bar:baz {
+  bam: true;
+}
+
+foo > bar:baz {
+  bam: true;
+}
+
+foo ~ bar:baz {
+  bam: true;
+}

@@ -1,0 +1,11 @@
+<===> 135_test_simple_at_root/input.scss
+.foo {
+  @at-root {
+    .bar {a: b}
+  }
+}
+
+<===> 135_test_simple_at_root/output.css
+.bar {
+  a: b;
+}

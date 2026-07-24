@@ -1,0 +1,24 @@
+<===> css_before_index/input.scss
+@import 'other';
+
+<===> css_before_index/other.css
+other {index: false}
+
+<===> css_before_index/index/other.scss
+other {index: true}
+
+<===> css_before_index/output.css
+other {
+  index: false;
+}
+
+<===> css_before_index/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import 'other';
+  |         ^^^^^^^
+  '
+    input.scss 1:9  root stylesheet

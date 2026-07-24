@@ -1,0 +1,16 @@
+<===> 06_escape_interpolation/input.scss
+$input: "dquoted";
+.result {
+  output: "[\#{"dquoted"}]";
+  output: "\#{"dquoted"}";
+  output: '\#{"dquoted"}';
+  output: "['\#{"dquoted"}']";
+}
+
+<===> 06_escape_interpolation/output.css
+.result {
+  output: "[#{" dquoted "}]";
+  output: "#{" dquoted "}";
+  output: '#{"dquoted"}';
+  output: "['#{" dquoted "}']";
+}

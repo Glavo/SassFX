@@ -1,0 +1,83 @@
+<===> red/input.scss
+a {
+  step-1: hsl(0, 20%, 50%);
+  step-2: hsl(0, 60%, 50%);
+  step-3: hsl(0, 100%, 50%);
+}
+
+<===> red/output.css
+a {
+  step-1: hsl(0, 20%, 50%);
+  step-2: hsl(0, 60%, 50%);
+  step-3: hsl(0, 100%, 50%);
+}
+
+<===> yellow/input.scss
+a {
+  step-1: hsl(60, 20%, 50%);
+  step-2: hsl(60, 60%, 50%);
+  step-3: hsl(60, 100%, 50%);
+}
+
+<===> yellow/output.css
+a {
+  step-1: hsl(60, 20%, 50%);
+  step-2: hsl(60, 60%, 50%);
+  step-3: hsl(60, 100%, 50%);
+}
+
+<===> green/input.scss
+a {
+  step-1: hsl(120, 20%, 50%);
+  step-2: hsl(120, 60%, 50%);
+  step-3: hsl(120, 100%, 50%);
+}
+
+<===> green/output.css
+a {
+  step-1: hsl(120, 20%, 50%);
+  step-2: hsl(120, 60%, 50%);
+  step-3: hsl(120, 100%, 50%);
+}
+
+<===> cyan/input.scss
+a {
+  step-1: hsl(180, 20%, 50%);
+  step-2: hsl(180, 60%, 50%);
+  step-3: hsl(180, 100%, 50%);
+}
+
+<===> cyan/output.css
+a {
+  step-1: hsl(180, 20%, 50%);
+  step-2: hsl(180, 60%, 50%);
+  step-3: hsl(180, 100%, 50%);
+}
+
+<===> blue/input.scss
+a {
+  step-1: hsl(240, 20%, 50%);
+  step-2: hsl(240, 60%, 50%);
+  step-3: hsl(240, 100%, 50%);
+}
+
+<===> blue/output.css
+a {
+  step-1: hsl(240, 20%, 50%);
+  step-2: hsl(240, 60%, 50%);
+  step-3: hsl(240, 100%, 50%);
+}
+
+<===> purple/input.scss
+a {
+  step-1: hsl(300, 20%, 50%);
+  step-2: hsl(300, 60%, 50%);
+  step-3: hsl(300, 100%, 50%);
+}
+
+<===> purple/output.css
+a {
+  step-1: hsl(300, 20%, 50%);
+  step-2: hsl(300, 60%, 50%);
+  step-3: hsl(300, 100%, 50%);
+}

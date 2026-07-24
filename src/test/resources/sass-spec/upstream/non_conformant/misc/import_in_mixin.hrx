@@ -1,0 +1,10 @@
+<===> import_in_mixin/input.scss
+@use "sass:string";
+@mixin import-google-fonts() {
+  @import url("http://fonts.googleapis.com/css?family=#{$family}");
+}
+$family: string.unquote("Droid+Sans");
+@include import-google-fonts();
+
+<===> import_in_mixin/output.css
+@import url("http://fonts.googleapis.com/css?family=Droid+Sans");

@@ -1,0 +1,8 @@
+<===> 031_test_line_comment_in_script/input.scss
+foo {a: 1 + // flang }
+  blang }
+
+<===> 031_test_line_comment_in_script/output.css
+foo {
+  a: 1blang;
+}

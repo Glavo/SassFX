@@ -1,0 +1,26 @@
+<===> issue_152/input.scss
+$foo: 10;
+$bar: 10%;
+
+foo {
+  a: #{10}% 100%;
+  a: #{10} % 100%;
+  a: #{10} %100%;
+  a: 10% 100%;
+  a: 10 % 100%;
+  a: 10 %100%;
+  a: $foo 100%;
+  a: $foo % 100%;
+  a: $foo %100%;
+  a: $bar 100%;
+  a: $bar % 100%;
+  a: $bar %100%;
+}
+
+<===> issue_152/error
+Error: Undefined operation "10 % 100%".
+  ,
+5 |   a: #{10}% 100%;
+  |      ^^^^^^^^^^^
+  '
+  input.scss 5:6  root stylesheet

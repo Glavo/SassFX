@@ -1,0 +1,19 @@
+<===> issue_2569/input.scss
+@function test() {
+  @if (false) {
+    @return 0;
+  } @else {
+    opacity: 1;
+  }
+}
+
+.my-module {
+  opacity: test();
+}
+<===> issue_2569/error
+Error: @function rules may not contain declarations.
+  ,
+5 |     opacity: 1;
+  |     ^^^^^^^^^^
+  '
+  input.scss 5:5  root stylesheet

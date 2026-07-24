@@ -1,0 +1,14 @@
+<===> mixin-call/input.scss
+@mixin bar() {
+  @content;
+}
+
+foo {
+  @include bar {
+    color: blue;
+  }
+}
+<===> mixin-call/output.css
+foo {
+  color: blue;
+}

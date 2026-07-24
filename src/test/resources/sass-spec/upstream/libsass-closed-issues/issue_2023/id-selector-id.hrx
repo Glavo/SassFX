@@ -1,0 +1,12 @@
+<===> id-selector-id/input.scss
+#2b {
+    color: red;
+}
+
+<===> id-selector-id/error
+Error: Expected identifier.
+  ,
+1 | #2b {
+  |  ^
+  '
+  input.scss 1:2  root stylesheet

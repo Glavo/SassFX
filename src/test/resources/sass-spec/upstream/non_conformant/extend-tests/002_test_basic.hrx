@@ -1,0 +1,8 @@
+<===> 002_test_basic/input.scss
+.bar {@extend .foo}
+.foo {a: b}
+
+<===> 002_test_basic/output.css
+.foo, .bar {
+  a: b;
+}

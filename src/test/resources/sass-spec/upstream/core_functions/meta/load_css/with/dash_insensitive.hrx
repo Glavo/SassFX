@@ -1,0 +1,12 @@
+<===> dash_insensitive/input.scss
+@use "sass:meta";
+@include meta.load-css("other", $with: (a_b: configured));
+
+<===> dash_insensitive/_other.scss
+$a-b: original !default;
+b {c: $a-b}
+
+<===> dash_insensitive/output.css
+b {
+  c: configured;
+}

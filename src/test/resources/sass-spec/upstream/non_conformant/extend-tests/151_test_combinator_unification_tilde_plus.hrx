@@ -1,0 +1,8 @@
+<===> 151_test_combinator_unification_tilde_plus/input.scss
+a.a ~ x {a: b}
+b.b + y {@extend x}
+
+<===> 151_test_combinator_unification_tilde_plus/output.css
+a.a ~ x, a.a ~ b.b + y {
+  a: b;
+}

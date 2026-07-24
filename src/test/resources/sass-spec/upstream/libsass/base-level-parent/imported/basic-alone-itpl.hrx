@@ -1,0 +1,27 @@
+<===> basic-alone-itpl/input.scss
+@import "include.scss";
+<===> basic-alone-itpl/include.scss
+#{&} {
+  foo {
+    bar: baz;
+  }
+}
+
+<===> basic-alone-itpl/error
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import "include.scss";
+  |         ^^^^^^^^^^^^^^
+  '
+    input.scss 1:9  root stylesheet
+
+Error: expected selector.
+  ,
+1 | #{&} {
+  |      ^
+  '
+  include.scss 1:6  @import
+  input.scss 1:9    root stylesheet

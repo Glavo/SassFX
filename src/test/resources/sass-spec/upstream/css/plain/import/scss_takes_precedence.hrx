@@ -1,0 +1,24 @@
+<===> scss_takes_precedence/input.scss
+@import "other";
+
+<===> scss_takes_precedence/other.css
+other {syntax: css}
+
+<===> scss_takes_precedence/other.scss
+other {syntax: scss}
+
+<===> scss_takes_precedence/output.css
+other {
+  syntax: scss;
+}
+
+<===> scss_takes_precedence/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import "other";
+  |         ^^^^^^^
+  '
+    input.scss 1:9  root stylesheet

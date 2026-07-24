@@ -1,0 +1,8 @@
+<===> ie_hex_str/input.scss
+@use "sass:color";
+a {b: color.ie-hex-str(#abcdef)}
+
+<===> ie_hex_str/output.css
+a {
+  b: #FFABCDEF;
+}

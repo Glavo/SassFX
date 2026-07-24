@@ -1,0 +1,15 @@
+<===> simple/input.scss
+@use "sass:meta";
+
+$map: (
+  red: 'bar',
+  #{red}: 'baz',
+);
+
+.foo {
+  content: meta.inspect($map);
+}
+<===> simple/output.css
+.foo {
+  content: (red: "bar", red: "baz");
+}

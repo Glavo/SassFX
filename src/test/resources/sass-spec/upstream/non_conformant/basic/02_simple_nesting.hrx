@@ -1,0 +1,10 @@
+<===> 02_simple_nesting/input.scss
+div {
+  img {
+    border: 0px;
+  }
+}
+<===> 02_simple_nesting/output.css
+div img {
+  border: 0px;
+}

@@ -1,0 +1,90 @@
+<===> nested/input.sass
+.no-nesting
+  --foo: bar
+    baz: qux
+
+<===> nested/error
+Error: Nothing may be indented beneath a custom property.
+  ,
+3 |     baz: qux
+  |     ^
+  '
+  input.sass 3:5  root stylesheet
+
+<===> brackets/curly/input.scss
+.curly {
+  --prop: };
+}
+
+<===> brackets/curly/error
+Error: unmatched "}".
+  ,
+3 | }
+  | ^
+  '
+  input.scss 3:1  root stylesheet
+
+<===> brackets/paren/input.scss
+.paren {
+  --prop: );
+}
+
+<===> brackets/paren/error
+Error: expected ";".
+  ,
+2 |   --prop: );
+  |           ^
+  '
+  input.scss 2:11  root stylesheet
+
+<===> brackets/square/input.scss
+.square {
+  --prop: ];
+}
+
+<===> brackets/square/error
+Error: expected ";".
+  ,
+2 |   --prop: ];
+  |           ^
+  '
+  input.scss 2:11  root stylesheet
+
+<===> brackets/curly_in_square/input.scss
+.curly-in-square {
+  --prop: [{];
+}
+
+<===> brackets/curly_in_square/error
+Error: expected "}".
+  ,
+2 |   --prop: [{];
+  |             ^
+  '
+  input.scss 2:13  root stylesheet
+
+<===> brackets/paren_in_curly/input.scss
+.paren-in-curly {
+  --prop: {(};
+}
+
+<===> brackets/paren_in_curly/error
+Error: expected ")".
+  ,
+2 |   --prop: {(};
+  |             ^
+  '
+  input.scss 2:13  root stylesheet
+
+<===> brackets/square_in_paren/input.scss
+.square-in-paren {
+  --prop: ([);
+}
+
+<===> brackets/square_in_paren/error
+Error: expected "]".
+  ,
+2 |   --prop: ([);
+  |             ^
+  '
+  input.scss 2:13  root stylesheet

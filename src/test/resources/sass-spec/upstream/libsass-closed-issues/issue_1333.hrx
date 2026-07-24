@@ -1,0 +1,16 @@
+<===> issue_1333/input.scss
+@function baz() {
+    @return 'baz';
+}
+
+foo {
+    bar: baz()#{' !important'};
+    bar: baz() #{' !important'};
+}
+
+
+<===> issue_1333/output.css
+foo {
+  bar: "baz"  !important;
+  bar: "baz"  !important;
+}

@@ -1,0 +1,11 @@
+<===> simple-selector/input.scss
+@use "sass:selector";
+foo {
+  test-01: selector.simple-selectors(".foo.bar");
+  test-02: selector.simple-selectors(".foo.bar.baz");
+}
+<===> simple-selector/output.css
+foo {
+  test-01: .foo, .bar;
+  test-02: .foo, .bar, .baz;
+}

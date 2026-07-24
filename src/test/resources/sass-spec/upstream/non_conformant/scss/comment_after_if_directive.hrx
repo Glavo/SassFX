@@ -1,0 +1,13 @@
+<===> comment_after_if_directive/input.scss
+foo {
+  @if true {a: b}
+  @else {x: y}
+  /* This is a comment */
+  c: d }
+
+<===> comment_after_if_directive/output.css
+foo {
+  a: b;
+  /* This is a comment */
+  c: d;
+}

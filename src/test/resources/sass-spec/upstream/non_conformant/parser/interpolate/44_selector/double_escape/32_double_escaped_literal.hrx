@@ -1,0 +1,7 @@
+<===> 32_double_escaped_literal/input.scss
+.test32#{'\\@baz'} { content: '3.2'; }
+
+<===> 32_double_escaped_literal/output.css
+.test32\@baz {
+  content: "3.2";
+}

@@ -1,0 +1,12 @@
+<===> double_width_character/input.scss
+@use "sass:string";
+// Sass treats strings as sequences of Unicode codepoint; it doesn't care if a
+// character is represented as two UTF-16 code units, so inserting a character
+// at index 2 shouldn't break this emoji in two.
+a {b: string.slice("c👭d", 2, 2)}
+
+<===> double_width_character/output.css
+@charset "UTF-8";
+a {
+  b: "👭";
+}

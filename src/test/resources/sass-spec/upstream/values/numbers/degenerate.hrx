@@ -1,0 +1,134 @@
+<===> infinity/unitless/input.scss
+@use 'sass:math';
+a {b: math.div(1, 0)}
+
+<===> infinity/unitless/output.css
+a {
+  b: calc(infinity);
+}
+
+<===> infinity/single_unit/input.scss
+@use 'sass:math';
+a {b: math.div(1px, 0)}
+
+<===> infinity/single_unit/output.css
+a {
+  b: calc(infinity * 1px);
+}
+
+<===> infinity/multiple_numerator_units/input.scss
+@use 'sass:math';
+a {b: math.div(1px * 1em, 0)}
+
+<===> infinity/multiple_numerator_units/output.css
+a {
+  b: calc(infinity * 1px * 1em);
+}
+
+<===> infinity/denominator_unit/input.scss
+@use 'sass:math';
+a {b: math.div(1, 0px)}
+
+<===> infinity/denominator_unit/output.css
+a {
+  b: calc(infinity / 1px);
+}
+
+<===> infinity/numerator_and_denominator_unit/input.scss
+@use 'sass:math';
+a {b: math.div(1px, 0em)}
+
+<===> infinity/numerator_and_denominator_unit/output.css
+a {
+  b: calc(infinity * 1px / 1em);
+}
+
+<===> minus_infinity/unitless/input.scss
+@use 'sass:math';
+a {b: math.div(-1, 0)}
+
+<===> minus_infinity/unitless/output.css
+a {
+  b: calc(-infinity);
+}
+
+<===> minus_infinity/single_unit/input.scss
+@use 'sass:math';
+a {b: math.div(-1px, 0)}
+
+<===> minus_infinity/single_unit/output.css
+a {
+  b: calc(-infinity * 1px);
+}
+
+<===> minus_infinity/multiple_numerator_units/input.scss
+@use 'sass:math';
+a {b: math.div(-1px * 1em, 0)}
+
+<===> minus_infinity/multiple_numerator_units/output.css
+a {
+  b: calc(-infinity * 1px * 1em);
+}
+
+<===> minus_infinity/denominator_unit/input.scss
+@use 'sass:math';
+a {b: math.div(-1, 0px)}
+
+<===> minus_infinity/denominator_unit/output.css
+a {
+  b: calc(-infinity / 1px);
+}
+
+<===> minus_infinity/numerator_and_denominator_unit/input.scss
+@use 'sass:math';
+a {b: math.div(-1px, 0em)}
+
+<===> minus_infinity/numerator_and_denominator_unit/output.css
+a {
+  b: calc(-infinity * 1px / 1em);
+}
+
+<===> nan/unitless/input.scss
+@use 'sass:math';
+a {b: math.div(0, 0)}
+
+<===> nan/unitless/output.css
+a {
+  b: calc(NaN);
+}
+
+<===> nan/single_unit/input.scss
+@use 'sass:math';
+a {b: math.div(0px, 0)}
+
+<===> nan/single_unit/output.css
+a {
+  b: calc(NaN * 1px);
+}
+
+<===> nan/multiple_numerator_units/input.scss
+@use 'sass:math';
+a {b: math.div(0px * 0em, 0)}
+
+<===> nan/multiple_numerator_units/output.css
+a {
+  b: calc(NaN * 1px * 1em);
+}
+
+<===> nan/denominator_unit/input.scss
+@use 'sass:math';
+a {b: math.div(0, 0px)}
+
+<===> nan/denominator_unit/output.css
+a {
+  b: calc(NaN / 1px);
+}
+
+<===> nan/numerator_and_denominator_unit/input.scss
+@use 'sass:math';
+a {b: math.div(0px, 0em)}
+
+<===> nan/numerator_and_denominator_unit/output.css
+a {
+  b: calc(NaN * 1px / 1em);
+}

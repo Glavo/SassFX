@@ -1,0 +1,153 @@
+<===> README.md
+Given two compound selectors Q and R without pseudo-elements such that Q's
+simple selectors are a subset of R's, Q is always a superselector of R. This is
+because additional simple selectors can only ever eliminate possible matches,
+not add new ones.
+
+The only exception is pseudo-ELEMENTS, which change the target of the selector.
+A Q and R's pseudo-elements must match in order for either to be a superselector
+of the other.
+
+<===> same_order/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("c", "c.d")}
+
+<===> same_order/output.css
+a {
+  b: true;
+}
+
+<===> different_order/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("c.e", "c:d.e")}
+
+<===> different_order/output.css
+a {
+  b: true;
+}
+
+<===> superset/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("c.d", "c")}
+
+<===> superset/output.css
+a {
+  b: false;
+}
+
+<===> pseudo_element/present/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("::d", "c::d")}
+
+<===> pseudo_element/present/output.css
+a {
+  b: true;
+}
+
+<===> pseudo_element/absent/in_1/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("c", "c::d")}
+
+<===> pseudo_element/absent/in_1/output.css
+a {
+  b: false;
+}
+
+<===> pseudo_element/absent/in_2/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("c::d", "c")}
+
+<===> pseudo_element/absent/in_2/output.css
+a {
+  b: false;
+}
+
+<===> pseudo_element/subset/before/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector(".c::d", ".c.e::d")}
+
+<===> pseudo_element/subset/before/output.css
+a {
+  b: true;
+}
+
+<===> pseudo_element/subset/after/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("::d:c", "::d:c:e")}
+
+<===> pseudo_element/subset/after/output.css
+a {
+  b: true;
+}
+
+<===> pseudo_element/superset/before/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector(".c.e::d", ".c::d")}
+
+<===> pseudo_element/superset/before/output.css
+a {
+  b: false;
+}
+
+<===> pseudo_element/superset/after/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("::d:c:e", "::d:c")}
+
+<===> pseudo_element/superset/after/output.css
+a {
+  b: false;
+}
+
+<===> pseudo_element/same_order/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("::d:e", "::d:e")}
+
+<===> pseudo_element/same_order/output.css
+a {
+  b: true;
+}
+
+<===> pseudo_element/different_order/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector(":e::d", "::d:e")}
+
+<===> pseudo_element/different_order/output.css
+a {
+  b: false;
+}
+
+<===> pseudo_element/class_syntax/before/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("c", "c:before")}
+
+<===> pseudo_element/class_syntax/before/output.css
+a {
+  b: false;
+}
+
+<===> pseudo_element/class_syntax/after/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("c", "c:after")}
+
+<===> pseudo_element/class_syntax/after/output.css
+a {
+  b: false;
+}
+
+<===> pseudo_element/class_syntax/first_line/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("c", "c:first-line")}
+
+<===> pseudo_element/class_syntax/first_line/output.css
+a {
+  b: false;
+}
+
+<===> pseudo_element/class_syntax/first_letter/input.scss
+@use "sass:selector";
+a {b: selector.is-superselector("c", "c:first-letter")}
+
+<===> pseudo_element/class_syntax/first_letter/output.css
+a {
+  b: false;
+}

@@ -1,0 +1,18 @@
+<===> selector_list/input.scss
+.foo {a: b}
+.bar {x: y}
+
+// Extending a selector list is equivalent to writing two @extends.
+.baz {@extend .foo, .bar}
+
+// The selector list should be parsed after interpolation is resolved.
+.bang {@extend .foo #{","} .bar}
+
+<===> selector_list/output.css
+.foo, .bang, .baz {
+  a: b;
+}
+
+.bar, .bang, .baz {
+  x: y;
+}

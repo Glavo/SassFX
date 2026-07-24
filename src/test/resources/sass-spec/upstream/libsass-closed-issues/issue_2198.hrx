@@ -1,0 +1,21 @@
+<===> issue_2198/input.scss
+@mixin test() {
+  @at-root {
+    @include foo();
+  }
+}
+
+@mixin foo() {
+  #{'.foo'} {
+    bar: baz;
+  }
+}
+
+.test {
+  @include test();
+}
+
+<===> issue_2198/output.css
+.foo {
+  bar: baz;
+}

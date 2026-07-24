@@ -1,0 +1,10 @@
+<===> issue_1295/input.scss
+foo {
+  $nothing: null;
+  foo: "#{$nothing}' %' '#{$nothing}";
+}
+
+<===> issue_1295/output.css
+foo {
+  foo: "' %' '";
+}

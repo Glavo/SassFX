@@ -1,0 +1,16 @@
+<===> 06_escape_interpolation/input.scss
+$input: '\'';
+.result {
+  output: "[\#{'\''}]";
+  output: "\#{'\''}";
+  output: '\#{'\''}';
+  output: "['\#{'\''}']";
+}
+
+<===> 06_escape_interpolation/output.css
+.result {
+  output: "[#{'''}]";
+  output: "#{'''}";
+  output: "#{" \' "}";
+  output: "['#{'''}']";
+}

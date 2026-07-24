@@ -1,0 +1,11 @@
+<===> mixin-in-each/input.scss
+@each $item in (a, b) {
+  @mixin foo() {}
+}
+<===> mixin-in-each/error
+Error: Mixins may not be declared in control directives.
+  ,
+2 |   @mixin foo() {}
+  |   ^^^^^^^^^^^^
+  '
+  input.scss 2:3  root stylesheet

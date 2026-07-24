@@ -1,0 +1,19 @@
+<===> 04_variable_double/input.scss
+$input: '\0_\a_\A';
+.result {
+  output: #{#{$input}};
+  output: #{"[#{$input}]"};
+  output: #{"#{$input}"};
+  output: #{'#{$input}'};
+  output: #{"['#{$input}']"};
+}
+
+<===> 04_variable_double/output.css
+@charset "UTF-8";
+.result {
+  output: �_ _ ;
+  output: [�_ _ ];
+  output: �_ _ ;
+  output: �_ _ ;
+  output: ['�_ _ '];
+}

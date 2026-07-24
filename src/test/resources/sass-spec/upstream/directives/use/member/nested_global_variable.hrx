@@ -1,0 +1,58 @@
+<===> direct/input.scss
+@use "sass:meta";
+@use "other";
+
+a {b: meta.inspect(other.$member)}
+
+<===> direct/other.scss
+x {
+  @if false {
+    // Even though this assignment is deeply nested and never evaluated, it
+    // creates a variable slot in the module that defaults to null. This ensures
+    // that a module will always expose the same members regardless of how it's
+    // evaluated.
+    $member: value !global;
+  }
+}
+
+<===> direct/output.css
+a {
+  b: null;
+}
+
+<===> through_import/input.scss
+@use "sass:meta";
+@use "used";
+
+a {b: meta.inspect(used.$member)}
+
+<===> through_import/used.scss
+@import "imported";
+
+<===> through_import/imported.scss
+x {
+  @if false {
+    // Even though this assignment is deeply nested and never evaluated, it
+    // creates a variable slot in the module that defaults to null. This ensures
+    // that a module will always expose the same members regardless of how it's
+    // evaluated.
+    $member: value !global;
+  }
+}
+
+<===> through_import/output.css
+a {
+  b: null;
+}
+
+<===> through_import/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import "imported";
+  |         ^^^^^^^^^^
+  '
+    used.scss 1:9   @use
+    input.scss 2:1  root stylesheet

@@ -1,0 +1,9 @@
+<===> issue_894/input.scss
+a {/**/}
+b {content: 'something so I have a non-empty expected output'}
+<===> issue_894/output.css
+a { /**/ }
+
+b {
+  content: "something so I have a non-empty expected output";
+}

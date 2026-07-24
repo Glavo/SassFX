@@ -1,0 +1,8 @@
+<===> 181_test_interpolation/input.scss
+$bar : "#foo";
+ul li#{$bar} a span.label { foo: bar; }
+
+<===> 181_test_interpolation/output.css
+ul li#foo a span.label {
+  foo: bar;
+}

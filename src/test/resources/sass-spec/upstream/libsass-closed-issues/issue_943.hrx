@@ -1,0 +1,23 @@
+<===> issue_943/input.scss
+%dog {
+    @media (min-width: 10px) {
+        &:hover {
+            display: none;
+        }
+    }
+}
+
+.puppy {
+    @extend %dog;
+    background-color: red;
+}
+<===> issue_943/output.css
+@media (min-width: 10px) {
+  .puppy:hover {
+    display: none;
+  }
+}
+
+.puppy {
+  background-color: red;
+}

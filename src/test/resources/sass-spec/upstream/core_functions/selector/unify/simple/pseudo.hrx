@@ -1,0 +1,411 @@
+<===> no_arg/class/same/input.scss
+@use "sass:selector";
+a {b: selector.unify(":c", ":c")}
+
+<===> no_arg/class/same/output.css
+a {
+  b: :c;
+}
+
+<===> no_arg/class/different/input.scss
+@use "sass:selector";
+a {b: selector.unify(":c", ":d")}
+
+<===> no_arg/class/different/output.css
+a {
+  b: :c:d;
+}
+
+<===> no_arg/element/same/input.scss
+@use "sass:selector";
+a {b: selector.unify("::c", "::c")}
+
+<===> no_arg/element/same/output.css
+a {
+  b: ::c;
+}
+
+<===> no_arg/element/different/input.scss
+@use "sass:meta";
+@use "sass:selector";
+a {b: meta.inspect(selector.unify("::c", "::d"))}
+
+<===> no_arg/element/different/output.css
+a {
+  b: null;
+}
+
+<===> no_arg/different_syntax_same_semantics/before/input.scss
+@use "sass:selector";
+a {b: selector.unify(":before", "::before")}
+
+<===> no_arg/different_syntax_same_semantics/before/output.css
+a {
+  b: :before;
+}
+
+<===> no_arg/different_syntax_same_semantics/after/input.scss
+@use "sass:selector";
+a {b: selector.unify(":after", "::after")}
+
+<===> no_arg/different_syntax_same_semantics/after/output.css
+a {
+  b: :after;
+}
+
+<===> no_arg/different_syntax_same_semantics/first_line/input.scss
+@use "sass:selector";
+a {b: selector.unify(":first-line", "::first-line")}
+
+<===> no_arg/different_syntax_same_semantics/first_line/output.css
+a {
+  b: :first-line;
+}
+
+<===> no_arg/different_syntax_same_semantics/first_letter/input.scss
+@use "sass:selector";
+a {b: selector.unify(":first-letter", "::first-letter")}
+
+<===> no_arg/different_syntax_same_semantics/first_letter/output.css
+a {
+  b: :first-letter;
+}
+
+<===> arg/class/same/input.scss
+@use "sass:selector";
+a {b: selector.unify(":c(@#$)", ":c(@#$)")}
+
+<===> arg/class/same/output.css
+a {
+  b: :c(@#$);
+}
+
+<===> arg/class/different/input.scss
+@use "sass:selector";
+a {b: selector.unify(":c(@#$)", ":c(*&^)")}
+
+<===> arg/class/different/output.css
+a {
+  b: :c(@#$):c(*&^);
+}
+
+<===> arg/element/same/input.scss
+@use "sass:selector";
+a {b: selector.unify("::c(@#$)", "::c(@#$)")}
+
+<===> arg/element/same/output.css
+a {
+  b: ::c(@#$);
+}
+
+<===> arg/element/different/input.scss
+@use "sass:meta";
+@use "sass:selector";
+a {b: meta.inspect(selector.unify("::c(@#$)", "::c(*&^)"))}
+
+<===> arg/element/different/output.css
+a {
+  b: null;
+}
+
+<===> selector_arg/is/same/input.scss
+@use "sass:selector";
+a {b: selector.unify(":is(.c)", ":is(.c)")}
+
+<===> selector_arg/is/same/output.css
+a {
+  b: :is(.c);
+}
+
+<===> selector_arg/is/different/input.scss
+@use "sass:selector";
+a {b: selector.unify(":is(.c)", ":is(.d)")}
+
+<===> selector_arg/is/different/output.css
+a {
+  b: :is(.c):is(.d);
+}
+
+<===> selector_arg/where/same/input.scss
+@use "sass:selector";
+a {b: selector.unify(":where(.c)", ":where(.c)")}
+
+<===> selector_arg/where/same/output.css
+a {
+  b: :where(.c);
+}
+
+<===> selector_arg/where/different/input.scss
+@use "sass:selector";
+a {b: selector.unify(":where(.c)", ":where(.d)")}
+
+<===> selector_arg/where/different/output.css
+a {
+  b: :where(.c):where(.d);
+}
+
+<===> selector_arg/matches/same/input.scss
+@use "sass:selector";
+a {b: selector.unify(":matches(.c)", ":matches(.c)")}
+
+<===> selector_arg/matches/same/output.css
+a {
+  b: :matches(.c);
+}
+
+<===> selector_arg/matches/different/input.scss
+@use "sass:selector";
+a {b: selector.unify(":matches(.c)", ":matches(.d)")}
+
+<===> selector_arg/matches/different/output.css
+a {
+  b: :matches(.c):matches(.d);
+}
+
+<===> host/argless/host/argless/input.scss
+@use "sass:selector";
+a {b: selector.unify(":host", ":host")}
+
+<===> host/argless/host/argless/output.css
+a {
+  b: :host;
+}
+
+<===> host/argless/host/arg/input.scss
+@use "sass:selector";
+a {b: selector.unify(":host", ":host(.c)")}
+
+<===> host/argless/host/arg/output.css
+a {
+  b: :host:host(.c);
+}
+
+<===> host/argless/host_context/left/input.scss
+@use "sass:selector";
+a {b: selector.unify(":host", ":host-context(.c)")}
+
+<===> host/argless/host_context/left/output.css
+a {
+  b: :host:host-context(.c);
+}
+
+<===> host/argless/host_context/right/input.scss
+@use "sass:selector";
+a {b: selector.unify(":host-context(.c)", ":host")}
+
+<===> host/argless/host_context/right/output.css
+a {
+  b: :host-context(.c):host;
+}
+
+<===> host/argless/selector_pseudo/left/input.scss
+@use "sass:selector";
+a {b: selector.unify(":host", ":is(.c)")}
+
+<===> host/argless/selector_pseudo/left/output.css
+a {
+  b: :is(.c):host;
+}
+
+<===> host/argless/selector_pseudo/right/input.scss
+@use "sass:selector";
+a {b: selector.unify(":is(.c)", ":host")}
+
+<===> host/argless/selector_pseudo/right/output.css
+a {
+  b: :is(.c):host;
+}
+
+<===> host/argless/pseudo/left/input.scss
+@use "sass:meta";
+@use "sass:selector";
+a {b: meta.inspect(selector.unify(":host", ":hover"))}
+
+<===> host/argless/pseudo/left/output.css
+a {
+  b: null;
+}
+
+<===> host/argless/pseudo/right/input.scss
+@use "sass:meta";
+@use "sass:selector";
+a {b: meta.inspect(selector.unify(":hover", ":host"))}
+
+<===> host/argless/pseudo/right/output.css
+a {
+  b: null;
+}
+
+<===> host/argless/class/left/input.scss
+@use "sass:meta";
+@use "sass:selector";
+a {b: meta.inspect(selector.unify(":host", ".c"))}
+
+<===> host/argless/class/left/output.css
+a {
+  b: null;
+}
+
+<===> host/argless/class/right/input.scss
+@use "sass:meta";
+@use "sass:selector";
+a {b: meta.inspect(selector.unify(".c", ":host"))}
+
+<===> host/argless/class/right/output.css
+a {
+  b: null;
+}
+
+<===> host/argless/universal/left/input.scss
+@use "sass:meta";
+@use "sass:selector";
+a {b: meta.inspect(selector.unify(":host", "*"))}
+
+<===> host/argless/universal/left/output.css
+a {
+  b: null;
+}
+
+<===> host/argless/universal/right/input.scss
+@use "sass:meta";
+@use "sass:selector";
+a {b: meta.inspect(selector.unify("*", ":host"))}
+
+<===> host/argless/universal/right/output.css
+a {
+  b: null;
+}
+
+<===> host/argless/compound/selector_pseudos/left/input.scss
+@use "sass:selector";
+a {b: selector.unify(":host", ":is(.c):is(.d)")}
+
+<===> host/argless/compound/selector_pseudos/left/output.css
+a {
+  b: :is(.c):host:is(.d);
+}
+
+<===> host/argless/compound/selector_pseudos/right/input.scss
+@use "sass:selector";
+a {b: selector.unify(":is(.c):is(.d)", ":host")}
+
+<===> host/argless/compound/selector_pseudos/right/output.css
+a {
+  b: :is(.c):is(.d):host;
+}
+
+<===> host/argless/compound/class_and_selector_pseudo/left/input.scss
+@use "sass:meta";
+@use "sass:selector";
+a {b: meta.inspect(selector.unify(":host", ".c:is(.d)"))}
+
+<===> host/argless/compound/class_and_selector_pseudo/left/output.css
+a {
+  b: null;
+}
+
+<===> host/argless/compound/class_and_selector_pseudo/right/input.scss
+@use "sass:meta";
+@use "sass:selector";
+a {b: meta.inspect(selector.unify(".c:is(.d)", ":host"))}
+
+<===> host/argless/compound/class_and_selector_pseudo/right/output.css
+a {
+  b: null;
+}
+
+<===> host/argless/compound/host_and_class/left/input.scss
+@use "sass:meta";
+@use "sass:selector";
+a {b: meta.inspect(selector.unify(":host", ":host.c"))}
+
+<===> host/argless/compound/host_and_class/left/output.css
+a {
+  b: null;
+}
+
+<===> host/argless/compound/host_and_class/right/input.scss
+@use "sass:meta";
+@use "sass:selector";
+a {b: meta.inspect(selector.unify(":host.c", ":host"))}
+
+<===> host/argless/compound/host_and_class/right/output.css
+a {
+  b: null;
+}
+
+<===> host/arg/preserved/left/input.scss
+@use "sass:selector";
+a {b: selector.unify(":host(.c)", ":is(.d)")}
+
+<===> host/arg/preserved/left/output.css
+a {
+  b: :is(.d):host(.c);
+}
+
+<===> host/arg/preserved/right/input.scss
+@use "sass:selector";
+a {b: selector.unify(":is(.c)", ":host(.d)")}
+
+<===> host/arg/preserved/right/output.css
+a {
+  b: :is(.c):host(.d);
+}
+
+<===> host/arg/removed/left/input.scss
+@use "sass:meta";
+@use "sass:selector";
+a {b: meta.inspect(selector.unify(":host(.c)", ".d"))}
+
+<===> host/arg/removed/left/output.css
+a {
+  b: null;
+}
+
+<===> host/arg/removed/right/input.scss
+@use "sass:meta";
+@use "sass:selector";
+a {b: meta.inspect(selector.unify(".c", ":host(.d)"))}
+
+<===> host/arg/removed/right/output.css
+a {
+  b: null;
+}
+
+<===> host_context/preserved/left/input.scss
+@use "sass:selector";
+a {b: selector.unify(":host-context(.c)", ":is(.d)")}
+
+<===> host_context/preserved/left/output.css
+a {
+  b: :is(.d):host-context(.c);
+}
+
+<===> host_context/preserved/right/input.scss
+@use "sass:selector";
+a {b: selector.unify(":is(.c)", ":host-context(.d)")}
+
+<===> host_context/preserved/right/output.css
+a {
+  b: :is(.c):host-context(.d);
+}
+
+<===> host_context/removed/left/input.scss
+@use "sass:meta";
+@use "sass:selector";
+a {b: meta.inspect(selector.unify(":host-context(.c)", ".d"))}
+
+<===> host_context/removed/left/output.css
+a {
+  b: null;
+}
+
+<===> host_context/removed/right/input.scss
+@use "sass:meta";
+@use "sass:selector";
+a {b: meta.inspect(selector.unify(".c", ":host-context(.d)"))}
+
+<===> host_context/removed/right/output.css
+a {
+  b: null;
+}

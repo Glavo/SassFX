@@ -1,0 +1,19 @@
+<===> 01_inline/input.scss
+.result {
+  output: 'squoted';
+  output: #{'squoted'};
+  output: "[#{'squoted'}]";
+  output: "#{'squoted'}";
+  output: '#{'squoted'}';
+  output: "['#{'squoted'}']";
+}
+
+<===> 01_inline/output.css
+.result {
+  output: "squoted";
+  output: squoted;
+  output: "[squoted]";
+  output: "squoted";
+  output: "squoted";
+  output: "['squoted']";
+}

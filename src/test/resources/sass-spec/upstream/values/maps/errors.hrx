@@ -1,0 +1,11 @@
+<===> errors/input.scss
+$map: ( foo: bar );
+test { baz: $map; }
+
+<===> errors/error
+Error: (foo: bar) isn't a valid CSS value.
+  ,
+2 | test { baz: $map; }
+  |             ^^^^
+  '
+  input.scss 2:13  root stylesheet

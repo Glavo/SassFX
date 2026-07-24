@@ -1,0 +1,11 @@
+<===> charset/input.scss
+@use "sass:string";
+div {
+  content: string.to-upper-case("øáéíóúüñ¿éàŤǅǂɊɱʭʬѪ҈ݓ");
+}
+
+<===> charset/output.css
+@charset "UTF-8";
+div {
+  content: "øáéíóúüñ¿éàŤǅǂɊɱʭʬѪ҈ݓ";
+}

@@ -1,0 +1,17 @@
+<===> issue_1873/input.scss
+.a {
+  display: block;
+}
+
+.b {
+  @at-root (with: media) {
+    @extend .a;
+  }
+}
+<===> issue_1873/error
+Error: @extend may only be used within style rules.
+  ,
+7 |     @extend .a;
+  |     ^^^^^^^^^^
+  '
+  input.scss 7:5  root stylesheet

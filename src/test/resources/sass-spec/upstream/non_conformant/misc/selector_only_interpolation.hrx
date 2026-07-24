@@ -1,0 +1,7 @@
+<===> selector_only_interpolation/input.scss
+#{"foo" + " bar"} {a: b}
+
+<===> selector_only_interpolation/output.css
+foo bar {
+  a: b;
+}

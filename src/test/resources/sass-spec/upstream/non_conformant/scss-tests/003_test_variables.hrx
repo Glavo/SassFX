@@ -1,0 +1,9 @@
+<===> 003_test_variables/input.scss
+$var: foo;
+
+blat {a: $var}
+
+<===> 003_test_variables/output.css
+blat {
+  a: foo;
+}

@@ -1,0 +1,6 @@
+<===> issue_2360/input.sass
+@value test_1 #555
+@value test_2 rgb(0,255,0)
+<===> issue_2360/output.css
+@value test_1 #555;
+@value test_2 rgb(0,255,0);

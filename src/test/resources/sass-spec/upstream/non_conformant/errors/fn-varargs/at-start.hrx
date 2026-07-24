@@ -1,0 +1,9 @@
+<===> at-start/input.scss
+@function test($rest...,$param) {}
+<===> at-start/error
+Error: expected ")".
+  ,
+1 | @function test($rest...,$param) {}
+  |                         ^
+  '
+  input.scss 1:25  root stylesheet

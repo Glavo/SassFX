@@ -1,0 +1,28 @@
+<===> partial_conflict/input.scss
+@import "plain";
+
+<===> partial_conflict/_plain.css
+plain {partial: true}
+
+<===> partial_conflict/plain.css
+plain {partial: false}
+
+<===> partial_conflict/error
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import "plain";
+  |         ^^^^^^^
+  '
+    input.scss 1:9  root stylesheet
+
+Error: It's not clear which file to import. Found:
+  _plain.css
+  plain.css
+  ,
+1 | @import "plain";
+  |         ^^^^^^^
+  '
+  input.scss 1:9  root stylesheet

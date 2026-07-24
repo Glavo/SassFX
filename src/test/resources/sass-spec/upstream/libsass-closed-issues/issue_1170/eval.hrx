@@ -1,0 +1,10 @@
+<===> eval/input.scss
+el {
+  @if ((& + '') == 'el') {
+    content: "It works!";
+  }
+}
+<===> eval/output.css
+el {
+  content: "It works!";
+}

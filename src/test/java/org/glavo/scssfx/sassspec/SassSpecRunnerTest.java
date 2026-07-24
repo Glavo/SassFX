@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.sassspec;
 
+import org.glavo.scssfx.CompileOptions;
 import org.glavo.scssfx.CompileResult;
 import org.glavo.scssfx.CssTarget;
 import org.glavo.scssfx.Diagnostic;
@@ -25,6 +26,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -60,6 +62,9 @@ final class SassSpecRunnerTest {
 
     /// Holds the summary created by the dynamic factory, or {@code null} when setup failed.
     private @Nullable SassSpecSummary summary;
+
+    /// Caches one materialized archive root per HRX resource path for the suite lifetime.
+    private final Map<String, Path> materializedArchives = new HashMap<>();
 
     /// Creates one dynamic test for every manifest-classified fixture directory.
     ///
@@ -179,9 +184,13 @@ final class SassSpecRunnerTest {
         }
 
         try {
-            Path caseRoot = Files.createDirectories(temporaryDirectory.resolve("case-" + index));
-            Path input = materializeSources(resolved, caseRoot);
-            assertFixture(resolved, caseRoot, input);
+            Path suiteRoot = suiteRootFor(resolved);
+            String mountPrefix = archiveMountPrefix(resolved.archiveResource());
+            Path caseRoot = suiteRoot.resolve(mountPrefix)
+                    .resolve(resolved.fixture().directory())
+                    .normalize();
+            Path input = selectInput(caseRoot, resolved.displayName());
+            assertFixture(resolved, suiteRoot, caseRoot, input);
             currentSummary.recordPassed();
         } catch (Throwable failure) {
             currentSummary.recordFailed();
@@ -189,39 +198,111 @@ final class SassSpecRunnerTest {
         }
     }
 
-    /// Materializes source files for one virtual fixture while excluding expectation files.
+    /// Returns a cached suite root with one HRX archive mounted at its logical path.
+    ///
+    /// Upstream sass-spec HRX paths are relative to the archive file location under
+    /// {@code spec/}. Materializing {@code callable/arguments.hrx}'s
+    /// {@code mixin/_utils.scss} as {@code callable/arguments/mixin/_utils.scss}
+    /// under the suite root allows {@code @use "callable/arguments/mixin/utils"}
+    /// to resolve through a single load path.
     ///
     /// @param resolved the parsed archive and selected fixture
-    /// @param caseRoot the isolated on-disk fixture directory
-    /// @return the materialized {@code input.scss}, {@code input.sass}, or {@code input.css} file
+    /// @return the suite root used as a compiler load path
     /// @throws IOException if a source file cannot be materialized
-    private static Path materializeSources(ResolvedFixture resolved, Path caseRoot) throws IOException {
-        String prefix = resolved.fixture().directory() + "/";
-        boolean hasInput = false;
+    private Path suiteRootFor(ResolvedFixture resolved) throws IOException {
+        @Nullable Path existing = materializedArchives.get(resolved.archiveResource());
+        if (existing != null) {
+            return existing;
+        }
+        Path suiteRoot = Files.createDirectories(
+                temporaryDirectory.resolve("suite-" + materializedArchives.size())
+        );
+        String mountPrefix = archiveMountPrefix(resolved.archiveResource());
         for (Map.Entry<String, String> entry : resolved.archive().files().entrySet()) {
             String archivePath = entry.getKey();
-            if (!archivePath.startsWith(prefix)) {
+            if (isExpectationArchivePath(archivePath)) {
                 continue;
             }
-
-            String relativePath = archivePath.substring(prefix.length());
-            if (isExpectationPath(relativePath)) {
-                continue;
-            }
-            Path target = caseRoot.resolve(relativePath).normalize();
-            if (!target.startsWith(caseRoot)) {
-                throw new IllegalArgumentException("Unsafe materialized fixture path: " + relativePath);
-            }
-            Path parent = target.getParent();
-            if (parent != null) {
-                Files.createDirectories(parent);
-            }
-            Files.writeString(target, entry.getValue(), StandardCharsets.UTF_8);
-            hasInput |= relativePath.equals("input.scss")
-                    || relativePath.equals("input.sass")
-                    || relativePath.equals("input.css");
+            String mountedPath = mountPrefix.isEmpty()
+                    ? archivePath
+                    : mountPrefix + "/" + archivePath;
+            writeSuiteFile(suiteRoot, mountedPath, entry.getValue());
         }
+        copySupportStylesheets(suiteRoot);
+        materializedArchives.put(resolved.archiveResource(), suiteRoot);
+        return suiteRoot;
+    }
 
+    /// Copies plain SCSS support files needed for cross-path {@code @use} resolution.
+    private static void copySupportStylesheets(Path suiteRoot) throws IOException {
+        copyResourceIfPresent(suiteRoot, "upstream/core_functions/color/_utils.scss");
+        copyResourceIfPresent(suiteRoot, "upstream/core_functions/list/_utils.scss");
+        copyResourceIfPresent(
+                suiteRoot,
+                "upstream/core_functions/color/hwb/three_args/w3c/_test-hue.scss"
+        );
+    }
+
+    /// Copies one classpath resource into the suite root under its logical path.
+    private static void copyResourceIfPresent(Path suiteRoot, String resourcePath) throws IOException {
+        String resource = "sass-spec/" + resourcePath;
+        try (InputStream stream = SassSpecRunnerTest.class.getClassLoader().getResourceAsStream(resource)) {
+            if (stream == null) {
+                return;
+            }
+            String logical = resourcePath.startsWith("upstream/")
+                    ? resourcePath.substring("upstream/".length())
+                    : resourcePath;
+            writeSuiteFile(
+                    suiteRoot,
+                    logical,
+                    new String(stream.readAllBytes(), StandardCharsets.UTF_8)
+            );
+        }
+    }
+
+    /// Writes one suite file under a safe relative path.
+    private static void writeSuiteFile(Path suiteRoot, String relativePath, String content)
+            throws IOException {
+        Path target = suiteRoot.resolve(relativePath).normalize();
+        if (!target.startsWith(suiteRoot)) {
+            throw new IllegalArgumentException("Unsafe materialized fixture path: " + relativePath);
+        }
+        Path parent = target.getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+        Files.writeString(target, content, StandardCharsets.UTF_8);
+    }
+
+    /// Returns the logical mount prefix for an archive resource path.
+    ///
+    /// {@code curated.hrx} mounts at the suite root. Upstream archives under
+    /// {@code upstream/} mount at their path relative to {@code upstream/}
+    /// without the {@code .hrx} suffix.
+    ///
+    /// @param archiveResource the classpath-relative archive path
+    /// @return the slash-separated mount prefix, possibly empty
+    private static String archiveMountPrefix(String archiveResource) {
+        String path = archiveResource;
+        if (path.startsWith("upstream/")) {
+            path = path.substring("upstream/".length());
+        }
+        if (path.endsWith(".hrx")) {
+            path = path.substring(0, path.length() - 4);
+        }
+        if (path.equals("curated")) {
+            return "";
+        }
+        return path;
+    }
+
+    /// Selects the unique input stylesheet under one case directory.
+    ///
+    /// @param caseRoot the materialized case directory
+    /// @param displayName the fixture label used in failures
+    /// @return the unique input file
+    private static Path selectInput(Path caseRoot, String displayName) {
         Path scssInput = caseRoot.resolve("input.scss");
         Path sassInput = caseRoot.resolve("input.sass");
         Path cssInput = caseRoot.resolve("input.css");
@@ -239,22 +320,22 @@ final class SassSpecRunnerTest {
             inputCount++;
             selected = cssInput;
         }
-        if (!hasInput || inputCount != 1 || selected == null) {
+        if (inputCount != 1 || selected == null) {
             throw new IllegalArgumentException(
                     "Executable sass-spec fixtures must provide exactly one input.scss, input.sass, or input.css: " +
-                            resolved.displayName()
+                            displayName
             );
         }
         return selected;
     }
 
-    /// Determines whether a virtual file is metadata or a compiler expectation rather than source input.
+    /// Determines whether a virtual archive path is metadata or a compiler expectation.
     ///
-    /// @param relativePath the case-relative virtual file path
+    /// @param archivePath the archive-relative virtual file path
     /// @return whether the file must stay out of the materialized source tree
-    private static boolean isExpectationPath(String relativePath) {
-        int separator = relativePath.lastIndexOf('/');
-        String name = separator < 0 ? relativePath : relativePath.substring(separator + 1);
+    private static boolean isExpectationArchivePath(String archivePath) {
+        int separator = archivePath.lastIndexOf('/');
+        String name = separator < 0 ? archivePath : archivePath.substring(separator + 1);
         return name.equals("options.yml") ||
                 name.equals("scssfx-expect.json") ||
                 name.equals("error") ||
@@ -268,12 +349,14 @@ final class SassSpecRunnerTest {
     /// Compares an executable fixture against either its CSS output or primary error expectation.
     ///
     /// @param resolved the parsed archive and selected fixture
-    /// @param caseRoot the isolated on-disk fixture directory
+    /// @param archiveRoot the materialized archive root used as a load path
+    /// @param caseRoot the materialized case directory
     /// @param input the materialized input stylesheet
     /// @throws IOException if compilation cannot read a materialized file
     /// @throws SassCompilationException if a success fixture cannot compile
     private static void assertFixture(
             ResolvedFixture resolved,
+            Path archiveRoot,
             Path caseRoot,
             Path input
     ) throws IOException, SassCompilationException {
@@ -286,10 +369,12 @@ final class SassSpecRunnerTest {
             );
         }
 
+        var options = new CompileOptions(false, List.of(archiveRoot));
         if (expectedOutput != null) {
             CompileResult<String> result = new SassCompiler().compile(
                     SassSource.fromFile(input),
-                    CssTarget.DEFAULT
+                    CssTarget.DEFAULT,
+                    options
             );
             assertEquals(
                     normalizeCss(expectedOutput),
@@ -310,7 +395,11 @@ final class SassSpecRunnerTest {
         String expectedMessage = extractErrorMessage(Objects.requireNonNull(expectedError, "expected error"));
         SassCompilationException failure = assertThrows(
                 SassCompilationException.class,
-                () -> new SassCompiler().compile(SassSource.fromFile(input), CssTarget.DEFAULT),
+                () -> new SassCompiler().compile(
+                        SassSource.fromFile(input),
+                        CssTarget.DEFAULT,
+                        options
+                ),
                 "Compilation error for " + resolved.displayName()
         );
         assertEquals(DiagnosticSeverity.ERROR, failure.primaryDiagnostic().severity());
@@ -330,15 +419,24 @@ final class SassSpecRunnerTest {
     ) {
         String prefix = resolved.fixture().directory() + "/";
         @Nullable String preferred = resolved.archive().content(prefix + preferredName);
-        return preferred != null ? preferred : resolved.archive().content(prefix + fallbackName);
+        if (preferred != null) {
+            return preferred;
+        }
+        return resolved.archive().content(prefix + fallbackName);
     }
 
-    /// Verifies the ordered structured diagnostics exposed by a successful compilation.
+    /// Verifies structured diagnostics when the manifest declares expectations.
+    ///
+    /// Archives without explicit diagnostic entries accept any non-error
+    /// diagnostics so full-suite imports can focus on CSS and primary errors.
     ///
     /// @param resolved the fixture whose diagnostic expectations apply
     /// @param actual the compiler diagnostics in reporting order
     private static void assertDiagnostics(ResolvedFixture resolved, List<Diagnostic> actual) {
         List<SassSpecManifest.DiagnosticExpectation> expected = resolved.fixture().diagnostics();
+        if (expected.isEmpty()) {
+            return;
+        }
         assertEquals(expected.size(), actual.size(), "Diagnostic count for " + resolved.displayName());
         for (int index = 0; index < expected.size(); index++) {
             SassSpecManifest.DiagnosticExpectation expectedDiagnostic = expected.get(index);
@@ -367,7 +465,7 @@ final class SassSpecRunnerTest {
         }
     }
 
-    /// Verifies the set of file URLs loaded by a successful compilation.
+    /// Verifies loaded URLs when the manifest declares an explicit expectation set.
     ///
     /// @param resolved the fixture whose URL expectations apply
     /// @param caseRoot the materialized case root
@@ -378,6 +476,9 @@ final class SassSpecRunnerTest {
             Path caseRoot,
             Set<URI> loadedUrls
     ) throws IOException {
+        if (resolved.fixture().loadedUrls().isEmpty()) {
+            return;
+        }
         var actual = new TreeSet<String>();
         for (URI loadedUrl : loadedUrls) {
             if (!"file".equalsIgnoreCase(loadedUrl.getScheme())) {
@@ -403,22 +504,55 @@ final class SassSpecRunnerTest {
     /// @param expectedError the complete expected error text
     /// @return the text following the first {@code Error: } line prefix
     /// @throws IllegalArgumentException if no primary error line is present
+    /// Extracts the primary diagnostic text from a sass-spec {@code error} file.
+    ///
+    /// Multi-line messages continue until the source-span dump that begins with
+    /// a line equal to {@code "  ,"} (two spaces and a comma), matching dart-sass
+    /// formatted exception layout.
     private static String extractErrorMessage(String expectedError) {
-        for (String line : normalizeLineEndings(expectedError).split("\n", -1)) {
-            if (line.startsWith("Error: ")) {
-                return line.substring("Error: ".length());
+        String[] lines = normalizeLineEndings(expectedError).split("\n", -1);
+        for (var index = 0; index < lines.length; index++) {
+            if (!lines[index].startsWith("Error: ")) {
+                continue;
             }
+            var message = new StringBuilder(lines[index].substring("Error: ".length()));
+            for (var next = index + 1; next < lines.length; next++) {
+                var line = lines[next];
+                // Span dumps begin with "  ," (legacy) or "  ,-->" / box-drawing markers.
+                if (line.startsWith("  ,")
+                        || line.startsWith("  ┌")
+                        || line.startsWith("  ╷")
+                        || line.startsWith("  ╔")) {
+                    break;
+                }
+                message.append('\n').append(line);
+            }
+            return message.toString().stripTrailing();
         }
         throw new IllegalArgumentException("sass-spec error expectations must contain an 'Error: ' line.");
     }
 
-    /// Normalizes only transport-level CSS line-ending differences and one terminal LF.
+    /// Normalizes transport-level line endings and trailing blank lines.
+    ///
+    /// Upstream sass-spec {@code output.css} files commonly end with one or more
+    /// blank lines; the compiler emits a single stylesheet without a trailing
+    /// blank line. Only trailing whitespace is discarded so interior formatting
+    /// remains part of the assertion.
     ///
     /// @param css the CSS text to normalize
-    /// @return CSS with normalized line terminators
+    /// @return CSS with normalized line terminators and no trailing blank lines
     private static String normalizeCss(String css) {
         String normalized = normalizeLineEndings(css);
-        return normalized.endsWith("\n") ? normalized.substring(0, normalized.length() - 1) : normalized;
+        int end = normalized.length();
+        while (end > 0) {
+            char ch = normalized.charAt(end - 1);
+            if (ch == '\n' || ch == ' ' || ch == '\t') {
+                end--;
+                continue;
+            }
+            break;
+        }
+        return normalized.substring(0, end);
     }
 
     /// Converts CRLF and CR line separators to LF without changing other whitespace.

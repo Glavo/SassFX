@@ -1,0 +1,8 @@
+<===> 112_test_selector_interpolation_at_id_begininng/input.scss
+$zzz: zzz;
+##{$zzz} { a: b; }
+
+<===> 112_test_selector_interpolation_at_id_begininng/output.css
+#zzz {
+  a: b;
+}

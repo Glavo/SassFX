@@ -1,0 +1,16 @@
+<===> debug/input.scss
+@use "sass:string";
+@debug "\"foo\"" + "";
+@debug "" + "\"foo\"";
+@debug "" + "\"foo";
+@debug "\"foo\"" + "bar";
+@debug string.unquote("\"foo\" and \"bar\"");
+
+<===> debug/output.css
+
+<===> debug/warning
+input.scss:2 DEBUG: "foo"
+input.scss:3 DEBUG: "foo"
+input.scss:4 DEBUG: "foo
+input.scss:5 DEBUG: "foo"bar
+input.scss:6 DEBUG: "foo" and "bar"

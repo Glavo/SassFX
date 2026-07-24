@@ -1,0 +1,9 @@
+<===> multiple/input.scss
+@function test($param...,$rest...) {}
+<===> multiple/error
+Error: expected ")".
+  ,
+1 | @function test($param...,$rest...) {}
+  |                          ^
+  '
+  input.scss 1:26  root stylesheet

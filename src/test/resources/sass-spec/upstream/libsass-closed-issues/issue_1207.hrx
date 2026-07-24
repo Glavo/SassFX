@@ -1,0 +1,15 @@
+<===> issue_1207/input.scss
+@use "sass:string";
+@function test($pos) {
+  @return test-#{$pos};
+}
+
+.foo {
+  content: test(string.slice('scale-0', 7));   // Nope
+  content: test-#{string.slice('scale-0', 7)}; // Yep
+}
+<===> issue_1207/output.css
+.foo {
+  content: test-0;
+  content: test-0;
+}

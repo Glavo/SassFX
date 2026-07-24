@@ -1,0 +1,8 @@
+<===> mix/input.scss
+@use "sass:color";
+a {b: color.mix(#abcdef, #daddee)}
+
+<===> mix/output.css
+a {
+  b: rgb(194.5, 213, 238.5);
+}

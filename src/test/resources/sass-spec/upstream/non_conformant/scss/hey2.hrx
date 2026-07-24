@@ -1,0 +1,7 @@
+<===> hey2/input.scss
+div { color: red; }
+
+<===> hey2/output.css
+div {
+  color: red;
+}

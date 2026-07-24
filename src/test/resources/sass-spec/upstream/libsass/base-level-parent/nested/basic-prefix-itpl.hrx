@@ -1,0 +1,13 @@
+<===> basic-prefix-itpl/input.scss
+test {
+  pre#{&} {
+    foo {
+      bar: baz;
+    }
+  }
+}
+
+<===> basic-prefix-itpl/output.css
+test pretest foo {
+  bar: baz;
+}

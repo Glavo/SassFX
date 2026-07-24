@@ -1,0 +1,34 @@
+<===> issue_2009/input.scss
+@mixin breakpoint() {
+  @media (min-width: 200px) {
+    @content;
+  }
+}
+
+@mixin foo() {
+  @include breakpoint {
+    @extend %reveal-centered;
+  }
+}
+
+
+foo {
+  @include breakpoint {
+    %reveal-centered {
+      left: auto;
+      right: auto;
+      margin: 0 auto;
+    }
+  }
+
+  @include foo;
+}
+
+<===> issue_2009/output.css
+@media (min-width: 200px) {
+  foo foo {
+    left: auto;
+    right: auto;
+    margin: 0 auto;
+  }
+}

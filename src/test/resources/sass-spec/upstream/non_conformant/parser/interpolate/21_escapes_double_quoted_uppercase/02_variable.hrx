@@ -1,0 +1,21 @@
+<===> 02_variable/input.scss
+$input: "\B\C\D\E\F\G\H\I\J\K\L\M\N\O\P\Q\R\S\T\U\V\W\X\Y\Z";
+.result {
+  output: $input;
+  output: #{$input};
+  output: "[#{$input}]";
+  output: "#{$input}";
+  output: '#{$input}';
+  output: "['#{$input}']";
+}
+
+<===> 02_variable/output.css
+.result {
+  output: "\b\c\d\e\fGHIJKLMNOPQRSTUVWXYZ";
+  output: 
+GHIJKLMNOPQRSTUVWXYZ;
+  output: "[\b\c\d\e\fGHIJKLMNOPQRSTUVWXYZ]";
+  output: "\b\c\d\e\fGHIJKLMNOPQRSTUVWXYZ";
+  output: "\b\c\d\e\fGHIJKLMNOPQRSTUVWXYZ";
+  output: "['\b\c\d\e\fGHIJKLMNOPQRSTUVWXYZ']";
+}

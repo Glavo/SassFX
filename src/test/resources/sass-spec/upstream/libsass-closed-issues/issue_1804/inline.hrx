@@ -1,0 +1,9 @@
+<===> inline/input.scss
+foo {
+  bar: #{(2px*5in)};
+}
+
+<===> inline/output.css
+foo {
+  bar: calc(10px * 1in);
+}

@@ -1,0 +1,23 @@
+<===> issue_763/input.scss
+@use "sass:string";
+foo {
+  a: string.slice("abcd", 1, 1);
+  b: string.slice('abcd', 1, 1);
+  c: string.slice(abcd, 1, 1);
+
+  d: string.insert("abcd", "X", 1);
+  e: string.insert("abcd", 'X', 1);
+  f: string.insert('abcd', "X", 1);
+  g: string.insert('abcd', 'X', 1);
+}
+
+<===> issue_763/output.css
+foo {
+  a: "a";
+  b: "a";
+  c: a;
+  d: "Xabcd";
+  e: "Xabcd";
+  f: "Xabcd";
+  g: "Xabcd";
+}

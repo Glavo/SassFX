@@ -1,0 +1,8 @@
+<===> named/input.scss
+@use "sass:color";
+a {b: color.channel($color: pink, $channel: "hue", $space: hsl)}
+
+<===> named/output.css
+a {
+  b: 349.5238095238deg;
+}

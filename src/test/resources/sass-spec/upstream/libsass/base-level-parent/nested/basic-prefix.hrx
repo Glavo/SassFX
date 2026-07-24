@@ -1,0 +1,15 @@
+<===> basic-prefix/input.scss
+test {
+  pre& {
+    foo {
+      bar: baz;
+    }
+  }
+}
+<===> basic-prefix/error
+Error: "&" may only used at the beginning of a compound selector.
+  ,
+2 |   pre& {
+  |      ^
+  '
+  input.scss 2:6  root stylesheet

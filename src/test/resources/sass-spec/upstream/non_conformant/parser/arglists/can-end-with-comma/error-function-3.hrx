@@ -1,0 +1,12 @@
+<===> error-function-3/input.scss
+// incorectly terminated
+@function missing-paren-error($a,$b, {
+}
+
+<===> error-function-3/error
+Error: expected ")".
+  ,
+2 | @function missing-paren-error($a,$b, {
+  |                                      ^
+  '
+  input.scss 2:38  root stylesheet

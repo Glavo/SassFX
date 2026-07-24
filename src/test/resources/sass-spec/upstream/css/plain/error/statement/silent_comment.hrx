@@ -1,0 +1,14 @@
+<===> silent_comment/input.scss
+@use 'plain'
+
+<===> silent_comment/plain.css
+// silent
+
+<===> silent_comment/error
+Error: Silent comments aren't allowed in plain CSS.
+  ,
+1 | // silent
+  | ^^^^^^^^^
+  '
+  plain.css 1:1   @use
+  input.scss 1:1  root stylesheet

@@ -1,0 +1,14 @@
+<===> property/input.scss
+a {
+  b: {
+    @error "error";
+    foo: bar;
+  }
+}
+<===> property/error
+Error: "error"
+  ,
+3 |     @error "error";
+  |     ^^^^^^^^^^^^^^
+  '
+  input.scss 3:5  root stylesheet

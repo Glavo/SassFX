@@ -1,0 +1,12 @@
+<===> extend/input.scss
+foo {
+  @extend &;
+}
+
+<===> extend/error
+Error: Parent selectors aren't allowed here.
+  ,
+2 |   @extend &;
+  |           ^
+  '
+  input.scss 2:11  root stylesheet

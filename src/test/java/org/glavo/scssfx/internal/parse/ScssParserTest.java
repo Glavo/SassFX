@@ -431,7 +431,7 @@ final class ScssParserTest {
     /// Verifies committed variable-declaration failures and their exact source ranges.
     @Test
     void rejectsMalformedVariableDeclarations() {
-        assertParseError("$value 1;", "Expected \":\".", 7, 8, "1");
+        assertParseError("$value 1;", "expected \":\".", 7, 8, "1");
         assertParseError("$value:;", "Expected expression.", 7, 8, ";");
         assertParseError(
                 "$value: 1 !unknown;",
@@ -470,7 +470,7 @@ final class ScssParserTest {
         );
         assertParseError(
                 "theme.$value {}",
-                "Expected \":\".",
+                "expected \":\".",
                 13,
                 14,
                 "{"

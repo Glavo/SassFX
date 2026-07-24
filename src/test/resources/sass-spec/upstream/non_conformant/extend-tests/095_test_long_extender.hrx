@@ -1,0 +1,8 @@
+<===> 095_test_long_extender/input.scss
+.foo.bar {a: b}
+.baz.bang {@extend .foo}
+
+<===> 095_test_long_extender/output.css
+.foo.bar, .bar.baz.bang {
+  a: b;
+}

@@ -1,0 +1,12 @@
+<===> 085_test_function_var_args_act_like_list/input.scss
+@use "sass:list";
+@function foo($a, $b...) {
+  @return "a: #{list.length($b)}, b: #{list.nth($b, 2)}";
+}
+
+.foo {val: foo(1, 2, 3, 4)}
+
+<===> 085_test_function_var_args_act_like_list/output.css
+.foo {
+  val: "a: 3, b: 3";
+}

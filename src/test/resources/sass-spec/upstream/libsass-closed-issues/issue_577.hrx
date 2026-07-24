@@ -1,0 +1,22 @@
+<===> issue_577/input.scss
+@use "sass:list";
+@function map-each($map) {
+  $values: ();
+
+  @each $key, $value in $map {
+    $values: list.append($values, $value);
+  }
+
+  @return $values;
+}
+
+$map: (foo: bar);
+
+.test {
+  -map-test: map-each($map);
+}
+
+<===> issue_577/output.css
+.test {
+  -map-test: bar;
+}

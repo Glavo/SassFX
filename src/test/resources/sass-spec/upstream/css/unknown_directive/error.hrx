@@ -1,0 +1,85 @@
+<===> space_after_at/input.scss
+// No whitespace is allowed between the @ and the rule name.
+@ unknown;
+
+<===> space_after_at/error
+Error: Expected identifier.
+  ,
+2 | @ unknown;
+  |  ^
+  '
+  input.scss 2:2  root stylesheet
+
+<===> in_declaration/input.scss
+// Unknown at-rules aren't allowed in property declarations.
+.x {
+  y: {
+    @asdf;
+  }
+}
+
+<===> in_declaration/error
+Error: This at-rule is not allowed here.
+  ,
+4 |     @asdf;
+  |     ^^^^^
+  '
+  input.scss 4:5  root stylesheet
+
+<===> in_function/input.scss
+// Unknown at-rules aren't allowed in functions.
+@function foo() {
+  @asdf;
+  @return null;
+}
+
+<===> in_function/error
+Error: This at-rule is not allowed here.
+  ,
+3 |   @asdf;
+  |   ^^^^^
+  '
+  input.scss 3:3  root stylesheet
+
+<===> interpolation/space_after_at/input.scss
+// No whitespace is allowed between the @ and the rule name.
+@ #{"unknown"};
+
+<===> interpolation/space_after_at/error
+Error: Expected identifier.
+  ,
+2 | @ #{"unknown"};
+  |  ^
+  '
+  input.scss 2:2  root stylesheet
+
+<===> interpolation/in_declaration/input.scss
+// Unknown at-rules aren't allowed in property declarations.
+.x {
+  y: {
+    @#{"asdf"};
+  }
+}
+
+<===> interpolation/in_declaration/error
+Error: Expected identifier.
+  ,
+4 |     @#{"asdf"};
+  |      ^
+  '
+  input.scss 4:6  root stylesheet
+
+<===> interpolation/in_function/input.scss
+// Unknown at-rules aren't allowed in functions.
+@function foo() {
+  @#{"asdf"};
+  @return null;
+}
+
+<===> interpolation/in_function/error
+Error: Expected identifier.
+  ,
+3 |   @#{"asdf"};
+  |    ^
+  '
+  input.scss 3:4  root stylesheet

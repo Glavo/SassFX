@@ -1,0 +1,15 @@
+<===> inline/input.scss
+a {
+  b: {
+    @debug test;
+    c: d;
+  }
+}
+
+<===> inline/output.css
+a {
+  b-c: d;
+}
+
+<===> inline/warning
+spec/libsass/debug-directive-nested/inline-dart-sass/input.scss:3 DEBUG: test

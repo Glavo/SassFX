@@ -1,0 +1,21 @@
+<===> function_function/input.scss
+@function parent() {
+  @function nested() {
+    @return foo;
+  }
+
+  @return nested();
+}
+
+
+test {
+  foo: parent();
+}
+
+<===> function_function/error
+Error: This at-rule is not allowed here.
+  ,
+2 |   @function nested() {
+  |   ^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:3  root stylesheet

@@ -1,0 +1,22 @@
+<===> without_semicolon/input.scss
+.simple-value {
+  // A custom property at the end of a style rule doesn't need a semicolon.
+  --without-semicolon: value
+}
+
+.bracketed-value {
+  --without-semicolon: {
+    a: b
+  }
+}
+
+<===> without_semicolon/output.css
+.simple-value {
+  --without-semicolon: value ;
+}
+
+.bracketed-value {
+  --without-semicolon: {
+    a: b
+  } ;
+}

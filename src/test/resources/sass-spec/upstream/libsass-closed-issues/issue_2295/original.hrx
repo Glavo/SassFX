@@ -1,0 +1,39 @@
+<===> original/input.scss
+$include-foo: true !default;
+.my-scope {
+  .bar {  display: none; }
+  @if ($include-foo) {
+    .foo { display: none; }
+  }
+  @import 'input-bug';
+}
+<===> original/_input-bug.scss
+$include-foo: true !default;
+.bar { display: none; }
+@if ($include-foo) {
+  .foo { display: none; }
+}
+<===> original/output.css
+.my-scope .bar {
+  display: none;
+}
+.my-scope .foo {
+  display: none;
+}
+.my-scope .bar {
+  display: none;
+}
+.my-scope .foo {
+  display: none;
+}
+
+<===> original/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+7 |   @import 'input-bug';
+  |           ^^^^^^^^^^^
+  '
+    input.scss 7:11  root stylesheet

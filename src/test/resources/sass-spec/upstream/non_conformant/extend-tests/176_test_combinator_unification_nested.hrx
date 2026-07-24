@@ -1,0 +1,8 @@
+<===> 176_test_combinator_unification_nested/input.scss
+.a > .b + x {a: b}
+.c > .d + y {@extend x}
+
+<===> 176_test_combinator_unification_nested/output.css
+.a > .b + x, .a.c > .b.d + y {
+  a: b;
+}

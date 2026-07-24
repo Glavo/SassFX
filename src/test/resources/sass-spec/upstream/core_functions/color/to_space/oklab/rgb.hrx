@@ -1,0 +1,98 @@
+<===> black/input.scss
+@use "sass:color";
+a {b: color.to-space(oklab(0% 0 0), rgb)}
+
+<===> black/output.css
+a {
+  b: black;
+}
+
+<===> white/input.scss
+@use "sass:color";
+a {b: color.to-space(oklab(100% 0 0), rgb)}
+
+<===> white/output.css
+a {
+  b: white;
+}
+
+<===> gray/input.scss
+@use "sass:color";
+a {b: color.to-space(oklab(50% 0 0), rgb)}
+
+<===> gray/output.css
+a {
+  b: rgb(99.0860790568, 99.0860790568, 99.0860790568);
+}
+
+<===> middle/input.scss
+@use "sass:color";
+a {b: color.to-space(oklab(50% 0.2 -0.3), rgb)}
+
+<===> middle/output.css
+a {
+  b: hsl(280.3037190117, 185.1123146142%, 35.6118905914%);
+}
+
+<===> out_of_range/near/input.scss
+@use "sass:color";
+a {b: color.to-space(color.change(oklab(0% -2 2), $lightness: -50%), rgb)}
+
+<===> out_of_range/near/output.css
+a {
+  b: hsl(280.1786400518, 318.2272010349%, -118.1342753197%);
+}
+
+<===> out_of_range/far/input.scss
+@use "sass:color";
+a {b: color.to-space(oklab(50% -999999 0), rgb)}
+
+<===> out_of_range/far/output.css
+a {
+  b: hsl(340.1123874029, 426.4426843996%, -360093996.6269261%);
+}
+
+<===> alpha/partial/input.scss
+@use "sass:color";
+a {b: color.to-space(oklab(10% 0.2 0.3 / 0.4), rgb)}
+
+<===> alpha/partial/output.css
+a {
+  b: hsla(19.0047477469, 6337.718112733%, 0.3924703093%, 0.4);
+}
+
+<===> alpha/transparent/input.scss
+@use "sass:color";
+a {b: color.to-space(oklab(10% 0.2 0.3 / 0.0), rgb)}
+
+<===> alpha/transparent/output.css
+a {
+  b: hsla(19.0047477469, 6337.718112733%, 0.3924703093%, 0);
+}
+
+<===> missing/lightness/input.scss
+@use "sass:color";
+a {b: color.to-space(oklab(none 0.2 0.3), rgb)}
+
+<===> missing/lightness/output.css
+a {
+  b: hsl(261.4365776935, 230.0242829233%, -11.2533873127%);
+}
+
+<===> missing/a/input.scss
+@use "sass:color";
+a {b: color.to-space(oklab(10% none 0.3), rgb)}
+
+<===> missing/a/output.css
+a {
+  b: hsl(229.544295526, 280.5312491892%, -5.8764824076%);
+}
+
+<===> missing/b/input.scss
+@use "sass:color";
+a {b: color.to-space(oklab(10% 0.2 none), rgb)}
+
+<===> missing/b/output.css
+a {
+  b: hsl(339.4567051743, 263.6331125505%, 4.4011033198%);
+}

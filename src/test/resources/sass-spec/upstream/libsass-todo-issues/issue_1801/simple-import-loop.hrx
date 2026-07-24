@@ -1,0 +1,39 @@
+<===> simple-import-loop/input.scss
+@import 'susy';
+
+<===> simple-import-loop/_susy.scss
+@import 'susy';
+
+<===> simple-import-loop/error
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import 'susy';
+  |         ^^^^^^
+  '
+    input.scss 1:9  root stylesheet
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import 'susy';
+  |         ^^^^^^
+  '
+    _susy.scss 1:9  @import
+    input.scss 1:9  root stylesheet
+
+Error: This file is already being loaded.
+  ,--> _susy.scss
+1 | @import 'susy';
+  |         ^^^^^^ new load
+  '
+  ,--> input.scss
+1 | @import 'susy';
+  |         ====== original load
+  '
+  _susy.scss 1:9  @import
+  input.scss 1:9  root stylesheet

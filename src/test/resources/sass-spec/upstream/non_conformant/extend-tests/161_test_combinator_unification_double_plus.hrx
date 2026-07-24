@@ -1,0 +1,8 @@
+<===> 161_test_combinator_unification_double_plus/input.scss
+.a + x {a: b}
+.a.b + y {@extend x}
+
+<===> 161_test_combinator_unification_double_plus/output.css
+.a + x, .a.b + y {
+  a: b;
+}

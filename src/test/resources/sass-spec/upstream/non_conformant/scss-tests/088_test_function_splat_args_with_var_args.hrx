@@ -1,0 +1,12 @@
+<===> 088_test_function_splat_args_with_var_args/input.scss
+@function foo($a, $b...) {
+  @return "a: #{$a}, b: #{$b}";
+}
+
+$list: 2, 3, 4;
+.foo {val: foo(1, $list...)}
+
+<===> 088_test_function_splat_args_with_var_args/output.css
+.foo {
+  val: "a: 1, b: 2, 3, 4";
+}

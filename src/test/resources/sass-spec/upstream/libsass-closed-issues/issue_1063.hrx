@@ -1,0 +1,14 @@
+<===> issue_1063/input.scss
+%foo {
+  & > x { display: block; }
+}
+
+a {
+  > b { @extend %foo; }
+  > b > c { @extend %foo; }
+}
+
+<===> issue_1063/output.css
+a > b > c > x, a > b > x {
+  display: block;
+}

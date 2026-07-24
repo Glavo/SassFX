@@ -1,0 +1,20 @@
+<===> 02_variable/input.scss
+$input: "["',foo   ,   '"]"    "bar";
+.result {
+  output: $input;
+  output: #{$input};
+  output: "[#{$input}]";
+  output: "#{$input}";
+  output: '#{$input}';
+  output: "['#{$input}']";
+}
+
+<===> 02_variable/output.css
+.result {
+  output: "[" ",foo   ,   " "]" "bar";
+  output: [ ,foo   ,    ] bar;
+  output: "[[ ,foo   ,    ] bar]";
+  output: "[ ,foo   ,    ] bar";
+  output: "[ ,foo   ,    ] bar";
+  output: "['[ ,foo   ,    ] bar']";
+}

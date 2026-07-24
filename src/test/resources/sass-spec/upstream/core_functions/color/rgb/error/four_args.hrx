@@ -1,0 +1,51 @@
+<===> red/type/input.scss
+a {
+  b: rgb("foo", 0, 0, 0.5);
+}
+
+<===> red/type/error
+Error: $red: "foo" is not a number.
+  ,
+2 |   b: rgb("foo", 0, 0, 0.5);
+  |      ^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> green/type/input.scss
+a {
+  b: rgb(0, "foo", 0, 0.5);
+}
+
+<===> green/type/error
+Error: $green: "foo" is not a number.
+  ,
+2 |   b: rgb(0, "foo", 0, 0.5);
+  |      ^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> blue/type/input.scss
+a {
+  b: rgb(0, 0, "foo", 0.5);
+}
+
+<===> blue/type/error
+Error: $blue: "foo" is not a number.
+  ,
+2 |   b: rgb(0, 0, "foo", 0.5);
+  |      ^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> alpha/unit/input.scss
+a {
+  b: rgb(0, 0, 0, 0.5px);
+}
+
+<===> alpha/unit/error
+Error: $alpha: Expected 0.5px to have unit "%" or no units.
+  ,
+2 |   b: rgb(0, 0, 0, 0.5px);
+  |      ^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:6  root stylesheet

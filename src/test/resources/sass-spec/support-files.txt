@@ -1,0 +1,5 @@
+# Plain SCSS support files shipped alongside upstream HRX archives.
+# Paths are relative to the sass-spec resource root.
+upstream/core_functions/color/_utils.scss
+upstream/core_functions/list/_utils.scss
+upstream/core_functions/color/hwb/three_args/w3c/_test-hue.scss

@@ -1,0 +1,8 @@
+<===> positional/input.scss
+@use "sass:color";
+a {b: color.to-gamut(pink, rgb, local-minde)}
+
+<===> positional/output.css
+a {
+  b: pink;
+}

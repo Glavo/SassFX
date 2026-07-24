@@ -1,0 +1,8 @@
+<===> issue_2095/input.scss
+@media all {
+  @mixin foo() {}
+}
+
+<===> issue_2095/expected_output.scss
+
+<===> issue_2095/output.css

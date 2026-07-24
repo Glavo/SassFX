@@ -1,0 +1,15 @@
+<===> issue_1322/input.scss
+$foo: 400px;
+$bar: "min-width:400px";
+@import url(foo.css) (min-width:400px);
+@import url(foo.css) (min-width:$foo);
+@import url(foo.css) (min-width:#{$foo});
+@import url(foo.css) ($bar);
+@import url(foo.css) (#{$bar});
+
+<===> issue_1322/output.css
+@import url(foo.css) (min-width: 400px);
+@import url(foo.css) (min-width: 400px);
+@import url(foo.css) (min-width: 400px);
+@import url(foo.css) (min-width:400px);
+@import url(foo.css) (min-width:400px);

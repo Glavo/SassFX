@@ -1,0 +1,197 @@
+<===> empty/input.scss
+a {b: calc()}
+
+<===> empty/error
+Error: Missing argument.
+  ,
+1 | a {b: calc()}
+  |       ^^^^^^
+  '
+  input.scss 1:7  root stylesheet
+
+<===> leading_operator/input.scss
+a {b: calc(+ 1px)}
+
+<===> leading_operator/error
+Error: This expression can't be used in a calculation.
+  ,
+1 | a {b: calc(+ 1px)}
+  |            ^^^^^
+  '
+  input.scss 1:12  root stylesheet
+
+<===> trailing_operator/input.scss
+a {b: calc(1px *)}
+
+<===> trailing_operator/error
+Error: Expected expression.
+  ,
+1 | a {b: calc(1px *)}
+  |                 ^
+  '
+  input.scss 1:17  root stylesheet
+
+<===> double_operator/input.scss
+a {b: calc(1px ** 2px)}
+
+<===> double_operator/error
+Error: Expected expression.
+  ,
+1 | a {b: calc(1px ** 2px)}
+  |                 ^
+  '
+  input.scss 1:17  root stylesheet
+
+<===> multiple_args/input.scss
+a {b: calc(1px, 2px)}
+
+<===> multiple_args/error
+Error: Only 1 argument allowed, but 2 were passed.
+  ,
+1 | a {b: calc(1px, 2px)}
+  |       ^^^^^^^^^^^^^^
+  '
+  input.scss 1:7  root stylesheet
+
+<===> unknown_operator/input.scss
+a {b: calc(1px % 2px)}
+
+<===> unknown_operator/error
+Error: This operation can't be used in a calculation.
+  ,
+1 | a {b: calc(1px % 2px)}
+  |                ^
+  '
+  input.scss 1:16  root stylesheet
+
+<===> hash/input.scss
+a {b: calc(#)}
+
+<===> hash/error
+Error: Expected identifier.
+  ,
+1 | a {b: calc(#)}
+  |             ^
+  '
+  input.scss 1:13  root stylesheet
+
+<===> dollar/input.scss
+a {b: calc($)}
+
+<===> dollar/error
+Error: Expected identifier.
+  ,
+1 | a {b: calc($)}
+  |             ^
+  '
+  input.scss 1:13  root stylesheet
+
+<===> interpolation/in_function_arg/input.scss
+a {b: calc(c(~#{d}))}
+
+<===> interpolation/in_function_arg/error
+Error: expected ")".
+  ,
+1 | a {b: calc(c(~#{d}))}
+  |              ^
+  '
+  input.scss 1:14  root stylesheet
+
+<===> interpolation/line_noise/input.scss
+// Interpolation no longer shifts the parser into a special mode where it allows
+// any interpolated declaration value.
+a {b: calc(!{@}#$%^&*#{c}_-[+]=)}
+
+<===> interpolation/line_noise/error
+Error: expected ")".
+  ,
+3 | a {b: calc(!{@}#$%^&*#{c}_-[+]=)}
+  |            ^
+  '
+  input.scss 3:12  root stylesheet
+
+<===> no_whitespace/plus/before/input.scss
+a {b: calc(1+ 1)}
+
+<===> no_whitespace/plus/before/error
+Error: "+" and "-" must be surrounded by whitespace in calculations.
+  ,
+1 | a {b: calc(1+ 1)}
+  |             ^
+  '
+  input.scss 1:13  root stylesheet
+
+<===> no_whitespace/plus/after/input.scss
+a {b: calc(1 +1)}
+
+<===> no_whitespace/plus/after/error
+DEPRECATION WARNING [strict-unary]: This operation is parsed as:
+
+    1 + 1
+
+but you may have intended it to mean:
+
+    1 (+1)
+
+Add a space after + to clarify that it's meant to be a binary operation, or wrap
+it in parentheses to make it a unary operation. This will be an error in future
+versions of Sass.
+
+More info and automated migrator: https://sass-lang.com/d/strict-unary
+
+  ,
+1 | a {b: calc(1 +1)}
+  |            ^^^^
+  '
+    input.scss 1:12  root stylesheet
+
+Error: "+" and "-" must be surrounded by whitespace in calculations.
+  ,
+1 | a {b: calc(1 +1)}
+  |              ^
+  '
+  input.scss 1:14  root stylesheet
+
+<===> no_whitespace/plus/both/input.scss
+a {b: calc(1+1)}
+
+<===> no_whitespace/plus/both/error
+Error: "+" and "-" must be surrounded by whitespace in calculations.
+  ,
+1 | a {b: calc(1+1)}
+  |             ^
+  '
+  input.scss 1:13  root stylesheet
+
+<===> no_whitespace/minus/before/input.scss
+a {b: calc(1- 1)}
+
+<===> no_whitespace/minus/before/error
+Error: "+" and "-" must be surrounded by whitespace in calculations.
+  ,
+1 | a {b: calc(1- 1)}
+  |             ^
+  '
+  input.scss 1:13  root stylesheet
+
+<===> no_whitespace/minus/after/input.scss
+a {b: calc(1 -1)}
+
+<===> no_whitespace/minus/after/error
+Error: "+" and "-" must be surrounded by whitespace in calculations.
+  ,
+1 | a {b: calc(1 -1)}
+  |              ^
+  '
+  input.scss 1:14  root stylesheet
+
+<===> no_whitespace/minus/both/input.scss
+a {b: calc(1-1)}
+
+<===> no_whitespace/minus/both/error
+Error: "+" and "-" must be surrounded by whitespace in calculations.
+  ,
+1 | a {b: calc(1-1)}
+  |             ^
+  '
+  input.scss 1:13  root stylesheet

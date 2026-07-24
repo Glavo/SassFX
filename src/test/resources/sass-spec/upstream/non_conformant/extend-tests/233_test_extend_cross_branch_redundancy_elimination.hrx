@@ -1,0 +1,9 @@
+<===> 233_test_extend_cross_branch_redundancy_elimination/input.scss
+%x .c %y {a: b}
+.a, .b {@extend %x}
+.a .d {@extend %y}
+
+<===> 233_test_extend_cross_branch_redundancy_elimination/output.css
+.a .c .d, .b .c .a .d {
+  a: b;
+}

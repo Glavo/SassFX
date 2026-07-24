@@ -1,0 +1,10 @@
+<===> unquoted/input.scss
+@use "sass:string";
+foo {
+  foo: string.to-upper-case(ab\63 d);
+}
+
+<===> unquoted/output.css
+foo {
+  foo: ABCD;
+}

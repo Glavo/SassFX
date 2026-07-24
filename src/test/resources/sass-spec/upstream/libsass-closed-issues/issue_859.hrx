@@ -1,0 +1,21 @@
+<===> issue_859/input.scss
+@media screen {
+  .two {
+    @at-root .one {
+      background: blue;
+      .three {
+        color: red;
+      }
+    }
+  }
+}
+
+<===> issue_859/output.css
+@media screen {
+  .one {
+    background: blue;
+  }
+  .one .three {
+    color: red;
+  }
+}

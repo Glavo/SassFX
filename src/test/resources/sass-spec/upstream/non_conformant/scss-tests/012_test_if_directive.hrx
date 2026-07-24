@@ -1,0 +1,9 @@
+<===> 012_test_if_directive/input.scss
+@if "foo" != "foo" {foo {a: b}}
+@else if "foo" == "foo" {bar {a: b}}
+@else if true {baz {a: b}}
+
+<===> 012_test_if_directive/output.css
+bar {
+  a: b;
+}

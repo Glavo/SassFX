@@ -1,0 +1,13 @@
+<===> 206_test_extend_succeeds_when_one_extension_fails_but_others_dont/input.scss
+a.bar {a: b}
+.bar {c: d}
+b.foo {@extend .bar}
+
+<===> 206_test_extend_succeeds_when_one_extension_fails_but_others_dont/output.css
+a.bar {
+  a: b;
+}
+
+.bar, b.foo {
+  c: d;
+}

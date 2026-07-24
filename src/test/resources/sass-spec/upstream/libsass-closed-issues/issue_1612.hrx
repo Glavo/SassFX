@@ -1,0 +1,11 @@
+<===> issue_1612/input.scss
+c {
+  b: "foo", bar;
+  b: "foo", bar
+}
+
+<===> issue_1612/output.css
+c {
+  b: "foo", bar;
+  b: "foo", bar;
+}

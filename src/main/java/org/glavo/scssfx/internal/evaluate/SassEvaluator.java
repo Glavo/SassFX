@@ -30,6 +30,8 @@ import org.glavo.scssfx.internal.ast.IfRule;
 import org.glavo.scssfx.internal.ast.IncludeRule;
 import org.glavo.scssfx.internal.ast.InterpolatedFunctionExpression;
 import org.glavo.scssfx.internal.ast.Interpolation;
+import org.glavo.scssfx.internal.ast.IfConditionExpression;
+import org.glavo.scssfx.internal.ast.IfExpression;
 import org.glavo.scssfx.internal.ast.LegacyIfExpression;
 import org.glavo.scssfx.internal.ast.ImportRule;
 import org.glavo.scssfx.internal.ast.ListExpression;
@@ -95,9 +97,11 @@ import org.glavo.scssfx.internal.css.CssParentNode;
 import org.glavo.scssfx.internal.css.CssStyleRule;
 import org.glavo.scssfx.internal.css.CssStylesheet;
 import org.glavo.scssfx.internal.css.CssValue;
+import org.glavo.scssfx.internal.value.CalculationOperator;
 import org.glavo.scssfx.internal.value.ListSeparator;
 import org.glavo.scssfx.internal.value.SassArgumentList;
 import org.glavo.scssfx.internal.value.SassBoolean;
+import org.glavo.scssfx.internal.value.SassCalculation;
 import org.glavo.scssfx.internal.value.SassFunction;
 import org.glavo.scssfx.internal.value.SassMixin;
 import org.glavo.scssfx.internal.value.SassList;
@@ -152,9 +156,20 @@ public final class SassEvaluator implements
             "opacity", "rgb", "rgba", "round", "saturate"
     );
 
-    /// Contains calculation functions whose argument grammar is preserved verbatim.
+    /// Contains calculation functions whose argument grammar is preserved verbatim in plain CSS.
     private static final @Unmodifiable Set<String> PLAIN_CSS_CALCULATION_FUNCTIONS = Set.of(
             "abs", "calc", "clamp", "max", "min", "round"
+    );
+
+    /// CSS calculation names that always use calculation evaluation in Sass.
+    private static final @Unmodifiable Set<String> CALCULATION_FUNCTIONS = Set.of(
+            "calc", "clamp", "hypot", "sin", "cos", "tan", "asin", "acos", "atan",
+            "sqrt", "exp", "sign", "mod", "rem", "atan2", "pow", "log", "calc-size"
+    );
+
+    /// Global functions that become CSS calculations when every argument is calculation-safe.
+    private static final @Unmodifiable Set<String> LEGACY_CALCULATION_FUNCTIONS = Set.of(
+            "min", "max", "round", "abs"
     );
 
     /// Identifies function references created during this compilation.
@@ -207,6 +222,12 @@ public final class SassEvaluator implements
 
     /// Records whether a stylesheet execution is active.
     private boolean stylesheetActive;
+
+    /// Records whether evaluation is producing a {@code @supports} condition value.
+    ///
+    /// Calculations are left unsimplified in that context so CSS sees the original
+    /// function form.
+    private boolean inSupportsDeclaration;
 
     /// Contains the number of active style-rule ancestors.
     private int styleRuleDepth;
@@ -1954,18 +1975,22 @@ public final class SassEvaluator implements
                 () -> toNumber.coerce(fromNumber.numeratorUnits(), fromNumber.denominatorUnits())
         );
         var toInt = valueOperation(statement.to().span(), toCoerced::assertInt);
-        var direction = fromInt > toInt ? -1 : 1;
+        // Use long bounds so inclusive endpoints near Integer.MAX_VALUE/MIN_VALUE do not
+        // overflow and turn the loop into an infinite wraparound.
+        long start = fromInt;
+        long stop = toInt;
+        long direction = start > stop ? -1L : 1L;
         if (!statement.exclusive()) {
-            toInt += direction;
+            stop += direction;
         }
-        if (fromInt == toInt) {
+        if (start == stop) {
             return StatementResult.CONTINUE;
         }
 
         var origin = expressionOrigin(statement.from());
-        var end = toInt;
+        long end = stop;
         return inFlowScope(true, () -> {
-            for (var index = fromInt; index != end; index += direction) {
+            for (long index = start; index != end; index += direction) {
                 environment.setLocalVariable(
                         statement.variable(),
                         SassNumber.withUnits(
@@ -2342,6 +2367,19 @@ public final class SassEvaluator implements
             );
         }
 
+        if (expression.namespace() == null) {
+            var lowerName = expression.name().toLowerCase(java.util.Locale.ROOT);
+            if (CALCULATION_FUNCTIONS.contains(lowerName)) {
+                return visitCalculation(expression, null);
+            }
+            if (LEGACY_CALCULATION_FUNCTIONS.contains(lowerName)
+                    && expression.arguments().named().isEmpty()
+                    && expression.arguments().rest() == null
+                    && expression.arguments().positional().stream().allMatch(this::isCalculationSafe)) {
+                return visitCalculation(expression, lowerName);
+            }
+        }
+
         @Nullable Callable callable;
         try {
             callable = environment.getFunction(expression.name(), expression.namespace());
@@ -2401,6 +2439,112 @@ public final class SassEvaluator implements
                 ? arguments.positional().get(1)
                 : arguments.positional().get(2);
         return evaluate(selected);
+    }
+
+    /// Evaluates a modern CSS-style {@code if()} expression.
+    ///
+    /// Fully resolved Sass conditions select a single branch. When any
+    /// condition remains plain CSS, the whole expression serializes as an
+    /// unquoted {@code if(...)} string.
+    ///
+    /// @param expression the CSS if expression
+    /// @return the selected branch value or a plain-CSS if string
+    @Override
+    public SassValue visitIfExpression(IfExpression expression) {
+        @Nullable ArrayList<String[]> cssResults = null;
+        for (var branch : expression.branches()) {
+            Object conditionResult = branch.condition() == null
+                    ? Boolean.TRUE
+                    : evaluateIfCondition(branch.condition());
+            if (conditionResult instanceof String cssCondition) {
+                if (cssResults == null) {
+                    cssResults = new ArrayList<>();
+                }
+                cssResults.add(new String[]{cssCondition, evaluate(branch.value()).toCssString()});
+            } else if (conditionResult instanceof Boolean matched && matched) {
+                if (cssResults != null) {
+                    cssResults.add(new String[]{"else", evaluate(branch.value()).toCssString()});
+                    break;
+                }
+                return evaluate(branch.value());
+            }
+        }
+        if (cssResults == null) {
+            return SassNull.NULL;
+        }
+        var builder = new StringBuilder("if(");
+        for (var index = 0; index < cssResults.size(); index++) {
+            if (index > 0) {
+                builder.append("; ");
+            }
+            builder.append(cssResults.get(index)[0])
+                    .append(": ")
+                    .append(cssResults.get(index)[1]);
+        }
+        return new SassString(builder.append(')').toString(), false);
+    }
+
+    /// Evaluates one CSS {@code if()} condition to a boolean or CSS text.
+    ///
+    /// @param condition the condition to evaluate
+    /// @return {@link Boolean} for resolved Sass results, otherwise CSS text
+    private Object evaluateIfCondition(IfConditionExpression condition) {
+        if (condition instanceof IfConditionExpression.Parenthesized parenthesized) {
+            Object nested = evaluateIfCondition(parenthesized.expression());
+            return nested instanceof String text ? "(" + text + ")" : nested;
+        }
+        if (condition instanceof IfConditionExpression.Negation negation) {
+            Object nested = evaluateIfCondition(negation.expression());
+            if (nested instanceof String text) {
+                return "not " + text;
+            }
+            return !((Boolean) nested);
+        }
+        if (condition instanceof IfConditionExpression.Operation operation) {
+            @Nullable ArrayList<String> cssParts = null;
+            for (var part : operation.expressions()) {
+                Object result = evaluateIfCondition(part);
+                if (result instanceof String text) {
+                    if (cssParts == null) {
+                        cssParts = new ArrayList<>();
+                    }
+                    cssParts.add(text);
+                } else if (result instanceof Boolean bool) {
+                    if (!bool && operation.operator() == IfConditionExpression.BooleanOperator.AND) {
+                        return false;
+                    }
+                    if (bool && operation.operator() == IfConditionExpression.BooleanOperator.OR) {
+                        return true;
+                    }
+                }
+            }
+            if (cssParts == null) {
+                return operation.operator() == IfConditionExpression.BooleanOperator.AND;
+            }
+            if (cssParts.size() == 1
+                    && operation.expressions().stream()
+                    .filter(expression -> evaluateIfCondition(expression) instanceof String)
+                    .findFirst()
+                    .orElse(null) instanceof IfConditionExpression.Parenthesized) {
+                // Drop redundant outer parentheses around a lone CSS group.
+                var single = cssParts.get(0);
+                if (single.length() >= 2 && single.charAt(0) == '(' && single.charAt(single.length() - 1) == ')') {
+                    return single.substring(1, single.length() - 1);
+                }
+            }
+            return String.join(" " + operation.operator().cssName() + " ", cssParts);
+        }
+        if (condition instanceof IfConditionExpression.Function function) {
+            return performInterpolation(function.name())
+                    + "(" + performInterpolation(function.arguments()) + ")";
+        }
+        if (condition instanceof IfConditionExpression.Sass sass) {
+            return evaluate(sass.expression()).isTruthy();
+        }
+        if (condition instanceof IfConditionExpression.Raw raw) {
+            return performInterpolation(raw.text());
+        }
+        throw new AssertionError("unknown if condition: " + condition);
     }
 
     /// Evaluates map entries and rejects duplicate semantic keys.
@@ -2481,11 +2625,15 @@ public final class SassEvaluator implements
 
     /// Returns whether an operand may participate in slash-number presentation.
     ///
+    /// Calculation forms such as {@code calc(infinity)} evaluate to numbers and
+    /// still participate in slash-alpha presentation used by CSS color channels.
+    /// Interpolated function names remain excluded because their results are not
+    /// stable number values at evaluation time.
+    ///
     /// @param expression the unevaluated operand
     /// @return whether slash presentation is permitted
     private static boolean operandAllowsSlash(SassExpression expression) {
-        return !(expression instanceof FunctionExpression)
-                && !(expression instanceof InterpolatedFunctionExpression);
+        return !(expression instanceof InterpolatedFunctionExpression);
     }
 
     /// Evaluates a structured supports condition to canonical CSS text.
@@ -2556,8 +2704,14 @@ public final class SassEvaluator implements
     /// @param expression the expression producing the value
     /// @return the unquoted CSS representation
     private String evaluateSupportsValue(SassExpression expression) {
-        var value = evaluate(expression);
-        return valueOperation(expression.span(), () -> value.toCssString(false));
+        var previous = inSupportsDeclaration;
+        inSupportsDeclaration = true;
+        try {
+            var value = evaluate(expression);
+            return valueOperation(expression.span(), () -> value.toCssString(false));
+        } finally {
+            inSupportsDeclaration = previous;
+        }
     }
 
     /// Evaluates interpolation parts to their unquoted textual representation.
@@ -2774,7 +2928,7 @@ public final class SassEvaluator implements
             }
             return valueOperation(
                     span,
-                    () -> serializePlainCss(plainCss.name(), evaluated.positional())
+                    () -> simplifyOrSerializePlainCss(plainCss.name(), evaluated.positional())
             );
         }
         if (callable instanceof UserDefinedCallable userDefined) {
@@ -3641,6 +3795,344 @@ public final class SassEvaluator implements
     /// @param positional the evaluated arguments
     /// @return an unquoted CSS function string
     /// @throws SassValueException if an argument cannot be represented in CSS
+    /// Evaluates a CSS calculation function with calculation-context arguments.
+    private SassValue visitCalculation(
+            FunctionExpression expression,
+            @Nullable String inLegacySassFunction
+    ) {
+        var arguments = expression.arguments();
+        if (!arguments.named().isEmpty()) {
+            throw new EvaluationException(
+                    "Keyword arguments can't be used with calculations.",
+                    expression.span()
+            );
+        }
+        if (arguments.rest() != null) {
+            throw new EvaluationException(
+                    "Rest arguments can't be used with calculations.",
+                    expression.span()
+            );
+        }
+        try {
+            var calcArgs = new ArrayList<Object>(arguments.positional().size());
+            for (var argument : arguments.positional()) {
+                calcArgs.add(visitCalculationExpression(argument));
+            }
+            var name = expression.name().toLowerCase(java.util.Locale.ROOT);
+            if (inSupportsDeclaration) {
+                return SassCalculation.unsimplified(name, calcArgs);
+            }
+            return simplifyCalculation(name, calcArgs);
+        } catch (SassValueException exception) {
+            throw new EvaluationException(
+                    Objects.requireNonNull(exception.getMessage(), "calculation failure"),
+                    expression.span(),
+                    List.of(),
+                    exception
+            );
+        }
+    }
+
+    /// Evaluates one expression as a calculation argument.
+    private Object visitCalculationExpression(SassExpression expression) {
+        if (expression instanceof ParenthesizedExpression parenthesized) {
+            Object inner = visitCalculationExpression(parenthesized.expression());
+            if (inner instanceof SassString string && !string.hasQuotes()) {
+                return new SassString("(" + string.text() + ")", false);
+            }
+            return inner;
+        }
+        if (expression instanceof StringExpression stringExpression && !stringExpression.hasQuotes()) {
+            @Nullable String plain = stringExpression.text().asPlain();
+            if (plain != null) {
+                return switch (plain.toLowerCase(java.util.Locale.ROOT)) {
+                    case "pi" -> SassNumber.of(Math.PI, null);
+                    case "e" -> SassNumber.of(Math.E, null);
+                    case "infinity", "+infinity" -> SassNumber.of(Double.POSITIVE_INFINITY, null);
+                    case "-infinity" -> SassNumber.of(Double.NEGATIVE_INFINITY, null);
+                    case "nan" -> SassNumber.of(Double.NaN, null);
+                    default -> new SassString(performInterpolation(stringExpression.text()), false);
+                };
+            }
+            return new SassString(performInterpolation(stringExpression.text()), false);
+        }
+        if (expression instanceof BinaryOperationExpression binary) {
+            var operator = switch (binary.operator()) {
+                case PLUS -> CalculationOperator.PLUS;
+                case MINUS -> CalculationOperator.MINUS;
+                case TIMES -> CalculationOperator.TIMES;
+                case DIVIDED_BY -> CalculationOperator.DIVIDED_BY;
+                default -> throw new EvaluationException(
+                        "This operation can't be used in a calculation.",
+                        binary.span()
+                );
+            };
+            try {
+                return SassCalculation.operate(
+                        operator,
+                        visitCalculationExpression(binary.left()),
+                        visitCalculationExpression(binary.right())
+                );
+            } catch (SassValueException exception) {
+                throw new EvaluationException(
+                        Objects.requireNonNull(exception.getMessage(), "calculation op failure"),
+                        binary.span(),
+                        List.of(),
+                        exception
+                );
+            }
+        }
+        if (expression instanceof NumberExpression
+                || expression instanceof VariableExpression
+                || expression instanceof FunctionExpression
+                || expression instanceof LegacyIfExpression) {
+            SassValue result = evaluate(expression);
+            if (result instanceof SassNumber || result instanceof SassCalculation) {
+                return result;
+            }
+            if (result instanceof SassString string && !string.hasQuotes()) {
+                return string;
+            }
+            throw new EvaluationException(
+                    "Value " + result + " can't be used in a calculation.",
+                    expression.span()
+            );
+        }
+        if (expression instanceof ListExpression list
+                && !list.hasBrackets()
+                && list.separator() == ListSeparator.SPACE
+                && list.contents().size() > 1) {
+            // Space-separated multi-value lists become unquoted strings in calc context.
+            var builder = new StringBuilder();
+            for (var index = 0; index < list.contents().size(); index++) {
+                if (index > 0) {
+                    builder.append(' ');
+                }
+                Object element = visitCalculationExpression(list.contents().get(index));
+                builder.append(element instanceof SassValue value
+                        ? value.toCssString()
+                        : String.valueOf(element));
+            }
+            return new SassString(builder.toString(), false);
+        }
+        throw new EvaluationException(
+                "Value can't be used in a calculation.",
+                expression.span()
+        );
+    }
+
+    /// Returns whether an expression is valid in a CSS calculation argument.
+    private boolean isCalculationSafe(SassExpression expression) {
+        if (expression instanceof NumberExpression
+                || expression instanceof VariableExpression
+                || expression instanceof FunctionExpression
+                || expression instanceof LegacyIfExpression
+                || expression instanceof InterpolatedFunctionExpression) {
+            return true;
+        }
+        if (expression instanceof ParenthesizedExpression parenthesized) {
+            return isCalculationSafe(parenthesized.expression());
+        }
+        if (expression instanceof BinaryOperationExpression binary) {
+            return (binary.operator() == BinaryOperator.PLUS
+                    || binary.operator() == BinaryOperator.MINUS
+                    || binary.operator() == BinaryOperator.TIMES
+                    || binary.operator() == BinaryOperator.DIVIDED_BY)
+                    && isCalculationSafe(binary.left())
+                    && isCalculationSafe(binary.right());
+        }
+        if (expression instanceof StringExpression string && !string.hasQuotes()) {
+            return true;
+        }
+        if (expression instanceof ListExpression list) {
+            return !list.hasBrackets()
+                    && list.separator() == ListSeparator.SPACE
+                    && list.contents().size() > 1
+                    && list.contents().stream().allMatch(this::isCalculationSafe);
+        }
+        return false;
+    }
+
+    /// Dispatches a calculation by name to the matching simplifier.
+    private static SassValue simplifyCalculation(String name, List<Object> args) {
+        return switch (name) {
+            case "calc" -> {
+                if (args.size() != 1) {
+                    throw new SassValueException(
+                            "1 argument required, but only " + args.size()
+                                    + (args.size() == 1 ? " was" : " were") + " passed."
+                    );
+                }
+                yield SassCalculation.calc(args.get(0));
+            }
+            case "sqrt" -> SassCalculation.singleArgument(
+                    "sqrt",
+                    onlyArg(args, "sqrt"),
+                    number -> SassNumber.of(Math.sqrt(number.assertNoUnits().value()), null),
+                    true
+            );
+            case "sin" -> SassCalculation.singleArgument(
+                    "sin",
+                    onlyArg(args, "sin"),
+                    number -> SassNumber.of(Math.sin(calculationRadians(number)), null),
+                    false
+            );
+            case "cos" -> SassCalculation.singleArgument(
+                    "cos",
+                    onlyArg(args, "cos"),
+                    number -> SassNumber.of(Math.cos(calculationRadians(number)), null),
+                    false
+            );
+            case "tan" -> SassCalculation.singleArgument(
+                    "tan",
+                    onlyArg(args, "tan"),
+                    number -> SassNumber.of(Math.tan(calculationRadians(number)), null),
+                    false
+            );
+            case "asin" -> SassCalculation.singleArgument(
+                    "asin",
+                    onlyArg(args, "asin"),
+                    number -> calculationDegrees(Math.asin(number.value())),
+                    true
+            );
+            case "acos" -> SassCalculation.singleArgument(
+                    "acos",
+                    onlyArg(args, "acos"),
+                    number -> calculationDegrees(Math.acos(number.value())),
+                    true
+            );
+            case "atan" -> SassCalculation.singleArgument(
+                    "atan",
+                    onlyArg(args, "atan"),
+                    number -> calculationDegrees(Math.atan(number.value())),
+                    true
+            );
+            case "abs" -> SassCalculation.singleArgument(
+                    "abs",
+                    onlyArg(args, "abs"),
+                    number -> SassNumber.withUnits(
+                            Math.abs(number.value()),
+                            number.numeratorUnits(),
+                            number.denominatorUnits()
+                    ),
+                    false
+            );
+            case "exp" -> SassCalculation.singleArgument(
+                    "exp",
+                    onlyArg(args, "exp"),
+                    number -> SassNumber.of(Math.exp(number.assertNoUnits().value()), null),
+                    false
+            );
+            case "sign" -> SassCalculation.singleArgument(
+                    "sign",
+                    onlyArg(args, "sign"),
+                    number -> {
+                        double value = number.value();
+                        double sign = value > 0 ? 1.0 : value < 0 ? -1.0 : value;
+                        return SassNumber.withUnits(
+                                sign,
+                                number.numeratorUnits(),
+                                number.denominatorUnits()
+                        );
+                    },
+                    false
+            );
+            case "min" -> SassCalculation.min(args);
+            case "max" -> SassCalculation.max(args);
+            case "hypot" -> SassCalculation.hypot(args);
+            case "clamp" -> SassCalculation.clamp(
+                    args.isEmpty() ? nullArg() : args.get(0),
+                    args.size() > 1 ? args.get(1) : null,
+                    args.size() > 2 ? args.get(2) : null
+            );
+            case "pow" -> SassCalculation.pow(
+                    onlyArg(args, "pow"),
+                    args.size() > 1 ? args.get(1) : null
+            );
+            case "log" -> SassCalculation.log(
+                    onlyArg(args, "log"),
+                    args.size() > 1 ? args.get(1) : null
+            );
+            case "atan2" -> SassCalculation.atan2(
+                    onlyArg(args, "atan2"),
+                    args.size() > 1 ? args.get(1) : null
+            );
+            case "mod" -> SassCalculation.mod(
+                    onlyArg(args, "mod"),
+                    args.size() > 1 ? args.get(1) : null
+            );
+            case "rem" -> SassCalculation.rem(
+                    onlyArg(args, "rem"),
+                    args.size() > 1 ? args.get(1) : null
+            );
+            case "round" -> SassCalculation.round(
+                    onlyArg(args, "round"),
+                    args.size() > 1 ? args.get(1) : null,
+                    args.size() > 2 ? args.get(2) : null
+            );
+            case "calc-size" -> SassCalculation.calcSize(
+                    onlyArg(args, "calc-size"),
+                    args.size() > 1 ? args.get(1) : null
+            );
+            default -> throw new SassValueException("Unknown calculation " + name + "().");
+        };
+    }
+
+    private static Object onlyArg(List<Object> args, String name) {
+        if (args.isEmpty()) {
+            throw new SassValueException("Missing argument.");
+        }
+        return args.get(0);
+    }
+
+    private static Object nullArg() {
+        throw new SassValueException("Missing argument.");
+    }
+
+    private static double calculationRadians(SassNumber number) {
+        if (number.isUnitless()) {
+            return number.value();
+        }
+        return number.coerce(List.of("rad"), List.of()).value();
+    }
+
+    private static SassNumber calculationDegrees(double radians) {
+        if (Double.isNaN(radians)) {
+            return SassNumber.of(Double.NaN, "deg");
+        }
+        return SassNumber.of(radians * (180.0 / Math.PI), "deg");
+    }
+
+    /// Simplifies known calculation forms when they reduce to a single number.
+    private static SassValue simplifyOrSerializePlainCss(
+            String name,
+            List<SassValue> positional
+    ) {
+        if ("calc".equals(name) && positional.size() == 1) {
+            SassValue only = positional.get(0);
+            if (only instanceof SassNumber number) {
+                return number;
+            }
+            if (only instanceof SassString string && !string.hasQuotes()) {
+                @Nullable Double special = specialCalculationNumber(string.text());
+                if (special != null) {
+                    return SassNumber.of(special, null);
+                }
+            }
+        }
+        return serializePlainCss(name, positional);
+    }
+
+    /// Parses CSS calculation keywords that represent non-finite numbers.
+    private static @Nullable Double specialCalculationNumber(String text) {
+        return switch (text) {
+            case "infinity", "+infinity" -> Double.POSITIVE_INFINITY;
+            case "-infinity" -> Double.NEGATIVE_INFINITY;
+            case "NaN" -> Double.NaN;
+            default -> null;
+        };
+    }
+
     private static SassString serializePlainCss(String name, List<SassValue> positional) {
         var result = new StringBuilder(name).append('(');
         for (var index = 0; index < positional.size(); index++) {

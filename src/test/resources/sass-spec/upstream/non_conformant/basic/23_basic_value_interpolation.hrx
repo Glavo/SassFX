@@ -1,0 +1,19 @@
+<===> 23_basic_value_interpolation/input.scss
+@use "sass:meta";
+div {
+  a: hello#{world};
+  a: hello #{world};
+  b: 12#{3};
+  b: meta.type-of(12#{3});
+  b: #{12 + 111};
+  b: meta.type-of(#{12 + 111});
+}
+<===> 23_basic_value_interpolation/output.css
+div {
+  a: helloworld;
+  a: hello world;
+  b: 12 3;
+  b: list;
+  b: 123;
+  b: string;
+}

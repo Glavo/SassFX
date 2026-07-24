@@ -1,0 +1,13 @@
+<===> 063_test_function_args/input.scss
+@function plus($var1, $var2) {
+  @return $var1 + $var2;
+}
+
+bar {
+  a: plus(1, 2);
+}
+
+<===> 063_test_function_args/output.css
+bar {
+  a: 3;
+}

@@ -1,0 +1,8 @@
+<===> 208_test_optional_extend_succeeds_when_extension_fails/input.scss
+a.bar {a: b}
+b.foo {@extend .bar !optional}
+
+<===> 208_test_optional_extend_succeeds_when_extension_fails/output.css
+a.bar {
+  a: b;
+}

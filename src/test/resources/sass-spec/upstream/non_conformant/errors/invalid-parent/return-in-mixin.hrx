@@ -1,0 +1,15 @@
+<===> return-in-mixin/input.scss
+@mixin mix() {
+  @return 42;
+}
+
+foo {
+  @include mix();
+}
+<===> return-in-mixin/error
+Error: This at-rule is not allowed here.
+  ,
+2 |   @return 42;
+  |   ^^^^^^^^^^
+  '
+  input.scss 2:3  root stylesheet

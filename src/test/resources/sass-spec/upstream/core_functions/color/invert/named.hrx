@@ -1,0 +1,8 @@
+<===> named/input.scss
+@use "sass:color";
+a {b: color.invert($color: turquoise, $weight: 10%, $space: oklch)}
+
+<===> named/output.css
+a {
+  b: rgb(72.3071483527, 202.5503969316, 158.9647817173);
+}

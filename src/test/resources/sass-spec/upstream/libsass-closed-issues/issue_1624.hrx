@@ -1,0 +1,19 @@
+<===> issue_1624/input.scss
+@function foo($foo) {
+  @return $foo;
+}
+
+@function data($foo) {
+  @return '[data-' + $foo + ']';
+}
+
+#{foo(foo)} {
+  #{data('bar')} {
+    baz: bam;
+  }
+}
+
+<===> issue_1624/output.css
+foo [data-bar] {
+  baz: bam;
+}

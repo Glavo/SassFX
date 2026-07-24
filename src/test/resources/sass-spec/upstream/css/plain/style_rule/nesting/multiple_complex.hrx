@@ -1,0 +1,12 @@
+<===> multiple_complex/input.scss
+@use "plain";
+
+<===> multiple_complex/plain.css
+a, b {c, d {e: f}}
+
+<===> multiple_complex/output.css
+a, b {
+  c, d {
+    e: f;
+  }
+}

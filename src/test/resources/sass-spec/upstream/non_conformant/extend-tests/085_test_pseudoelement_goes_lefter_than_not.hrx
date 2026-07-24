@@ -1,0 +1,8 @@
+<===> 085_test_pseudoelement_goes_lefter_than_not/input.scss
+.foo::bar {a: b}
+.baz:not(.bang) {@extend .foo}
+
+<===> 085_test_pseudoelement_goes_lefter_than_not/output.css
+.foo::bar, .baz:not(.bang)::bar {
+  a: b;
+}

@@ -1,0 +1,7 @@
+<===> issue_864/input.scss
+@use "sass:color";
+div { color: color.adjust(#999, $saturation: -50%); }
+<===> issue_864/output.css
+div {
+  color: #999999;
+}

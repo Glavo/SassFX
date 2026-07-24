@@ -1,0 +1,9 @@
+<===> ie-backslash/input.scss
+@use "sass:color";
+div {
+  background-color: color.adjust(red, $lightness: -10%) \9;
+}
+<===> ie-backslash/output.css
+div {
+  background-color: #cc0000 \9 ;
+}

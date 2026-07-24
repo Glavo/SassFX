@@ -1,0 +1,13 @@
+<===> basic-postfix/input.scss
+&post {
+  foo {
+    bar: baz;
+  }
+}
+<===> basic-postfix/error
+Error: A top-level selector may not contain a parent selector with a suffix.
+  ,
+1 | &post {
+  | ^^^^^
+  '
+  input.scss 1:1  root stylesheet

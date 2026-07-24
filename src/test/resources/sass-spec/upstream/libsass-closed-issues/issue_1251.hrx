@@ -1,0 +1,32 @@
+<===> issue_1251/input.scss
+.foo {
+  yellow: yellow;
+  red: red;
+  blue: blue;
+  white: white;
+  black: black;
+  eval: if(red, yellow, null);
+}
+
+<===> issue_1251/output.css
+.foo {
+  yellow: yellow;
+  red: red;
+  blue: blue;
+  white: white;
+  black: black;
+  eval: yellow;
+}
+
+<===> issue_1251/warning
+DEPRECATION WARNING [if-function]: The Sass if() syntax is deprecated in favor of the modern CSS syntax.
+
+Suggestion: if(sass(red): yellow)
+
+More info: https://sass-lang.com/d/if-function
+
+  ,
+7 |   eval: if(red, yellow, null);
+  |         ^^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 7:9  root stylesheet

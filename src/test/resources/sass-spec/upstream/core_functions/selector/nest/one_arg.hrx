@@ -1,0 +1,8 @@
+<===> one_arg/input.scss
+@use "sass:selector";
+a {b: selector.nest("c")}
+
+<===> one_arg/output.css
+a {
+  b: c;
+}

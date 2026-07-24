@@ -1,0 +1,14 @@
+<===> 069_test_mixin_splat_args_with_var_args/input.scss
+@mixin foo($a, $b...) {
+  a: $a;
+  b: $b;
+}
+
+$list: 2, 3, 4;
+.foo {@include foo(1, $list...)}
+
+<===> 069_test_mixin_splat_args_with_var_args/output.css
+.foo {
+  a: 1;
+  b: 2, 3, 4;
+}

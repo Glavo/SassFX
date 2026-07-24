@@ -1,0 +1,21 @@
+<===> function/input.scss
+@function c() {
+  @warn test;
+  @return d;
+}
+
+a {
+  b: {
+    c: c();
+  }
+}
+
+<===> function/output.css
+a {
+  b-c: d;
+}
+
+<===> function/warning
+WARNING: test
+    input.scss 2:3  c()
+    input.scss 8:8  root stylesheet

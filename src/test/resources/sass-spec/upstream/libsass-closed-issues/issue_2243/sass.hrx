@@ -1,0 +1,5 @@
+<===> sass/input.sass
+@namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul")
+
+<===> sass/output.css
+@namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");

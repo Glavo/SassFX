@@ -1,0 +1,19 @@
+<===> issue_1487/input.scss
+@mixin foo() {
+    foo: &;
+}
+
+foo {
+  @include foo { bar: baz }
+}
+
+<===> issue_1487/error
+Error: Mixin doesn't accept a content block.
+    ,
+1   | @mixin foo() {
+    |        ===== declaration
+... |
+6   |   @include foo { bar: baz }
+    |   ^^^^^^^^^^^^ invocation
+    '
+  input.scss 6:3  root stylesheet

@@ -1,0 +1,12 @@
+<===> extend/input.scss
+@use "plain";
+
+a {@extend b}
+
+<===> extend/_plain.css
+b {c: d}
+
+<===> extend/output.css
+b, a {
+  c: d;
+}

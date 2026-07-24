@@ -1,0 +1,8 @@
+<===> issue_1162/input.scss
+div {
+  content: #{0/0} a;
+}
+<===> issue_1162/output.css
+div {
+  content: 0/0 a;
+}

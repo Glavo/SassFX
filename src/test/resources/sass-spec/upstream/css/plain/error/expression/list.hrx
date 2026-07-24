@@ -1,0 +1,31 @@
+<===> empty/input.scss
+@use 'plain'
+<===> empty/plain.css
+a {
+  x: ();
+}
+
+<===> empty/error
+Error: Expected expression.
+  ,
+2 |   x: ();
+  |       ^
+  '
+  plain.css 2:7   @use
+  input.scss 1:1  root stylesheet
+
+<===> empty_comma/input.scss
+@use 'plain'
+<===> empty_comma/plain.css
+a {
+  x: (,);
+}
+
+<===> empty_comma/error
+Error: Expected expression.
+  ,
+2 |   x: (,);
+  |       ^
+  '
+  plain.css 2:7   @use
+  input.scss 1:1  root stylesheet

@@ -1,0 +1,12 @@
+<===> issue_1121/input.scss
+$foo: "foo";
+$bar: "bar";
+$baz: "baz";
+/*
+ * <div class="foo #{$foo}" bar="#{$bar}" baz="#{$baz}">
+ */
+
+<===> issue_1121/output.css
+/*
+ * <div class="foo foo" bar="bar" baz="baz">
+ */

@@ -1,0 +1,10 @@
+<===> issue_2808/input.scss
+@use "sass:string";
+test {
+  content: string.slice(abcdef, -10, 2)
+}
+
+<===> issue_2808/output.css
+test {
+  content: ab;
+}

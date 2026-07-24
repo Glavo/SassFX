@@ -1,0 +1,12 @@
+<===> combinator/input.scss
+@use "plain";
+
+<===> combinator/plain.css
+a {+ b {c: d}}
+
+<===> combinator/output.css
+a {
+  + b {
+    c: d;
+  }
+}

@@ -89,7 +89,7 @@ final class MetaRuntimeQueryTest {
                           empty-mixin: false;
                           local-mixin: true;
                           absent-mixin: false;
-                          math-pi: 3.141592653589793;
+                          math-pi: 3.1415926536;
                         }""",
                 result.output()
         );
@@ -134,11 +134,11 @@ final class MetaRuntimeQueryTest {
                 )
         );
         assertEquals(
-                "There is no module with the namespace \"missing\".",
+                "There is no module with namespace \"missing\".",
                 failure("@use \"sass:meta\"; .a { value: meta.module-variables(\"missing\"); }")
         );
         assertEquals(
-                "There is no module with the namespace \"\".",
+                "There is no module with namespace \"\".",
                 failure("@use \"sass:meta\"; .a { value: meta.module-variables(\"\"); }")
         );
     }

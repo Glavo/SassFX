@@ -1,0 +1,9 @@
+<===> return-in-root/input.scss
+@return 42;
+<===> return-in-root/error
+Error: This at-rule is not allowed here.
+  ,
+1 | @return 42;
+  | ^^^^^^^^^^
+  '
+  input.scss 1:1  root stylesheet

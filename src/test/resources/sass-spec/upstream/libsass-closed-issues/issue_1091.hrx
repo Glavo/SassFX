@@ -1,0 +1,18 @@
+<===> issue_1091/input.scss
+.a {
+  top: 0;
+}
+
+.b .c {
+  @extend .a;
+}
+
+.d > .e {
+  @extend .a;
+  @extend .c;
+}
+
+<===> issue_1091/output.css
+.a, .d > .e, .b .c {
+  top: 0;
+}

@@ -1,0 +1,11 @@
+<===> function-in-for/input.scss
+@for $i from 1 through 1 {
+  @function foo() {}
+}
+<===> function-in-for/error
+Error: Functions may not be declared in control directives.
+  ,
+2 |   @function foo() {}
+  |   ^^^^^^^^^^^^^^^
+  '
+  input.scss 2:3  root stylesheet

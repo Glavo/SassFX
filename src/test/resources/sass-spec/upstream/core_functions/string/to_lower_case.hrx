@@ -1,0 +1,100 @@
+<===> empty/input.scss
+@use "sass:string";
+a {b: string.to-lower-case("")}
+
+<===> empty/output.css
+a {
+  b: "";
+}
+
+<===> alphabet/input.scss
+@use "sass:string";
+a {b: string.to-lower-case("ABCDEFGHIJKLMNOPQRSTUVQXYZ")}
+
+<===> alphabet/output.css
+a {
+  b: "abcdefghijklmnopqrstuvqxyz";
+}
+
+<===> number/input.scss
+@use "sass:string";
+a {b: string.to-lower-case("1234567890")}
+
+<===> number/output.css
+a {
+  b: "1234567890";
+}
+
+<===> non_ascii/input.scss
+@use "sass:string";
+// Only ASCII characters have their case changed.
+a {b: string.to-lower-case("ÄÇÐØÞ")}
+
+<===> non_ascii/output.css
+@charset "UTF-8";
+a {
+  b: "ÄÇÐØÞ";
+}
+
+<===> unquoted/input.scss
+@use "sass:string";
+a {b: string.to-lower-case(aBcDeF)}
+
+<===> unquoted/output.css
+a {
+  b: abcdef;
+}
+
+<===> named/input.scss
+@use "sass:string";
+a {b: string.to-lower-case($string: abcDEF)}
+
+<===> named/output.css
+a {
+  b: abcdef;
+}
+
+<===> error/type/input.scss
+@use "sass:string";
+a {b: string.to-lower-case(1)}
+
+<===> error/type/error
+Error: $string: 1 is not a string.
+  ,
+2 | a {b: string.to-lower-case(1)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/too_few_args/input.scss
+@use "sass:string";
+a {b: string.to-lower-case()}
+
+<===> error/too_few_args/error
+Error: Missing argument $string.
+  ,--> input.scss
+2 | a {b: string.to-lower-case()}
+  |       ^^^^^^^^^^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:string
+1 | @function to-lower-case($string) {
+  |           ====================== declaration
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/too_many_args/input.scss
+@use "sass:string";
+a {b: string.to-lower-case("", "")}
+
+
+<===> error/too_many_args/error
+Error: Only 1 argument allowed, but 2 were passed.
+  ,--> input.scss
+2 | a {b: string.to-lower-case("", "")}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:string
+1 | @function to-lower-case($string) {
+  |           ====================== declaration
+  '
+  input.scss 2:7  root stylesheet

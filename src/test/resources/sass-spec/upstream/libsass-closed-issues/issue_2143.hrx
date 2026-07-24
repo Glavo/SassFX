@@ -1,0 +1,9 @@
+<===> issue_2143/input.scss
+$map:;
+<===> issue_2143/error
+Error: Expected expression.
+  ,
+1 | $map:;
+  |      ^
+  '
+  input.scss 1:6  root stylesheet

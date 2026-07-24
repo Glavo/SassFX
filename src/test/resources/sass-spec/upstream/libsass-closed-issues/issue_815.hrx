@@ -1,0 +1,12 @@
+<===> issue_815/input.scss
+@use "sass:string";
+foo {
+  foo: string.slice("bar", 1, 2);
+  bar: string.slice("bar", 3);
+}
+
+<===> issue_815/output.css
+foo {
+  foo: "ba";
+  bar: "r";
+}

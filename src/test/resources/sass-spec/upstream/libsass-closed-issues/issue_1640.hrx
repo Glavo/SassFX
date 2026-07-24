@@ -1,0 +1,19 @@
+<===> issue_1640/input.scss
+@mixin foo() {
+    @if false {
+      a { b: c }
+    } @else {
+      @content;
+    }
+}
+
+@include foo() {
+  .foo {
+    bar: baz;
+  }
+}
+
+<===> issue_1640/output.css
+.foo {
+  bar: baz;
+}

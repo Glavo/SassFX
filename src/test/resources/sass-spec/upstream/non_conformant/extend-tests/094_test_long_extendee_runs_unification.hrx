@@ -1,0 +1,14 @@
+<===> 094_test_long_extendee_runs_unification/input.scss
+ns|*.foo.bar {a: b}
+a.baz {@extend .foo.bar}
+
+<===> 094_test_long_extendee_runs_unification/error
+Error: compound selectors may no longer be extended.
+Consider `@extend .foo, .bar` instead.
+See https://sass-lang.com/d/extend-compound for details.
+
+  ,
+2 | a.baz {@extend .foo.bar}
+  |                ^^^^^^^^
+  '
+  input.scss 2:16  root stylesheet

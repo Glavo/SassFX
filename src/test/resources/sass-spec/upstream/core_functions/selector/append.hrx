@@ -1,0 +1,280 @@
+<===> classes/single/input.scss
+@use "sass:selector";
+a {b: selector.append(".c", ".d")}
+
+<===> classes/single/output.css
+a {
+  b: .c.d;
+}
+
+<===> classes/double/input.scss
+@use "sass:selector";
+a {b: selector.append(".c, .d", ".e, .f")}
+
+<===> classes/double/output.css
+a {
+  b: .c.e, .c.f, .d.e, .d.f;
+}
+
+<===> suffix/single/input.scss
+@use "sass:selector";
+a {b: selector.append(".c", "d")}
+
+<===> suffix/single/output.css
+a {
+  b: .cd;
+}
+
+<===> suffix/multiple/input.scss
+@use "sass:selector";
+a {b: selector.append(".c, .d", "e, f")}
+
+<===> suffix/multiple/output.css
+a {
+  b: .ce, .cf, .de, .df;
+}
+
+<===> suffix/descendant/input.scss
+@use "sass:selector";
+a {b: selector.append("c d", "e f")}
+
+<===> suffix/descendant/output.css
+a {
+  b: c de f;
+}
+
+<===> one_arg/input.scss
+@use "sass:selector";
+a {b: selector.append(".c.d")}
+
+<===> one_arg/output.css
+a {
+  b: .c.d;
+}
+
+<===> many_args/input.scss
+@use "sass:selector";
+a {b: selector.append(".c", ".d", ".e")}
+
+<===> many_args/output.css
+a {
+  b: .c.d.e;
+}
+
+<===> format/README.md
+These specs verify that all the arguments to `selector-append()` can take the
+parsed selector format, and that the function returns a selector in that format.
+The full set of possible input formats is tested with `selector-parse()`; this
+spec just verifies one example for each parameter.
+
+<===> format/input/initial/input.scss
+@use "sass:selector";
+a {b: selector.append((c, d e), f)}
+
+<===> format/input/initial/output.css
+a {
+  b: cf, d ef;
+}
+
+<===> format/input/later/input.scss
+@use "sass:selector";
+a {b: selector.append(c, (d, e f))}
+
+<===> format/input/later/output.css
+a {
+  b: cd, ce f;
+}
+
+<===> format/output/input.scss
+@use "sass:selector";
+$result: selector.append("c d, e f", "g");
+a {
+  result: $result;
+  structure: $result == ("c" "dg", "e" "fg");
+}
+
+<===> format/output/output.css
+a {
+  result: c dg, e fg;
+  structure: true;
+}
+
+<===> combinator/initial_leading/input.scss
+@use "sass:selector";
+a {b: selector.append("> c", "d")}
+
+<===> combinator/initial_leading/output.css
+a {
+  b: > cd;
+}
+
+<===> combinator/final_trailing/input.scss
+@use "sass:selector";
+a {b: selector.append("c", "d ~")}
+
+<===> combinator/final_trailing/output.css
+a {
+  b: cd ~;
+}
+
+<===> combinator/multiple/middle/input.scss
+@use "sass:selector";
+a {b: selector.append("c > > d", "e")}
+
+<===> combinator/multiple/middle/output.css
+a {
+  b: c > > de;
+}
+
+<===> combinator/multiple/initial_leading/input.scss
+@use "sass:selector";
+a {b: selector.append("~ ~ c", "d")}
+
+<===> combinator/multiple/initial_leading/output.css
+a {
+  b: ~ ~ cd;
+}
+
+<===> combinator/multiple/final_trailing/input.scss
+@use "sass:selector";
+a {b: selector.append("c", "d + >")}
+
+<===> combinator/multiple/final_trailing/output.css
+a {
+  b: cd + >;
+}
+
+<===> error/wrong_name/input.scss
+@use "sass:selector";
+a {b: selector.selector-append(c, d)}
+
+<===> error/wrong_name/error
+Error: Undefined function.
+  ,
+2 | a {b: selector.selector-append(c, d)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/universal/input.scss
+@use "sass:selector";
+a {b: selector.append(".c", "*")}
+
+<===> error/universal/error
+Error: Can't append * to .c.
+  ,
+2 | a {b: selector.append(".c", "*")}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/combinator/leading/input.scss
+@use "sass:selector";
+a {b: selector.append(".c", "> .d")}
+
+<===> error/combinator/leading/error
+Error: Can't append > .d to .c.
+  ,
+2 | a {b: selector.append(".c", "> .d")}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/combinator/trailing/input.scss
+@use "sass:selector";
+a {b: selector.append(".c ~", ".d")}
+
+<===> error/combinator/trailing/error
+Error: Selector ".c ~" can't be used as a parent in a compound selector.
+  ,
+1 | .c ~
+  | ^^^^ outer selector
+  '
+  ,--> input.scss
+2 | a {b: selector.append(".c ~", ".d")}
+  |       ============================= parent selector
+  '
+  - 1:1  root stylesheet
+
+<===> error/combinator/only/input.scss
+@use "sass:selector";
+a {b: selector.append(".c", ">", ".d")}
+
+<===> error/combinator/only/error
+Error: Can't append > to .c.
+  ,
+2 | a {b: selector.append(".c", ">", ".d")}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/namespace/input.scss
+@use "sass:selector";
+a {b: selector.append("c", "|d")}
+
+<===> error/namespace/error
+Error: Can't append |d to c.
+  ,
+2 | a {b: selector.append("c", "|d")}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/parent/input.scss
+@use "sass:selector";
+a {b: selector.append(".c", "&")}
+
+<===> error/parent/error
+Error: Parent selectors aren't allowed here.
+  ,
+1 | &
+  | ^
+  '
+  - 1:1  root stylesheet
+  ,
+2 | a {b: selector.append(".c", "&")}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/invalid/input.scss
+@use "sass:selector";
+a {b: selector.append("[c", "d")}
+
+<===> error/invalid/error
+Error: expected more input.
+  ,
+1 | [c
+  |   ^
+  '
+  - 1:3  root stylesheet
+  ,
+2 | a {b: selector.append("[c", "d")}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/type/input.scss
+@use "sass:selector";
+a {b: selector.append("c", 1)}
+
+<===> error/type/error
+Error: 1 is not a valid selector: it must be a string,
+a list of strings, or a list of lists of strings.
+  ,
+2 | a {b: selector.append("c", 1)}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/too_few_args/input.scss
+@use "sass:selector";
+a {b: selector.append()}
+
+<===> error/too_few_args/error
+Error: $selectors: At least one selector must be passed.
+  ,
+2 | a {b: selector.append()}
+  |       ^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet

@@ -1,0 +1,15 @@
+<===> 008_test_sass_script/input.scss
+@use "sass:math";
+foo {
+  a: 1 + 2;
+  b: 1 - 2;
+  c: foo + bar;
+  d: math.floor(12.3px); }
+
+<===> 008_test_sass_script/output.css
+foo {
+  a: 3;
+  b: -1;
+  c: foobar;
+  d: 12px;
+}

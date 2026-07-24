@@ -1,0 +1,12 @@
+<===> static/input.scss
+foo {
+    color: missing($a: b);
+}
+
+<===> static/error
+Error: Plain CSS functions don't support keyword arguments.
+  ,
+2 |     color: missing($a: b);
+  |            ^^^^^^^^^^^^^^
+  '
+  input.scss 2:12  root stylesheet

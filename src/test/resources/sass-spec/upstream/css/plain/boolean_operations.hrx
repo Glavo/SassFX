@@ -1,0 +1,16 @@
+<===> boolean_operations/input.scss
+@use "plain";
+
+<===> boolean_operations/plain.css
+a {
+  and: true and false;
+  or: true or false;
+  not: not true;
+}
+
+<===> boolean_operations/output.css
+a {
+  and: true and false;
+  or: true or false;
+  not: not true;
+}

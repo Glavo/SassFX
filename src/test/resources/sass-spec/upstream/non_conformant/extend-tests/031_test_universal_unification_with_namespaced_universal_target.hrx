@@ -1,0 +1,8 @@
+<===> 031_test_universal_unification_with_namespaced_universal_target/input.scss
+%-a ns|*.foo {a: b}
+* {@extend .foo} -a {@extend %-a}
+
+<===> 031_test_universal_unification_with_namespaced_universal_target/output.css
+-a ns|*.foo {
+  a: b;
+}

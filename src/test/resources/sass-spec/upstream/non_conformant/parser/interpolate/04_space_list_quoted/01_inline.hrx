@@ -1,0 +1,19 @@
+<===> 01_inline/input.scss
+.result {
+  output: "alpha" 'beta';
+  output: #{"alpha" 'beta'};
+  output: "[#{"alpha" 'beta'}]";
+  output: "#{"alpha" 'beta'}";
+  output: '#{"alpha" 'beta'}';
+  output: "['#{"alpha" 'beta'}']";
+}
+
+<===> 01_inline/output.css
+.result {
+  output: "alpha" "beta";
+  output: alpha beta;
+  output: "[alpha beta]";
+  output: "alpha beta";
+  output: "alpha beta";
+  output: "['alpha beta']";
+}

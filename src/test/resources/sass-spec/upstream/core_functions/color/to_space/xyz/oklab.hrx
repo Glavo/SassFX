@@ -1,0 +1,98 @@
+<===> black/input.scss
+@use "sass:color";
+a {b: color.to-space(color(xyz 0 0 0), oklab)}
+
+<===> black/output.css
+a {
+  b: oklab(0% 0 0);
+}
+
+<===> white/input.scss
+@use "sass:color";
+a {b: color.to-space(color(xyz 1 1 1), oklab)}
+
+<===> white/output.css
+a {
+  b: color-mix(in oklab, color(xyz 1 1 1) 100%, black);
+}
+
+<===> gray/input.scss
+@use "sass:color";
+a {b: color.to-space(color(xyz 0.5 0.5 0.5), oklab)}
+
+<===> gray/output.css
+a {
+  b: oklab(79.6276380258% 0.0212390429 0.0117978875);
+}
+
+<===> middle/input.scss
+@use "sass:color";
+a {b: color.to-space(color(xyz 0.2 0.4 0.8), oklab)}
+
+<===> middle/output.css
+a {
+  b: oklab(70.8952950666% -0.2482574171 -0.0948731289);
+}
+
+<===> out_of_range/near/input.scss
+@use "sass:color";
+a {b: color.to-space(color(xyz -1 0.4 2), oklab)}
+
+<===> out_of_range/near/output.css
+a {
+  b: oklab(38.0019903498% -3.2429401776 -0.3314216643);
+}
+
+<===> out_of_range/far/input.scss
+@use "sass:color";
+a {b: color.to-space(color(xyz -999999 0 0), oklab)}
+
+<===> out_of_range/far/output.css
+a {
+  b: color-mix(in oklab, color(xyz -999998.9999999993 0 -0.0000000001) 100%, black);
+}
+
+<===> alpha/partial/input.scss
+@use "sass:color";
+a {b: color.to-space(color(xyz 0.1 0.2 0.3 / 0.4), oklab)}
+
+<===> alpha/partial/output.css
+a {
+  b: oklab(56.4079112516% -0.173633896 -0.0375005538 / 0.4);
+}
+
+<===> alpha/transparent/input.scss
+@use "sass:color";
+a {b: color.to-space(color(xyz 0.1 0.2 0.3 / 0.0), oklab)}
+
+<===> alpha/transparent/output.css
+a {
+  b: oklab(56.4079112516% -0.173633896 -0.0375005538 / 0);
+}
+
+<===> missing/red/input.scss
+@use "sass:color";
+a {b: color.to-space(color(xyz none 0.2 0.3), oklab)}
+
+<===> missing/red/output.css
+a {
+  b: oklab(52.6994311398% -0.4922232483 -0.0409679567);
+}
+
+<===> missing/green/input.scss
+@use "sass:color";
+a {b: color.to-space(color(xyz 0.1 none 0.3), oklab)}
+
+<===> missing/green/output.css
+a {
+  b: oklab(26.3423255262% 0.3682063802 -0.2704617674);
+}
+
+<===> missing/blue/input.scss
+@use "sass:color";
+a {b: color.to-space(color(xyz 0.1 0.2 none), oklab)}
+
+<===> missing/blue/output.css
+a {
+  b: oklab(56.6867662885% -0.1591393729 0.1508075356);
+}

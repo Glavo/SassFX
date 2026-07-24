@@ -1,0 +1,14 @@
+<===> function/input.scss
+@function foo($bar:#{}) {
+  @return $bar;
+}
+
+$foo: foo();
+
+<===> function/error
+Error: Expected expression.
+  ,
+1 | @function foo($bar:#{}) {
+  |                    ^^
+  '
+  input.scss 1:20  root stylesheet

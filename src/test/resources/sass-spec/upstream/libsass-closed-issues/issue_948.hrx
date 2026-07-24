@@ -1,0 +1,6 @@
+<===> issue_948/input.scss
+foo { bar: 10 * 5#{px}; }
+<===> issue_948/output.css
+foo {
+  bar: 50 px;
+}

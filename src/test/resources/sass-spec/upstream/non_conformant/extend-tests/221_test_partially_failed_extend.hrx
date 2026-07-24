@@ -1,0 +1,13 @@
+<===> 221_test_partially_failed_extend/input.scss
+test { @extend .rc; }
+.rc {color: white;}
+.prices span.pill span.rc {color: red;}
+
+<===> 221_test_partially_failed_extend/output.css
+.rc, test {
+  color: white;
+}
+
+.prices span.pill span.rc {
+  color: red;
+}

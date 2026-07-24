@@ -1,0 +1,18 @@
+<===> and_and/input.scss
+.and-and {
+  value: true && false;
+}
+
+<===> and_and/output.css
+.and-and {
+  value: true .and-and .and-and false;
+}
+
+<===> and_and/warning
+WARNING: In Sass, "&&" means two copies of the parent selector. You probably want to use "and" instead.
+
+  ,
+2 |   value: true && false;
+  |               ^^
+  '
+    input.scss 2:15  root stylesheet

@@ -1,0 +1,17 @@
+<===> 03_inline_double/input.scss
+.result {
+  output: #{#{"["'foo   '"]"    "bar"}};
+  output: #{"[#{"["'foo   '"]"    "bar"}]"};
+  output: #{"#{"["'foo   '"]"    "bar"}"};
+  output: #{'#{"["'foo   '"]"    "bar"}'};
+  output: #{"['#{"["'foo   '"]"    "bar"}']"};
+}
+
+<===> 03_inline_double/output.css
+.result {
+  output: [ foo    ] bar;
+  output: [[ foo    ] bar];
+  output: [ foo    ] bar;
+  output: [ foo    ] bar;
+  output: ['[ foo    ] bar'];
+}

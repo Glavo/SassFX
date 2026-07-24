@@ -1,0 +1,10 @@
+<===> issue_845/input.sass
+@charset 'UTF-8'
+
+*
+  color: red
+
+<===> issue_845/output.css
+* {
+  color: red;
+}

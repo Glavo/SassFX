@@ -1,0 +1,633 @@
+// SPDX-License-Identifier: MPL-2.0
+package org.glavo.scssfx.internal.value;
+
+import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.Set;
+
+/// A CSS calculation value such as {@code calc()}, {@code sin()}, or {@code clamp()}.
+///
+/// Fully simplified calculations return [SassNumber] instead. Remaining
+/// calculations are special numbers that serialize as CSS function calls.
+@ApiStatus.Internal
+@NotNullByDefault
+public final class SassCalculation implements SassValue {
+    private static final Set<String> KNOWN_UNIT_SETS = Set.of(
+            "em", "ex", "ch", "rem", "vw", "vh", "vmin", "vmax", "cm", "mm", "q", "in", "pt", "pc", "px",
+            "deg", "grad", "rad", "turn",
+            "s", "ms",
+            "hz", "khz",
+            "dpi", "dpcm", "dppx"
+    );
+
+    private final String name;
+    private final @Unmodifiable List<Object> arguments;
+
+    private SassCalculation(String name, List<Object> arguments) {
+        this.name = Objects.requireNonNull(name, "name");
+        this.arguments = List.copyOf(arguments);
+    }
+
+    /// Creates an unsimplified calculation.
+    ///
+    /// @param name      the calculation name
+    /// @param arguments the calculation arguments
+    /// @return the calculation
+    public static SassCalculation unsimplified(String name, List<Object> arguments) {
+        return new SassCalculation(name.toLowerCase(Locale.ROOT), arguments);
+    }
+
+    /// Creates a simplified {@code calc()} value.
+    ///
+    /// @param argument the single argument
+    /// @return a number or calculation
+    public static SassValue calc(Object argument) {
+        Object simplified = simplify(argument);
+        if (simplified instanceof SassNumber number) {
+            return number;
+        }
+        if (simplified instanceof SassCalculation calculation) {
+            return calculation;
+        }
+        return new SassCalculation("calc", List.of(simplified));
+    }
+
+    /// Creates a simplified {@code min()} value.
+    ///
+    /// @param arguments the arguments
+    /// @return a number or calculation
+    public static SassValue min(List<Object> arguments) {
+        var args = simplifyAll(arguments);
+        if (args.isEmpty()) {
+            throw new SassValueException("min() must have at least one argument.");
+        }
+        @Nullable SassNumber minimum = null;
+        for (var arg : args) {
+            if (!(arg instanceof SassNumber number)
+                    || (minimum != null && !minimum.isComparableTo(number))) {
+                minimum = null;
+                break;
+            }
+            if (minimum == null || number.value() < minimum.value()) {
+                minimum = number;
+            }
+        }
+        if (minimum != null) {
+            return minimum;
+        }
+        verifyCompatibleNumbers(args);
+        return new SassCalculation("min", args);
+    }
+
+    /// Creates a simplified {@code max()} value.
+    ///
+    /// @param arguments the arguments
+    /// @return a number or calculation
+    public static SassValue max(List<Object> arguments) {
+        var args = simplifyAll(arguments);
+        if (args.isEmpty()) {
+            throw new SassValueException("max() must have at least one argument.");
+        }
+        @Nullable SassNumber maximum = null;
+        for (var arg : args) {
+            if (!(arg instanceof SassNumber number)
+                    || (maximum != null && !maximum.isComparableTo(number))) {
+                maximum = null;
+                break;
+            }
+            if (maximum == null || number.value() > maximum.value()) {
+                maximum = number;
+            }
+        }
+        if (maximum != null) {
+            return maximum;
+        }
+        verifyCompatibleNumbers(args);
+        return new SassCalculation("max", args);
+    }
+
+    /// Creates a simplified {@code clamp()} value.
+    ///
+    /// @param min     the minimum
+    /// @param value   the preferred value, or {@code null} when omitted via var()
+    /// @param max     the maximum, or {@code null} when omitted via var()
+    /// @return a number or calculation
+    public static SassValue clamp(Object min, @Nullable Object value, @Nullable Object max) {
+        var args = new ArrayList<Object>();
+        args.add(simplify(min));
+        if (value != null) {
+            args.add(simplify(value));
+        }
+        if (max != null) {
+            args.add(simplify(max));
+        }
+        verifyLength(args, 3);
+        verifyCompatibleNumbers(args);
+        if (args.size() == 3
+                && args.get(0) instanceof SassNumber minNumber
+                && args.get(1) instanceof SassNumber valueNumber
+                && args.get(2) instanceof SassNumber maxNumber
+                && minNumber.isComparableTo(valueNumber)
+                && valueNumber.isComparableTo(maxNumber)) {
+            if (SassFuzzy.greaterThanOrEquals(minNumber.value(), maxNumber.valueInUnitsOf(minNumber))) {
+                return minNumber;
+            }
+            if (SassFuzzy.greaterThanOrEquals(minNumber.value(), valueNumber.valueInUnitsOf(minNumber))) {
+                return minNumber;
+            }
+            if (SassFuzzy.lessThanOrEquals(maxNumber.value(), valueNumber.valueInUnitsOf(maxNumber))) {
+                return maxNumber;
+            }
+            return valueNumber;
+        }
+        return new SassCalculation("clamp", args);
+    }
+
+    /// Creates a simplified single-argument math calculation.
+    ///
+    /// @param name         the calculation name
+    /// @param argument     the argument
+    /// @param math         the numeric implementation
+    /// @param forbidUnits  whether units are rejected
+    /// @return a number or calculation
+    public static SassValue singleArgument(
+            String name,
+            Object argument,
+            java.util.function.Function<SassNumber, SassNumber> math,
+            boolean forbidUnits
+    ) {
+        Object simplified = simplify(argument);
+        if (!(simplified instanceof SassNumber number)) {
+            return new SassCalculation(name, List.of(simplified));
+        }
+        if (forbidUnits) {
+            number.assertNoUnits();
+        }
+        return math.apply(number);
+    }
+
+    /// Creates a simplified {@code hypot()} value.
+    ///
+    /// @param arguments the arguments
+    /// @return a number or calculation
+    public static SassValue hypot(List<Object> arguments) {
+        var args = simplifyAll(arguments);
+        if (args.isEmpty()) {
+            throw new SassValueException("hypot() must have at least one argument.");
+        }
+        verifyCompatibleNumbers(args);
+        Object first = args.get(0);
+        if (!(first instanceof SassNumber firstNumber)
+                || firstNumber.numeratorUnits().equals(List.of("%"))) {
+            return new SassCalculation("hypot", args);
+        }
+        double subtotal = 0.0;
+        for (var arg : args) {
+            if (!(arg instanceof SassNumber number) || !hasCompatibleUnits(firstNumber, number)) {
+                return new SassCalculation("hypot", args);
+            }
+            double value = number.valueInUnitsOf(firstNumber);
+            subtotal += value * value;
+        }
+        return SassNumber.withUnits(
+                Math.sqrt(subtotal),
+                firstNumber.numeratorUnits(),
+                firstNumber.denominatorUnits()
+        );
+    }
+
+    /// Creates a simplified {@code pow()} value.
+    ///
+    /// @param base     the base
+    /// @param exponent the exponent, or {@code null} when omitted via var()
+    /// @return a number or calculation
+    public static SassValue pow(Object base, @Nullable Object exponent) {
+        var args = new ArrayList<Object>();
+        args.add(simplify(base));
+        if (exponent != null) {
+            args.add(simplify(exponent));
+        }
+        verifyLength(args, 2);
+        if (args.size() == 2
+                && args.get(0) instanceof SassNumber baseNumber
+                && args.get(1) instanceof SassNumber exponentNumber
+                && baseNumber.isUnitless()
+                && exponentNumber.isUnitless()) {
+            return SassNumber.of(Math.pow(baseNumber.value(), exponentNumber.value()), null);
+        }
+        return new SassCalculation("pow", args);
+    }
+
+    /// Creates a simplified {@code log()} value.
+    ///
+    /// @param number the number
+    /// @param base   the optional base
+    /// @return a number or calculation
+    public static SassValue log(Object number, @Nullable Object base) {
+        Object simplifiedNumber = simplify(number);
+        @Nullable Object simplifiedBase = base == null ? null : simplify(base);
+        var args = new ArrayList<Object>();
+        args.add(simplifiedNumber);
+        if (simplifiedBase != null) {
+            args.add(simplifiedBase);
+        }
+        if (simplifiedNumber instanceof SassNumber n && n.isUnitless()) {
+            if (simplifiedBase == null) {
+                return SassNumber.of(Math.log(n.value()), null);
+            }
+            if (simplifiedBase instanceof SassNumber b && b.isUnitless()) {
+                return SassNumber.of(Math.log(n.value()) / Math.log(b.value()), null);
+            }
+        }
+        return new SassCalculation("log", args);
+    }
+
+    /// Creates a simplified {@code atan2()} value.
+    ///
+    /// @param y the y argument
+    /// @param x the x argument, or {@code null} when omitted via var()
+    /// @return a number or calculation
+    public static SassValue atan2(Object y, @Nullable Object x) {
+        var args = new ArrayList<Object>();
+        args.add(simplify(y));
+        if (x != null) {
+            args.add(simplify(x));
+        }
+        verifyLength(args, 2);
+        verifyCompatibleNumbers(args);
+        if (args.size() == 2
+                && args.get(0) instanceof SassNumber yNumber
+                && args.get(1) instanceof SassNumber xNumber
+                && !yNumber.numeratorUnits().equals(List.of("%"))
+                && !xNumber.numeratorUnits().equals(List.of("%"))
+                && hasCompatibleUnits(yNumber, xNumber)) {
+            double radians = Math.atan2(yNumber.value(), xNumber.valueInUnitsOf(yNumber));
+            return SassNumber.of(radians * (180.0 / Math.PI), "deg");
+        }
+        return new SassCalculation("atan2", args);
+    }
+
+    /// Creates a simplified {@code mod()} value.
+    ///
+    /// @param dividend the dividend
+    /// @param modulus  the modulus, or {@code null} when omitted via var()
+    /// @return a number or calculation
+    public static SassValue mod(Object dividend, @Nullable Object modulus) {
+        var args = new ArrayList<Object>();
+        args.add(simplify(dividend));
+        if (modulus != null) {
+            args.add(simplify(modulus));
+        }
+        verifyLength(args, 2);
+        verifyCompatibleNumbers(args);
+        if (args.size() == 2
+                && args.get(0) instanceof SassNumber left
+                && args.get(1) instanceof SassNumber right
+                && hasCompatibleUnits(left, right)) {
+            return left.modulo(right);
+        }
+        return new SassCalculation("mod", args);
+    }
+
+    /// Creates a simplified {@code rem()} value.
+    ///
+    /// @param dividend the dividend
+    /// @param modulus  the modulus, or {@code null} when omitted via var()
+    /// @return a number or calculation
+    public static SassValue rem(Object dividend, @Nullable Object modulus) {
+        var args = new ArrayList<Object>();
+        args.add(simplify(dividend));
+        if (modulus != null) {
+            args.add(simplify(modulus));
+        }
+        verifyLength(args, 2);
+        verifyCompatibleNumbers(args);
+        if (args.size() == 2
+                && args.get(0) instanceof SassNumber left
+                && args.get(1) instanceof SassNumber right
+                && hasCompatibleUnits(left, right)) {
+            SassValue result = left.modulo(right);
+            if (!(result instanceof SassNumber remainder)) {
+                return result;
+            }
+            double leftSign = Math.signum(left.value() == 0.0 ? 1.0 : left.value());
+            double rightSign = Math.signum(right.value() == 0.0 ? 1.0 : right.value());
+            if (leftSign != rightSign) {
+                if (Double.isInfinite(right.value())) {
+                    return left;
+                }
+                if (remainder.value() == 0.0) {
+                    return SassNumber.withUnits(
+                            -0.0,
+                            remainder.numeratorUnits(),
+                            remainder.denominatorUnits()
+                    );
+                }
+                return remainder.minus(right);
+            }
+            return remainder;
+        }
+        return new SassCalculation("rem", args);
+    }
+
+    /// Creates a simplified {@code round()} value.
+    ///
+    /// @param strategyOrNumber strategy or number
+    /// @param numberOrStep     number or step
+    /// @param step             optional step
+    /// @return a number or calculation
+    public static SassValue round(
+            Object strategyOrNumber,
+            @Nullable Object numberOrStep,
+            @Nullable Object step
+    ) {
+        Object first = simplify(strategyOrNumber);
+        @Nullable Object second = numberOrStep == null ? null : simplify(numberOrStep);
+        @Nullable Object third = step == null ? null : simplify(step);
+        if (second == null && third == null && first instanceof SassNumber number) {
+            if (number.isUnitless()) {
+                return SassNumber.of(Math.rint(number.value()), null);
+            }
+            // With units, CSS round requires an explicit step; preserve calculation
+            // unless we only have a unitless-compatible legacy path.
+            return new SassCalculation("round", List.of(first));
+        }
+        if (second instanceof SassNumber stepNumber && first instanceof SassNumber number
+                && third == null) {
+            verifyCompatibleNumbers(List.of(number, stepNumber));
+            if (hasCompatibleUnits(number, stepNumber)) {
+                return roundWithStep("nearest", number, stepNumber);
+            }
+            return new SassCalculation("round", List.of(number, stepNumber));
+        }
+        if (first instanceof SassString strategy
+                && !strategy.hasQuotes()
+                && isRoundStrategy(strategy.text())
+                && second instanceof SassNumber number
+                && third instanceof SassNumber stepNumber) {
+            verifyCompatibleNumbers(List.of(number, stepNumber));
+            if (hasCompatibleUnits(number, stepNumber)) {
+                return roundWithStep(strategy.text().toLowerCase(Locale.ROOT), number, stepNumber);
+            }
+            return new SassCalculation("round", List.of(strategy, number, stepNumber));
+        }
+        var args = new ArrayList<Object>();
+        args.add(first);
+        if (second != null) {
+            args.add(second);
+        }
+        if (third != null) {
+            args.add(third);
+        }
+        return new SassCalculation("round", args);
+    }
+
+    /// Creates a simplified {@code calc-size()} value.
+    ///
+    /// @param basis the basis
+    /// @param value the value, or {@code null}
+    /// @return the calculation
+    public static SassValue calcSize(Object basis, @Nullable Object value) {
+        var args = new ArrayList<Object>();
+        args.add(simplify(basis));
+        if (value != null) {
+            args.add(simplify(value));
+        }
+        verifyLength(args, 2);
+        return new SassCalculation("calc-size", args);
+    }
+
+    /// Combines two calculation operands with an operator, simplifying when possible.
+    ///
+    /// @param operator the operator
+    /// @param left     the left operand
+    /// @param right    the right operand
+    /// @return a number or operation tree node
+    public static Object operate(CalculationOperator operator, Object left, Object right) {
+        left = simplify(left);
+        right = simplify(right);
+        if (operator == CalculationOperator.PLUS || operator == CalculationOperator.MINUS) {
+            if (left instanceof SassNumber leftNumber && right instanceof SassNumber rightNumber
+                    && hasCompatibleUnits(leftNumber, rightNumber)) {
+                return operator == CalculationOperator.PLUS
+                        ? leftNumber.plus(rightNumber)
+                        : leftNumber.minus(rightNumber);
+            }
+            verifyCompatibleNumbers(List.of(left, right));
+            if (right instanceof SassNumber rightNumber && SassFuzzy.lessThan(rightNumber.value(), 0.0)) {
+                right = rightNumber.times(SassNumber.of(-1, null));
+                operator = operator == CalculationOperator.PLUS
+                        ? CalculationOperator.MINUS
+                        : CalculationOperator.PLUS;
+            }
+            return new CalculationOperation(operator, left, right);
+        }
+        if (left instanceof SassNumber leftNumber && right instanceof SassNumber rightNumber) {
+            return operator == CalculationOperator.TIMES
+                    ? leftNumber.times(rightNumber)
+                    : leftNumber.dividedBy(rightNumber);
+        }
+        return new CalculationOperation(operator, left, right);
+    }
+
+    /// Returns the calculation name.
+    ///
+    /// @return the lowercase name
+    public String name() {
+        return name;
+    }
+
+    /// Returns the arguments.
+    ///
+    /// @return the immutable arguments
+    public @Unmodifiable List<Object> arguments() {
+        return arguments;
+    }
+
+    @Override
+    public boolean isSpecialNumber() {
+        return true;
+    }
+
+    @Override
+    public String toCssString() {
+        var builder = new StringBuilder(name).append('(');
+        for (var index = 0; index < arguments.size(); index++) {
+            if (index > 0) {
+                builder.append(", ");
+            }
+            builder.append(CalculationOperation.serializeOperand(arguments.get(index)));
+        }
+        return builder.append(')').toString();
+    }
+
+    @Override
+    public String toString() {
+        return toCssString();
+    }
+
+    @Override
+    public boolean equals(@Nullable Object other) {
+        return other instanceof SassCalculation calculation
+                && name.equals(calculation.name)
+                && arguments.equals(calculation.arguments);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(name, arguments);
+    }
+
+    private static List<Object> simplifyAll(List<Object> arguments) {
+        var result = new ArrayList<Object>(arguments.size());
+        for (var argument : arguments) {
+            result.add(simplify(argument));
+        }
+        return result;
+    }
+
+    private static Object simplify(Object arg) {
+        if (arg instanceof SassNumber || arg instanceof CalculationOperation) {
+            return arg;
+        }
+        if (arg instanceof SassString string) {
+            if (string.hasQuotes()) {
+                throw new SassValueException(
+                        "Quoted string " + string + " can't be used in a calculation."
+                );
+            }
+            return string;
+        }
+        if (arg instanceof SassCalculation calculation) {
+            if ("calc".equals(calculation.name) && calculation.arguments.size() == 1) {
+                Object only = calculation.arguments.get(0);
+                if (only instanceof SassString string && !string.hasQuotes()
+                        && needsParentheses(string.text())) {
+                    return new SassString("(" + string.text() + ")", false);
+                }
+                return only;
+            }
+            return calculation;
+        }
+        if (arg instanceof SassValue value) {
+            throw new SassValueException("Value " + value + " can't be used in a calculation.");
+        }
+        throw new IllegalArgumentException("Unexpected calculation argument: " + arg);
+    }
+
+    private static boolean needsParentheses(String text) {
+        for (var index = 0; index < text.length(); index++) {
+            char character = text.charAt(index);
+            if (Character.isWhitespace(character) || character == '/' || character == '*') {
+                return true;
+            }
+        }
+        return text.length() >= 4
+                && text.regionMatches(true, 0, "var(", 0, 4);
+    }
+
+    private static void verifyLength(List<Object> args, int expectedLength) {
+        if (args.size() == expectedLength) {
+            return;
+        }
+        for (var arg : args) {
+            if (arg instanceof SassString) {
+                return;
+            }
+        }
+        throw new SassValueException(
+                expectedLength + " arguments required, but only " + args.size()
+                        + (args.size() == 1 ? " was" : " were") + " passed."
+        );
+    }
+
+    private static void verifyCompatibleNumbers(List<Object> args) {
+        for (var arg : args) {
+            if (arg instanceof SassNumber number && number.hasComplexUnits()) {
+                throw new SassValueException(
+                        "Number " + number + " isn't compatible with CSS calculations."
+                );
+            }
+        }
+        for (var i = 0; i < args.size() - 1; i++) {
+            if (!(args.get(i) instanceof SassNumber number1)) {
+                continue;
+            }
+            for (var j = i + 1; j < args.size(); j++) {
+                if (!(args.get(j) instanceof SassNumber number2)) {
+                    continue;
+                }
+                if (number1.hasPossiblyCompatibleUnits(number2)) {
+                    continue;
+                }
+                throw new SassValueException(number1 + " and " + number2 + " are incompatible.");
+            }
+        }
+    }
+
+    private static boolean hasCompatibleUnits(SassNumber left, SassNumber right) {
+        if (left.isUnitless() && right.isUnitless()) {
+            return true;
+        }
+        if (left.isUnitless() || right.isUnitless()) {
+            return false;
+        }
+        return left.isComparableTo(right)
+                && left.numeratorUnits().size() == right.numeratorUnits().size()
+                && left.denominatorUnits().size() == right.denominatorUnits().size();
+    }
+
+    private static boolean isRoundStrategy(String text) {
+        var lower = text.toLowerCase(Locale.ROOT);
+        return "nearest".equals(lower) || "up".equals(lower)
+                || "down".equals(lower) || "to-zero".equals(lower);
+    }
+
+    private static SassNumber roundWithStep(String strategy, SassNumber number, SassNumber step) {
+        if (Double.isInfinite(number.value()) && Double.isInfinite(step.value())
+                || step.value() == 0.0
+                || Double.isNaN(number.value())
+                || Double.isNaN(step.value())) {
+            return matchUnits(Double.NaN, number);
+        }
+        if (Double.isInfinite(number.value())) {
+            return number;
+        }
+        double stepValue = step.valueInUnitsOf(number);
+        if (Double.isInfinite(step.value())) {
+            return switch (strategy) {
+                case "nearest", "to-zero" -> number.value() > 0
+                        ? matchUnits(0.0, number)
+                        : matchUnits(number.value() == 0 ? 0.0 : -0.0, number);
+                case "up" -> number.value() > 0
+                        ? matchUnits(Double.POSITIVE_INFINITY, number)
+                        : matchUnits(-0.0, number);
+                case "down" -> number.value() < 0
+                        ? matchUnits(Double.NEGATIVE_INFINITY, number)
+                        : matchUnits(0.0, number);
+                default -> matchUnits(Double.NaN, number);
+            };
+        }
+        double ratio = number.value() / stepValue;
+        double rounded = switch (strategy) {
+            case "nearest" -> Math.rint(ratio) * stepValue;
+            case "up" -> (step.value() < 0 ? Math.floor(ratio) : Math.ceil(ratio)) * stepValue;
+            case "down" -> (step.value() < 0 ? Math.ceil(ratio) : Math.floor(ratio)) * stepValue;
+            case "to-zero" -> (number.value() < 0 ? Math.ceil(ratio) : Math.floor(ratio)) * stepValue;
+            default -> Double.NaN;
+        };
+        return matchUnits(rounded, number);
+    }
+
+    private static SassNumber matchUnits(double value, SassNumber number) {
+        return SassNumber.withUnits(value, number.numeratorUnits(), number.denominatorUnits());
+    }
+}

@@ -1,0 +1,10 @@
+<===> issue_992/input.scss
+$color: 'red';
+
+.-text-#{$color}- {
+  color: $color;
+}
+<===> issue_992/output.css
+.-text-red- {
+  color: "red";
+}

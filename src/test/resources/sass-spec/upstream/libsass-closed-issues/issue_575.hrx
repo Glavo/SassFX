@@ -1,0 +1,11 @@
+<===> issue_575/input.scss
+.test {
+  @if (foo: bar) == (foo: bar) {
+    foo: bar;
+  }
+}
+
+<===> issue_575/output.css
+.test {
+  foo: bar;
+}

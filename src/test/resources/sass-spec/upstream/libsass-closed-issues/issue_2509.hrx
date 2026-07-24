@@ -1,0 +1,23 @@
+<===> issue_2509/input.scss
+[charset i] {
+	display: block;
+}
+
+[charset I] {
+	display: block;
+}
+
+[charset="utf-8" i] {
+	display: block;
+}
+
+[charset="utf-8" I] {
+	display: block;
+}
+<===> issue_2509/error
+Error: Expected "]".
+  ,
+1 | [charset i] {
+  |          ^
+  '
+  input.scss 1:10  root stylesheet

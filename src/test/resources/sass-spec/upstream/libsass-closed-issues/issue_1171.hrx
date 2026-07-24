@@ -1,0 +1,27 @@
+<===> issue_1171/input.scss
+@use "sass:list";
+@function foo($initial, $args...) {
+  $args: list.append($args, 3);
+
+  @return bar($initial, $args...);
+}
+
+@function bar($args...) {
+  @return list.length($args);
+}
+
+@function baz($initial, $args...) {
+  $args: list.append($args, 3);
+
+  @return list.nth($args, 1);
+}
+
+.test {
+  foo: foo(1, 2);
+  baz: baz(1, 2);
+}
+<===> issue_1171/output.css
+.test {
+  foo: 3;
+  baz: 2;
+}

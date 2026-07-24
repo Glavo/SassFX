@@ -1,0 +1,8 @@
+<===> 072_test_pseudo_unification/input.scss
+%-a ::foo.baz {a: b}
+::foo {@extend .baz} -a {@extend %-a}
+
+<===> 072_test_pseudo_unification/output.css
+-a ::foo {
+  a: b;
+}

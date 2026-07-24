@@ -1,0 +1,20 @@
+<===> issue_1632/input.scss
+$foo: \/ !global;
+.foo#{$foo}bar { a: b; }
+
+<===> issue_1632/output.css
+.foo\/bar {
+  a: b;
+}
+
+<===> issue_1632/warning
+DEPRECATION WARNING [new-global]: As of Dart Sass 2.0.0, !global assignments won't be able to declare new variables.
+
+Since this assignment is at the root of the stylesheet, the !global flag is
+unnecessary and can safely be removed.
+
+  ,
+1 | $foo: \/ !global;
+  | ^^^^^^^^^^^^^^^^
+  '
+    input.scss 1:1  root stylesheet

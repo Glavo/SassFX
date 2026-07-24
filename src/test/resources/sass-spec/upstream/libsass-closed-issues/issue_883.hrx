@@ -1,0 +1,21 @@
+<===> issue_883/input.scss
+div {
+  @foo {
+    font: a;
+  }
+  @bar {
+    color: b;
+  }
+}
+
+<===> issue_883/output.css
+@foo {
+  div {
+    font: a;
+  }
+}
+@bar {
+  div {
+    color: b;
+  }
+}

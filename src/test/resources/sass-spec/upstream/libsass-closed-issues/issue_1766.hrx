@@ -1,0 +1,39 @@
+<===> issue_1766/input.scss
+@media all { @import "foo.scss" }
+@media all { @import "foo.scss"; }
+
+<===> issue_1766/foo.scss
+foo { bar: baz }
+
+<===> issue_1766/output.css
+@media all {
+  foo {
+    bar: baz;
+  }
+}
+@media all {
+  foo {
+    bar: baz;
+  }
+}
+
+<===> issue_1766/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @media all { @import "foo.scss" }
+  |                      ^^^^^^^^^^
+  '
+    input.scss 1:22  root stylesheet
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+2 | @media all { @import "foo.scss"; }
+  |                      ^^^^^^^^^^
+  '
+    input.scss 2:22  root stylesheet

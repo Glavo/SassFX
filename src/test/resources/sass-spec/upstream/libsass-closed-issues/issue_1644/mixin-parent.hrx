@@ -1,0 +1,15 @@
+<===> mixin-parent/input.scss
+@mixin parent {
+  @content;
+}
+
+@include parent() {
+  body.immobile & {
+    margin-bottom: 0;
+  }
+}
+
+<===> mixin-parent/output.css
+body.immobile & {
+  margin-bottom: 0;
+}

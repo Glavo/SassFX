@@ -1,0 +1,8 @@
+<===> 014_test_nested_target/input.scss
+.foo .bar {a: b}
+.baz {@extend .bar}
+
+<===> 014_test_nested_target/output.css
+.foo .bar, .foo .baz {
+  a: b;
+}

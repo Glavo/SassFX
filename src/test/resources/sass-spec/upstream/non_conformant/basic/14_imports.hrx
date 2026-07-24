@@ -1,0 +1,102 @@
+<===> 14_imports/input.scss
+@import "a.scss";
+
+foo {
+  blah: blah;
+  goo {
+    blee: blee;
+    @import "../14_imports/b.scss";
+    hello: world;
+  }
+  @import "sub/c.scss";
+}
+<===> 14_imports/a.scss
+div {
+  span {
+    moo: goo;
+  }
+}
+
+$x: boo;
+<===> 14_imports/b.scss
+hoo {
+  mux: scooba-dee-doo;
+  flux: gooboo $x;
+  @import "d.scss";
+}
+<===> 14_imports/d.scss
+d {
+  inside: d now;
+}
+<===> 14_imports/sub/c.scss
+blux {
+  hey: another thing;
+  ho: will this work;
+}
+<===> 14_imports/output.css
+div span {
+  moo: goo;
+}
+
+foo {
+  blah: blah;
+}
+foo goo {
+  blee: blee;
+}
+foo goo hoo {
+  mux: scooba-dee-doo;
+  flux: gooboo boo;
+}
+foo goo hoo d {
+  inside: d now;
+}
+foo goo {
+  hello: world;
+}
+foo blux {
+  hey: another thing;
+  ho: will this work;
+}
+
+<===> 14_imports/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import "a.scss";
+  |         ^^^^^^^^
+  '
+    input.scss 1:9  root stylesheet
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+7 |     @import "../14_imports/b.scss";
+  |             ^^^^^^^^^^^^^^^^^^^^^^
+  '
+    input.scss 7:13  root stylesheet
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ,
+10 |   @import "sub/c.scss";
+   |           ^^^^^^^^^^^^
+   '
+    input.scss 10:11  root stylesheet
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+4 |   @import "d.scss";
+  |           ^^^^^^^^
+  '
+    b.scss 4:11      @import
+    input.scss 7:13  root stylesheet

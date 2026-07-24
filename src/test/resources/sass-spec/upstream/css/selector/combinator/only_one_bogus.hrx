@@ -1,0 +1,19 @@
+<===> only_one_bogus/input.scss
+a, + b {c: d}
+
+<===> only_one_bogus/output.css
+a, + b {
+  c: d;
+}
+
+<===> only_one_bogus/warning
+DEPRECATION WARNING [bogus-combinators]: The selector "+ b" is invalid CSS.
+This will be an error in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/bogus-combinators
+
+  ,
+1 | a, + b {c: d}
+  |    ^^^
+  '
+    input.scss 1:4  root stylesheet

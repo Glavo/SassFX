@@ -1,0 +1,8 @@
+<===> 193_test_media_in_placeholder_selector/input.scss
+%foo {bar {@media screen {a {b: c}}}}
+.baz {c: d}
+
+<===> 193_test_media_in_placeholder_selector/output.css
+.baz {
+  c: d;
+}

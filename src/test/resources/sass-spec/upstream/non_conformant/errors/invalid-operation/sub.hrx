@@ -1,0 +1,11 @@
+<===> sub/input.scss
+test {
+  err: 2px - 2px*2px;
+}
+<===> sub/error
+Error: 2px and calc(4px * 1px) have incompatible units.
+  ,
+2 |   err: 2px - 2px*2px;
+  |        ^^^^^^^^^^^^^
+  '
+  input.scss 2:8  root stylesheet

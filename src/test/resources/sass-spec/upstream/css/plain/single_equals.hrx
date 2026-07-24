@@ -1,0 +1,12 @@
+<===> single_equals/input.scss
+@use "plain";
+
+<===> single_equals/plain.css
+a {
+  single-equals: alpha(opacity=65);
+}
+
+<===> single_equals/output.css
+a {
+  single-equals: alpha(opacity=65);
+}

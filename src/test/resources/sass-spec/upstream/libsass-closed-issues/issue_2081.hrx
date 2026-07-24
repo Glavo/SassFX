@@ -1,0 +1,10 @@
+<===> issue_2081/input.scss
+$foo: #{bar();};
+
+<===> issue_2081/error
+Error: expected "}".
+  ,
+1 | $foo: #{bar();};
+  |              ^
+  '
+  input.scss 1:14  root stylesheet

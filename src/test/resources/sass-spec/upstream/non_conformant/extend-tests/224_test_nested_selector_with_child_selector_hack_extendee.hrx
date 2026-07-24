@@ -1,0 +1,20 @@
+<===> 224_test_nested_selector_with_child_selector_hack_extendee/input.scss
+> .foo {a: b}
+foo bar {@extend .foo}
+
+<===> 224_test_nested_selector_with_child_selector_hack_extendee/output.css
+> .foo, > foo bar {
+  a: b;
+}
+
+<===> 224_test_nested_selector_with_child_selector_hack_extendee/warning
+DEPRECATION WARNING [bogus-combinators]: The selector "> .foo" is invalid CSS.
+This will be an error in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/bogus-combinators
+
+  ,
+1 | > .foo {a: b}
+  | ^^^^^^
+  '
+    input.scss 1:1  root stylesheet

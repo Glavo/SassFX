@@ -1,0 +1,9 @@
+<===> 237_extend_with_universal_selector_different_namespace/input.scss
+%-a ns|*.foo {a: b}
+a {@extend .foo}
+-a {@extend %-a}
+
+<===> 237_extend_with_universal_selector_different_namespace/output.css
+-a ns|*.foo {
+  a: b;
+}

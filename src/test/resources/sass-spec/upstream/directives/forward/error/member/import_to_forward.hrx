@@ -1,0 +1,84 @@
+<===> nested/variable/input.scss
+a {@import "midstream"}
+
+b {c: $d}
+
+<===> nested/variable/_midstream.scss
+@forward "upstream";
+
+<===> nested/variable/_upstream.scss
+$d: e;
+
+<===> nested/variable/error
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | a {@import "midstream"}
+  |            ^^^^^^^^^^^
+  '
+    input.scss 1:12  root stylesheet
+
+Error: Undefined variable.
+  ,
+3 | b {c: $d}
+  |       ^^
+  '
+  input.scss 3:7  root stylesheet
+
+<===> nested/mixin/input.scss
+a {@import "midstream"}
+
+b {@include c}
+
+<===> nested/mixin/_midstream.scss
+@forward "upstream";
+
+<===> nested/mixin/_upstream.scss
+@mixin c {d: e}
+
+<===> nested/mixin/error
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | a {@import "midstream"}
+  |            ^^^^^^^^^^^
+  '
+    input.scss 1:12  root stylesheet
+
+Error: Undefined mixin.
+  ,
+3 | b {@include c}
+  |    ^^^^^^^^^^
+  '
+  input.scss 3:4  root stylesheet
+
+<===> nested/function/input.scss
+a {@import "midstream"}
+
+b {c: d()}
+
+<===> nested/function/_midstream.scss
+@forward "upstream";
+
+<===> nested/function/_upstream.scss
+@function d() {@return e}
+
+<===> nested/function/output.css
+b {
+  c: d();
+}
+
+<===> nested/function/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | a {@import "midstream"}
+  |            ^^^^^^^^^^^
+  '
+    input.scss 1:12  root stylesheet

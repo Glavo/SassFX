@@ -1,0 +1,24 @@
+<===> issue_1106/input.scss
+@use "sass:string";
+@function foo() { @return null; }
+$foo: null;
+a {
+    foo: bar;
+    variable: $foo;
+    function: foo();
+    unquote: string.unquote($foo);
+}
+
+b {
+    variable: $foo;
+    function: foo();
+    unquote: string.unquote($foo);
+}
+
+<===> issue_1106/error
+Error: $string: null is not a string.
+  ,
+8 |     unquote: string.unquote($foo);
+  |              ^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 8:14  root stylesheet

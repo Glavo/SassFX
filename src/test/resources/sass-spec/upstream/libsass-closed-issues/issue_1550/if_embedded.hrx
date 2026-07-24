@@ -1,0 +1,14 @@
+<===> if_embedded/input.scss
+@if (true) {
+  @function foo() {
+    @return 'foo';
+  }
+}
+
+<===> if_embedded/error
+Error: Functions may not be declared in control directives.
+  ,
+2 |   @function foo() {
+  |   ^^^^^^^^^^^^^^^
+  '
+  input.scss 2:3  root stylesheet

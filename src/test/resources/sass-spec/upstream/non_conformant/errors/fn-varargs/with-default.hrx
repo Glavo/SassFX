@@ -1,0 +1,9 @@
+<===> with-default/input.scss
+@function test($param...:"default") {}
+<===> with-default/error
+Error: expected ")".
+  ,
+1 | @function test($param...:"default") {}
+  |                         ^
+  '
+  input.scss 1:25  root stylesheet

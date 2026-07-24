@@ -1,0 +1,13 @@
+<===> not_default/input.scss
+@use "other" with ($a: b);
+
+<===> not_default/_other.scss
+$a: c;
+
+<===> not_default/error
+Error: This variable was not declared with !default in the @used module.
+  ,
+1 | @use "other" with ($a: b);
+  |                    ^^^^^
+  '
+  input.scss 1:20  root stylesheet

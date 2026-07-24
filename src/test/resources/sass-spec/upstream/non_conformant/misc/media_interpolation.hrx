@@ -1,0 +1,10 @@
+<===> media_interpolation/input.scss
+$baz: 12;
+@media bar#{$baz} {a {b: c}}
+
+<===> media_interpolation/output.css
+@media bar12 {
+  a {
+    b: c;
+  }
+}

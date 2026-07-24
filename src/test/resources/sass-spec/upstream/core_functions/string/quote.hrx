@@ -1,0 +1,108 @@
+<===> unquoted/input.scss
+@use "sass:string";
+a {b: string.quote(c)}
+
+<===> unquoted/output.css
+a {
+  b: "c";
+}
+
+<===> quoted_double/input.scss
+@use "sass:string";
+a {b: string.quote("c")}
+
+<===> quoted_double/output.css
+a {
+  b: "c";
+}
+
+<===> quoted_single/input.scss
+@use "sass:string";
+a {b: string.quote('c')}
+
+<===> quoted_single/output.css
+a {
+  b: "c";
+}
+
+<===> quote_unquoted_quote/single/input.scss
+@use "sass:string";
+// See sass/libsass#2873
+a {b: string.quote(string.unquote('"'))}
+
+<===> quote_unquoted_quote/single/output.css
+a {
+  b: '"';
+}
+
+<===> quote_unquoted_quote/double/input.scss
+@use "sass:string";
+// See sass/libsass#2873
+a {b: string.quote(string.unquote('"') + string.unquote("'"))}
+
+<===> quote_unquoted_quote/double/output.css
+a {
+  b: "\"'";
+}
+
+<===> escape/input.scss
+@use "sass:string";
+a {b: string.quote(\0)}
+
+<===> escape/output.css
+a {
+  b: "\\0 ";
+}
+
+<===> named/input.scss
+@use "sass:string";
+a {b: string.quote($string: c)}
+
+<===> named/output.css
+a {
+  b: "c";
+}
+
+<===> error/type/input.scss
+@use "sass:string";
+a {b: string.quote((1, 2, 3))}
+
+<===> error/type/error
+Error: $string: (1, 2, 3) is not a string.
+  ,
+2 | a {b: string.quote((1, 2, 3))}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/too_few_args/input.scss
+@use "sass:string";
+a {b: string.quote()}
+
+<===> error/too_few_args/error
+Error: Missing argument $string.
+  ,--> input.scss
+2 | a {b: string.quote()}
+  |       ^^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:string
+1 | @function quote($string) {
+  |           ============== declaration
+  '
+  input.scss 2:7  root stylesheet
+
+<===> error/too_many_args/input.scss
+@use "sass:string";
+a {b: string.quote(c, d)}
+
+<===> error/too_many_args/error
+Error: Only 1 argument allowed, but 2 were passed.
+  ,--> input.scss
+2 | a {b: string.quote(c, d)}
+  |       ^^^^^^^^^^^^^^^^^^ invocation
+  '
+  ,--> sass:string
+1 | @function quote($string) {
+  |           ============== declaration
+  '
+  input.scss 2:7  root stylesheet

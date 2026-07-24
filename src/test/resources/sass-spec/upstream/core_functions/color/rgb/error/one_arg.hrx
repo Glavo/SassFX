@@ -1,0 +1,225 @@
+<===> list/empty/input.scss
+a {
+  b: rgb(());
+}
+
+<===> list/empty/error
+Error: $channels: Color component list may not be empty.
+  ,
+2 |   b: rgb(());
+  |      ^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> list/one_element/input.scss
+a {
+  b: rgb(1);
+}
+
+<===> list/one_element/error
+Error: $channels: The rgb color space has 3 channels but 1 has 1.
+  ,
+2 |   b: rgb(1);
+  |      ^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> list/two_elements/input.scss
+a {
+  b: rgb(1 2);
+}
+
+<===> list/two_elements/error
+Error: $channels: The rgb color space has 3 channels but (1 2) has 2.
+  ,
+2 |   b: rgb(1 2);
+  |      ^^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> list/four_elements/input.scss
+a {
+  b: rgb(1 2 3 0.4);
+}
+
+<===> list/four_elements/error
+Error: $channels: The rgb color space has 3 channels but (1 2 3 0.4) has 4.
+  ,
+2 |   b: rgb(1 2 3 0.4);
+  |      ^^^^^^^^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> list/comma_separated/input.scss
+a {
+  b: rgb((1, 2, 3));
+}
+
+<===> list/comma_separated/error
+Error: $channels: Expected a space- or slash-separated list, was (1, 2, 3)
+  ,
+2 |   b: rgb((1, 2, 3));
+  |      ^^^^^^^^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> list/bracketed/input.scss
+a {
+  b: rgb([1 2 3]);
+}
+
+<===> list/bracketed/error
+Error: $channels: Expected an unbracketed list, was [1 2 3]
+  ,
+2 |   b: rgb([1 2 3]);
+  |      ^^^^^^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> type/red/input.scss
+a {
+  b: rgb("foo" 2 3);
+}
+
+<===> type/red/error
+Error: $channels: Expected red channel to be a number, was "foo".
+  ,
+2 |   b: rgb("foo" 2 3);
+  |      ^^^^^^^^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> type/green/input.scss
+a {
+  b: rgb(1 "foo" 3);
+}
+
+<===> type/green/error
+Error: $channels: Expected green channel to be a number, was "foo".
+  ,
+2 |   b: rgb(1 "foo" 3);
+  |      ^^^^^^^^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> type/blue/input.scss
+a {
+  b: rgb(1 2 "foo");
+}
+
+<===> type/blue/error
+Error: $channels: Expected blue channel to be a number, was "foo".
+  ,
+2 |   b: rgb(1 2 "foo");
+  |      ^^^^^^^^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> quoted_var_slash/input.scss
+a {
+  b: rgb(1 2 "var(--foo) / 0.4");
+}
+
+<===> quoted_var_slash/error
+Error: $channels: Expected blue channel to be a number, was "var(--foo) / 0.4".
+  ,
+2 |   b: rgb(1 2 "var(--foo) / 0.4");
+  |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:6  root stylesheet
+
+<===> slash_list/too_few_elements/input.scss
+@use "sass:list";
+a {b: rgb(list.append((), 1 2 3, $separator: slash))}
+
+<===> slash_list/too_few_elements/error
+Error: $channels: Only 2 slash-separated elements allowed, but 1 was passed.
+  ,
+2 | a {b: rgb(list.append((), 1 2 3, $separator: slash))}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> slash_list/too_many_elements/input.scss
+@use "sass:list";
+a {b: rgb(list.slash(1 2 3, 0.4, 1))}
+
+<===> slash_list/too_many_elements/error
+Error: $channels: Only 2 slash-separated elements allowed, but 3 were passed.
+  ,
+2 | a {b: rgb(list.slash(1 2 3, 0.4, 1))}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> slash_list/channels/empty/input.scss
+@use "sass:list";
+a {b: rgb(list.slash((), 1))}
+
+<===> slash_list/channels/empty/error
+Error: $channels: Color component list may not be empty.
+  ,
+2 | a {b: rgb(list.slash((), 1))}
+  |       ^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> slash_list/channels/comma_separated/input.scss
+@use "sass:list";
+a {b: rgb(list.slash((1, 2, 3), 1))}
+
+<===> slash_list/channels/comma_separated/error
+Error: $channels: Expected a space-separated list, was (1, 2, 3)
+  ,
+2 | a {b: rgb(list.slash((1, 2, 3), 1))}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> slash_list/channels/bracketed/input.scss
+@use "sass:list";
+a {b: rgb(list.slash([1 2 3], 1))}
+
+<===> slash_list/channels/bracketed/error
+Error: $channels: Expected an unbracketed list, was [1 2 3]
+  ,
+2 | a {b: rgb(list.slash([1 2 3], 1))}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> slash_list/channels/one_element/input.scss
+@use "sass:list";
+a {b: rgb(list.slash(1, 1))}
+
+<===> slash_list/channels/one_element/error
+Error: $channels: The rgb color space has 3 channels but (1 / 1) has 1.
+  ,
+2 | a {b: rgb(list.slash(1, 1))}
+  |       ^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> slash_list/channels/two_elements/input.scss
+@use "sass:list";
+a {b: rgb(list.slash(1 2, 1))}
+
+<===> slash_list/channels/two_elements/error
+Error: $channels: The rgb color space has 3 channels but (1 2 / 1) has 2.
+  ,
+2 | a {b: rgb(list.slash(1 2, 1))}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet
+
+<===> slash_list/channels/four_elements/input.scss
+@use "sass:list";
+a {b: rgb(list.slash(1 2 3 0.4, 1))}
+
+<===> slash_list/channels/four_elements/error
+Error: $channels: The rgb color space has 3 channels but (1 2 3 0.4 / 1) has 4.
+  ,
+2 | a {b: rgb(list.slash(1 2 3 0.4, 1))}
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  '
+  input.scss 2:7  root stylesheet

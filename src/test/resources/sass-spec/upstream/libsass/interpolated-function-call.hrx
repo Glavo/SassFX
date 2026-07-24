@@ -1,0 +1,10 @@
+<===> interpolated-function-call/input.scss
+$f: foo;
+
+div {
+  color: #{$f}(a, 1+2, c);
+}
+<===> interpolated-function-call/output.css
+div {
+  color: foo(a, 3, c);
+}

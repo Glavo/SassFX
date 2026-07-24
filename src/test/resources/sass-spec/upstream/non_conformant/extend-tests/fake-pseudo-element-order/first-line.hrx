@@ -1,0 +1,8 @@
+<===> first-line/input.scss
+%a:first-line {x: y}
+b:c {@extend %a}
+
+<===> first-line/output.css
+b:c:first-line {
+  x: y;
+}

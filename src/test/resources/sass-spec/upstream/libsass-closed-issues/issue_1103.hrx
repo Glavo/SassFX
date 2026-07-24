@@ -1,0 +1,83 @@
+<===> issue_1103/input.scss
+@import "import";
+
+@media screen and (min-width: 1) {
+    foo { bar: baz }
+    baz { bar: foo }
+}
+
+@media screen and (min-width: 1) {
+    @import "import";
+}
+
+<===> issue_1103/_import.scss
+foo { bar: baz }
+baz { bar: foo }
+
+@media screen and (max-width: 2) {
+    foo { bar: baz }
+    baz { bar: foo }
+}
+
+<===> issue_1103/output.css
+foo {
+  bar: baz;
+}
+
+baz {
+  bar: foo;
+}
+
+@media screen and (max-width: 2) {
+  foo {
+    bar: baz;
+  }
+  baz {
+    bar: foo;
+  }
+}
+@media screen and (min-width: 1) {
+  foo {
+    bar: baz;
+  }
+  baz {
+    bar: foo;
+  }
+}
+@media screen and (min-width: 1) {
+  foo {
+    bar: baz;
+  }
+  baz {
+    bar: foo;
+  }
+}
+@media screen and (min-width: 1) and (max-width: 2) {
+  foo {
+    bar: baz;
+  }
+  baz {
+    bar: foo;
+  }
+}
+
+<===> issue_1103/warning
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+1 | @import "import";
+  |         ^^^^^^^^
+  '
+    input.scss 1:9  root stylesheet
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+9 |     @import "import";
+  |             ^^^^^^^^
+  '
+    input.scss 9:13  root stylesheet

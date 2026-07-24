@@ -1,0 +1,11 @@
+<===> outside/input.scss
+@use "sass:string";
+@mixin import-google-fonts() {
+  @import url("http://fonts.googleapis.com/css?family=#{$family}");
+}
+$family: string.unquote("Droid+Sans");
+@include import-google-fonts();
+<===> outside/_include.scss
+
+<===> outside/output.css
+@import url("http://fonts.googleapis.com/css?family=Droid+Sans");

@@ -1,0 +1,199 @@
+<===> partial/input.scss
+// This import can't be resolved because it could refer to either the partial or
+// the non-partial file.
+@import "other";
+
+<===> partial/_other.scss
+a {partial: true}
+
+<===> partial/other.scss
+a {partial: false}
+
+<===> partial/error
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+3 | @import "other";
+  |         ^^^^^^^
+  '
+    input.scss 3:9  root stylesheet
+
+Error: It's not clear which file to import. Found:
+  _other.scss
+  other.scss
+  ,
+3 | @import "other";
+  |         ^^^^^^^
+  '
+  input.scss 3:9  root stylesheet
+
+<===> extension/input.scss
+// This import can't be resolved because it could refer to either the ".sass" or
+// ".scss" file.
+@import "other";
+
+<===> extension/other.sass
+a
+  syntax: sass
+
+<===> extension/other.scss
+a {syntax: scss}
+
+<===> extension/error
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+3 | @import "other";
+  |         ^^^^^^^
+  '
+    input.scss 3:9  root stylesheet
+
+Error: It's not clear which file to import. Found:
+  other.sass
+  other.scss
+  ,
+3 | @import "other";
+  |         ^^^^^^^
+  '
+  input.scss 3:9  root stylesheet
+
+<===> all/input.scss
+// This import can't be resolved because it has conflicting partials *and*
+// conflicting extensions.
+@import "other";
+
+<===> all/other.sass
+a
+  syntax: sass
+  partial: false
+
+<===> all/other.scss
+a {syntax: scss; partial: false}
+
+<===> all/_other.sass
+a
+  syntax: sass
+  partial: true
+
+<===> all/_other.scss
+a {syntax: scss; partial: true}
+
+<===> all/error
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+3 | @import "other";
+  |         ^^^^^^^
+  '
+    input.scss 3:9  root stylesheet
+
+Error: It's not clear which file to import. Found:
+  _other.sass
+  other.sass
+  _other.scss
+  other.scss
+  ,
+3 | @import "other";
+  |         ^^^^^^^
+  '
+  input.scss 3:9  root stylesheet
+
+<===> index/input.scss
+// This import can't be resolved because it could refer to either the partial or
+// the non-partial index file.
+@import "other";
+
+<===> index/other/_index.scss
+a {partial: true}
+
+<===> index/other/index.scss
+a {partial: false}
+
+<===> index/error
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+3 | @import "other";
+  |         ^^^^^^^
+  '
+    input.scss 3:9  root stylesheet
+
+Error: It's not clear which file to import. Found:
+  other/_index.scss
+  other/index.scss
+  ,
+3 | @import "other";
+  |         ^^^^^^^
+  '
+  input.scss 3:9  root stylesheet
+
+<===> import_only/no_extension/input.scss
+// This import can't be resolved because it could refer to either the Sass or
+// the SCSS import-only file.
+@import "other";
+
+<===> import_only/no_extension/other.import.scss
+a {syntax: scss}
+
+<===> import_only/no_extension/other.import.sass
+a
+  syntax: sass
+
+<===> import_only/no_extension/error
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+3 | @import "other";
+  |         ^^^^^^^
+  '
+    input.scss 3:9  root stylesheet
+
+Error: It's not clear which file to import. Found:
+  other.import.sass
+  other.import.scss
+  ,
+3 | @import "other";
+  |         ^^^^^^^
+  '
+  input.scss 3:9  root stylesheet
+
+<===> import_only/with_extension/input.scss
+// This import can't be resolved because it could refer to either the partial or
+// the non-partial.
+@import "other.scss";
+
+<===> import_only/with_extension/other.import.scss
+a {partial: false}
+
+<===> import_only/with_extension/_other.import.scss
+a {partial: true}
+
+<===> import_only/with_extension/error
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+  ,
+3 | @import "other.scss";
+  |         ^^^^^^^^^^^^
+  '
+    input.scss 3:9  root stylesheet
+
+Error: It's not clear which file to import. Found:
+  _other.import.scss
+  other.import.scss
+  ,
+3 | @import "other.scss";
+  |         ^^^^^^^^^^^^
+  '
+  input.scss 3:9  root stylesheet

@@ -1,0 +1,21 @@
+<===> mixin/input.scss
+@mixin c() {
+  @warn test;
+  c: d;
+}
+
+a {
+  b: {
+    @include c();
+  }
+}
+
+<===> mixin/output.css
+a {
+  b-c: d;
+}
+
+<===> mixin/warning
+WARNING: test
+    input.scss 2:3  c()
+    input.scss 8:5  root stylesheet

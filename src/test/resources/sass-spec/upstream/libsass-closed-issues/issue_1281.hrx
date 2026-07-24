@@ -1,0 +1,19 @@
+<===> issue_1281/input.scss
+@use "sass:meta";
+$quoted: "green";
+$unquoted: green;
+
+.test {
+  string: meta.type-of($quoted);
+  color: meta.type-of($unquoted);
+  string: meta.type-of("green");
+  color: meta.type-of(green);
+}
+
+<===> issue_1281/output.css
+.test {
+  string: string;
+  color: color;
+  string: string;
+  color: color;
+}

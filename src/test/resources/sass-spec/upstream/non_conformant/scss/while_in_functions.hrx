@@ -1,0 +1,15 @@
+<===> while_in_functions/input.scss
+@function test-while() {
+  $x : true;
+  @while $x {
+    @return $x
+  }
+}
+
+div {
+  y: test-while();
+}
+<===> while_in_functions/output.css
+div {
+  y: true;
+}

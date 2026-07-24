@@ -1,0 +1,8 @@
+<===> 098_test_nested_extender_runs_unification/input.scss
+.foo.bar {a: b}
+foo bar {@extend .foo}
+
+<===> 098_test_nested_extender_runs_unification/output.css
+.foo.bar, foo bar.bar {
+  a: b;
+}

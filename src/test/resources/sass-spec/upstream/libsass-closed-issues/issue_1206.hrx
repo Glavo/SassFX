@@ -1,0 +1,13 @@
+<===> issue_1206/input.scss
+foo {
+  bar: #{0/0};
+  bar: #{0/1};
+  bar: #{1/2};
+}
+
+<===> issue_1206/output.css
+foo {
+  bar: 0/0;
+  bar: 0/1;
+  bar: 1/2;
+}

@@ -1,0 +1,46 @@
+<===> functions-and-mixins/input.scss
+@function foo() {
+  @return "hello";
+}
+
+@mixin foo() {
+  content: "hello";
+}
+
+div {
+  span {
+    @function length($a, $b, $c, $d) {
+      @return $a + $b + $c + $d;
+    }
+
+    div {
+      content: foo();
+      @include foo();
+      width: length(1,2,2,3);
+    }
+  }
+
+  height: length(a b c d e);
+
+}
+<===> functions-and-mixins/output.css
+div span div {
+  content: "hello";
+  content: "hello";
+  width: 8;
+}
+div {
+  height: 5;
+}
+
+<===> functions-and-mixins/warning
+DEPRECATION WARNING [global-builtin]: Global built-in functions are deprecated and will be removed in Dart Sass 3.0.0.
+Use list.length instead.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ,
+22 |   height: length(a b c d e);
+   |           ^^^^^^^^^^^^^^^^^
+   '
+    input.scss 22:11  root stylesheet

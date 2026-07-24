@@ -1,0 +1,10 @@
+<===> issue_2462/input.scss
+@use "sass:color";
+b {
+    color: color.adjust(Crimson, $lightness: 10%);
+}
+
+<===> issue_2462/output.css
+b {
+  color: rgb(236.75, 54.25, 90.75);
+}

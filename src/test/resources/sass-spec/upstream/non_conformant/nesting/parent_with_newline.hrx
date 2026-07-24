@@ -1,0 +1,13 @@
+<===> parent_with_newline/input.scss
+.foo,
+.bar {
+  .baz & {
+    color: red;
+  }
+}
+
+<===> parent_with_newline/output.css
+.baz .foo,
+.baz .bar {
+  color: red;
+}

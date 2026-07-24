@@ -1,0 +1,4 @@
+<===> 020_test_css_import_directive/input.scss
+@import 'foo.css';
+<===> 020_test_css_import_directive/output.css
+@import 'foo.css';

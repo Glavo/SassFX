@@ -1,0 +1,12 @@
+<===> issue_2169/input.scss
+@function test($a, $b) {
+  @return "#{$a}" + "#{$b}" + "" + "";
+}
+
+foo {
+  content: test('bim', 'baz');
+}
+<===> issue_2169/output.css
+foo {
+  content: "bimbaz";
+}

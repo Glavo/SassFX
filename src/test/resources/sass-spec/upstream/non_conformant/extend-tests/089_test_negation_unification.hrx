@@ -1,0 +1,8 @@
+<===> 089_test_negation_unification/input.scss
+%-a :not([a=b]).baz {a: b}
+:not([a = b]) {@extend .baz} -a {@extend %-a}
+
+<===> 089_test_negation_unification/output.css
+-a :not([a=b]) {
+  a: b;
+}

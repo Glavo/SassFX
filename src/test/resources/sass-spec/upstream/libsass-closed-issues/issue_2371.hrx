@@ -1,0 +1,10 @@
+<===> issue_2371/input.scss
+#{a==b}
+
+<===> issue_2371/error
+Error: expected "{".
+  ,
+1 | #{a==b}
+  |        ^
+  '
+  input.scss 1:8  root stylesheet

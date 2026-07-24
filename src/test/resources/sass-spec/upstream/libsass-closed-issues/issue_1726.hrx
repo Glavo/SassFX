@@ -1,0 +1,9 @@
+<===> issue_1726/input.scss
+item {
+    background: #{2px} 2px /*red*/;
+}
+
+<===> issue_1726/output.css
+item {
+  background: 2px 2px;
+}

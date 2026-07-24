@@ -1,0 +1,13 @@
+<===> function/input.scss
+@use "sass:meta";
+$result: meta.inspect(meta.get-function("get-function", $module: "meta"));
+a {
+  value: $result;
+  type: meta.type-of($result);
+}
+
+<===> function/output.css
+a {
+  value: get-function("get-function");
+  type: string;
+}

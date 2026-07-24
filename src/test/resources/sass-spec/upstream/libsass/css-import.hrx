@@ -1,0 +1,12 @@
+<===> css-import/input.scss
+@import 'foo.css', "bar.css";
+
+div {
+  color: red;
+}
+<===> css-import/output.css
+@import 'foo.css';
+@import "bar.css";
+div {
+  color: red;
+}

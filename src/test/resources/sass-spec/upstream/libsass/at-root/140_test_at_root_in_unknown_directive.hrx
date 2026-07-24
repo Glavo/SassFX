@@ -1,0 +1,13 @@
+<===> 140_test_at_root_in_unknown_directive/input.scss
+@fblthp {
+  .foo {
+    @at-root .bar {a: b}
+  }
+}
+
+<===> 140_test_at_root_in_unknown_directive/output.css
+@fblthp {
+  .bar {
+    a: b;
+  }
+}

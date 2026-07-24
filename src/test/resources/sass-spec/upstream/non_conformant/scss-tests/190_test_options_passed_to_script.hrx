@@ -1,0 +1,8 @@
+<===> 190_test_options_passed_to_script/input.scss
+@use "sass:color";
+foo {color: color.adjust(black, $lightness: -10%)}
+
+<===> 190_test_options_passed_to_script/output.css
+foo {
+  color: hsl(0, 0%, -10%);
+}

@@ -1,0 +1,9 @@
+<===> 002_test_one_line_comments/input.scss
+.foo bar[val="//"] {
+  baz: bang; //}
+}
+
+<===> 002_test_one_line_comments/output.css
+.foo bar[val="//"] {
+  baz: bang;
+}

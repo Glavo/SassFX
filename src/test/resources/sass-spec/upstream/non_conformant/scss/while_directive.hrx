@@ -1,0 +1,17 @@
+<===> while_directive/input.scss
+$i: 1;
+
+.foo {
+  @while $i != 5 {
+    a: $i;
+    $i: $i + 1;
+  }
+}
+
+<===> while_directive/output.css
+.foo {
+  a: 1;
+  a: 2;
+  a: 3;
+  a: 4;
+}

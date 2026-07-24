@@ -1,0 +1,19 @@
+<===> issue_592/input.scss
+%a::-webkit-scrollbar {
+    color: green;
+}
+
+.a {
+    .b {
+        @extend %a;
+    }
+
+    .c .b {
+        @extend %a;
+    }
+}
+
+<===> issue_592/output.css
+.a .c .b::-webkit-scrollbar, .a .b::-webkit-scrollbar {
+  color: green;
+}

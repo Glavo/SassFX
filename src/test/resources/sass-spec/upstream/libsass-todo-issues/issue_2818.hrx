@@ -1,0 +1,11 @@
+<===> issue_2818/input.scss
+@use "sass:color";
+@use "sass:meta";
+$map: ("lightness": 10%, "saturation": 10%);
+$base: meta.call(meta.get-function('scale', $module: 'color'), #dedede, $map...);
+test { color: $base; }
+
+<===> issue_2818/output.css
+test {
+  color: rgb(228.27, 222.33, 222.33);
+}

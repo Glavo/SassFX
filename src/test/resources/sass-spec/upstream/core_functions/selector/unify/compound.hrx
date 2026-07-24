@@ -1,0 +1,158 @@
+<===> no_overlap/input.scss
+@use "sass:selector";
+a {b: selector.unify(".c.d", ".e.f")}
+
+<===> no_overlap/output.css
+a {
+  b: .c.d.e.f;
+}
+
+<===> partial_overlap/input.scss
+@use "sass:selector";
+a {b: selector.unify(".c.d", ".d.e")}
+
+<===> partial_overlap/output.css
+a {
+  b: .c.d.e;
+}
+
+<===> full_overlap/class/input.scss
+@use "sass:selector";
+a {b: selector.unify(".c.d", ".c.d")}
+
+<===> full_overlap/class/output.css
+a {
+  b: .c.d;
+}
+
+<===> full_overlap/pseudo_element/input.scss
+@use "sass:selector";
+a {b: selector.unify(".c::d", ".c::d")}
+
+<===> full_overlap/pseudo_element/output.css
+a {
+  b: .c::d;
+}
+
+<===> full_overlap/pseudo_class/input.scss
+@use "sass:selector";
+a {b: selector.unify(".c:d", ".c:d")}
+
+<===> full_overlap/pseudo_class/output.css
+a {
+  b: .c:d;
+}
+
+<===> full_overlap/pseudo_selector_and_class/input.scss
+@use "sass:selector";
+a {b: selector.unify(".c:d::e", ".c:d::e")}
+
+<===> full_overlap/pseudo_selector_and_class/output.css
+a {
+  b: .c:d::e;
+}
+
+<===> order/preserved_by_default/input.scss
+@use "sass:selector";
+a {b: selector.unify(".c.d", ".e.f")}
+
+<===> order/preserved_by_default/output.css
+a {
+  b: .c.d.e.f;
+}
+
+<===> order/element_at_start/input.scss
+@use "sass:selector";
+a {b: selector.unify(".c", "d")}
+
+<===> order/element_at_start/output.css
+a {
+  b: d.c;
+}
+
+<===> order/pseudo_element_at_end/input.scss
+@use "sass:selector";
+a {b: selector.unify("::c", ".d")}
+
+<===> order/pseudo_element_at_end/output.css
+a {
+  b: .d::c;
+}
+
+<===> order/pseudo_class_at_end/input.scss
+@use "sass:selector";
+a {b: selector.unify(":c", ".d")}
+
+<===> order/pseudo_class_at_end/output.css
+a {
+  b: .d:c;
+}
+
+<===> order/pseudo_element_after_pseudo_class/element_first/input.scss
+@use "sass:selector";
+a {b: selector.unify("::c", ":d")}
+
+<===> order/pseudo_element_after_pseudo_class/element_first/output.css
+a {
+  b: :d::c;
+}
+
+<===> order/pseudo_element_after_pseudo_class/class_first/input.scss
+@use "sass:selector";
+a {b: selector.unify(":c", "::d")}
+
+<===> order/pseudo_element_after_pseudo_class/class_first/output.css
+a {
+  b: :c::d;
+}
+
+<===> order/do_not_cross_pseudo_element/pseudo_class_and_element/into_simple/input.scss
+@use "sass:selector";
+a {b: selector.unify(".x::scrollbar:horizontal", ".y")}
+
+<===> order/do_not_cross_pseudo_element/pseudo_class_and_element/into_simple/output.css
+a {
+  b: .x.y::scrollbar:horizontal;
+}
+
+<===> order/do_not_cross_pseudo_element/pseudo_class_and_element/into_pseudo_element/input.scss
+@use "sass:selector";
+a {b: selector.unify("::bar:baz", ":foo")}
+
+<===> order/do_not_cross_pseudo_element/pseudo_class_and_element/into_pseudo_element/output.css
+a {
+  b: :foo::bar:baz;
+}
+
+<===> order/do_not_cross_pseudo_element/pseudo_class_and_element/into_same_pseudo_element_and_different_pseudo_class/input.scss
+@use "sass:selector";
+a {b: selector.unify("::foo:bar", "::foo:baz")}
+
+<===> order/do_not_cross_pseudo_element/pseudo_class_and_element/into_same_pseudo_element_and_different_pseudo_class/output.css
+a {
+  b: ::foo:bar:baz;
+}
+
+<===> order/do_not_cross_pseudo_element/pseudo_class_and_element/into_different_pseudo_element_and_different_pseudo_class/input.scss
+@use "sass:selector";
+a {b: selector.unify("::foo:bar", "::other:baz")}
+
+<===> order/do_not_cross_pseudo_element/pseudo_class_and_element/into_different_pseudo_element_and_different_pseudo_class/output.css
+
+<===> order/do_not_cross_pseudo_element/simple/into_pseudo_class_and_element/input.scss
+@use "sass:selector";
+a {b: selector.unify(".x", ".y::scrollbar:horizontal")}
+
+<===> order/do_not_cross_pseudo_element/simple/into_pseudo_class_and_element/output.css
+a {
+  b: .x.y::scrollbar:horizontal;
+}
+
+<===> order/do_not_cross_pseudo_element/pseudo_element/into_pseudo_class_and_element/input.scss
+@use "sass:selector";
+a {b: selector.unify(":foo", "::bar:baz")}
+
+<===> order/do_not_cross_pseudo_element/pseudo_element/into_pseudo_class_and_element/output.css
+a {
+  b: :foo::bar:baz;
+}

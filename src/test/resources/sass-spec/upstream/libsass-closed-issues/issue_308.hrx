@@ -1,0 +1,31 @@
+<===> issue_308/input.scss
+$var: orange;
+
+.test {
+  color: $var;
+}
+
+.#{$var} {
+  color: #C0362C;
+}
+
+<===> issue_308/output.css
+.test {
+  color: orange;
+}
+
+.orange {
+  color: #C0362C;
+}
+
+<===> issue_308/warning
+WARNING: You probably don't mean to use the color value orange in interpolation here.
+It may end up represented as orange, which will likely produce invalid CSS.
+Always quote color names when using them as strings or map keys (for example, "orange").
+If you really want to use the color value here, use '"" + $var'.
+
+  ,
+7 | .#{$var} {
+  |    ^^^^
+  '
+    input.scss 7:4  root stylesheet

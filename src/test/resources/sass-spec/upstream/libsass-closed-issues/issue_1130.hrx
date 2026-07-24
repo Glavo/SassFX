@@ -1,0 +1,17 @@
+<===> issue_1130/input.scss
+@function foo($args...) {
+  @return bar($args...);
+}
+
+@function bar() {
+ @return "hi";
+}
+
+.foo {
+  result: foo();
+}
+
+<===> issue_1130/output.css
+.foo {
+  result: "hi";
+}

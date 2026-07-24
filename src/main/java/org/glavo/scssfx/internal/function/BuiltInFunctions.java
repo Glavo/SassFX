@@ -8,6 +8,7 @@ import org.glavo.scssfx.internal.callable.UserDefinedCallable;
 import org.glavo.scssfx.internal.module.ConfiguredValue;
 import org.glavo.scssfx.internal.module.ModuleConfiguration;
 import org.glavo.scssfx.internal.value.ListSeparator;
+import org.glavo.scssfx.internal.value.RgbFunctionColorFormat;
 import org.glavo.scssfx.internal.value.SassArgumentList;
 import org.glavo.scssfx.internal.value.SassBoolean;
 import org.glavo.scssfx.internal.value.SassColor;
@@ -36,7 +37,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 /// Registers built-in Sass functions for global and module namespaces.
@@ -72,27 +75,86 @@ public final class BuiltInFunctions {
     /// @return an immutable name-to-callable map
     public static @Unmodifiable Map<String, BuiltInCallable> global() {
         var functions = new LinkedHashMap<String, BuiltInCallable>();
-        register(functions, BuiltInCallable.of(
+        // Accept both rgb($red, $green, $blue, $alpha) and rgb($color, $alpha)
+        // named forms by using rest-parameter dispatch.
+        register(functions, BuiltInCallable.withRest(
                 "rgb",
-                List.of(
-                        Param.required("red"),
-                        Param.required("green"),
-                        Param.required("blue"),
-                        Param.optional("alpha", SassNumber.of(1, null))
-                ),
-                3,
-                BuiltInFunctions::rgb
+                List.of(),
+                "args",
+                BuiltInFunctions::rgbRest
+        ));
+        register(functions, BuiltInCallable.withRest(
+                "rgba",
+                List.of(),
+                "args",
+                BuiltInFunctions::rgbaRest
         ));
         register(functions, BuiltInCallable.of(
-                "rgba",
+                "color",
+                List.of(Param.required("description")),
+                1,
+                BuiltInFunctions::cssColor
+        ));
+        register(functions, BuiltInCallable.of(
+                "hwb",
                 List.of(
-                        Param.required("red"),
-                        Param.required("green"),
-                        Param.required("blue"),
-                        Param.optional("alpha", SassNumber.of(1, null))
+                        Param.required("channels"),
+                        Param.optional("whiteness", SassNull.NULL),
+                        Param.optional("blackness", SassNull.NULL),
+                        // Null default so plain-CSS special-number forms omit alpha.
+                        Param.optional("alpha", SassNull.NULL)
                 ),
-                3,
-                BuiltInFunctions::rgb
+                1,
+                BuiltInFunctions::cssHwb
+        ));
+        register(functions, BuiltInCallable.of(
+                "lab",
+                List.of(Param.required("channels")),
+                1,
+                BuiltInFunctions::cssLab
+        ));
+        register(functions, BuiltInCallable.of(
+                "lch",
+                List.of(Param.required("channels")),
+                1,
+                BuiltInFunctions::cssLch
+        ));
+        register(functions, BuiltInCallable.of(
+                "oklab",
+                List.of(Param.required("channels")),
+                1,
+                BuiltInFunctions::cssOklab
+        ));
+        register(functions, BuiltInCallable.of(
+                "oklch",
+                List.of(Param.required("channels")),
+                1,
+                BuiltInFunctions::cssOklch
+        ));
+        // First parameter is named {@code channels} so zero-arg diagnostics match
+        // dart-sass's primary {@code hsl($channels)} overload.
+        register(functions, BuiltInCallable.of(
+                "hsl",
+                List.of(
+                        Param.required("channels"),
+                        Param.optional("saturation", SassNull.NULL),
+                        Param.optional("lightness", SassNull.NULL),
+                        // Null default so plain-CSS special-number forms omit alpha.
+                        Param.optional("alpha", SassNull.NULL)
+                ),
+                1,
+                BuiltInFunctions::hsl
+        ));
+        register(functions, BuiltInCallable.of(
+                "hsla",
+                List.of(
+                        Param.required("channels"),
+                        Param.optional("saturation", SassNull.NULL),
+                        Param.optional("lightness", SassNull.NULL),
+                        Param.optional("alpha", SassNull.NULL)
+                ),
+                1,
+                BuiltInFunctions::hsl
         ));
         register(functions, BuiltInCallable.of("quote", List.of("string"), BuiltInFunctions::quote));
         register(functions, BuiltInCallable.of("unquote", List.of("string"), BuiltInFunctions::unquote));
@@ -120,6 +182,11 @@ public final class BuiltInFunctions {
         ));
         register(functions, BuiltInCallable.of("type-of", List.of("value"), BuiltInFunctions::typeOf));
         register(functions, BuiltInCallable.of("inspect", List.of("value"), BuiltInFunctions::inspect));
+        register(functions, BuiltInCallable.of(
+                "feature-exists",
+                List.of("feature"),
+                BuiltInFunctions::featureExists
+        ));
         register(functions, BuiltInCallable.of("unit", List.of("number"), BuiltInFunctions::unit));
         register(functions, BuiltInCallable.of(
                 "comparable",
@@ -189,6 +256,11 @@ public final class BuiltInFunctions {
                 BuiltInFunctions::strSlice
         ));
         register(functions, BuiltInCallable.of(
+                "str-insert",
+                List.of("string", "insert", "index"),
+                BuiltInFunctions::strInsert
+        ));
+        register(functions, BuiltInCallable.of(
                 "to-upper-case",
                 List.of("string"),
                 BuiltInFunctions::toUpperCase
@@ -230,8 +302,139 @@ public final class BuiltInFunctions {
         register(functions, BuiltInCallable.of("red", List.of("color"), BuiltInFunctions::red));
         register(functions, BuiltInCallable.of("green", List.of("color"), BuiltInFunctions::green));
         register(functions, BuiltInCallable.of("blue", List.of("color"), BuiltInFunctions::blue));
-        register(functions, BuiltInCallable.of("alpha", List.of("color"), BuiltInFunctions::alphaChannel));
+        // Alpha supports Microsoft filter overloads: alpha(c=d) and multi-arg forms.
+        register(functions, BuiltInCallable.withRest(
+                "alpha",
+                List.of(),
+                "args",
+                BuiltInFunctions::alphaChannel
+        ));
         register(functions, BuiltInCallable.of("opacity", List.of("color"), BuiltInFunctions::opacity));
+        register(functions, BuiltInCallable.of("hue", List.of("color"), BuiltInFunctions::colorHue));
+        register(functions, BuiltInCallable.of(
+                "saturation",
+                List.of("color"),
+                BuiltInFunctions::colorSaturation
+        ));
+        register(functions, BuiltInCallable.of(
+                "lightness",
+                List.of("color"),
+                BuiltInFunctions::colorLightness
+        ));
+        register(functions, BuiltInCallable.of(
+                "whiteness",
+                List.of("color"),
+                BuiltInFunctions::colorWhiteness
+        ));
+        register(functions, BuiltInCallable.of(
+                "blackness",
+                List.of("color"),
+                BuiltInFunctions::colorBlackness
+        ));
+        register(functions, BuiltInCallable.of(
+                "mix",
+                List.of(
+                        Param.required("color1"),
+                        Param.required("color2"),
+                        Param.optional("weight", SassNumber.of(50, "%"))
+                ),
+                2,
+                BuiltInFunctions::globalColorMix
+        ));
+        // Global invert accepts $space for Color 4 modern colors; callers are
+        // still warned by the global-builtin deprecation path.
+        register(functions, BuiltInCallable.of(
+                "invert",
+                List.of(
+                        Param.required("color"),
+                        Param.optional("weight", SassNumber.of(100, "%")),
+                        Param.optional("space", SassNull.NULL)
+                ),
+                1,
+                BuiltInFunctions::colorInvert
+        ));
+        register(functions, BuiltInCallable.of(
+                "grayscale",
+                List.of("color"),
+                BuiltInFunctions::globalGrayscale
+        ));
+        register(functions, BuiltInCallable.of(
+                "complement",
+                List.of("color"),
+                BuiltInFunctions::globalComplement
+        ));
+        register(functions, BuiltInCallable.of(
+                "adjust-hue",
+                List.of("color", "degrees"),
+                BuiltInFunctions::adjustHue
+        ));
+        register(functions, BuiltInCallable.of(
+                "lighten",
+                List.of("color", "amount"),
+                BuiltInFunctions::lighten
+        ));
+        register(functions, BuiltInCallable.of(
+                "darken",
+                List.of("color", "amount"),
+                BuiltInFunctions::darken
+        ));
+        register(functions, BuiltInCallable.of(
+                "saturate",
+                List.of(
+                        Param.required("color"),
+                        Param.optional("amount", SassNull.NULL)
+                ),
+                1,
+                BuiltInFunctions::saturate
+        ));
+        register(functions, BuiltInCallable.of(
+                "desaturate",
+                List.of("color", "amount"),
+                BuiltInFunctions::desaturate
+        ));
+        register(functions, BuiltInCallable.of(
+                "opacify",
+                List.of("color", "amount"),
+                args -> opacifyNamed(args, "opacify")
+        ));
+        register(functions, BuiltInCallable.of(
+                "fade-in",
+                List.of("color", "amount"),
+                args -> opacifyNamed(args, "fade-in")
+        ));
+        register(functions, BuiltInCallable.of(
+                "transparentize",
+                List.of("color", "amount"),
+                args -> transparentizeNamed(args, "transparentize")
+        ));
+        register(functions, BuiltInCallable.of(
+                "fade-out",
+                List.of("color", "amount"),
+                args -> transparentizeNamed(args, "fade-out")
+        ));
+        register(functions, BuiltInCallable.withRest(
+                "adjust-color",
+                List.of("color"),
+                "kwargs",
+                BuiltInFunctions::globalAdjustColor
+        ));
+        register(functions, BuiltInCallable.withRest(
+                "scale-color",
+                List.of("color"),
+                "kwargs",
+                BuiltInFunctions::globalScaleColor
+        ));
+        register(functions, BuiltInCallable.withRest(
+                "change-color",
+                List.of("color"),
+                "kwargs",
+                BuiltInFunctions::globalChangeColor
+        ));
+        register(functions, BuiltInCallable.of(
+                "ie-hex-str",
+                List.of("color"),
+                BuiltInFunctions::ieHexStr
+        ));
         return freeze(functions);
     }
 
@@ -396,14 +599,10 @@ public final class BuiltInFunctions {
         moduleFunction(functions, global, "str-length", "length");
         moduleFunction(functions, global, "str-index", "index");
         moduleFunction(functions, global, "str-slice", "slice");
+        moduleFunction(functions, global, "str-insert", "insert");
         moduleFunction(functions, global, "to-upper-case", "to-upper-case");
         moduleFunction(functions, global, "to-lower-case", "to-lower-case");
         moduleFunction(functions, global, "unique-id", "unique-id");
-        register(functions, BuiltInCallable.of(
-                "insert",
-                List.of("string", "insert", "index"),
-                BuiltInFunctions::strInsert
-        ));
         register(functions, BuiltInCallable.of(
                 "split",
                 List.of(
@@ -430,8 +629,30 @@ public final class BuiltInFunctions {
         moduleFunction(functions, global, "red", "red");
         moduleFunction(functions, global, "green", "green");
         moduleFunction(functions, global, "blue", "blue");
-        moduleFunction(functions, global, "alpha", "alpha");
-        moduleFunction(functions, global, "opacity", "opacity");
+        // Module alpha uses distinct diagnostics from the global Microsoft-filter form.
+        register(functions, BuiltInCallable.withRest(
+                "alpha",
+                List.of(),
+                "args",
+                BuiltInFunctions::moduleAlphaChannel
+        ));
+        register(functions, BuiltInCallable.of(
+                "opacity",
+                List.of("color"),
+                BuiltInFunctions::moduleOpacity
+        ));
+        // color.hwb is the only multi-arg space constructor re-exported from sass:color.
+        moduleFunction(functions, global, "hwb", "hwb");
+        // Legacy global color functions are not re-exported from sass:color.
+        register(functions, removedColorFunction("adjust-hue", "hue", false));
+        register(functions, removedColorFunction("lighten", "lightness", false));
+        register(functions, removedColorFunction("darken", "lightness", true));
+        register(functions, removedColorFunction("saturate", "saturation", false));
+        register(functions, removedColorFunction("desaturate", "saturation", true));
+        register(functions, removedColorFunction("opacify", "alpha", false));
+        register(functions, removedColorFunction("fade-in", "alpha", false));
+        register(functions, removedColorFunction("transparentize", "alpha", true));
+        register(functions, removedColorFunction("fade-out", "alpha", true));
         register(functions, BuiltInCallable.of(
                 "mix",
                 List.of(
@@ -453,17 +674,11 @@ public final class BuiltInFunctions {
                 1,
                 BuiltInFunctions::colorInvert
         ));
-        register(functions, BuiltInCallable.of("hue", List.of("color"), BuiltInFunctions::colorHue));
-        register(functions, BuiltInCallable.of(
-                "saturation",
-                List.of("color"),
-                BuiltInFunctions::colorSaturation
-        ));
-        register(functions, BuiltInCallable.of(
-                "lightness",
-                List.of("color"),
-                BuiltInFunctions::colorLightness
-        ));
+        moduleFunction(functions, global, "hue", "hue");
+        moduleFunction(functions, global, "saturation", "saturation");
+        moduleFunction(functions, global, "lightness", "lightness");
+        moduleFunction(functions, global, "whiteness", "whiteness");
+        moduleFunction(functions, global, "blackness", "blackness");
         register(functions, BuiltInCallable.of(
                 "grayscale",
                 List.of("color"),
@@ -576,6 +791,7 @@ public final class BuiltInFunctions {
         var functions = new LinkedHashMap<String, BuiltInCallable>();
         moduleFunction(functions, global, "inspect", "inspect");
         moduleFunction(functions, global, "type-of", "type-of");
+        moduleFunction(functions, global, "feature-exists", "feature-exists");
         register(functions, BuiltInCallable.of(
                 "keywords",
                 List.of("args"),
@@ -744,13 +960,381 @@ public final class BuiltInFunctions {
         functions.put(callable.name(), callable);
     }
 
-    private static SassValue rgb(List<SassValue> args) {
+    /// Dispatches {@code rgb(...)} overloads from a rest argument list.
+    private static SassValue rgbRest(List<SassValue> args) {
+        return rgbOrRgba("rgb", restArgumentList(args));
+    }
+
+    /// Dispatches {@code rgba(...)} overloads from a rest argument list.
+    private static SassValue rgbaRest(List<SassValue> args) {
+        return rgbOrRgba("rgba", restArgumentList(args));
+    }
+
+    /// Implements rgb/rgba positional and named overload selection.
+    private static SassValue rgbOrRgba(String name, SassArgumentList rest) {
+        var values = new ArrayList<>(rest.asList());
+        var keywords = new LinkedHashMap<>(rest.keywords());
+        if (values.isEmpty() && keywords.containsKey("color")) {
+            @Nullable SassValue color = keywords.remove("color");
+            @Nullable SassValue alphaArg = keywords.remove("alpha");
+            if (!keywords.isEmpty()) {
+                throw new SassValueException(
+                        "No argument named $" + keywords.keySet().iterator().next() + "."
+                );
+            }
+            if (color == null) {
+                throw new SassValueException("Missing argument $color.");
+            }
+            if (alphaArg == null) {
+                throw new SassValueException("Missing argument $alpha.");
+            }
+            return rgbTwoArg(name, color, alphaArg);
+        }
+        if (keywords.containsKey("channels")) {
+            @Nullable SassValue channels = keywords.remove("channels");
+            if (!keywords.isEmpty()) {
+                throw new SassValueException(
+                        "No argument named $" + keywords.keySet().iterator().next() + "."
+                );
+            }
+            if (!values.isEmpty()) {
+                throw new SassValueException(
+                        "Only 1 argument allowed, but " + (1 + values.size()) + " were passed."
+                );
+            }
+            return CssColorChannels.parseFixedSpace(
+                    name,
+                    Objects.requireNonNull(channels),
+                    ColorSpace.RGB
+            );
+        }
+        if (keywords.containsKey("red") || keywords.containsKey("green")
+                || keywords.containsKey("blue")) {
+            @Nullable SassValue red = takeNamedOrPositional(values, keywords, "red");
+            @Nullable SassValue green = takeNamedOrPositional(values, keywords, "green");
+            @Nullable SassValue blue = takeNamedOrPositional(values, keywords, "blue");
+            @Nullable SassValue alphaArg = takeNamedOrPositional(values, keywords, "alpha");
+            if (!keywords.isEmpty()) {
+                throw new SassValueException(
+                        "No argument named $" + keywords.keySet().iterator().next() + "."
+                );
+            }
+            if (!values.isEmpty()) {
+                throw new SassValueException(
+                        "Only 4 arguments allowed, but "
+                                + (4 + values.size()) + " were passed."
+                );
+            }
+            return rgbChannels(name, red, green, blue, alphaArg);
+        }
+        if (!keywords.isEmpty() && !keywords.containsKey("alpha") && values.size() <= 1) {
+            // Single channels list may carry a named alpha.
+        }
+        if (keywords.containsKey("alpha") && values.size() == 1) {
+            @Nullable SassValue alphaArg = keywords.remove("alpha");
+            if (!keywords.isEmpty()) {
+                throw new SassValueException(
+                        "No argument named $" + keywords.keySet().iterator().next() + "."
+                );
+            }
+            return rgbTwoArg(name, values.get(0), Objects.requireNonNull(alphaArg));
+        }
+        if (!keywords.isEmpty()) {
+            // Allow trailing named alpha for the three-channel form.
+            if (keywords.size() == 1 && keywords.containsKey("alpha") && values.size() == 3) {
+                return rgbChannels(
+                        name,
+                        values.get(0),
+                        values.get(1),
+                        values.get(2),
+                        keywords.get("alpha")
+                );
+            }
+            throw new SassValueException(
+                    "No argument named $" + keywords.keySet().iterator().next() + "."
+            );
+        }
+        if (values.isEmpty()) {
+            // dart-sass's first rgb overload is {@code rgb($channels)}.
+            throw new SassValueException("Missing argument $channels.");
+        }
+        if (values.size() == 1) {
+            return CssColorChannels.parseFixedSpace(name, values.get(0), ColorSpace.RGB);
+        }
+        if (values.size() == 2) {
+            return rgbTwoArg(name, values.get(0), values.get(1));
+        }
+        if (values.size() == 3) {
+            return rgbChannels(name, values.get(0), values.get(1), values.get(2), null);
+        }
+        if (values.size() == 4) {
+            return rgbChannels(
+                    name,
+                    values.get(0),
+                    values.get(1),
+                    values.get(2),
+                    values.get(3)
+            );
+        }
+        throw new SassValueException(
+                "Only 4 arguments allowed, but " + values.size() + " were passed."
+        );
+    }
+
+    /// Builds an RGB color from three channel values and optional alpha.
+    private static SassValue rgbChannels(
+            String name,
+            @Nullable SassValue red,
+            @Nullable SassValue green,
+            @Nullable SassValue blue,
+            @Nullable SassValue alphaArg
+    ) {
+        if (red == null) {
+            throw new SassValueException("Missing argument $red.");
+        }
+        if (green == null) {
+            throw new SassValueException("Missing argument $green.");
+        }
+        if (blue == null) {
+            throw new SassValueException("Missing argument $blue.");
+        }
+        if (red.isSpecialNumber()
+                || green.isSpecialNumber()
+                || blue.isSpecialNumber()
+                || (alphaArg != null && alphaArg.isSpecialNumber())) {
+            var specialArgs = new ArrayList<SassValue>();
+            specialArgs.add(red);
+            specialArgs.add(green);
+            specialArgs.add(blue);
+            if (alphaArg != null) {
+                specialArgs.add(alphaArg);
+            }
+            return CssColorChannels.functionString(name, specialArgs);
+        }
+        // Legacy rgb() clamps channels and alpha like CSS Color 3.
         return SassColor.rgb(
-                channel(args.get(0)),
-                channel(args.get(1)),
-                channel(args.get(2)),
-                args.size() > 3 ? alpha(args.get(3)) : 1.0,
-                null
+                clampLikeCss(namedChannel(red, "red"), 0.0, 255.0),
+                clampLikeCss(namedChannel(green, "green"), 0.0, 255.0),
+                clampLikeCss(namedChannel(blue, "blue"), 0.0, 255.0),
+                alphaArg != null ? namedAlpha(alphaArg) : 1.0,
+                RgbFunctionColorFormat.INSTANCE
+        );
+    }
+
+    /// Reads an RGB channel while preserving the parameter name in diagnostics.
+    ///
+    /// Unitless values are used as-is. Percentage values map {@code 0%..100%} onto
+    /// {@code 0..255}, matching dart-sass multi-argument {@code rgb()}.
+    private static double namedChannel(SassValue value, String name) {
+        try {
+            var number = value.assertNumber();
+            if (number.isUnitless()) {
+                return number.value();
+            }
+            if (number.numeratorUnits().equals(List.of("%"))
+                    && number.denominatorUnits().isEmpty()) {
+                return number.value() * 255.0 / 100.0;
+            }
+            throw new SassValueException(
+                    "Expected " + number + " to have unit \"%\" or no units."
+            );
+        } catch (SassValueException exception) {
+            String message = Objects.requireNonNull(exception.getMessage(), "channel message");
+            if (message.startsWith("$")) {
+                throw exception;
+            }
+            throw new SassValueException("$" + name + ": " + message);
+        }
+    }
+
+    /// Reads an alpha value while preserving the parameter name in diagnostics.
+    private static double namedAlpha(SassValue value) {
+        try {
+            return alpha(value);
+        } catch (SassValueException exception) {
+            String message = Objects.requireNonNull(exception.getMessage(), "alpha message");
+            if (message.startsWith("$")) {
+                throw exception;
+            }
+            throw new SassValueException("$alpha: " + message);
+        }
+    }
+
+    /// Reads one named keyword or the next positional value.
+    private static @Nullable SassValue takeNamedOrPositional(
+            ArrayList<SassValue> values,
+            LinkedHashMap<String, SassValue> keywords,
+            String name
+    ) {
+        if (keywords.containsKey(name)) {
+            return keywords.remove(name);
+        }
+        if (!values.isEmpty()) {
+            return values.remove(0);
+        }
+        return null;
+    }
+
+    /// Implements the two-argument {@code rgb($color, $alpha)} / {@code rgba(...)} form.
+    private static SassValue rgbTwoArg(String name, SassValue colorOrSpecial, SassValue alphaValue) {
+        if (colorOrSpecial.isSpecialVariable()
+                || (!(colorOrSpecial instanceof SassColor) && alphaValue.isSpecialVariable())) {
+            return CssColorChannels.functionString(name, List.of(colorOrSpecial, alphaValue));
+        }
+        if (alphaValue.isSpecialNumber()) {
+            // Keep the original color spelling when it was a special number/string.
+            return CssColorChannels.functionString(name, List.of(colorOrSpecial, alphaValue));
+        }
+        var color = colorArgument(colorOrSpecial, "color");
+        return color.changeAlpha(namedAlpha(alphaValue));
+    }
+
+    /// Parses the CSS {@code color()} constructor.
+    private static SassValue cssColor(List<SassValue> args) {
+        return CssColorChannels.parseColorDescription(args.get(0));
+    }
+
+    /// Parses the CSS {@code hwb()} constructor in one-arg or multi-arg form.
+    private static SassValue cssHwb(List<SassValue> args) {
+        if (args.size() > 1
+                && !(args.get(1) instanceof SassNull)
+                && !(args.get(2) instanceof SassNull)) {
+            // Multi-arg form: hwb($hue, $whiteness, $blackness, $alpha: 1).
+            @Nullable SassValue alphaArg = args.size() > 3 && !(args.get(3) instanceof SassNull)
+                    ? args.get(3)
+                    : null;
+            if (args.get(0).isSpecialNumber()
+                    || args.get(1).isSpecialNumber()
+                    || args.get(2).isSpecialNumber()
+                    || (alphaArg != null && alphaArg.isSpecialNumber())) {
+                // Modern hwb() special-number form uses spaces and slash-alpha.
+                var builder = new StringBuilder("hwb(")
+                        .append(args.get(0).toCssString()).append(' ')
+                        .append(args.get(1).toCssString()).append(' ')
+                        .append(args.get(2).toCssString());
+                if (alphaArg != null) {
+                    builder.append(" / ").append(alphaArg.toCssString());
+                }
+                return new SassString(builder.append(')').toString(), false);
+            }
+            double hue = channelTypeNumber(args.get(0), "hue").value();
+            SassNumber whitenessNumber = channelTypeNumber(args.get(1), "whiteness");
+            SassNumber blacknessNumber = channelTypeNumber(args.get(2), "blackness");
+            assertPercentUnit(whitenessNumber, "whiteness");
+            assertPercentUnit(blacknessNumber, "blackness");
+            double whiteness = whitenessNumber.value();
+            double blackness = blacknessNumber.value();
+            if (whiteness + blackness > 100.0) {
+                var sum = whiteness + blackness;
+                whiteness = whiteness / sum * 100.0;
+                blackness = blackness / sum * 100.0;
+            }
+            double alphaValue = alphaArg != null ? alpha(alphaArg) : 1.0;
+            return SassColor.hwb(hue, whiteness, blackness, alphaValue);
+        }
+        return CssColorChannels.parseFixedSpace("hwb", args.get(0), ColorSpace.HWB);
+    }
+
+    /// Asserts a multi-arg color channel is a number with dart-sass diagnostics.
+    private static SassNumber channelTypeNumber(SassValue value, String channel) {
+        if (value instanceof SassNumber number) {
+            return number;
+        }
+        throw new SassValueException(
+                "Expected " + channel + " channel to be a number, was " + value + "."
+        );
+    }
+
+    /// Parses the CSS {@code lab()} constructor.
+    private static SassValue cssLab(List<SassValue> args) {
+        return CssColorChannels.parseFixedSpace("lab", args.get(0), ColorSpace.LAB);
+    }
+
+    /// Parses the CSS {@code lch()} constructor.
+    private static SassValue cssLch(List<SassValue> args) {
+        return CssColorChannels.parseFixedSpace("lch", args.get(0), ColorSpace.LCH);
+    }
+
+    /// Parses the CSS {@code oklab()} constructor.
+    private static SassValue cssOklab(List<SassValue> args) {
+        return CssColorChannels.parseFixedSpace("oklab", args.get(0), ColorSpace.OKLAB);
+    }
+
+    /// Parses the CSS {@code oklch()} constructor.
+    private static SassValue cssOklch(List<SassValue> args) {
+        return CssColorChannels.parseFixedSpace("oklch", args.get(0), ColorSpace.OKLCH);
+    }
+
+    /// Parses legacy or modern CSS {@code hsl()}/{@code hsla()} constructors.
+    private static SassValue hsl(List<SassValue> args) {
+        if (args.get(1) instanceof SassNull || args.get(2) instanceof SassNull) {
+            if (!(args.get(1) instanceof SassNull) || !(args.get(2) instanceof SassNull)) {
+                // hsl(123, var(--foo)) is valid CSS because --foo might expand.
+                if (args.get(0).isSpecialVariable() || args.get(1).isSpecialVariable()) {
+                    return CssColorChannels.functionString("hsl", List.of(args.get(0), args.get(1)));
+                }
+                if (args.get(1) instanceof SassNull) {
+                    throw new SassValueException("Missing argument $saturation.");
+                }
+                throw new SassValueException("Missing argument $lightness.");
+            }
+            return CssColorChannels.parseFixedSpace("hsl", args.get(0), ColorSpace.HSL);
+        }
+        @Nullable SassValue alphaArg = args.size() > 3 && !(args.get(3) instanceof SassNull)
+                ? args.get(3)
+                : null;
+        if (args.get(0).isSpecialNumber()
+                || args.get(1).isSpecialNumber()
+                || args.get(2).isSpecialNumber()
+                || (alphaArg != null && alphaArg.isSpecialNumber())) {
+            var specialArgs = new ArrayList<SassValue>();
+            specialArgs.add(args.get(0));
+            specialArgs.add(args.get(1));
+            specialArgs.add(args.get(2));
+            if (alphaArg != null) {
+                specialArgs.add(alphaArg);
+            }
+            return CssColorChannels.functionString("hsl", specialArgs);
+        }
+        // Multi-arg hsl uses parameter-name diagnostics ($hue/$saturation/...),
+        // while one-arg channel lists use "Expected X channel to be a number".
+        double hue = numberArgument(args.get(0), "hue").value();
+        // Saturation is lower-clamped so negative values become 0% rather than
+        // inverting the hue via forSpace preprocessing.
+        double saturation = Math.max(
+                0.0,
+                percentageOrUnitlessChannel(
+                        numberArgument(args.get(1), "saturation"),
+                        "saturation"
+                )
+        );
+        double lightness = percentageOrUnitlessChannel(
+                numberArgument(args.get(2), "lightness"),
+                "lightness"
+        );
+        double alphaValue = alphaArg != null ? alpha(alphaArg) : 1.0;
+        return SassColor.hsl(hue, saturation, lightness, alphaValue);
+    }
+
+    private static double percentageOrUnitlessChannel(SassNumber number, String name) {
+        if (number.isUnitless()) {
+            return number.value();
+        }
+        if (number.numeratorUnits().equals(List.of("%")) && number.denominatorUnits().isEmpty()) {
+            return number.value();
+        }
+        throw new SassValueException(
+                "$" + name + ": Expected " + number + " to have unit \"%\" or no units."
+        );
+    }
+
+    /// Requires a number to have unit {@code %}.
+    private static void assertPercentUnit(SassNumber number, String name) {
+        if (number.numeratorUnits().equals(List.of("%")) && number.denominatorUnits().isEmpty()) {
+            return;
+        }
+        throw new SassValueException(
+                "$" + name + ": Expected " + number + " to have unit \"%\"."
         );
     }
 
@@ -758,13 +1342,24 @@ public final class BuiltInFunctions {
         return value.assertNumber().assertNoUnits().value();
     }
 
+    /// Parses a constructor alpha as unitless or {@code %}, clamping into {@code 0..1}.
+    ///
+    /// Matches dart-sass {@code clampLikeCss(_percentageOrUnitless(...), 0, 1)} so
+    /// out-of-range and non-finite alphas are clamped rather than rejected.
     private static double alpha(SassValue value) {
-        var number = value.assertNumber().assertNoUnits();
-        var alpha = number.value();
-        if (!(alpha >= 0.0 && alpha <= 1.0)) {
-            throw new SassValueException("$alpha: Expected " + number + " to be within 0 and 1.");
+        var number = value.assertNumber();
+        double raw;
+        if (number.isUnitless()) {
+            raw = number.value();
+        } else if (number.numeratorUnits().equals(List.of("%"))
+                && number.denominatorUnits().isEmpty()) {
+            raw = number.value() / 100.0;
+        } else {
+            throw new SassValueException(
+                    "$alpha: Expected " + number + " to have unit \"%\" or no units."
+            );
         }
-        return alpha;
+        return clampLikeCss(raw, 0.0, 1.0);
     }
 
     private static SassValue quote(List<SassValue> args) {
@@ -874,6 +1469,26 @@ public final class BuiltInFunctions {
     ///
     /// @param args the one bound value argument
     /// @return an unquoted Sass type name
+    /// Known historical Sass language features reported by {@code feature-exists()}.
+    private static final @Unmodifiable Set<String> KNOWN_FEATURES = Set.of(
+            "global-variable-shadowing",
+            "extend-selector-pseudoclass",
+            "units-level-3",
+            "at-error",
+            "custom-property"
+    );
+
+    /// Returns whether a historical Sass language feature is available.
+    ///
+    /// @param args the feature name
+    /// @return whether the feature is known
+    private static SassValue featureExists(List<SassValue> args) {
+        if (!(args.get(0) instanceof SassString feature)) {
+            throw new SassValueException("$feature: " + args.get(0) + " is not a string.");
+        }
+        return SassBoolean.of(KNOWN_FEATURES.contains(feature.text()));
+    }
+
     private static SassValue typeOf(List<SassValue> args) {
         var value = args.get(0);
         String type;
@@ -1024,7 +1639,8 @@ public final class BuiltInFunctions {
         }
         @Nullable SassFunction function = context.function(metaName(nameArgument, "name"), module);
         if (function == null) {
-            throw new SassValueException("Function not found: " + nameArgument + ".");
+            // Dart Sass omits the trailing period on this diagnostic.
+            throw new SassValueException("Function not found: " + nameArgument);
         }
         return function;
     }
@@ -1062,7 +1678,8 @@ public final class BuiltInFunctions {
                 metaModuleName(args.get(1))
         );
         if (mixin == null) {
-            throw new SassValueException("Mixin not found: " + nameArgument + ".");
+            // Dart Sass omits the trailing period on this diagnostic.
+            throw new SassValueException("Mixin not found: " + nameArgument);
         }
         return mixin;
     }
@@ -1943,7 +2560,7 @@ public final class BuiltInFunctions {
     /// @param args the one color argument
     /// @return the rounded red channel
     private static SassValue red(List<SassValue> args) {
-        return SassNumber.of(roundSass(args.get(0).assertColor().red()), null);
+        return SassNumber.of(roundSass(colorArgument(args.get(0), "color").red()), null);
     }
 
     /// Returns the legacy RGB green channel rounded to Sass's nearest integer.
@@ -1951,7 +2568,7 @@ public final class BuiltInFunctions {
     /// @param args the one color argument
     /// @return the rounded green channel
     private static SassValue green(List<SassValue> args) {
-        return SassNumber.of(roundSass(args.get(0).assertColor().green()), null);
+        return SassNumber.of(roundSass(colorArgument(args.get(0), "color").green()), null);
     }
 
     /// Returns the legacy RGB blue channel rounded to Sass's nearest integer.
@@ -1959,15 +2576,101 @@ public final class BuiltInFunctions {
     /// @param args the one color argument
     /// @return the rounded blue channel
     private static SassValue blue(List<SassValue> args) {
-        return SassNumber.of(roundSass(args.get(0).assertColor().blue()), null);
+        return SassNumber.of(roundSass(colorArgument(args.get(0), "color").blue()), null);
     }
 
-    /// Returns the alpha channel of one color.
+    /// Pattern matching the start of a proprietary Microsoft filter argument
+    /// such as {@code opacity=50} or {@code c=d}.
+    private static final java.util.regex.Pattern MICROSOFT_FILTER_START =
+            java.util.regex.Pattern.compile("^[a-zA-Z]+\\s*=");
+
+    /// Returns the alpha channel of a color, or preserves Microsoft filter forms.
     ///
-    /// @param args the one color argument
-    /// @return the alpha channel
+    /// Supports:
+    /// <ul>
+    ///   <li>{@code alpha($color)} for legacy colors</li>
+    ///   <li>{@code alpha(c=d)} / multi-arg Microsoft filter passthrough</li>
+    /// </ul>
+    ///
+    /// @param args the rest argument list bound as {@code $args}
+    /// @return the alpha number or an unquoted plain-CSS {@code alpha(...)} call
     private static SassValue alphaChannel(List<SassValue> args) {
-        return SassNumber.of(args.get(0).assertColor().alpha(), null);
+        return alphaChannelImpl(args, false);
+    }
+
+    /// Module {@code color.alpha()} with module-specific diagnostics.
+    ///
+    /// @param args the rest argument list bound as {@code $args}
+    /// @return the alpha number or an unquoted plain-CSS {@code alpha(...)} call
+    private static SassValue moduleAlphaChannel(List<SassValue> args) {
+        return alphaChannelImpl(args, true);
+    }
+
+    /// Shared alpha implementation for global and module entry points.
+    private static SassValue alphaChannelImpl(List<SassValue> args, boolean module) {
+        SassArgumentList rest = restArgumentList(args);
+        var values = rest.asList();
+        var keywords = rest.keywords();
+        if (values.isEmpty() && keywords.containsKey("color") && keywords.size() == 1) {
+            values = List.of(keywords.get("color"));
+        } else if (!keywords.isEmpty()) {
+            // Unknown or excess keywords fall through to arity diagnostics.
+            if (!(values.isEmpty() && keywords.containsKey("color"))) {
+                throw new SassValueException(
+                        "No argument named $" + keywords.keySet().iterator().next() + "."
+                );
+            }
+        }
+        if (values.size() == 1) {
+            SassValue argument = values.get(0);
+            if (isMicrosoftFilterArgument(argument)) {
+                return CssColorChannels.functionString("alpha", values);
+            }
+            var color = colorArgument(argument, "color");
+            if (!color.isLegacy()) {
+                throw new SassValueException(
+                        (module ? "color.alpha()" : "alpha()")
+                                + " is only supported for legacy colors. Please use "
+                                + "color.channel() instead."
+                );
+            }
+            return SassNumber.of(color.alpha(), null);
+        }
+        if (module) {
+            // Empty argument lists satisfy Iterable.every, so module alpha()
+            // attempts Microsoft-filter serialization and fails with the empty
+            // list CSS error, matching dart-sass.
+            if (values.stream().allMatch(BuiltInFunctions::isMicrosoftFilterArgument)) {
+                return CssColorChannels.functionString("alpha", List.of(rest));
+            }
+            throw new SassValueException(
+                    "Only 1 argument allowed, but " + values.size() + " were passed."
+            );
+        }
+        if (!values.isEmpty() && values.stream().allMatch(BuiltInFunctions::isMicrosoftFilterArgument)) {
+            return CssColorChannels.functionString("alpha", values);
+        }
+        if (values.isEmpty()) {
+            throw new SassValueException("Missing argument $color.");
+        }
+        throw new SassValueException(
+                "Only 1 argument allowed, but " + values.size() + " were passed."
+        );
+    }
+
+    /// Returns whether {@code value} is an unquoted Microsoft-filter style argument.
+    private static boolean isMicrosoftFilterArgument(SassValue value) {
+        return value instanceof SassString string
+                && !string.hasQuotes()
+                && MICROSOFT_FILTER_START.matcher(string.text()).find();
+    }
+
+    /// Extracts the rest argument list bound to a {@code withRest} parameter.
+    private static SassArgumentList restArgumentList(List<SassValue> args) {
+        if (args.size() == 1 && args.get(0) instanceof SassArgumentList list) {
+            return list;
+        }
+        return new SassArgumentList(args, ListSeparator.COMMA, Map.of());
     }
 
     /// Mixes two colors using either the legacy RGB algorithm or Color 4
@@ -2074,6 +2777,231 @@ public final class BuiltInFunctions {
         return SassNumber.of(colorArgument(args.get(0), "color").lightness(), "%");
     }
 
+    /// Returns the legacy HWB whiteness of one color.
+    ///
+    /// @param args the one color argument
+    /// @return the whiteness percentage
+    private static SassValue colorWhiteness(List<SassValue> args) {
+        return SassNumber.of(colorArgument(args.get(0), "color").whiteness(), "%");
+    }
+
+    /// Returns the legacy HWB blackness of one color.
+    ///
+    /// @param args the one color argument
+    /// @return the blackness percentage
+    private static SassValue colorBlackness(List<SassValue> args) {
+        return SassNumber.of(colorArgument(args.get(0), "color").blackness(), "%");
+    }
+
+    /// Mixes two legacy colors using the global {@code mix()} function.
+    private static SassValue globalColorMix(List<SassValue> args) {
+        var first = colorArgument(args.get(0), "color1");
+        var second = colorArgument(args.get(1), "color2");
+        var weight = numberArgument(args.get(2), "weight");
+        if (!first.isLegacy()) {
+            throw new SassValueException(
+                    "$color1: Global mix() only supports legacy colors. Use color.mix() instead."
+            );
+        }
+        if (!second.isLegacy()) {
+            throw new SassValueException(
+                    "$color2: Global mix() only supports legacy colors. Use color.mix() instead."
+            );
+        }
+        return first.mixedWith(second, legacyWeight(weight, "weight"));
+    }
+
+    /// Global {@code invert()} with plain-CSS number filter fallback.
+    private static SassValue globalInvert(List<SassValue> args) {
+        var value = args.get(0);
+        var weightNumber = numberArgument(args.get(1), "weight");
+        if (value instanceof SassNumber number) {
+            if (!isCssFilterDefaultWeight(weightNumber)) {
+                throw new SassValueException(
+                        "Only one argument may be passed to the plain-CSS invert() function."
+                );
+            }
+            return new SassString("invert(" + number.toCssString() + ")", false);
+        }
+        if (value.isSpecialNumber()) {
+            return CssColorChannels.functionString("invert", List.of(value));
+        }
+        var color = colorArgument(value, "color");
+        if (!color.isLegacy()) {
+            throw new SassValueException(
+                    "$color: Global invert() only supports legacy colors. Use color.invert() instead."
+            );
+        }
+        return color.inverted().mixedWith(color, legacyWeight(weightNumber, "weight"));
+    }
+
+    /// Global {@code grayscale()} with plain-CSS number filter fallback.
+    private static SassValue globalGrayscale(List<SassValue> args) {
+        var value = args.get(0);
+        if (value instanceof SassNumber number) {
+            return new SassString("grayscale(" + number.toCssString() + ")", false);
+        }
+        if (value.isSpecialNumber()) {
+            return CssColorChannels.functionString("grayscale", List.of(value));
+        }
+        var color = colorArgument(value, "color");
+        if (!color.isLegacy()) {
+            throw new SassValueException(
+                    "$color: Global grayscale() only supports legacy colors. Use color.grayscale() instead."
+            );
+        }
+        return color.grayscale();
+    }
+
+    /// Global {@code complement()} for legacy colors.
+    private static SassValue globalComplement(List<SassValue> args) {
+        var color = colorArgument(args.get(0), "color");
+        if (!color.isLegacy()) {
+            throw new SassValueException(
+                    "$color: Global complement() only supports legacy colors. Use color.complement() instead."
+            );
+        }
+        return color.changeHsl(color.hue() + 180.0, null, null, null);
+    }
+
+    /// Implements the deprecated global {@code adjust-hue()} function.
+    private static SassValue adjustHue(List<SassValue> args) {
+        var color = colorArgument(args.get(0), "color");
+        requireLegacyColorFunction(color, "adjust-hue");
+        double degrees = angleValue(args.get(1), "degrees");
+        return color.changeHsl(color.hue() + degrees, null, null, null);
+    }
+
+    /// Implements the deprecated global {@code lighten()} function.
+    private static SassValue lighten(List<SassValue> args) {
+        var color = colorArgument(args.get(0), "color");
+        requireLegacyColorFunction(color, "lighten");
+        double amount = numberArgument(args.get(1), "amount").valueInRange(0, 100, "amount");
+        return color.changeHsl(null, null, clampLikeCss(color.lightness() + amount, 0, 100), null);
+    }
+
+    /// Implements the deprecated global {@code darken()} function.
+    private static SassValue darken(List<SassValue> args) {
+        var color = colorArgument(args.get(0), "color");
+        requireLegacyColorFunction(color, "darken");
+        double amount = numberArgument(args.get(1), "amount").valueInRange(0, 100, "amount");
+        return color.changeHsl(null, null, clampLikeCss(color.lightness() - amount, 0, 100), null);
+    }
+
+    /// Implements global {@code saturate()} as either a CSS filter or HSL adjustment.
+    private static SassValue saturate(List<SassValue> args) {
+        if (args.get(1) instanceof SassNull) {
+            if (args.get(0) instanceof SassNumber number) {
+                return new SassString("saturate(" + number.toCssString() + ")", false);
+            }
+            if (args.get(0).isSpecialNumber()) {
+                return CssColorChannels.functionString("saturate", List.of(args.get(0)));
+            }
+            throw new SassValueException("$amount: " + args.get(0) + " is not a number.");
+        }
+        var color = colorArgument(args.get(0), "color");
+        requireLegacyColorFunction(color, "saturate");
+        double amount = numberArgument(args.get(1), "amount").valueInRange(0, 100, "amount");
+        return color.changeHsl(null, clampLikeCss(color.saturation() + amount, 0, 100), null, null);
+    }
+
+    /// Implements the deprecated global {@code desaturate()} function.
+    private static SassValue desaturate(List<SassValue> args) {
+        var color = colorArgument(args.get(0), "color");
+        requireLegacyColorFunction(color, "desaturate");
+        double amount = numberArgument(args.get(1), "amount").valueInRange(0, 100, "amount");
+        return color.changeHsl(null, clampLikeCss(color.saturation() - amount, 0, 100), null, null);
+    }
+
+    /// Implements global {@code opacify()}/{@code fade-in()}.
+    private static SassValue opacifyNamed(List<SassValue> args, String functionName) {
+        var color = colorArgument(args.get(0), "color");
+        requireLegacyColorFunction(color, functionName);
+        double amount = numberArgument(args.get(1), "amount")
+                .valueInRangeWithUnit(0, 1, "amount", "");
+        return color.changeAlpha(clampLikeCss(color.alpha() + amount, 0, 1));
+    }
+
+    /// Implements global {@code transparentize()}/{@code fade-out()}.
+    private static SassValue transparentizeNamed(List<SassValue> args, String functionName) {
+        var color = colorArgument(args.get(0), "color");
+        requireLegacyColorFunction(color, functionName);
+        double amount = numberArgument(args.get(1), "amount")
+                .valueInRangeWithUnit(0, 1, "amount", "");
+        return color.changeAlpha(clampLikeCss(color.alpha() - amount, 0, 1));
+    }
+
+    /// Global {@code adjust-color()} keyword form.
+    private static SassValue globalAdjustColor(List<SassValue> args) {
+        return updateColorComponents(args, ColorUpdateMode.ADJUST);
+    }
+
+    /// Global {@code scale-color()} keyword form.
+    private static SassValue globalScaleColor(List<SassValue> args) {
+        return updateColorComponents(args, ColorUpdateMode.SCALE);
+    }
+
+    /// Global {@code change-color()} keyword form.
+    private static SassValue globalChangeColor(List<SassValue> args) {
+        return updateColorComponents(args, ColorUpdateMode.CHANGE);
+    }
+
+    /// Implements {@code ie-hex-str($color)}.
+    private static SassValue ieHexStr(List<SassValue> args) {
+        var rgb = colorArgument(args.get(0), "color").toSpace(ColorSpace.RGB, false);
+        int alpha = clampByte((int) Math.round(rgb.alpha() * 255.0));
+        int red = clampByte((int) Math.round(rgb.channel0()));
+        int green = clampByte((int) Math.round(rgb.channel1()));
+        int blue = clampByte((int) Math.round(rgb.channel2()));
+        return new SassString(String.format(Locale.ROOT, "#%02X%02X%02X%02X", alpha, red, green, blue), false);
+    }
+
+    /// Requires a legacy color for deprecated global color functions.
+    private static void requireLegacyColorFunction(SassColor color, String name) {
+        if (!color.isLegacy()) {
+            throw new SassValueException(
+                    name + "() is only supported for legacy colors. Please use "
+                            + "color.adjust() instead with an explicit $space argument."
+            );
+        }
+    }
+
+    /// Clamps a value the same way CSS clamps channel extremes.
+    ///
+    /// {@code NaN} becomes {@code min}, matching dart-sass {@code clampLikeCss}.
+    private static double clampLikeCss(double value, double min, double max) {
+        if (Double.isNaN(value)) {
+            return min;
+        }
+        if (value < min) {
+            return min;
+        }
+        if (value > max) {
+            return max;
+        }
+        return value;
+    }
+
+    /// Clamps an integer into the inclusive byte range.
+    private static int clampByte(int value) {
+        if (value < 0) {
+            return 0;
+        }
+        if (value > 255) {
+            return 255;
+        }
+        return value;
+    }
+
+    /// Parses an angle argument as degrees for {@code adjust-hue}.
+    ///
+    /// Unknown units are accepted as bare magnitudes during the function-units
+    /// deprecation period, matching dart-sass.
+    private static double angleValue(SassValue value, String name) {
+        var number = numberArgument(value, name);
+        return angleValueLenient(number, name);
+    }
+
     /// Returns a grayscale legacy RGB color or preserves a plain-CSS number filter.
     ///
     /// @param args the one color or number argument
@@ -2089,6 +3017,7 @@ public final class BuiltInFunctions {
     /// Returns the polar complement of one color.
     ///
     /// Legacy colors default to HSL when {@code $space} is omitted.
+    /// Missing or powerless hue channels reject modification, matching dart-sass.
     ///
     /// @param args the color and optional polar space
     /// @return the complemented color in the original space
@@ -2106,12 +3035,14 @@ public final class BuiltInFunctions {
                     "$space: Color space " + space + " doesn't have a hue channel."
             );
         }
+        // Explicit $space keeps missing/powerless channels; the implicit legacy
+        // path fills them with zero so historical grayscale complements stay valid.
         var colorInSpace = color.toSpace(space, !(spaceValue instanceof SassNull));
         SassColor complemented;
         if (space.isLegacy()) {
             complemented = SassColor.forSpace(
                     space,
-                    colorInSpace.channel0() + 180.0,
+                    adjustHueChannel(colorInSpace, colorInSpace.channel0OrNull()),
                     colorInSpace.channel1OrNull(),
                     colorInSpace.channel2OrNull(),
                     colorInSpace.alphaOrNull()
@@ -2121,11 +3052,19 @@ public final class BuiltInFunctions {
                     space,
                     colorInSpace.channel0OrNull(),
                     colorInSpace.channel1OrNull(),
-                    colorInSpace.channel2() + 180.0,
+                    adjustHueChannel(colorInSpace, colorInSpace.channel2OrNull()),
                     colorInSpace.alphaOrNull()
             );
         }
         return complemented.toSpace(color.space(), false);
+    }
+
+    /// Adds 180deg to a hue, rejecting missing channels.
+    private static double adjustHueChannel(SassColor color, @Nullable Double hue) {
+        if (hue == null) {
+            throw missingChannelError(color, "hue");
+        }
+        return hue + 180.0;
     }
 
     /// Converts one legacy color weight to a fractional first-color contribution.
@@ -2308,7 +3247,22 @@ public final class BuiltInFunctions {
         if (value instanceof SassNumber number) {
             return new SassString("opacity(" + number.toCssString() + ")", false);
         }
-        return SassNumber.of(value.assertColor().alpha(), null);
+        if (value.isSpecialNumber()) {
+            return CssColorChannels.functionString("opacity", List.of(value));
+        }
+        return SassNumber.of(colorArgument(value, "color").alpha(), null);
+    }
+
+    /// Module {@code color.opacity()} rejects plain-CSS special-number filters.
+    ///
+    /// Numbers still serialize as a CSS {@code opacity()} filter for
+    /// compatibility, matching dart-sass {@code color-module-compat}.
+    private static SassValue moduleOpacity(List<SassValue> args) {
+        var value = args.get(0);
+        if (value instanceof SassNumber number) {
+            return new SassString("opacity(" + number.toCssString() + ")", false);
+        }
+        return SassNumber.of(colorArgument(value, "color").alpha(), null);
     }
 
     /// Compares two colors using Color 4 {@code same} semantics.
@@ -2396,7 +3350,7 @@ public final class BuiltInFunctions {
         }
         if (channelIndex < 0) {
             throw new SassValueException(
-                    "Color " + color + " has no channel named " + channelName + "."
+                    "$channel: Color " + color + " has no channel named " + channelName + "."
             );
         }
         var channelInfo = channels.get(channelIndex);
@@ -2425,7 +3379,7 @@ public final class BuiltInFunctions {
 
     /// Converts {@code color} into {@code spaceArgument} when present.
     private static SassColor colorInSpace(SassValue colorValue, SassValue spaceValue) {
-        var color = colorValue.assertColor();
+        var color = colorArgument(colorValue, "color");
         if (spaceValue instanceof SassNull) {
             return color;
         }
@@ -2434,8 +3388,13 @@ public final class BuiltInFunctions {
 
     /// Parses a color-space name argument.
     private static ColorSpace spaceArgument(SassValue value, String name) {
-        if (!(value instanceof SassString string) || string.hasQuotes()) {
-            throw new SassValueException("$" + name + ": " + value + " is not an unquoted string.");
+        if (!(value instanceof SassString string)) {
+            throw new SassValueException("$" + name + ": " + value + " is not a string.");
+        }
+        if (string.hasQuotes()) {
+            throw new SassValueException(
+                    "$" + name + ": Expected " + value + " to be an unquoted string."
+            );
         }
         try {
             return ColorSpace.fromName(string.text());
@@ -2446,14 +3405,19 @@ public final class BuiltInFunctions {
 
     /// Parses a channel-name argument.
     ///
-    /// Sass requires the channel name to be a quoted string.
+    /// Sass requires the channel name to be a string. Quoted strings are the
+    /// normal form; the error text matches Dart Sass when a non-string is given.
     private static String channelNameArgument(SassValue value) {
-        if (!(value instanceof SassString string) || !string.hasQuotes()) {
+        if (!(value instanceof SassString string)) {
+            throw new SassValueException("$channel: " + value + " is not a string.");
+        }
+        if (!string.hasQuotes()) {
             throw new SassValueException(
-                    "$channel: " + value + " is not a quoted string."
+                    "$channel: Expected " + value + " to be a quoted string."
             );
         }
-        return string.text().toLowerCase(Locale.ROOT);
+        // Channel names are case-sensitive and match CSS channel identifiers exactly.
+        return string.text();
     }
 
     /// Adjusts legacy RGB or HSL channels by additive deltas.
@@ -2531,8 +3495,11 @@ public final class BuiltInFunctions {
             color = originalColor.toSpace(spaceArgument(spaceKeyword, "space"), false);
         }
 
+        // Even with no channel keywords, converting through $space (or the
+        // sniffed legacy space) applies powerless-channel → missing rules on
+        // the round-trip back to the original space.
         if (keywords.isEmpty() && alphaArg == null) {
-            return originalColor;
+            return color.toSpace(originalColor.space(), false);
         }
 
         var channels = color.space().channels();
@@ -2676,7 +3643,35 @@ public final class BuiltInFunctions {
         if (isNone(argument)) {
             return null;
         }
-        return channelFromValue(channel, numberArgument(argument, channel.name()), false);
+        if (!(argument instanceof SassNumber number)) {
+            throw new SassValueException(
+                    "$" + channel.name() + ": " + argument
+                            + " is not a number or unquoted \"none\"."
+            );
+        }
+        // Legacy HSL/HWB still accept non-canonical units during the deprecation
+        // period, matching dart-sass {@code _colorFromChannels}.
+        if (channel.isPolarAngle()
+                && (color.space() == ColorSpace.HSL || color.space() == ColorSpace.HWB)) {
+            return angleValueLenient(number, channel.name());
+        }
+        if (color.space() == ColorSpace.HSL
+                && channel instanceof ColorChannel.Linear
+                && ("saturation".equals(channel.name()) || "lightness".equals(channel.name()))) {
+            return channelFromValue(channel, forcePercent(number), false);
+        }
+        if (color.space() == ColorSpace.HWB
+                && channel instanceof ColorChannel.Linear
+                && ("whiteness".equals(channel.name()) || "blackness".equals(channel.name()))) {
+            if (!(number.numeratorUnits().equals(List.of("%"))
+                    && number.denominatorUnits().isEmpty())) {
+                throw new SassValueException(
+                        "$" + channel.name() + ": Expected " + number + " to have unit \"%\"."
+                );
+            }
+            return channelFromValue(channel, number, false);
+        }
+        return channelFromValue(channel, number, false);
     }
 
     /// Resolves alpha for {@code color.change()}.
@@ -2690,15 +3685,41 @@ public final class BuiltInFunctions {
         if (isNone(alphaArg)) {
             return null;
         }
-        var number = numberArgument(alphaArg, "alpha");
+        if (!(alphaArg instanceof SassNumber number)) {
+            throw new SassValueException(
+                    "$alpha: " + alphaArg + " is not a number or unquoted \"none\"."
+            );
+        }
         if (number.isUnitless()) {
-            return clamp(number.value(), 0.0, 1.0);
+            return number.valueInRange(0.0, 1.0, "alpha");
         }
         if (number.numeratorUnits().equals(List.of("%")) && number.denominatorUnits().isEmpty()) {
-            return clamp(number.value() / 100.0, 0.0, 1.0);
+            return number.valueInRange(0.0, 100.0, "alpha") / 100.0;
         }
         // Preserve historical unitless interpretation for non-percent units.
-        return clamp(number.value(), 0.0, 1.0);
+        return number.valueInRange(0.0, 1.0, "alpha");
+    }
+
+    /// Returns {@code number} with unit {@code %} regardless of its original unit.
+    private static SassNumber forcePercent(SassNumber number) {
+        if (number.numeratorUnits().equals(List.of("%")) && number.denominatorUnits().isEmpty()) {
+            return number;
+        }
+        return SassNumber.of(number.value(), "%");
+    }
+
+    /// Converts an angle argument to degrees, accepting unknown units as bare magnitudes.
+    ///
+    /// Matches dart-sass {@code _angleValue} during the function-units deprecation period.
+    private static double angleValueLenient(SassNumber number, String name) {
+        if (number.isUnitless()) {
+            return number.value();
+        }
+        try {
+            return number.coerce(List.of("deg"), List.of()).value();
+        } catch (SassValueException exception) {
+            return number.value();
+        }
     }
 
     /// Adjusts one channel by an additive delta.
@@ -2712,21 +3733,22 @@ public final class BuiltInFunctions {
             return oldValue;
         }
         if (oldValue == null) {
-            throw new SassValueException(
-                    "$" + channel.name() + ": color.adjust() doesn't support missing channels."
-            );
+            throw missingChannelError(color, channel.name());
         }
         SassNumber delta = adjustment;
         if (channel.isPolarAngle()
                 && (color.space() == ColorSpace.HSL || color.space() == ColorSpace.HWB)) {
-            delta = SassNumber.of(hueDegrees(adjustment), null);
+            // Legacy HSL/HWB still accept non-angle units during deprecation.
+            delta = SassNumber.of(angleValueLenient(adjustment, channel.name()), null);
         } else if ((color.space() == ColorSpace.HSL)
                 && channel instanceof ColorChannel.Linear
                 && ("saturation".equals(channel.name()) || "lightness".equals(channel.name()))) {
-            // Legacy HSL continues to accept unitless percentages.
-            if (delta.isUnitless()) {
-                delta = SassNumber.of(delta.value(), "%");
-            }
+            // Legacy HSL treats the numeric magnitude as a percentage regardless of
+            // the original unit (dart-sass deprecation period behavior).
+            delta = forcePercent(delta);
+        } else if (channel == ColorChannel.ALPHA && !delta.isUnitless()) {
+            // Legacy alpha treats any unit (including %) as unitless magnitude.
+            delta = SassNumber.of(delta.value(), null);
         }
         var result = oldValue + channelFromValue(channel, delta, false);
         if (channel instanceof ColorChannel.Linear linear) {
@@ -2756,14 +3778,17 @@ public final class BuiltInFunctions {
             throw new SassValueException("$" + channel.name() + ": Channel isn't scalable.");
         }
         if (oldValue == null) {
-            throw new SassValueException(
-                    "$" + channel.name() + ": color.scale() doesn't support missing channels."
-            );
+            throw missingChannelError(color, channel.name());
         }
         return scaleChannel(oldValue, factorArg, channel.name(), linear.min(), linear.max());
     }
 
     /// Converts a Sass number into one channel's native unit system.
+    ///
+    /// Matches dart-sass {@code _channelFromValue}: unitless numbers are already in
+    /// the channel's native scale, while percentages map {@code 0%..100%} onto
+    /// {@code 0..max}. Channels that {@link ColorChannel.Linear#requiresPercent()}
+    /// reject unitless values.
     private static double channelFromValue(
             ColorChannel channel,
             SassNumber number,
@@ -2775,20 +3800,52 @@ public final class BuiltInFunctions {
         if (!(channel instanceof ColorChannel.Linear linear)) {
             throw new SassValueException("Unknown channel " + channel.name() + ".");
         }
-        double value;
-        if ("%".equals(linear.associatedUnit())) {
-            if (number.isUnitless()) {
-                value = number.value() * linear.max() / 100.0;
-            } else if (number.numeratorUnits().equals(List.of("%"))
-                    && number.denominatorUnits().isEmpty()) {
-                value = number.value() * linear.max() / 100.0;
-            } else {
-                value = percentageOrUnitless(number, linear.max(), channel.name());
-            }
-        } else {
-            value = percentageOrUnitless(number, linear.max(), channel.name());
+        if (linear.requiresPercent()
+                && !(number.numeratorUnits().equals(List.of("%"))
+                && number.denominatorUnits().isEmpty())) {
+            throw new SassValueException(
+                    "$" + channel.name() + ": Expected " + number + " to have unit \"%\"."
+            );
         }
-        return clamp ? clamp(value, linear.min(), linear.max()) : value;
+        double value = percentageOrUnitless(number, linear.max(), channel.name());
+        if (!clamp) {
+            return value;
+        }
+        double lower = linear.lowerClamped() ? linear.min() : Double.NEGATIVE_INFINITY;
+        double upper = linear.upperClamped() ? linear.max() : Double.POSITIVE_INFINITY;
+        return clamp(value, lower, upper);
+    }
+
+    /// Builds the dart-sass missing-channel diagnostic for adjust/scale/change.
+    private static SassValueException missingChannelError(SassColor color, String channel) {
+        return new SassValueException(
+                "$" + channel + ": Because the CSS working group is still deciding on the "
+                        + "best behavior, Sass doesn't currently support modifying missing "
+                        + "channels (color: " + color.toCssString() + ")."
+        );
+    }
+
+    /// Creates a sass:color stub for a removed legacy global color function.
+    private static BuiltInCallable removedColorFunction(
+            String name,
+            String argument,
+            boolean negative
+    ) {
+        return BuiltInCallable.of(
+                name,
+                List.of("color", "amount"),
+                args -> {
+                    throw new SassValueException(
+                            "The function " + name + "() isn't in the sass:color module.\n"
+                                    + "\n"
+                                    + "Recommendation: color.adjust(" + args.get(0) + ", $" + argument
+                                    + ": " + (negative ? "-" : "") + args.get(1) + ")\n"
+                                    + "\n"
+                                    + "More info: https://sass-lang.com/documentation/functions/color#"
+                                    + name
+                    );
+                }
+        );
     }
 
     /// Returns whether a value is the unquoted identifier {@code none}.
@@ -2889,7 +3946,9 @@ public final class BuiltInFunctions {
         try {
             return number.coerce(List.of("deg"), List.of()).value();
         } catch (SassValueException exception) {
-            throw new SassValueException("$hue: " + exception.getMessage());
+            throw new SassValueException(
+                    "$hue: Expected " + number + " to have an angle unit (deg, grad, rad, turn)."
+            );
         }
     }
 
