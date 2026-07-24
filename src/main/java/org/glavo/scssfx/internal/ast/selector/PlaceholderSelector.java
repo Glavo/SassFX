@@ -38,6 +38,11 @@ public record PlaceholderSelector(CssIdentifier name, SourceSpan span) implement
     }
 
     @Override
+    public boolean isInvisible() {
+        return true;
+    }
+
+    @Override
     public SimpleSelector addSuffix(CssIdentifier suffix) {
         Objects.requireNonNull(suffix, "suffix");
         throw new SassValueException("Placeholder selector can't have a suffix.");

@@ -134,11 +134,11 @@ final class MetaRuntimeQueryTest {
                 )
         );
         assertEquals(
-                "There is no module with namespace \"missing\".",
+                "There is no module with the namespace \"missing\".",
                 failure("@use \"sass:meta\"; .a { value: meta.module-variables(\"missing\"); }")
         );
         assertEquals(
-                "There is no module with namespace \"\".",
+                "There is no module with the namespace \"\".",
                 failure("@use \"sass:meta\"; .a { value: meta.module-variables(\"\"); }")
         );
     }

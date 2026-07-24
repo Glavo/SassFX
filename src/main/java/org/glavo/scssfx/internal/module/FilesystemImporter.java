@@ -173,10 +173,78 @@ public final class FilesystemImporter {
         var message = new StringBuilder(
                 "It's not clear which file to import. Found:\n"
         );
+        // dart-sass lists path basenames (or index-relative stems), not absolute
+        // filesystem paths, so diagnostics stay portable across machines.
+        var shown = new ArrayList<String>();
         for (var candidate : candidates) {
-            message.append("  ").append(candidate).append('\n');
+            shown.add(displayCandidate(candidate));
+        }
+        // Presentation order matches dart-sass: extension groups as
+        // .sass then .scss (then .css), and partials before non-partials
+        // within each extension.
+        shown.sort(FilesystemImporter::compareAmbiguityNames);
+        for (var entry : shown) {
+            message.append("  ").append(entry).append('\n');
         }
         return new IllegalStateException(message.toString().trim());
+    }
+
+    /// Orders ambiguity basenames like dart-sass diagnostics.
+    private static int compareAmbiguityNames(String left, String right) {
+        int byExtension = Integer.compare(extensionRank(left), extensionRank(right));
+        if (byExtension != 0) {
+            return byExtension;
+        }
+        boolean leftPartial = baseName(left).startsWith("_");
+        boolean rightPartial = baseName(right).startsWith("_");
+        if (leftPartial != rightPartial) {
+            return leftPartial ? -1 : 1;
+        }
+        return left.compareTo(right);
+    }
+
+    private static String baseName(String path) {
+        int slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        return slash < 0 ? path : path.substring(slash + 1);
+    }
+
+    private static int extensionRank(String path) {
+        var lower = path.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".sass")) {
+            return 0;
+        }
+        if (lower.endsWith(".scss")) {
+            return 1;
+        }
+        if (lower.endsWith(".css")) {
+            return 2;
+        }
+        return 3;
+    }
+
+    /// Returns the sass-spec style path shown in ambiguity diagnostics.
+    ///
+    /// Prefers a trailing {@code other/index.scss} form for index files and
+    /// otherwise the file name only.
+    private static String displayCandidate(Path candidate) {
+        var fileName = candidate.getFileName();
+        if (fileName == null) {
+            return candidate.toString();
+        }
+        var name = fileName.toString();
+        var lower = name.toLowerCase(Locale.ROOT);
+        if ("index.scss".equals(lower)
+                || "index.sass".equals(lower)
+                || "index.css".equals(lower)
+                || "_index.scss".equals(lower)
+                || "_index.sass".equals(lower)
+                || "_index.css".equals(lower)) {
+            @Nullable Path parent = candidate.getParent();
+            if (parent != null && parent.getFileName() != null) {
+                return parent.getFileName() + "/" + name;
+            }
+        }
+        return name;
     }
 
     /// Adds resolvable SCSS, Sass, and CSS candidates for one path stem.

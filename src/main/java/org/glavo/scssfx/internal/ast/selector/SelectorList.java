@@ -41,7 +41,18 @@ public record SelectorList(
     /// @return the parsed selector list
     /// @throws SassValueException if the selector is invalid
     public static SelectorList parse(String text, SourceSpan span) {
-        return SelectorParser.parse(text, span);
+        return SelectorParser.parse(text, span, false);
+    }
+
+    /// Parses a selector list with optional plain-CSS restrictions.
+    ///
+    /// @param text     the selector source after interpolation
+    /// @param span     the span covering that text
+    /// @param plainCss whether plain CSS selector restrictions apply
+    /// @return the parsed selector list
+    /// @throws SassValueException if the selector is invalid
+    public static SelectorList parse(String text, SourceSpan span, boolean plainCss) {
+        return SelectorParser.parse(text, span, plainCss);
     }
 
     /// Returns whether this list contains a parent-selector reference.
@@ -155,27 +166,87 @@ public record SelectorList(
             return this;
         }
 
+        // Parent-major product order matches dart-sass selector.nest/append:
+        // nest("a, b", "c, d") → "a c, a d, b c, b d". Nested {@code &} inside
+        // selector pseudos still resolve against the full parent list at once
+        // (nest("a, b", ":is(&)") → ":is(a, b)"). Complexes with multiple direct
+        // {@code &} also use the full parent list so each {@code &} multiplies
+        // independently (nest("c, d", "&.e &.f") → "c.e c.f, c.e d.f, ...").
         var result = new ArrayList<ComplexSelector>();
         for (var child : components) {
             if (!implicitParent && !child.containsParentSelector()) {
                 result.add(child);
-            } else {
+            } else if (child.containsParentSelector()
+                    && !child.containsDirectParentSelector()) {
                 result.addAll(nestComplex(parent, child));
+            } else if (child.containsDirectParentSelector()
+                    && child.parentSelectorCount() > 1) {
+                result.addAll(nestComplex(parent, child));
+            }
+        }
+        for (var parentComplex : parent.components()) {
+            var singleParent = new SelectorList(List.of(parentComplex), parent.span());
+            for (var child : components) {
+                if (!implicitParent && !child.containsParentSelector()) {
+                    continue;
+                }
+                if (child.containsParentSelector()
+                        && !child.containsDirectParentSelector()) {
+                    continue;
+                }
+                if (child.containsDirectParentSelector()
+                        && child.parentSelectorCount() > 1) {
+                    continue;
+                }
+                result.addAll(nestComplex(singleParent, child));
             }
         }
         return new SelectorList(result, span);
     }
 
-    /// Returns the CSS text of this selector list.
+    /// Returns whether every complex selector in this list is CSS-invisible.
+    ///
+    /// An empty list is treated as invisible.
+    ///
+    /// @return whether CSS emission omits this entire list
+    public boolean isInvisible() {
+        if (components.isEmpty()) {
+            return true;
+        }
+        for (var complex : components) {
+            if (!complex.isInvisible()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// Returns the CSS text of this selector list, retaining placeholders.
     ///
     /// @return the comma-separated CSS selectors
     public String toCssString() {
+        return toCssString(true);
+    }
+
+    /// Returns the CSS text of this selector list.
+    ///
+    /// When {@code inspect} is {@code false}, invisible complexes are dropped and
+    /// remaining complexes are serialized without placeholder selectors.
+    ///
+    /// @param inspect whether placeholder selectors and full structure are retained
+    /// @return the comma-separated CSS selectors
+    public String toCssString(boolean inspect) {
         var result = new StringBuilder();
-        for (var index = 0; index < components.size(); index++) {
-            if (index > 0) {
+        var first = true;
+        for (var complex : components) {
+            if (!inspect && (complex.isInvisible() || complex.isBogus())) {
+                continue;
+            }
+            if (!first) {
                 result.append(", ");
             }
-            result.append(components.get(index).toCssString());
+            first = false;
+            result.append(complex.toCssString(inspect));
         }
         return result.toString();
     }

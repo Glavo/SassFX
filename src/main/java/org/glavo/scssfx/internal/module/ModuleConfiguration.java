@@ -265,10 +265,19 @@ public final class ModuleConfiguration {
     ///
     /// @return the first value in source order, or {@code null} when empty
     public @Nullable ConfiguredValue firstUnused() {
-        for (var backingName : projectedNames.values()) {
-            @Nullable ConfiguredValue value = backingValues.get(backingName);
+        @Nullable Map.Entry<String, ConfiguredValue> entry = firstUnusedEntry();
+        return entry == null ? null : entry.getValue();
+    }
+
+    /// Returns the first visible unconsumed name and value without modifying this
+    /// configuration.
+    ///
+    /// @return the first name/value pair in source order, or {@code null} when empty
+    public @Nullable Map.Entry<String, ConfiguredValue> firstUnusedEntry() {
+        for (var entry : projectedNames.entrySet()) {
+            @Nullable ConfiguredValue value = backingValues.get(entry.getValue());
             if (value != null) {
-                return value;
+                return Map.entry(entry.getKey(), value);
             }
         }
         return null;

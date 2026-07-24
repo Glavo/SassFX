@@ -213,7 +213,7 @@ final class ModuleVariableAssignmentTest {
                 directory,
                 "missing-namespace.scss",
                 "missing.$value: 1;",
-                "There is no module with namespace \"missing\"."
+                "There is no module with the namespace \"missing\"."
         );
         assertAssignmentFailure(
                 directory,

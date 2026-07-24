@@ -2,8 +2,6 @@
 package org.glavo.scssfx.internal.css;
 
 import org.glavo.scssfx.SourceSpan;
-import org.glavo.scssfx.internal.ast.selector.ComplexSelector;
-import org.glavo.scssfx.internal.ast.selector.PlaceholderSelector;
 import org.glavo.scssfx.internal.ast.selector.SelectorList;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -79,46 +77,23 @@ public final class CssStyleRule extends AbstractCssNode implements CssParentNode
 
     /// Returns whether this rule contributes no visible CSS.
     ///
-    /// Rules whose selectors contain only placeholder complexes are omitted,
-    /// as are rules whose remaining children are all invisible.
+    /// Rules whose selectors are entirely CSS-invisible (placeholders and
+    /// invisible selector-taking pseudos) or serialize to an empty non-inspect
+    /// CSS string (bogus leading combinators such as {@code :is(> a)}) are
+    /// omitted, as are rules whose remaining children are all invisible.
     ///
     /// @return whether this rule may be omitted
     @Override
     public boolean isInvisible() {
-        return isPlaceholderOnly(selector.value())
-                || children.stream().allMatch(CssNode::isInvisible);
-    }
-
-    /// Returns whether every complex selector is a pure placeholder selector.
-    ///
-    /// @param selectors the selector list to inspect
-    /// @return whether the list is placeholder-only
-    private static boolean isPlaceholderOnly(SelectorList selectors) {
-        if (selectors.components().isEmpty()) {
+        if (children.stream().allMatch(CssNode::isInvisible)) {
             return true;
         }
-        for (var complex : selectors.components()) {
-            if (!isPlaceholderComplex(complex)) {
-                return false;
-            }
+        if (selector.value().isInvisible()) {
+            return true;
         }
-        return true;
-    }
-
-    /// Returns whether one complex selector is a single placeholder compound.
-    ///
-    /// @param complex the complex selector
-    /// @return whether it is a pure placeholder
-    private static boolean isPlaceholderComplex(ComplexSelector complex) {
-        if (!complex.leadingCombinators().isEmpty() || complex.components().size() != 1) {
-            return false;
-        }
-        var compound = complex.components().get(0);
-        if (!compound.combinators().isEmpty()) {
-            return false;
-        }
-        var simples = compound.selector().components();
-        return simples.size() == 1 && simples.get(0) instanceof PlaceholderSelector;
+        // Bogus complexes are dropped from non-inspect serialization; when every
+        // complex is bogus the selector CSS is empty and the rule is omitted.
+        return selector.value().toCssString(false).isEmpty();
     }
 
     /// Returns the live unmodifiable child list.

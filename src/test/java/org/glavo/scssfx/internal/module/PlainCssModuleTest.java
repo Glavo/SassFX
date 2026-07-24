@@ -64,7 +64,7 @@ final class PlainCssModuleTest {
 
                         .item {
                           color: rgb(1 2 3/50%);
-                          width: min(10px, 20px);
+                          width: 10px;
                           --theme: calc(1px + 2%);
                         }""",
                 expanded
@@ -82,7 +82,7 @@ final class PlainCssModuleTest {
                 compressed
         );
         assertTrue(compressed.contains("@page{margin:1cm}"), compressed);
-        assertTrue(compressed.contains("width:min(10px, 20px)"), compressed);
+        assertTrue(compressed.contains("width:10px"), compressed);
     }
 
     /// Loads CSS modules before caller CSS and retains their empty namespace.
@@ -178,7 +178,7 @@ final class PlainCssModuleTest {
                 )
         );
         assertEquals(
-                "This variable was not declared with !default in the @used module.",
+                "$color was not declared with !default in the @used module.",
                 failure.getMessage()
         );
     }

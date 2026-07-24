@@ -9,12 +9,14 @@ import org.glavo.scssfx.internal.ast.ColorExpression;
 import org.glavo.scssfx.internal.ast.ExpressionInterpolationPart;
 import org.glavo.scssfx.internal.ast.FunctionExpression;
 import org.glavo.scssfx.internal.ast.InterpolatedFunctionExpression;
+import org.glavo.scssfx.internal.ast.IfExpression;
 import org.glavo.scssfx.internal.ast.ListExpression;
 import org.glavo.scssfx.internal.ast.MapExpression;
 import org.glavo.scssfx.internal.ast.NullExpression;
 import org.glavo.scssfx.internal.ast.NumberExpression;
 import org.glavo.scssfx.internal.ast.ParenthesizedExpression;
 import org.glavo.scssfx.internal.ast.SassExpression;
+import org.glavo.scssfx.internal.ast.SelectorExpression;
 import org.glavo.scssfx.internal.ast.StringExpression;
 import org.glavo.scssfx.internal.ast.TextInterpolationPart;
 import org.glavo.scssfx.internal.ast.UnaryOperationExpression;
@@ -503,7 +505,11 @@ final class SassExpressionParserTest {
         assertFailure("#12", "");
         assertFailure("#12g", "g");
         assertFailure("#12345", "");
-        assertFailure("if(true: red; else: blue)", ":");
+        var modernIf = assertInstanceOf(
+                IfExpression.class,
+                parse("if(true: red; else: blue)")
+        );
+        assertEquals(2, modernIf.branches().size());
         assertFailure("red.$value", "$");
     }
 
@@ -543,11 +549,11 @@ final class SassExpressionParserTest {
         assertFailure("$", "");
     }
 
-    /// Verifies features reserved for later expression-parser milestones are explicit failures.
+    /// Verifies unicode-range remains deferred and parent selectors parse as values.
     @Test
     void rejectsDeferredExpressionForms() {
         assertFailure("u+123", "u+");
-        assertFailure("&", "&");
+        assertInstanceOf(SelectorExpression.class, parse("&"));
     }
 
     /// Parses one complete SassScript expression.

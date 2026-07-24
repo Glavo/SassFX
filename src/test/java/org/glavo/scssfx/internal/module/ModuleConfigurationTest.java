@@ -127,7 +127,7 @@ final class ModuleConfigurationTest {
                 "@use \"known\" with ($missing: 2);"
         );
         assertEquals(
-                "This variable was not declared with !default in the @used module.",
+                "$missing was not declared with !default in the @used module.",
                 assertThrows(
                         SassCompilationException.class,
                         () -> compile(unknownEntry)
@@ -140,7 +140,7 @@ final class ModuleConfigurationTest {
                 "@use \"fixed\" with ($fixed: 2);"
         );
         assertEquals(
-                "This variable was not declared with !default in the @used module.",
+                "$missing was not declared with !default in the @used module.",
                 assertThrows(
                         SassCompilationException.class,
                         () -> compile(fixedEntry)
@@ -173,7 +173,7 @@ final class ModuleConfigurationTest {
         );
 
         assertEquals(
-                "This module was already loaded, so it can't be configured using \"with\".",
+                "theme.scss was already loaded, so it can't be configured using \"with\".",
                 assertThrows(
                         SassCompilationException.class,
                         () -> compile(entry)

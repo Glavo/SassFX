@@ -7,10 +7,12 @@ import org.glavo.scssfx.internal.callable.BuiltInCallable.Param;
 import org.glavo.scssfx.internal.callable.UserDefinedCallable;
 import org.glavo.scssfx.internal.module.ConfiguredValue;
 import org.glavo.scssfx.internal.module.ModuleConfiguration;
+import org.glavo.scssfx.internal.value.CalculationOperation;
 import org.glavo.scssfx.internal.value.ListSeparator;
 import org.glavo.scssfx.internal.value.RgbFunctionColorFormat;
 import org.glavo.scssfx.internal.value.SassArgumentList;
 import org.glavo.scssfx.internal.value.SassBoolean;
+import org.glavo.scssfx.internal.value.SassCalculation;
 import org.glavo.scssfx.internal.value.SassColor;
 import org.glavo.scssfx.internal.value.SassFunction;
 import org.glavo.scssfx.internal.value.SassMixin;
@@ -95,17 +97,13 @@ public final class BuiltInFunctions {
                 1,
                 BuiltInFunctions::cssColor
         ));
-        register(functions, BuiltInCallable.of(
+        // hwb/hsl/hsla use rest-parameter dispatch so both $channels and
+        // multi-arg named forms ($hue/$saturation/...) resolve correctly.
+        register(functions, BuiltInCallable.withRest(
                 "hwb",
-                List.of(
-                        Param.required("channels"),
-                        Param.optional("whiteness", SassNull.NULL),
-                        Param.optional("blackness", SassNull.NULL),
-                        // Null default so plain-CSS special-number forms omit alpha.
-                        Param.optional("alpha", SassNull.NULL)
-                ),
-                1,
-                BuiltInFunctions::cssHwb
+                List.of(),
+                "args",
+                BuiltInFunctions::hwbRest
         ));
         register(functions, BuiltInCallable.of(
                 "lab",
@@ -131,30 +129,17 @@ public final class BuiltInFunctions {
                 1,
                 BuiltInFunctions::cssOklch
         ));
-        // First parameter is named {@code channels} so zero-arg diagnostics match
-        // dart-sass's primary {@code hsl($channels)} overload.
-        register(functions, BuiltInCallable.of(
+        register(functions, BuiltInCallable.withRest(
                 "hsl",
-                List.of(
-                        Param.required("channels"),
-                        Param.optional("saturation", SassNull.NULL),
-                        Param.optional("lightness", SassNull.NULL),
-                        // Null default so plain-CSS special-number forms omit alpha.
-                        Param.optional("alpha", SassNull.NULL)
-                ),
-                1,
-                BuiltInFunctions::hsl
+                List.of(),
+                "args",
+                BuiltInFunctions::hslRest
         ));
-        register(functions, BuiltInCallable.of(
+        register(functions, BuiltInCallable.withRest(
                 "hsla",
-                List.of(
-                        Param.required("channels"),
-                        Param.optional("saturation", SassNull.NULL),
-                        Param.optional("lightness", SassNull.NULL),
-                        Param.optional("alpha", SassNull.NULL)
-                ),
-                1,
-                BuiltInFunctions::hsl
+                List.of(),
+                "args",
+                BuiltInFunctions::hslaRest
         ));
         register(functions, BuiltInCallable.of("quote", List.of("string"), BuiltInFunctions::quote));
         register(functions, BuiltInCallable.of("unquote", List.of("string"), BuiltInFunctions::unquote));
@@ -234,6 +219,17 @@ public final class BuiltInFunctions {
                 List.of("map", "key"),
                 BuiltInFunctions::mapHasKey
         ));
+
+        // Legacy global selector algebra names mirror sass:selector.
+        var selector = SelectorFunctions.module();
+        registerGlobalSelector(functions, selector, "nest", "selector-nest");
+        registerGlobalSelector(functions, selector, "append", "selector-append");
+        registerGlobalSelector(functions, selector, "replace", "selector-replace");
+        registerGlobalSelector(functions, selector, "extend", "selector-extend");
+        registerGlobalSelector(functions, selector, "unify", "selector-unify");
+        registerGlobalSelector(functions, selector, "is-superselector", "is-superselector");
+        registerGlobalSelector(functions, selector, "simple-selectors", "simple-selectors");
+        registerGlobalSelector(functions, selector, "parse", "selector-parse");
 
         register(functions, BuiltInCallable.of(
                 "str-length",
@@ -331,15 +327,18 @@ public final class BuiltInFunctions {
                 List.of("color"),
                 BuiltInFunctions::colorBlackness
         ));
+        // Global mix() shares the Color 4 $method parameter with color.mix();
+        // non-legacy colors require $method even when called without a namespace.
         register(functions, BuiltInCallable.of(
                 "mix",
                 List.of(
                         Param.required("color1"),
                         Param.required("color2"),
-                        Param.optional("weight", SassNumber.of(50, "%"))
+                        Param.optional("weight", SassNumber.of(50, "%")),
+                        Param.optional("method", SassNull.NULL)
                 ),
                 2,
-                BuiltInFunctions::globalColorMix
+                BuiltInFunctions::colorMix
         ));
         // Global invert accepts $space for Color 4 modern colors; callers are
         // still warned by the global-builtin deprecation path.
@@ -549,18 +548,26 @@ public final class BuiltInFunctions {
         var global = global();
         var functions = new LinkedHashMap<String, BuiltInCallable>();
         moduleFunction(functions, global, "map-keys", "keys");
-        moduleFunction(functions, global, "map-merge", "merge");
         moduleFunction(functions, global, "map-values", "values");
+        // Nested path merge: merge($map1, $keys..., $map2).
+        register(functions, BuiltInCallable.withRest(
+                "merge",
+                List.of("map1"),
+                "args",
+                BuiltInFunctions::moduleMapMerge
+        ));
         register(functions, BuiltInCallable.withRest(
                 "get",
                 List.of("map", "key"),
                 "keys",
                 BuiltInFunctions::moduleMapGet
         ));
-        register(functions, BuiltInCallable.of(
+        // Nested path set: set($map, $keys..., $value).
+        register(functions, BuiltInCallable.withRest(
                 "set",
-                List.of("map", "key", "value"),
-                BuiltInFunctions::mapSet
+                List.of("map"),
+                "args",
+                BuiltInFunctions::moduleMapSet
         ));
         register(functions, BuiltInCallable.withRest(
                 "remove",
@@ -775,6 +782,7 @@ public final class BuiltInFunctions {
                 "kwargs",
                 BuiltInFunctions::colorChange
         ));
+        moduleFunction(functions, global, "ie-hex-str", "ie-hex-str");
         return freeze(functions);
     }
 
@@ -886,6 +894,16 @@ public final class BuiltInFunctions {
                 1,
                 BuiltInFunctions::metaCall
         ));
+        register(functions, BuiltInCallable.of(
+                "calc-args",
+                List.of("calc"),
+                BuiltInFunctions::metaCalcArgs
+        ));
+        register(functions, BuiltInCallable.of(
+                "calc-name",
+                List.of("calc"),
+                BuiltInFunctions::metaCalcName
+        ));
         return freeze(functions);
     }
 
@@ -918,6 +936,25 @@ public final class BuiltInFunctions {
     /// @return an immutable selector function table
     public static @Unmodifiable Map<String, BuiltInCallable> selectorModule() {
         return SelectorFunctions.module();
+    }
+
+    /// Registers one module selector function under a legacy global name.
+    ///
+    /// @param globals     the mutable global function table
+    /// @param selector    the {@code sass:selector} function table
+    /// @param moduleName  the module-local function name
+    /// @param globalName  the legacy global function name
+    private static void registerGlobalSelector(
+            LinkedHashMap<String, BuiltInCallable> globals,
+            Map<String, BuiltInCallable> selector,
+            String moduleName,
+            String globalName
+    ) {
+        @Nullable BuiltInCallable callable = selector.get(moduleName);
+        if (callable == null) {
+            throw new AssertionError("missing selector module function: " + moduleName);
+        }
+        register(globals, callable.withName(globalName));
     }
 
     /// Adds a global callable to a module map under its module-local name.
@@ -1194,45 +1231,137 @@ public final class BuiltInFunctions {
         return CssColorChannels.parseColorDescription(args.get(0));
     }
 
-    /// Parses the CSS {@code hwb()} constructor in one-arg or multi-arg form.
-    private static SassValue cssHwb(List<SassValue> args) {
-        if (args.size() > 1
-                && !(args.get(1) instanceof SassNull)
-                && !(args.get(2) instanceof SassNull)) {
-            // Multi-arg form: hwb($hue, $whiteness, $blackness, $alpha: 1).
-            @Nullable SassValue alphaArg = args.size() > 3 && !(args.get(3) instanceof SassNull)
-                    ? args.get(3)
-                    : null;
-            if (args.get(0).isSpecialNumber()
-                    || args.get(1).isSpecialNumber()
-                    || args.get(2).isSpecialNumber()
-                    || (alphaArg != null && alphaArg.isSpecialNumber())) {
-                // Modern hwb() special-number form uses spaces and slash-alpha.
-                var builder = new StringBuilder("hwb(")
-                        .append(args.get(0).toCssString()).append(' ')
-                        .append(args.get(1).toCssString()).append(' ')
-                        .append(args.get(2).toCssString());
-                if (alphaArg != null) {
-                    builder.append(" / ").append(alphaArg.toCssString());
-                }
-                return new SassString(builder.append(')').toString(), false);
+    /// Dispatches {@code hwb(...)} overloads from a rest argument list.
+    private static SassValue hwbRest(List<SassValue> args) {
+        return hwbOrChannels(restArgumentList(args));
+    }
+
+    /// Implements hwb positional and named overload selection.
+    private static SassValue hwbOrChannels(SassArgumentList rest) {
+        var values = new ArrayList<>(rest.asList());
+        var keywords = new LinkedHashMap<>(rest.keywords());
+        if (keywords.containsKey("channels")) {
+            @Nullable SassValue channels = keywords.remove("channels");
+            if (!keywords.isEmpty()) {
+                throw new SassValueException(
+                        "No argument named $" + keywords.keySet().iterator().next() + "."
+                );
             }
-            double hue = channelTypeNumber(args.get(0), "hue").value();
-            SassNumber whitenessNumber = channelTypeNumber(args.get(1), "whiteness");
-            SassNumber blacknessNumber = channelTypeNumber(args.get(2), "blackness");
-            assertPercentUnit(whitenessNumber, "whiteness");
-            assertPercentUnit(blacknessNumber, "blackness");
-            double whiteness = whitenessNumber.value();
-            double blackness = blacknessNumber.value();
-            if (whiteness + blackness > 100.0) {
-                var sum = whiteness + blackness;
-                whiteness = whiteness / sum * 100.0;
-                blackness = blackness / sum * 100.0;
+            if (!values.isEmpty()) {
+                throw new SassValueException(
+                        "Only 1 argument allowed, but " + (1 + values.size()) + " were passed."
+                );
             }
-            double alphaValue = alphaArg != null ? alpha(alphaArg) : 1.0;
-            return SassColor.hwb(hue, whiteness, blackness, alphaValue);
+            return CssColorChannels.parseFixedSpace(
+                    "hwb",
+                    Objects.requireNonNull(channels),
+                    ColorSpace.HWB
+            );
         }
-        return CssColorChannels.parseFixedSpace("hwb", args.get(0), ColorSpace.HWB);
+        if (keywords.containsKey("hue")
+                || keywords.containsKey("whiteness")
+                || keywords.containsKey("blackness")) {
+            @Nullable SassValue hue = takeNamedOrPositional(values, keywords, "hue");
+            @Nullable SassValue whiteness = takeNamedOrPositional(values, keywords, "whiteness");
+            @Nullable SassValue blackness = takeNamedOrPositional(values, keywords, "blackness");
+            @Nullable SassValue alphaArg = takeNamedOrPositional(values, keywords, "alpha");
+            if (!keywords.isEmpty()) {
+                throw new SassValueException(
+                        "No argument named $" + keywords.keySet().iterator().next() + "."
+                );
+            }
+            if (!values.isEmpty()) {
+                throw new SassValueException(
+                        "Only 4 arguments allowed, but "
+                                + (4 + values.size()) + " were passed."
+                );
+            }
+            return hwbChannels(hue, whiteness, blackness, alphaArg);
+        }
+        if (!keywords.isEmpty()) {
+            if (keywords.size() == 1 && keywords.containsKey("alpha") && values.size() == 3) {
+                return hwbChannels(
+                        values.get(0),
+                        values.get(1),
+                        values.get(2),
+                        keywords.get("alpha")
+                );
+            }
+            throw new SassValueException(
+                    "No argument named $" + keywords.keySet().iterator().next() + "."
+            );
+        }
+        if (values.isEmpty()) {
+            throw new SassValueException("Missing argument $channels.");
+        }
+        if (values.size() == 1) {
+            return CssColorChannels.parseFixedSpace("hwb", values.get(0), ColorSpace.HWB);
+        }
+        if (values.size() == 2) {
+            // dart-sass rejects two-arg hwb() with a fixed-arity message.
+            throw new SassValueException(
+                    "Only 1 argument allowed, but 2 were passed."
+            );
+        }
+        if (values.size() == 3) {
+            return hwbChannels(values.get(0), values.get(1), values.get(2), null);
+        }
+        if (values.size() == 4) {
+            return hwbChannels(
+                    values.get(0),
+                    values.get(1),
+                    values.get(2),
+                    values.get(3)
+            );
+        }
+        throw new SassValueException(
+                "Only 4 arguments allowed, but " + values.size() + " were passed."
+        );
+    }
+
+    /// Builds an HWB color from individual channel arguments.
+    private static SassValue hwbChannels(
+            @Nullable SassValue hueValue,
+            @Nullable SassValue whitenessValue,
+            @Nullable SassValue blacknessValue,
+            @Nullable SassValue alphaArg
+    ) {
+        if (hueValue == null) {
+            throw new SassValueException("Missing argument $hue.");
+        }
+        if (whitenessValue == null) {
+            throw new SassValueException("Missing argument $whiteness.");
+        }
+        if (blacknessValue == null) {
+            throw new SassValueException("Missing argument $blackness.");
+        }
+        if (hueValue.isSpecialNumber()
+                || whitenessValue.isSpecialNumber()
+                || blacknessValue.isSpecialNumber()
+                || (alphaArg != null && alphaArg.isSpecialNumber())) {
+            var builder = new StringBuilder("hwb(")
+                    .append(hueValue.toCssString()).append(' ')
+                    .append(whitenessValue.toCssString()).append(' ')
+                    .append(blacknessValue.toCssString());
+            if (alphaArg != null) {
+                builder.append(" / ").append(alphaArg.toCssString());
+            }
+            return new SassString(builder.append(')').toString(), false);
+        }
+        double hue = angleValueLenient(channelTypeNumber(hueValue, "hue"), "hue");
+        SassNumber whitenessNumber = channelTypeNumber(whitenessValue, "whiteness");
+        SassNumber blacknessNumber = channelTypeNumber(blacknessValue, "blackness");
+        assertPercentUnit(whitenessNumber, "whiteness");
+        assertPercentUnit(blacknessNumber, "blackness");
+        double whiteness = whitenessNumber.value();
+        double blackness = blacknessNumber.value();
+        if (whiteness + blackness > 100.0) {
+            var sum = whiteness + blackness;
+            whiteness = whiteness / sum * 100.0;
+            blackness = blackness / sum * 100.0;
+        }
+        double alphaValue = alphaArg != null ? alpha(alphaArg) : 1.0;
+        return SassColor.hwb(hue, whiteness, blackness, alphaValue);
     }
 
     /// Asserts a multi-arg color channel is a number with dart-sass diagnostics.
@@ -1265,67 +1394,162 @@ public final class BuiltInFunctions {
         return CssColorChannels.parseFixedSpace("oklch", args.get(0), ColorSpace.OKLCH);
     }
 
-    /// Parses legacy or modern CSS {@code hsl()}/{@code hsla()} constructors.
-    private static SassValue hsl(List<SassValue> args) {
-        if (args.get(1) instanceof SassNull || args.get(2) instanceof SassNull) {
-            if (!(args.get(1) instanceof SassNull) || !(args.get(2) instanceof SassNull)) {
-                // hsl(123, var(--foo)) is valid CSS because --foo might expand.
-                if (args.get(0).isSpecialVariable() || args.get(1).isSpecialVariable()) {
-                    return CssColorChannels.functionString("hsl", List.of(args.get(0), args.get(1)));
-                }
-                if (args.get(1) instanceof SassNull) {
-                    throw new SassValueException("Missing argument $saturation.");
-                }
-                throw new SassValueException("Missing argument $lightness.");
+    /// Dispatches {@code hsl(...)} overloads from a rest argument list.
+    private static SassValue hslRest(List<SassValue> args) {
+        return hslOrHsla("hsl", restArgumentList(args));
+    }
+
+    /// Dispatches {@code hsla(...)} overloads from a rest argument list.
+    private static SassValue hslaRest(List<SassValue> args) {
+        return hslOrHsla("hsla", restArgumentList(args));
+    }
+
+    /// Implements hsl/hsla positional and named overload selection.
+    private static SassValue hslOrHsla(String name, SassArgumentList rest) {
+        var values = new ArrayList<>(rest.asList());
+        var keywords = new LinkedHashMap<>(rest.keywords());
+        if (keywords.containsKey("channels")) {
+            @Nullable SassValue channels = keywords.remove("channels");
+            if (!keywords.isEmpty()) {
+                throw new SassValueException(
+                        "No argument named $" + keywords.keySet().iterator().next() + "."
+                );
             }
-            return CssColorChannels.parseFixedSpace("hsl", args.get(0), ColorSpace.HSL);
+            if (!values.isEmpty()) {
+                throw new SassValueException(
+                        "Only 1 argument allowed, but " + (1 + values.size()) + " were passed."
+                );
+            }
+            return CssColorChannels.parseFixedSpace(
+                    name,
+                    Objects.requireNonNull(channels),
+                    ColorSpace.HSL
+            );
         }
-        @Nullable SassValue alphaArg = args.size() > 3 && !(args.get(3) instanceof SassNull)
-                ? args.get(3)
-                : null;
-        if (args.get(0).isSpecialNumber()
-                || args.get(1).isSpecialNumber()
-                || args.get(2).isSpecialNumber()
+        if (keywords.containsKey("hue")
+                || keywords.containsKey("saturation")
+                || keywords.containsKey("lightness")) {
+            @Nullable SassValue hue = takeNamedOrPositional(values, keywords, "hue");
+            @Nullable SassValue saturation = takeNamedOrPositional(values, keywords, "saturation");
+            @Nullable SassValue lightness = takeNamedOrPositional(values, keywords, "lightness");
+            @Nullable SassValue alphaArg = takeNamedOrPositional(values, keywords, "alpha");
+            if (!keywords.isEmpty()) {
+                throw new SassValueException(
+                        "No argument named $" + keywords.keySet().iterator().next() + "."
+                );
+            }
+            if (!values.isEmpty()) {
+                throw new SassValueException(
+                        "Only 4 arguments allowed, but "
+                                + (4 + values.size()) + " were passed."
+                );
+            }
+            return hslChannels(name, hue, saturation, lightness, alphaArg);
+        }
+        if (!keywords.isEmpty()) {
+            if (keywords.size() == 1 && keywords.containsKey("alpha") && values.size() == 3) {
+                return hslChannels(
+                        name,
+                        values.get(0),
+                        values.get(1),
+                        values.get(2),
+                        keywords.get("alpha")
+                );
+            }
+            if (keywords.size() == 1 && keywords.containsKey("alpha") && values.size() == 1) {
+                // Single channels list may carry a named alpha via modern form;
+                // fall through is not valid for hsl — reject unknown alone.
+            }
+            throw new SassValueException(
+                    "No argument named $" + keywords.keySet().iterator().next() + "."
+            );
+        }
+        if (values.isEmpty()) {
+            throw new SassValueException("Missing argument $channels.");
+        }
+        if (values.size() == 1) {
+            return CssColorChannels.parseFixedSpace(name, values.get(0), ColorSpace.HSL);
+        }
+        if (values.size() == 2) {
+            // hsl(123, var(--foo)) is valid CSS because --foo might expand.
+            if (values.get(0).isSpecialVariable() || values.get(1).isSpecialVariable()) {
+                return CssColorChannels.functionString(name, values);
+            }
+            throw new SassValueException("Missing argument $lightness.");
+        }
+        if (values.size() == 3) {
+            return hslChannels(name, values.get(0), values.get(1), values.get(2), null);
+        }
+        if (values.size() == 4) {
+            return hslChannels(
+                    name,
+                    values.get(0),
+                    values.get(1),
+                    values.get(2),
+                    values.get(3)
+            );
+        }
+        throw new SassValueException(
+                "Only 4 arguments allowed, but " + values.size() + " were passed."
+        );
+    }
+
+    /// Builds an HSL color from individual channel arguments.
+    private static SassValue hslChannels(
+            String name,
+            @Nullable SassValue hueValue,
+            @Nullable SassValue saturationValue,
+            @Nullable SassValue lightnessValue,
+            @Nullable SassValue alphaArg
+    ) {
+        if (hueValue == null) {
+            throw new SassValueException("Missing argument $hue.");
+        }
+        if (saturationValue == null) {
+            throw new SassValueException("Missing argument $saturation.");
+        }
+        if (lightnessValue == null) {
+            throw new SassValueException("Missing argument $lightness.");
+        }
+        if (hueValue.isSpecialNumber()
+                || saturationValue.isSpecialNumber()
+                || lightnessValue.isSpecialNumber()
                 || (alphaArg != null && alphaArg.isSpecialNumber())) {
             var specialArgs = new ArrayList<SassValue>();
-            specialArgs.add(args.get(0));
-            specialArgs.add(args.get(1));
-            specialArgs.add(args.get(2));
+            specialArgs.add(hueValue);
+            specialArgs.add(saturationValue);
+            specialArgs.add(lightnessValue);
             if (alphaArg != null) {
                 specialArgs.add(alphaArg);
             }
-            return CssColorChannels.functionString("hsl", specialArgs);
+            return CssColorChannels.functionString(name, specialArgs);
         }
-        // Multi-arg hsl uses parameter-name diagnostics ($hue/$saturation/...),
-        // while one-arg channel lists use "Expected X channel to be a number".
-        double hue = numberArgument(args.get(0), "hue").value();
+        double hue = angleValueLenient(numberArgument(hueValue, "hue"), "hue");
         // Saturation is lower-clamped so negative values become 0% rather than
         // inverting the hue via forSpace preprocessing.
         double saturation = Math.max(
                 0.0,
                 percentageOrUnitlessChannel(
-                        numberArgument(args.get(1), "saturation"),
+                        numberArgument(saturationValue, "saturation"),
                         "saturation"
                 )
         );
+        if (Double.isNaN(saturation)) {
+            saturation = 0.0;
+        }
         double lightness = percentageOrUnitlessChannel(
-                numberArgument(args.get(2), "lightness"),
+                numberArgument(lightnessValue, "lightness"),
                 "lightness"
         );
         double alphaValue = alphaArg != null ? alpha(alphaArg) : 1.0;
         return SassColor.hsl(hue, saturation, lightness, alphaValue);
     }
 
+    /// Reads a percent-scale channel, accepting unknown units as bare magnitudes
+    /// during the function-units deprecation period.
     private static double percentageOrUnitlessChannel(SassNumber number, String name) {
-        if (number.isUnitless()) {
-            return number.value();
-        }
-        if (number.numeratorUnits().equals(List.of("%")) && number.denominatorUnits().isEmpty()) {
-            return number.value();
-        }
-        throw new SassValueException(
-                "$" + name + ": Expected " + number + " to have unit \"%\" or no units."
-        );
+        // Percent, unitless, and legacy non-percent units all use the raw magnitude.
+        return number.value();
     }
 
     /// Requires a number to have unit {@code %}.
@@ -1498,6 +1722,8 @@ public final class BuiltInFunctions {
             type = "bool";
         } else if (value instanceof SassNumber) {
             type = "number";
+        } else if (value instanceof SassCalculation) {
+            type = "calculation";
         } else if (value instanceof SassString) {
             type = "string";
         } else if (value instanceof SassColor) {
@@ -1781,8 +2007,9 @@ public final class BuiltInFunctions {
         var values = new LinkedHashMap<String, ConfiguredValue>();
         for (var entry : map.contents().entrySet()) {
             if (!(entry.getKey() instanceof SassString key)) {
+                // dart-sass: "$with key: 1 is not a string."
                 throw new SassValueException(
-                        "$with: " + entry.getKey() + " is not a string in " + value + "."
+                        "$with key: " + entry.getKey() + " is not a string."
                 );
             }
             var name = key.text().replace('_', '-');
@@ -1831,6 +2058,59 @@ public final class BuiltInFunctions {
         throw new SassValueException("$function: " + target + " is not a function reference.");
     }
 
+    /// Returns the arguments of a calculation as a comma-separated list.
+    ///
+    /// Numbers and nested calculations are preserved as Sass values. Operations
+    /// and other non-value calculation operands serialize as unquoted strings,
+    /// matching dart-sass {@code meta.calc-args()}.
+    ///
+    /// @param args the one calculation argument
+    /// @return a comma-separated argument list
+    private static SassValue metaCalcArgs(List<SassValue> args) {
+        var calculation = calculationArgument(args.get(0), "calc");
+        var contents = new ArrayList<SassValue>(calculation.arguments().size());
+        for (var argument : calculation.arguments()) {
+            contents.add(calculationArgumentAsValue(argument));
+        }
+        return new SassList(contents, ListSeparator.COMMA, false);
+    }
+
+    /// Returns the lowercase name of a calculation as a quoted string.
+    ///
+    /// @param args the one calculation argument
+    /// @return the quoted calculation name
+    private static SassValue metaCalcName(List<SassValue> args) {
+        var calculation = calculationArgument(args.get(0), "calc");
+        return new SassString(calculation.name(), true);
+    }
+
+    /// Returns a calculation argument while identifying its Sass parameter.
+    ///
+    /// @param value the supplied argument
+    /// @param name  the parameter name without a dollar sign
+    /// @return the calculation
+    private static SassCalculation calculationArgument(SassValue value, String name) {
+        try {
+            return value.assertCalculation();
+        } catch (SassValueException exception) {
+            throw prefixParameterException(name, exception);
+        }
+    }
+
+    /// Converts one calculation-tree operand into a Sass value for introspection.
+    ///
+    /// @param argument a calculation argument object
+    /// @return the corresponding Sass value
+    private static SassValue calculationArgumentAsValue(Object argument) {
+        if (argument instanceof SassValue value) {
+            return value;
+        }
+        if (argument instanceof CalculationOperation operation) {
+            return new SassString(operation.toCssString(), false);
+        }
+        return new SassString(String.valueOf(argument), false);
+    }
+
     /// Returns a normalized Sass identifier name from a string argument.
     ///
     /// Sass treats underscores and hyphens as equivalent in identifier names.
@@ -1866,15 +2146,19 @@ public final class BuiltInFunctions {
     }
 
     private static SassValue unit(List<SassValue> args) {
-        return new SassString(args.get(0).assertNumber().unitString(), true);
+        return new SassString(numberArgument(args.get(0), "number").unitString(), true);
     }
 
     private static SassValue comparable(List<SassValue> args) {
-        return SassBoolean.of(args.get(0).assertNumber().isComparableTo(args.get(1).assertNumber()));
+        return SassBoolean.of(numberArgument(args.get(0), "number1")
+                .isComparableTo(numberArgument(args.get(1), "number2")));
     }
 
     private static SassValue percentage(List<SassValue> args) {
-        return SassNumber.of(args.get(0).assertNumber().assertNoUnits().value() * 100.0, "%");
+        return SassNumber.of(
+                numberArgument(args.get(0), "number").assertNoUnits().value() * 100.0,
+                "%"
+        );
     }
 
     /// Divides two numbers for the {@code sass:math} module.
@@ -1882,7 +2166,8 @@ public final class BuiltInFunctions {
     /// @param args the bound number arguments
     /// @return the unit-aware quotient
     private static SassValue div(List<SassValue> args) {
-        return args.get(0).assertNumber().dividedBy(args.get(1).assertNumber());
+        return numberArgument(args.get(0), "number1")
+                .dividedBy(numberArgument(args.get(1), "number2"));
     }
 
     /// Reports whether one number has no numerator or denominator units.
@@ -1890,7 +2175,7 @@ public final class BuiltInFunctions {
     /// @param args the bound number argument
     /// @return a Sass boolean describing unitlessness
     private static SassValue isUnitless(List<SassValue> args) {
-        return SassBoolean.of(args.get(0).assertNumber().isUnitless());
+        return SassBoolean.of(numberArgument(args.get(0), "number").isUnitless());
     }
 
     /// Clamps {@code number} between compatible {@code min} and {@code max} bounds.
@@ -1898,14 +2183,13 @@ public final class BuiltInFunctions {
     /// @param args the bound min, number, and max arguments
     /// @return the clamped number
     private static SassValue clamp(List<SassValue> args) {
-        var min = args.get(0).assertNumber();
-        var number = args.get(1).assertNumber();
-        var max = args.get(2).assertNumber();
-        if (!min.isComparableTo(number) || !min.isComparableTo(max)) {
-            throw new SassValueException(
-                    min + ", " + number + ", and " + max + " have incompatible units."
-            );
-        }
+        var min = numberArgument(args.get(0), "min");
+        var number = numberArgument(args.get(1), "number");
+        var max = numberArgument(args.get(2), "max");
+        // Pairwise checks match dart-sass message order and unitless rules.
+        assertMathUnitsCompatible(min, "min", number, "number");
+        assertMathUnitsCompatible(min, "min", max, "max");
+        assertMathUnitsCompatible(number, "number", max, "max");
         if (min.greaterThanOrEquals(max).isTruthy()) {
             return min;
         }
@@ -1927,13 +2211,17 @@ public final class BuiltInFunctions {
         if (numbers.isEmpty()) {
             throw new SassValueException("At least one argument must be passed.");
         }
+        // Type errors omit the rest-parameter index; unit errors include it.
         var first = numbers.get(0).assertNumber();
         var subtotal = 0.0;
         for (var index = 0; index < numbers.size(); index++) {
             var number = numbers.get(index).assertNumber();
-            if (!first.isComparableTo(number)) {
-                throw new SassValueException(
-                        first + " and " + number + " have incompatible units."
+            if (index > 0) {
+                assertMathUnitsCompatible(
+                        first,
+                        "numbers[1]",
+                        number,
+                        "numbers[" + (index + 1) + "]"
                 );
             }
             var value = number.valueInUnitsOf(first);
@@ -1951,11 +2239,11 @@ public final class BuiltInFunctions {
     /// @param args the bound number and optional base
     /// @return the unitless logarithm
     private static SassValue log(List<SassValue> args) {
-        var number = args.get(0).assertNumber().assertNoUnits();
+        var number = unitlessNumberArgument(args.get(0), "number");
         if (args.get(1) instanceof SassNull) {
             return SassNumber.of(Math.log(number.value()), null);
         }
-        var base = args.get(1).assertNumber().assertNoUnits();
+        var base = unitlessNumberArgument(args.get(1), "base");
         return SassNumber.of(Math.log(number.value()) / Math.log(base.value()), null);
     }
 
@@ -1964,9 +2252,9 @@ public final class BuiltInFunctions {
     /// @param args the bound base and exponent
     /// @return the unitless power
     private static SassValue pow(List<SassValue> args) {
-        var base = args.get(0).assertNumber().assertNoUnits();
-        var exponent = args.get(1).assertNumber().assertNoUnits();
-        return SassNumber.of(Math.pow(base.value(), exponent.value()), null);
+        var base = unitlessNumberArgument(args.get(0), "base");
+        var exponent = unitlessNumberArgument(args.get(1), "exponent");
+        return SassNumber.of(powValue(base.value(), exponent.value()), null);
     }
 
     /// Returns the square root of a unitless number.
@@ -1974,7 +2262,7 @@ public final class BuiltInFunctions {
     /// @param args the bound number
     /// @return the unitless square root
     private static SassValue sqrt(List<SassValue> args) {
-        var number = args.get(0).assertNumber().assertNoUnits();
+        var number = unitlessNumberArgument(args.get(0), "number");
         return SassNumber.of(Math.sqrt(number.value()), null);
     }
 
@@ -1983,7 +2271,7 @@ public final class BuiltInFunctions {
     /// @param args the bound angle
     /// @return the unitless sine
     private static SassValue sin(List<SassValue> args) {
-        return SassNumber.of(Math.sin(radians(args.get(0).assertNumber())), null);
+        return SassNumber.of(Math.sin(radians(numberArgument(args.get(0), "number"))), null);
     }
 
     /// Returns the cosine of an angle coerced to radians.
@@ -1991,7 +2279,7 @@ public final class BuiltInFunctions {
     /// @param args the bound angle
     /// @return the unitless cosine
     private static SassValue cos(List<SassValue> args) {
-        return SassNumber.of(Math.cos(radians(args.get(0).assertNumber())), null);
+        return SassNumber.of(Math.cos(radians(numberArgument(args.get(0), "number"))), null);
     }
 
     /// Returns the tangent of an angle coerced to radians.
@@ -1999,7 +2287,7 @@ public final class BuiltInFunctions {
     /// @param args the bound angle
     /// @return the unitless tangent
     private static SassValue tan(List<SassValue> args) {
-        return SassNumber.of(Math.tan(radians(args.get(0).assertNumber())), null);
+        return SassNumber.of(Math.tan(radians(numberArgument(args.get(0), "number"))), null);
     }
 
     /// Returns the arcsine of a unitless number in degrees.
@@ -2007,7 +2295,7 @@ public final class BuiltInFunctions {
     /// @param args the bound number
     /// @return the degree angle
     private static SassValue asin(List<SassValue> args) {
-        return degrees(Math.asin(args.get(0).assertNumber().assertNoUnits().value()));
+        return degrees(Math.asin(unitlessNumberArgument(args.get(0), "number").value()));
     }
 
     /// Returns the arccosine of a unitless number in degrees.
@@ -2015,7 +2303,7 @@ public final class BuiltInFunctions {
     /// @param args the bound number
     /// @return the degree angle
     private static SassValue acos(List<SassValue> args) {
-        return degrees(Math.acos(args.get(0).assertNumber().assertNoUnits().value()));
+        return degrees(Math.acos(unitlessNumberArgument(args.get(0), "number").value()));
     }
 
     /// Returns the arctangent of a unitless number in degrees.
@@ -2023,7 +2311,7 @@ public final class BuiltInFunctions {
     /// @param args the bound number
     /// @return the degree angle
     private static SassValue atan(List<SassValue> args) {
-        return degrees(Math.atan(args.get(0).assertNumber().assertNoUnits().value()));
+        return degrees(Math.atan(unitlessNumberArgument(args.get(0), "number").value()));
     }
 
     /// Returns the two-argument arctangent of compatible coordinates in degrees.
@@ -2031,12 +2319,74 @@ public final class BuiltInFunctions {
     /// @param args the bound y and x coordinates
     /// @return the degree angle
     private static SassValue atan2(List<SassValue> args) {
-        var y = args.get(0).assertNumber();
-        var x = args.get(1).assertNumber();
-        if (!y.isComparableTo(x)) {
-            throw new SassValueException(y + " and " + x + " have incompatible units.");
-        }
+        var y = numberArgument(args.get(0), "y");
+        var x = numberArgument(args.get(1), "x");
+        assertMathUnitsCompatible(y, "y", x, "x");
         return degrees(Math.atan2(y.value(), x.valueInUnitsOf(y)));
+    }
+
+    /// Returns a unitless number argument with a parameter-scoped failure.
+    ///
+    /// @param value the supplied argument
+    /// @param name  the parameter name without a dollar sign
+    /// @return the unitless number
+    private static SassNumber unitlessNumberArgument(SassValue value, String name) {
+        var number = numberArgument(value, name);
+        try {
+            return number.assertNoUnits();
+        } catch (SassValueException exception) {
+            throw prefixParameterException(name, exception);
+        }
+    }
+
+    /// Requires two numbers to have matching unitfulness and compatible units.
+    ///
+    /// Unlike [SassNumber#isComparableTo], unitless numbers are not treated as
+    /// compatible with unitful numbers. Message order reports the later argument
+    /// first, matching dart-sass math diagnostics.
+    ///
+    /// @param earlier     the earlier formal parameter value
+    /// @param earlierName the earlier parameter name without a dollar sign
+    /// @param later       the later formal parameter value
+    /// @param laterName   the later parameter name without a dollar sign
+    private static void assertMathUnitsCompatible(
+            SassNumber earlier,
+            String earlierName,
+            SassNumber later,
+            String laterName
+    ) {
+        if (earlier.isUnitless() != later.isUnitless()) {
+            throw new SassValueException(
+                    "$" + laterName + ": " + later + " and $" + earlierName + ": " + earlier
+                            + " have incompatible units (one has units and the other doesn't)."
+            );
+        }
+        if (!earlier.isUnitless() && !earlier.isComparableTo(later)) {
+            throw new SassValueException(
+                    "$" + laterName + ": " + later + " and $" + earlierName + ": " + earlier
+                            + " have incompatible units."
+            );
+        }
+    }
+
+    /// Computes {@code base ** exponent} with dart-sass special cases for
+    /// {@code ±1} bases and infinite exponents.
+    ///
+    /// Exact equality is required for the {@code ±1} cases so fuzzy ones such as
+    /// {@code 1.000000000001 ** ∞} still follow IEEE-style Math.pow results.
+    ///
+    /// @param base     the unitless base
+    /// @param exponent the unitless exponent
+    /// @return the power value
+    private static double powValue(double base, double exponent) {
+        // Java Math.pow(1, ±∞) and Math.pow(-1, ±∞) yield NaN; Sass defines 1.
+        if (base == 1.0) {
+            return 1.0;
+        }
+        if (base == -1.0 && Double.isInfinite(exponent)) {
+            return 1.0;
+        }
+        return Math.pow(base, exponent);
     }
 
     /// Returns a random unitless number, optionally bounded by a positive integer limit.
@@ -2047,7 +2397,7 @@ public final class BuiltInFunctions {
         if (args.isEmpty() || args.get(0) instanceof SassNull) {
             return SassNumber.of(RANDOM.nextDouble(), null);
         }
-        var limit = args.get(0).assertNumber();
+        var limit = numberArgument(args.get(0), "limit");
         var limitScalar = limit.assertInt();
         if (limitScalar < 1) {
             throw new SassValueException(
@@ -2074,12 +2424,20 @@ public final class BuiltInFunctions {
     }
 
     private static SassValue abs(List<SassValue> args) {
-        var number = args.get(0).assertNumber();
-        return SassNumber.withUnits(
-                Math.abs(number.value()),
-                number.numeratorUnits(),
-                number.denominatorUnits()
-        );
+        try {
+            var number = args.get(0).assertNumber();
+            return SassNumber.withUnits(
+                    Math.abs(number.value()),
+                    number.numeratorUnits(),
+                    number.denominatorUnits()
+            );
+        } catch (SassValueException exception) {
+            String message = Objects.requireNonNull(exception.getMessage(), "abs message");
+            if (message.startsWith("$")) {
+                throw exception;
+            }
+            throw new SassValueException("$number: " + message);
+        }
     }
 
     private static SassValue round(List<SassValue> args) {
@@ -2140,7 +2498,7 @@ public final class BuiltInFunctions {
             SassValue value,
             java.util.function.DoubleUnaryOperator operator
     ) {
-        var number = value.assertNumber();
+        var number = numberArgument(value, "number");
         return SassNumber.withUnits(
                 operator.applyAsDouble(number.value()),
                 number.numeratorUnits(),
@@ -2149,14 +2507,14 @@ public final class BuiltInFunctions {
     }
 
     private static SassValue mapGet(List<SassValue> args) {
-        var map = args.get(0).assertMap();
+        var map = mapArgument(args.get(0), "map");
         @Nullable SassValue value = map.contents().get(args.get(1));
         return value == null ? SassNull.NULL : value;
     }
 
     private static SassValue mapKeys(List<SassValue> args) {
         return new SassList(
-                List.copyOf(args.get(0).assertMap().contents().keySet()),
+                List.copyOf(mapArgument(args.get(0), "map").contents().keySet()),
                 ListSeparator.COMMA,
                 false
         );
@@ -2164,20 +2522,21 @@ public final class BuiltInFunctions {
 
     private static SassValue mapValues(List<SassValue> args) {
         return new SassList(
-                List.copyOf(args.get(0).assertMap().contents().values()),
+                List.copyOf(mapArgument(args.get(0), "map").contents().values()),
                 ListSeparator.COMMA,
                 false
         );
     }
 
     private static SassValue mapMerge(List<SassValue> args) {
-        var result = new LinkedHashMap<>(args.get(0).assertMap().contents());
-        result.putAll(args.get(1).assertMap().contents());
-        return new SassMap(result);
+        return flatMergeMaps(
+                mapArgument(args.get(0), "map1"),
+                mapArgument(args.get(1), "map2")
+        );
     }
 
     private static SassValue mapHasKey(List<SassValue> args) {
-        return SassBoolean.of(args.get(0).assertMap().contents().containsKey(args.get(1)));
+        return SassBoolean.of(mapArgument(args.get(0), "map").contents().containsKey(args.get(1)));
     }
 
     /// Looks up a value by a possibly nested path in a map module call.
@@ -2185,7 +2544,7 @@ public final class BuiltInFunctions {
     /// @param args the map, first key, and remaining key arguments
     /// @return the mapped value or Sass null when no path element exists
     private static SassValue moduleMapGet(List<SassValue> args) {
-        var map = args.get(0).assertMap();
+        var map = mapArgument(args.get(0), "map");
         var keys = keysWithRest(args);
         for (var index = 0; index < keys.size() - 1; index++) {
             @Nullable SassValue value = map.contents().get(keys.get(index));
@@ -2204,7 +2563,7 @@ public final class BuiltInFunctions {
     /// @param args the map, first key, and remaining key arguments
     /// @return whether the complete path is present
     private static SassValue moduleMapHasKey(List<SassValue> args) {
-        var map = args.get(0).assertMap();
+        var map = mapArgument(args.get(0), "map");
         var keys = keysWithRest(args);
         for (var index = 0; index < keys.size() - 1; index++) {
             @Nullable SassValue value = map.contents().get(keys.get(index));
@@ -2217,26 +2576,155 @@ public final class BuiltInFunctions {
         return SassBoolean.of(map.contents().containsKey(keys.get(keys.size() - 1)));
     }
 
+    /// Merges two maps, optionally at a nested path of keys.
+    ///
+    /// Forms:
+    /// - {@code merge($map1, $map2)}
+    /// - {@code merge($map1, $keys..., $map2)}
+    /// - {@code merge($map1: …, $map2: …)} and nested variants with named {@code $map2}
+    ///
+    /// @param args {@code $map1} followed by a rest list of keys and {@code $map2}
+    /// @return the merged map
+    private static SassValue moduleMapMerge(List<SassValue> args) {
+        var map1 = mapArgument(args.get(0), "map1");
+        if (args.size() < 2 || !(args.get(1) instanceof SassArgumentList rest)) {
+            throw new SassValueException("Expected $args to contain a key.");
+        }
+        var positional = rest.asList();
+        var keywords = rest.keywords();
+        @Nullable SassValue namedMap2 = keywords.get("map2");
+        if (namedMap2 != null) {
+            if (keywords.size() != 1) {
+                throw unknownMapKeyword(keywords.keySet(), Set.of("map2"));
+            }
+            var map2 = mapArgument(namedMap2, "map2");
+            return positional.isEmpty()
+                    ? flatMergeMaps(map1, map2)
+                    : nestedMergeAtPath(map1, positional, map2);
+        }
+        if (!keywords.isEmpty()) {
+            throw unknownMapKeyword(keywords.keySet(), Set.of("map2"));
+        }
+        if (positional.isEmpty()) {
+            throw new SassValueException("Expected $args to contain a key.");
+        }
+        if (positional.size() == 1) {
+            return flatMergeMaps(map1, mapArgument(positional.get(0), "map2"));
+        }
+        var keys = positional.subList(0, positional.size() - 1);
+        var map2 = mapArgument(positional.get(positional.size() - 1), "map2");
+        return nestedMergeAtPath(map1, keys, map2);
+    }
+
     /// Sets one direct map key to a replacement value.
     ///
     /// @param args the map, key, and replacement value
     /// @return a map containing the replacement entry
     private static SassValue mapSet(List<SassValue> args) {
-        var contents = new LinkedHashMap<>(args.get(0).assertMap().contents());
+        var contents = new LinkedHashMap<>(mapArgument(args.get(0), "map").contents());
         contents.put(args.get(1), args.get(2));
         return new SassMap(contents);
     }
 
+    /// Sets a value at a possibly nested path of keys.
+    ///
+    /// Forms: {@code set($map, $keys..., $value)} with at least one key, or the
+    /// named form {@code set($map: …, $key: …, $value: …)}.
+    ///
+    /// @param args {@code $map} followed by keys and a final value
+    /// @return a map containing the replacement entry
+    private static SassValue moduleMapSet(List<SassValue> args) {
+        var map = mapArgument(args.get(0), "map");
+        if (args.size() < 2 || !(args.get(1) instanceof SassArgumentList rest)) {
+            throw new SassValueException("Expected $args to contain a key.");
+        }
+        var positional = rest.asList();
+        var keywords = rest.keywords();
+        @Nullable SassValue namedKey = keywords.get("key");
+        @Nullable SassValue namedValue = keywords.get("value");
+        if (namedKey != null || namedValue != null) {
+            for (var name : keywords.keySet()) {
+                if (!"key".equals(name) && !"value".equals(name)) {
+                    throw unknownMapKeyword(keywords.keySet(), Set.of("key", "value"));
+                }
+            }
+            if (namedKey == null) {
+                throw new SassValueException("Expected $args to contain a key.");
+            }
+            if (namedValue == null) {
+                throw new SassValueException("Expected $args to contain a value.");
+            }
+            var keys = new ArrayList<>(positional);
+            keys.add(namedKey);
+            return nestedSetAtPath(map, keys, namedValue);
+        }
+        if (!keywords.isEmpty()) {
+            throw unknownMapKeyword(keywords.keySet(), Set.of("key", "value"));
+        }
+        if (positional.isEmpty()) {
+            throw new SassValueException("Expected $args to contain a key.");
+        }
+        if (positional.size() == 1) {
+            throw new SassValueException("Expected $args to contain a value.");
+        }
+        var keys = positional.subList(0, positional.size() - 1);
+        var value = positional.get(positional.size() - 1);
+        return nestedSetAtPath(map, keys, value);
+    }
+
     /// Removes all supplied direct keys from a map.
+    ///
+    /// Accepts positional rest keys and the named form {@code $key}.
     ///
     /// @param args the map and rest key arguments
     /// @return a map without the supplied keys
     private static SassValue mapRemove(List<SassValue> args) {
-        var contents = new LinkedHashMap<>(args.get(0).assertMap().contents());
+        var contents = new LinkedHashMap<>(mapArgument(args.get(0), "map").contents());
+        if (args.size() > 1 && args.get(1) instanceof SassArgumentList rest) {
+            var keywords = rest.keywords();
+            @Nullable SassValue namedKey = keywords.get("key");
+            if (namedKey != null) {
+                if (keywords.size() != 1) {
+                    throw unknownMapKeyword(keywords.keySet(), Set.of("key"));
+                }
+                if (!rest.asList().isEmpty()) {
+                    throw new SassValueException(
+                            "Argument $key was passed both by position and by name."
+                    );
+                }
+                contents.remove(namedKey);
+                return new SassMap(contents);
+            }
+            if (!keywords.isEmpty()) {
+                throw unknownMapKeyword(keywords.keySet(), Set.of("key"));
+            }
+            for (var key : rest.asList()) {
+                contents.remove(key);
+            }
+            return new SassMap(contents);
+        }
         for (var key : restValuesAt(args, 1)) {
             contents.remove(key);
         }
         return new SassMap(contents);
+    }
+
+    /// Creates the unknown-keyword diagnostic for map rest parameters.
+    private static SassValueException unknownMapKeyword(
+            Set<String> names,
+            Set<String> allowed
+    ) {
+        var unexpected = names.stream()
+                .filter(name -> !allowed.contains(name))
+                .sorted()
+                .map(name -> "$" + name)
+                .toList();
+        if (unexpected.size() == 1) {
+            return new SassValueException("No parameter named " + unexpected.get(0) + ".");
+        }
+        return new SassValueException(
+                "No parameters named " + String.join(" or ", unexpected) + "."
+        );
     }
 
     /// Merges nested map values recursively while giving the second map precedence.
@@ -2244,7 +2732,7 @@ public final class BuiltInFunctions {
     /// @param args the maps to merge
     /// @return a recursively merged map
     private static SassValue mapDeepMerge(List<SassValue> args) {
-        return deepMerge(args.get(0).assertMap(), args.get(1).assertMap());
+        return deepMerge(mapArgument(args.get(0), "map1"), mapArgument(args.get(1), "map2"));
     }
 
     /// Removes a possibly nested path from a map.
@@ -2252,7 +2740,78 @@ public final class BuiltInFunctions {
     /// @param args the map, first key, and remaining key arguments
     /// @return a map with the target path removed when it exists
     private static SassValue mapDeepRemove(List<SassValue> args) {
-        return deepRemove(args.get(0).assertMap(), keysWithRest(args), 0);
+        return deepRemove(mapArgument(args.get(0), "map"), keysWithRest(args), 0);
+    }
+
+    /// Returns a map argument while identifying its Sass parameter in failures.
+    private static SassMap mapArgument(SassValue value, String name) {
+        try {
+            return value.assertMap();
+        } catch (SassValueException exception) {
+            throw prefixParameterException(name, exception);
+        }
+    }
+
+    /// Shallow-merges two maps with the second map winning on key conflicts.
+    private static SassMap flatMergeMaps(SassMap first, SassMap second) {
+        var result = new LinkedHashMap<>(first.contents());
+        result.putAll(second.contents());
+        return new SassMap(result);
+    }
+
+    /// Merges {@code map2} into {@code map} at the nested path identified by {@code keys}.
+    ///
+    /// Non-map intermediate values are replaced by empty maps so the path can be
+    /// created, matching dart-sass {@code map.merge} nested semantics.
+    private static SassMap nestedMergeAtPath(
+            SassMap map,
+            List<SassValue> keys,
+            SassMap map2
+    ) {
+        if (keys.isEmpty()) {
+            return flatMergeMaps(map, map2);
+        }
+        var key = keys.get(0);
+        var remaining = keys.subList(1, keys.size());
+        @Nullable SassValue existing = map.contents().get(key);
+        @Nullable SassMap nested = existing == null ? null : existing.tryMap();
+        if (nested == null) {
+            nested = new SassMap(Map.of());
+        }
+        var mergedNested = nestedMergeAtPath(nested, remaining, map2);
+        var contents = new LinkedHashMap<>(map.contents());
+        contents.put(key, mergedNested);
+        return new SassMap(contents);
+    }
+
+    /// Sets {@code value} into {@code map} at the nested path identified by {@code keys}.
+    ///
+    /// Non-map intermediate values are replaced by empty maps so the path can be
+    /// created, matching dart-sass {@code map.set} nested semantics.
+    private static SassMap nestedSetAtPath(
+            SassMap map,
+            List<SassValue> keys,
+            SassValue value
+    ) {
+        if (keys.isEmpty()) {
+            throw new AssertionError("nested set requires at least one key");
+        }
+        if (keys.size() == 1) {
+            var contents = new LinkedHashMap<>(map.contents());
+            contents.put(keys.get(0), value);
+            return new SassMap(contents);
+        }
+        var key = keys.get(0);
+        var remaining = keys.subList(1, keys.size());
+        @Nullable SassValue existing = map.contents().get(key);
+        @Nullable SassMap nested = existing == null ? null : existing.tryMap();
+        if (nested == null) {
+            nested = new SassMap(Map.of());
+        }
+        var updatedNested = nestedSetAtPath(nested, remaining, value);
+        var contents = new LinkedHashMap<>(map.contents());
+        contents.put(key, updatedNested);
+        return new SassMap(contents);
     }
 
     /// Recursively merges a pair of Sass maps.
@@ -2357,7 +2916,7 @@ public final class BuiltInFunctions {
         var inserted = args.get(1).assertString();
         var text = string.text();
         var length = text.codePointCount(0, text.length());
-        var index = args.get(2).assertNumber().assertNoUnits().assertInt();
+        var index = numberArgument(args.get(2), "index").assertNoUnits().assertInt();
         var codePointIndex = index < 0
                 ? Math.max(length + index + 1, 0)
                 : index == 0 ? 0 : Math.min(index - 1, length);
@@ -2417,7 +2976,7 @@ public final class BuiltInFunctions {
         if (value instanceof SassNull) {
             return null;
         }
-        var number = value.assertNumber().assertNoUnits();
+        var number = numberArgument(value, "limit").assertNoUnits();
         var limit = number.assertInt();
         if (limit < 1) {
             throw new SassValueException(
@@ -2436,11 +2995,11 @@ public final class BuiltInFunctions {
         var text = string.text();
         var length = text.codePointCount(0, text.length());
         var start = stringCodePointIndex(
-                args.get(1).assertNumber().assertNoUnits().assertInt(),
+                numberArgument(args.get(1), "start-at").assertNoUnits().assertInt(),
                 length,
                 false
         );
-        var endArgument = args.get(2).assertNumber().assertNoUnits().assertInt();
+        var endArgument = numberArgument(args.get(2), "end-at").assertNoUnits().assertInt();
         if (endArgument == 0) {
             return new SassString("", string.hasQuotes());
         }
@@ -2685,10 +3244,11 @@ public final class BuiltInFunctions {
         var methodValue = args.get(3);
         if (!(methodValue instanceof SassNull)) {
             var method = InterpolationMethod.fromValue(methodValue, "method");
+            // Color 4 mix requires a percent weight (or unitless during deprecation).
             return first.interpolate(
                     second,
                     method,
-                    percentWeight(weight, "weight"),
+                    legacyWeight(weight, "weight"),
                     false
             );
         }
@@ -2723,6 +3283,15 @@ public final class BuiltInFunctions {
             }
             return new SassString("invert(" + number.toCssString() + ")", false);
         }
+        // Preserve plain-CSS special numbers as invert(...) filters.
+        if (value.isSpecialNumber()) {
+            if (!isCssFilterDefaultWeight(weightNumber)) {
+                throw new SassValueException(
+                        "Only one argument may be passed to the plain-CSS invert() function."
+                );
+            }
+            return CssColorChannels.functionString("invert", List.of(value));
+        }
         var color = colorArgument(value, "color");
         var spaceValue = args.get(2);
         if (spaceValue instanceof SassNull) {
@@ -2736,11 +3305,13 @@ public final class BuiltInFunctions {
         }
 
         var space = spaceArgument(spaceValue, "space");
-        var weight = percentWeight(weightNumber, "weight");
+        // With an explicit space, weight may be unitless or percent.
+        var weight = color4Weight(weightNumber, "weight");
         if (SassFuzzy.equals(weight, 0.0)) {
             return color;
         }
-        var inSpace = color.toSpace(space);
+        // Explicit $space keeps missing/powerless channels for diagnostics.
+        var inSpace = color.toSpace(space, true);
         var inverted = invertInSpace(inSpace);
         if (SassFuzzy.equals(weight, 1.0)) {
             return inverted.toSpace(color.space(), false);
@@ -2751,6 +3322,22 @@ public final class BuiltInFunctions {
                 1.0 - weight,
                 false
         );
+    }
+
+    /// Parses a Color 4 weight that accepts unitless values or {@code %}.
+    private static double color4Weight(SassNumber number, String name) {
+        var percent = number.numeratorUnits().equals(List.of("%"))
+                && number.denominatorUnits().isEmpty();
+        if (!number.isUnitless() && !percent) {
+            throw new SassValueException(
+                    "$" + name + ": Expected " + number + " to have unit \"%\" or no units."
+            );
+        }
+        try {
+            return number.valueInRange(0.0, 100.0) / 100.0;
+        } catch (SassValueException exception) {
+            throw new SassValueException("$" + name + ": " + exception.getMessage());
+        }
     }
 
     /// Returns the legacy HSL hue of one RGB color.
@@ -2791,24 +3378,6 @@ public final class BuiltInFunctions {
     /// @return the blackness percentage
     private static SassValue colorBlackness(List<SassValue> args) {
         return SassNumber.of(colorArgument(args.get(0), "color").blackness(), "%");
-    }
-
-    /// Mixes two legacy colors using the global {@code mix()} function.
-    private static SassValue globalColorMix(List<SassValue> args) {
-        var first = colorArgument(args.get(0), "color1");
-        var second = colorArgument(args.get(1), "color2");
-        var weight = numberArgument(args.get(2), "weight");
-        if (!first.isLegacy()) {
-            throw new SassValueException(
-                    "$color1: Global mix() only supports legacy colors. Use color.mix() instead."
-            );
-        }
-        if (!second.isLegacy()) {
-            throw new SassValueException(
-                    "$color2: Global mix() only supports legacy colors. Use color.mix() instead."
-            );
-        }
-        return first.mixedWith(second, legacyWeight(weight, "weight"));
     }
 
     /// Global {@code invert()} with plain-CSS number filter fallback.
@@ -3069,18 +3638,14 @@ public final class BuiltInFunctions {
 
     /// Converts one legacy color weight to a fractional first-color contribution.
     ///
+    /// During the function-units deprecation period, non-percent units are
+    /// accepted by reading the raw magnitude (matching dart-sass).
+    ///
     /// @param number the supplied weight number
     /// @param name the parameter name used for diagnostics
     /// @return the weight between zero and one
-    /// @throws SassValueException if the number has unsupported units or lies outside zero to 100
+    /// @throws SassValueException if the number lies outside zero to 100
     private static double legacyWeight(SassNumber number, String name) {
-        var percent = number.numeratorUnits().equals(List.of("%"))
-                && number.denominatorUnits().isEmpty();
-        if (!number.isUnitless() && !percent) {
-            throw new SassValueException(
-                    "$" + name + ": Expected " + number + " to have unit \"%\" or no units."
-            );
-        }
         try {
             return number.valueInRange(0.0, 100.0) / 100.0;
         } catch (SassValueException exception) {
@@ -3149,9 +3714,7 @@ public final class BuiltInFunctions {
             @Nullable Double value
     ) {
         if (value == null) {
-            throw new SassValueException(
-                    "$" + channel.name() + ": color.invert() doesn't support missing channels."
-            );
+            throw missingChannelError(color, channel.name());
         }
         if (channel.isPolarAngle()) {
             return (value + 180.0) % 360.0;
@@ -3168,12 +3731,16 @@ public final class BuiltInFunctions {
     /// Returns whether a named channel is powerless after optional conversion.
     private static SassValue colorIsPowerless(List<SassValue> args) {
         var color = colorInSpace(args.get(0), args.get(2));
-        return SassBoolean.of(color.isChannelPowerless(channelNameArgument(args.get(1))));
+        try {
+            return SassBoolean.of(color.isChannelPowerless(channelNameArgument(args.get(1))));
+        } catch (SassValueException exception) {
+            throw prefixParameterException("channel", exception);
+        }
     }
 
     /// Maps a color into gamut using an explicit algorithm.
     private static SassValue colorToGamut(List<SassValue> args) {
-        var color = args.get(0).assertColor();
+        var color = colorArgument(args.get(0), "color");
         var space = spaceOrDefault(color, args.get(1), "space");
         if (args.get(2) instanceof SassNull) {
             throw new SassValueException(
@@ -3224,8 +3791,24 @@ public final class BuiltInFunctions {
         try {
             return value.assertColor();
         } catch (SassValueException exception) {
-            throw new SassValueException("$" + name + ": " + exception.getMessage());
+            throw prefixParameterException(name, exception);
         }
+    }
+
+    /// Prefixes a parameter name onto a {@link SassValueException} when absent.
+    ///
+    /// @param name      the parameter name without a dollar sign
+    /// @param exception the original failure
+    /// @return a parameter-scoped exception
+    private static SassValueException prefixParameterException(
+            String name,
+            SassValueException exception
+    ) {
+        var message = Objects.requireNonNull(exception.getMessage(), "exception message");
+        if (message.startsWith("$")) {
+            return exception;
+        }
+        return new SassValueException("$" + name + ": " + message);
     }
 
     /// Returns a number argument while identifying its Sass parameter in failures.
@@ -3274,8 +3857,8 @@ public final class BuiltInFunctions {
     /// @param args the two color arguments
     /// @return whether the colors represent the same appearance
     private static SassValue colorSame(List<SassValue> args) {
-        var first = args.get(0).assertColor();
-        var second = args.get(1).assertColor();
+        var first = colorArgument(args.get(0), "color1");
+        var second = colorArgument(args.get(1), "color2");
         if (first.space() == second.space()) {
             return SassBoolean.of(
                     SassFuzzy.equals(first.channel0(), second.channel0())
@@ -3292,7 +3875,7 @@ public final class BuiltInFunctions {
     /// @param args the one color argument
     /// @return the unquoted space name
     private static SassValue colorSpace(List<SassValue> args) {
-        return new SassString(args.get(0).assertColor().space().spaceName(), false);
+        return new SassString(colorArgument(args.get(0), "color").space().spaceName(), false);
     }
 
     /// Converts one color into another known space.
@@ -3300,7 +3883,7 @@ public final class BuiltInFunctions {
     /// @param args the color and space-name arguments
     /// @return the converted color
     private static SassValue colorToSpace(List<SassValue> args) {
-        var color = args.get(0).assertColor();
+        var color = colorArgument(args.get(0), "color");
         var space = spaceArgument(args.get(1), "space");
         return color.toSpace(space, false);
     }
@@ -3310,7 +3893,7 @@ public final class BuiltInFunctions {
     /// @param args the one color argument
     /// @return whether the color is legacy
     private static SassValue colorIsLegacy(List<SassValue> args) {
-        return SassBoolean.of(args.get(0).assertColor().isLegacy());
+        return SassBoolean.of(colorArgument(args.get(0), "color").isLegacy());
     }
 
     /// Returns whether one named channel is missing.
@@ -3318,8 +3901,12 @@ public final class BuiltInFunctions {
     /// @param args the color and channel-name arguments
     /// @return whether the channel is missing
     private static SassValue colorIsMissing(List<SassValue> args) {
-        var color = args.get(0).assertColor();
-        return SassBoolean.of(color.isChannelMissing(channelNameArgument(args.get(1))));
+        var color = colorArgument(args.get(0), "color");
+        try {
+            return SassBoolean.of(color.isChannelMissing(channelNameArgument(args.get(1))));
+        } catch (SassValueException exception) {
+            throw prefixParameterException("channel", exception);
+        }
     }
 
     /// Returns whether one color is in-gamut in an optional space.

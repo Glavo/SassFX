@@ -190,7 +190,7 @@ final class SelectorModuleTest {
                 )
         );
         assertEquals(
-                "Expected closing ']'.",
+                "expected \"]\".",
                 failure(
                         "@use \"sass:selector\"; .a { value: selector.parse(\"[data=value\"); }"
                 )

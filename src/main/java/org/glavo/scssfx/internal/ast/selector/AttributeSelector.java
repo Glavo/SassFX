@@ -12,8 +12,9 @@ import java.util.Objects;
 /// Selects elements by the presence or value of an attribute.
 ///
 /// The parsed name, matcher, decoded value, and modifier provide structural
-/// data for selector operations. {@code css} retains the exact parsed spelling,
-/// including optional whitespace, quote choices, and escapes, for output.
+/// data for selector operations. {@code css} retains the exact parsed spelling
+/// for diagnostics; CSS emission rebuilds a canonical form so identifiers are
+/// unquoted when legal, matching dart-sass serialization.
 ///
 /// @param name     the qualified attribute name
 /// @param matcher  the value matcher, or {@code null} for presence matching
@@ -70,7 +71,20 @@ public record AttributeSelector(
 
     @Override
     public String toCssString() {
-        return css;
+        var result = new StringBuilder().append('[').append(name.toCssString());
+        if (matcher != null) {
+            result.append(matcher.css());
+            var attributeValue = Objects.requireNonNull(value, "value");
+            if (canEmitUnquoted(attributeValue)) {
+                result.append(attributeValue);
+            } else {
+                result.append(quoteAttributeValue(attributeValue));
+            }
+            if (modifier != null) {
+                result.append(' ').append(modifier.toCssString());
+            }
+        }
+        return result.append(']').toString();
     }
 
     @Override
@@ -89,5 +103,25 @@ public record AttributeSelector(
             @Nullable CssIdentifier second
     ) {
         return first == null ? second == null : second != null && first.hasSameValue(second);
+    }
+
+    /// Returns whether an attribute value may be emitted without quotes.
+    ///
+    /// Identifiers that start with {@code --} are always quoted because IE11
+    /// does not treat them as valid bare identifiers.
+    ///
+    /// @param attributeValue the decoded attribute value
+    /// @return whether the value is a non-{@code --} CSS identifier
+    private static boolean canEmitUnquoted(String attributeValue) {
+        return !attributeValue.startsWith("--")
+                && org.glavo.scssfx.internal.parse.CssIdentifierParser.isIdentifier(attributeValue);
+    }
+
+    /// Quotes an attribute value with dart-sass quote selection.
+    ///
+    /// @param attributeValue the decoded attribute value
+    /// @return a double- or single-quoted CSS string
+    private static String quoteAttributeValue(String attributeValue) {
+        return new org.glavo.scssfx.internal.value.SassString(attributeValue, true).toCssString();
     }
 }

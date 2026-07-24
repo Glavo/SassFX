@@ -78,9 +78,14 @@ public record InterpolationMethod(
         }
         if (parts.size() != 3) {
             if (parts.size() == 2) {
+                // Parenthesize multi-element lists in diagnostics to match dart-sass.
+                String shown = value instanceof SassList list && list.asList().size() > 1
+                        && !list.hasBrackets()
+                        ? "(" + value + ")"
+                        : value.toString();
                 throw new SassValueException(
                         "$" + argumentName + ": Expected unquoted string \"hue\" after "
-                                + value + "."
+                                + shown + "."
                 );
             }
             throw new SassValueException(
@@ -93,15 +98,22 @@ public record InterpolationMethod(
         if (!(hueKeyword instanceof SassString hueString)
                 || hueString.hasQuotes()
                 || !"hue".equals(hueString.text().toLowerCase(Locale.ROOT))) {
+            String shown = value instanceof SassList list && list.asList().size() > 1
+                    && !list.hasBrackets()
+                    ? "(" + value + ")"
+                    : value.toString();
             throw new SassValueException(
                     "$" + argumentName + ": Expected unquoted string \"hue\" at the end of "
-                            + value + ", was " + hueKeyword + "."
+                            + shown + ", was " + hueKeyword + "."
             );
         }
         if (!space.isPolar()) {
+            // Match dart-sass's enum toString() in this diagnostic:
+            // "HueInterpolationMethod.longer hue".
             throw new SassValueException(
-                    "$" + argumentName + ": Hue interpolation method \"" + hueMethod
-                            + " hue\" may not be set for rectangular color space " + space + "."
+                    "$" + argumentName + ": Hue interpolation method \"HueInterpolationMethod."
+                            + hueMethod.methodName() + " hue\" may not be set for rectangular "
+                            + "color space " + space + "."
             );
         }
         return new InterpolationMethod(space, hueMethod);
@@ -109,9 +121,14 @@ public record InterpolationMethod(
 
     /// Parses one unquoted color-space name.
     private static ColorSpace spaceName(SassValue value, String argumentName) {
-        if (!(value instanceof SassString string) || string.hasQuotes()) {
+        if (!(value instanceof SassString string)) {
             throw new SassValueException(
-                    "$" + argumentName + ": " + value + " is not an unquoted string."
+                    "$" + argumentName + ": " + value + " is not a string."
+            );
+        }
+        if (string.hasQuotes()) {
+            throw new SassValueException(
+                    "$" + argumentName + ": Expected " + value + " to be an unquoted string."
             );
         }
         try {
@@ -123,16 +140,22 @@ public record InterpolationMethod(
 
     /// Parses one unquoted hue interpolation keyword.
     private static HueInterpolationMethod hueName(SassValue value, String argumentName) {
-        if (!(value instanceof SassString string) || string.hasQuotes()) {
+        if (!(value instanceof SassString string)) {
             throw new SassValueException(
-                    "$" + argumentName + ": " + value + " is not an unquoted string."
+                    "$" + argumentName + ": " + value + " is not a string."
+            );
+        }
+        if (string.hasQuotes()) {
+            throw new SassValueException(
+                    "$" + argumentName + ": Expected " + value + " to be an unquoted string."
             );
         }
         try {
             return HueInterpolationMethod.fromName(string.text());
         } catch (IllegalArgumentException exception) {
             throw new SassValueException(
-                    "$" + argumentName + ": Unknown hue interpolation method " + value + "."
+                    "$" + argumentName + ": Unknown hue interpolation method "
+                            + string.text() + "."
             );
         }
     }

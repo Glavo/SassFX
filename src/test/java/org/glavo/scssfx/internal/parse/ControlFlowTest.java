@@ -157,7 +157,7 @@ final class ControlFlowTest {
                 org.glavo.scssfx.internal.ast.UnknownAtRule.class,
                 parse("@unknown {}").children().get(0)
         );
-        assertEquals("unknown", unknown.name());
+        assertEquals("unknown", unknown.name().asPlain());
         assertTrue(unknown.hasChildren());
 
         var bareElse = assertThrows(ParseException.class, () -> parse("@else {}"));

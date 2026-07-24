@@ -33,7 +33,7 @@ final class SelectorAlgebraTest {
         );
         assertEquals(".a > .b", unify(".a > .b", ".a .b"));
         assertEquals("[data=x]", unify("[data=x]", "[data=\"x\"]"));
-        assertEquals("[data=\\78]", unify("[data=\\78]", "[data=x]"));
+        assertEquals("[data=x]", unify("[data=\\78]", "[data=x]"));
         assertEquals("[data=x][state=y]", unify("[data=x]", "[state=y]"));
         assertEquals("[data=x][data=y]", unify("[data=x]", "[data=y]"));
         assertEquals(".button:hover", unify(":hover", ".button"));
@@ -48,7 +48,7 @@ final class SelectorAlgebraTest {
     @Test
     void comparesAttributeSelectorsStructurally() {
         assertEquals(
-                "[\\64 ata~=x i]",
+                "[data~=x i]",
                 unify("[\\64 ata~=x i]", "[data~=\"x\" i]")
         );
         assertEquals("[data=x i][data=x s]", unify("[data=x i]", "[data=x s]"));
@@ -194,7 +194,7 @@ final class SelectorAlgebraTest {
                 extend(".notice .title", ".notice", ".alert .warn")
         );
         assertEquals(
-                ".foo .bar, .x .bar, .foo .x, .x .x",
+                ".foo .bar, .foo .x, .x .bar, .x .x",
                 extend(".foo .bar", ".foo, .bar", ".x")
         );
         assertEquals(
@@ -239,8 +239,10 @@ final class SelectorAlgebraTest {
     /// Verifies extension and replacement retain namespace restrictions.
     @Test
     void extendsAndReplacesNamespaceAwareElementSelectors() {
+        // The extended form is a strict subselector of the original, so dart-sass
+        // extend trimming keeps only the broader original alternative.
         assertEquals(
-                "svg|a.item, svg|a.item.selected",
+                "svg|a.item",
                 extend("svg|a.item", "svg|*", ".selected")
         );
         assertEquals(

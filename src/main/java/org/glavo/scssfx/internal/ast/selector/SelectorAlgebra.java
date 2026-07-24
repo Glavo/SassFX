@@ -1,19 +1,24 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.ast.selector;
 
+import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.value.SassValueException;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.BiFunction;
+import java.util.function.Predicate;
 
 /// Implements selector algebra for the structurally modeled selector subset.
 ///
@@ -38,8 +43,9 @@ public final class SelectorAlgebra {
 
     /// Verifies that {@code selector} can be evaluated by this algebra engine.
     ///
-    /// Parent selectors, relative selectors, and repeated or trailing combinators
-    /// are rejected because their algebra semantics are not yet modeled.
+    /// Parent selectors and repeated or trailing combinators between compounds
+    /// are rejected. Leading combinators (including multi-combinator relative
+    /// selectors) are accepted so weave-based unification can match dart-sass.
     ///
     /// @param selector the selector list to validate
     /// @param name     the Sass argument name used in diagnostics
@@ -49,18 +55,11 @@ public final class SelectorAlgebra {
         Objects.requireNonNull(name, "name");
 
         for (var complex : selector.components()) {
-            if (!complex.leadingCombinators().isEmpty() || complex.components().isEmpty()) {
-                throw unsupportedRelativeSelector(name);
-            }
-            for (var index = 0; index < complex.components().size(); index++) {
-                var component = complex.components().get(index);
-                if (component.combinators().size() > 1) {
-                    throw unsupportedCombinators(name);
-                }
-                if (index == complex.components().size() - 1
-                        && !component.combinators().isEmpty()) {
-                    throw unsupportedCombinators(name);
-                }
+            // Combinator-only, multi-combinator, and trailing-combinator forms are
+            // accepted (with empty results from algebra) so selector built-ins match
+            // dart-sass 1.x bogus-combinator deprecation behavior rather than hard
+            // failures.
+            for (var component : complex.components()) {
                 assertSupportedCompound(component.selector(), name);
             }
         }
@@ -144,6 +143,55 @@ public final class SelectorAlgebra {
         return true;
     }
 
+    /// Returns whether {@code selector} contains any compound that matches one
+    /// of the single-compound targets in {@code extendee}.
+    ///
+    /// Used by the stylesheet {@code @extend} engine so a mandatory extend is
+    /// satisfied when a target appears even if unification adds no new
+    /// alternative (for example incompatible namespace/universal pairs).
+    ///
+    /// @param selector the selector list to search
+    /// @param extendee the single-compound targets to match
+    /// @return whether at least one target matches a compound in {@code selector}
+    /// @throws SassValueException if an input uses unsupported selector syntax
+    public static boolean containsExtendee(SelectorList selector, SelectorList extendee) {
+        assertSupported(selector, "selector");
+        assertCompoundTargets(extendee, "extendee");
+        for (var complex : selector.components()) {
+            for (var component : complex.components()) {
+                for (var targetComplex : extendee.components()) {
+                    var target = targetComplex.components().get(0).selector();
+                    if (compoundMatchesExtendee(target, component.selector())) {
+                        return true;
+                    }
+                }
+            }
+            if (containsExtendeeInPseudos(complex, extendee)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Returns whether nested selector-pseudo arguments contain an extendee.
+    private static boolean containsExtendeeInPseudos(
+            ComplexSelector complex,
+            SelectorList extendee
+    ) {
+        for (var component : complex.components()) {
+            for (var simple : component.selector().components()) {
+                if (!(simple instanceof PseudoSelector pseudo)) {
+                    continue;
+                }
+                @Nullable SelectorList nested = selectorArgument(pseudo);
+                if (nested != null && containsExtendee(nested, extendee)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     /// Extends each supported occurrence of {@code extendee} in {@code selector}
     /// with {@code extender}, retaining the original selectors.
     ///
@@ -213,6 +261,10 @@ public final class SelectorAlgebra {
 
     /// Unifies two supported complex selectors.
     ///
+    /// Follows dart-sass {@code unifyComplex}: final compounds are unified first,
+    /// then parent prefixes are woven so incompatible combinator topologies can
+    /// still produce intersections when Sass allows them.
+    ///
     /// @param selector1 the first complex selector
     /// @param selector2 the second complex selector
     /// @return every supported intersection in stable source order
@@ -220,6 +272,10 @@ public final class SelectorAlgebra {
             ComplexSelector selector1,
             ComplexSelector selector2
     ) {
+        // Bogus multi/trailing combinators never unify to a real intersection.
+        if (hasBogusCombinators(selector1) || hasBogusCombinators(selector2)) {
+            return List.of();
+        }
         if (!hasComplicatedPseudoSemantics(selector1)
                 && !hasComplicatedPseudoSemantics(selector2)) {
             @Nullable Boolean firstIsSuperselector = complexIsSuperselector(selector1, selector2);
@@ -234,56 +290,60 @@ public final class SelectorAlgebra {
             }
         }
 
-        // Equivalent selectors continue through compound merging so the first
-        // input retains its CSS spelling while semantic duplicates are removed.
-        if (isDescendantOnly(selector1) && isDescendantOnly(selector2)) {
-            @Nullable CompoundSelector base = unifyCompound(
-                    selector1.components().get(selector1.components().size() - 1).selector(),
-                    selector2.components().get(selector2.components().size() - 1).selector()
-            );
-            if (base == null) {
-                return List.of();
-            }
-            return weaveDescendantPrefixes(selector1, selector2, base);
-        }
-
-        if (sameTopology(selector1, selector2)) {
-            var components = new ArrayList<ComplexSelectorComponent>();
-            for (var index = 0; index < selector1.components().size(); index++) {
-                var first = selector1.components().get(index);
-                var second = selector2.components().get(index);
-                @Nullable CompoundSelector unified = unifyCompound(first.selector(), second.selector());
-                if (unified == null) {
+        var complexes = List.of(selector1, selector2);
+        @Nullable CompoundSelector unifiedBase = null;
+        @Nullable List<Combinator> leadingCombinator = null;
+        for (var complex : complexes) {
+            // Single-compound selectors may contribute one shared leading combinator.
+            if (complex.components().size() == 1 && !complex.leadingCombinators().isEmpty()) {
+                if (leadingCombinator == null) {
+                    leadingCombinator = complex.leadingCombinators();
+                } else if (!leadingCombinator.equals(complex.leadingCombinators())) {
                     return List.of();
                 }
-                components.add(new ComplexSelectorComponent(
-                        unified,
-                        first.combinators(),
-                        first.span()
+            }
+            var base = complex.components().get(complex.components().size() - 1);
+            if (unifiedBase == null) {
+                unifiedBase = base.selector();
+            } else {
+                unifiedBase = unifyCompound(unifiedBase, base.selector());
+                if (unifiedBase == null) {
+                    return List.of();
+                }
+            }
+        }
+
+        var withoutBases = new ArrayList<ComplexSelector>();
+        for (var complex : complexes) {
+            if (complex.components().size() > 1) {
+                withoutBases.add(new ComplexSelector(
+                        complex.leadingCombinators(),
+                        complex.components().subList(0, complex.components().size() - 1),
+                        complex.span()
                 ));
             }
-            return List.of(new ComplexSelector(List.of(), components, selector1.span()));
         }
 
-        throw unsupportedTopology(selector1, selector2);
-    }
+        var base = new ComplexSelector(
+                leadingCombinator == null ? List.of() : leadingCombinator,
+                List.of(new ComplexSelectorComponent(
+                        Objects.requireNonNull(unifiedBase),
+                        List.of(),
+                        selector1.span()
+                )),
+                selector1.span()
+        );
 
-    /// Returns whether two complex selectors have identical component counts and
-    /// combinators.
-    ///
-    /// @param selector1 the first complex selector
-    /// @param selector2 the second complex selector
-    /// @return whether component-wise unification preserves both paths
-    private static boolean sameTopology(ComplexSelector selector1, ComplexSelector selector2) {
-        if (selector1.components().size() != selector2.components().size()) {
-            return false;
+        if (withoutBases.isEmpty()) {
+            return List.of(base);
         }
-        for (var index = 0; index + 1 < selector1.components().size(); index++) {
-            if (!Objects.equals(relationAfter(selector1, index), relationAfter(selector2, index))) {
-                return false;
-            }
+
+        var toWeave = new ArrayList<ComplexSelector>(withoutBases.size());
+        for (var index = 0; index < withoutBases.size() - 1; index++) {
+            toWeave.add(withoutBases.get(index));
         }
-        return true;
+        toWeave.add(withoutBases.get(withoutBases.size() - 1).concatenate(base));
+        return weave(toWeave, selector1.span());
     }
 
     /// Returns whether one selector contains a pseudo selector whose result
@@ -293,11 +353,254 @@ public final class SelectorAlgebra {
     /// @return whether pseudo structure must be retained through unification
     private static boolean hasComplicatedPseudoSemantics(ComplexSelector selector) {
         for (var component : selector.components()) {
+            if (hasComplicatedSuperselectorSemantics(component.selector())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Returns whether a compound needs parent context for superselector checks.
+    ///
+    /// @param compound the compound selector to inspect
+    /// @return whether pseudo elements or selector-taking pseudos are present
+    private static boolean hasComplicatedSuperselectorSemantics(CompoundSelector compound) {
+        for (var simple : compound.components()) {
+            if (simple instanceof PseudoSelector pseudo
+                    && (isPseudoElement(pseudo) || selectorArgument(pseudo) != null)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Expands parenthesized selector products produced while unifying complex
+    /// selectors, matching dart-sass {@code weave}.
+    ///
+    /// @param complexes the complex selectors to weave left-to-right
+    /// @param span      the span for newly constructed selectors
+    /// @return every woven complex selector, or an empty list when impossible
+    private static @Unmodifiable List<ComplexSelector> weave(
+            List<ComplexSelector> complexes,
+            SourceSpan span
+    ) {
+        if (complexes.isEmpty()) {
+            return List.of();
+        }
+        if (complexes.size() == 1) {
+            return List.of(complexes.get(0));
+        }
+
+        var prefixes = new ArrayList<ComplexSelector>();
+        prefixes.add(complexes.get(0));
+        for (var index = 1; index < complexes.size(); index++) {
+            var complex = complexes.get(index);
+            if (complex.components().size() == 1) {
+                for (var prefixIndex = 0; prefixIndex < prefixes.size(); prefixIndex++) {
+                    prefixes.set(prefixIndex, prefixes.get(prefixIndex).concatenate(complex));
+                }
+                continue;
+            }
+
+            var nextPrefixes = new ArrayList<ComplexSelector>();
+            for (var prefix : prefixes) {
+                @Nullable List<ComplexSelector> parents = weaveParents(prefix, complex, span);
+                if (parents == null) {
+                    continue;
+                }
+                var last = complex.components().get(complex.components().size() - 1);
+                for (var parentPrefix : parents) {
+                    if (nextPrefixes.size() >= MAX_WEAVE_RESULTS) {
+                        throw new SassValueException(
+                                "Selector algebra produced too many descendant interleavings."
+                        );
+                    }
+                    var components = new ArrayList<>(parentPrefix.components());
+                    components.add(last);
+                    nextPrefixes.add(new ComplexSelector(
+                            parentPrefix.leadingCombinators(),
+                            components,
+                            span
+                    ));
+                }
+            }
+            prefixes = nextPrefixes;
+            if (prefixes.isEmpty()) {
+                return List.of();
+            }
+        }
+        return deduplicate(prefixes);
+    }
+
+    /// Interweaves {@code prefix}'s components with every component of {@code base}
+    /// except the last, matching dart-sass {@code _weaveParents}.
+    ///
+    /// @param prefix the left-hand parent path
+    /// @param base   the right-hand complex selector including its final target
+    /// @param span   the span for newly constructed selectors
+    /// @return parent prefixes ready for the final target, or {@code null}
+    private static @Nullable List<ComplexSelector> weaveParents(
+            ComplexSelector prefix,
+            ComplexSelector base,
+            SourceSpan span
+    ) {
+        @Nullable List<Combinator> leading = mergeLeadingCombinators(
+                prefix.leadingCombinators(),
+                base.leadingCombinators()
+        );
+        if (leading == null) {
+            return null;
+        }
+
+        var queue1 = new ArrayDeque<>(prefix.components());
+        var queue2 = new ArrayDeque<>(base.components().subList(0, base.components().size() - 1));
+
+        @Nullable List<List<List<ComplexSelectorComponent>>> trailing =
+                mergeTrailingCombinators(queue1, queue2, span);
+        if (trailing == null) {
+            return null;
+        }
+
+        @Nullable ComplexSelectorComponent rootish1 = firstIfRootish(queue1);
+        @Nullable ComplexSelectorComponent rootish2 = firstIfRootish(queue2);
+        if (rootish1 != null && rootish2 != null) {
+            @Nullable CompoundSelector rootish = unifyCompound(rootish1.selector(), rootish2.selector());
+            if (rootish == null) {
+                return null;
+            }
+            queue1.addFirst(new ComplexSelectorComponent(rootish, rootish1.combinators(), rootish1.span()));
+            queue2.addFirst(new ComplexSelectorComponent(rootish, rootish2.combinators(), rootish1.span()));
+        } else if (rootish1 != null || rootish2 != null) {
+            var rootish = rootish1 != null ? rootish1 : Objects.requireNonNull(rootish2);
+            queue1.addFirst(rootish);
+            queue2.addFirst(rootish);
+        }
+
+        var groups1 = groupSelectors(queue1);
+        var groups2 = groupSelectors(queue2);
+        var lcs = longestCommonSubsequence(
+                List.copyOf(groups2),
+                List.copyOf(groups1),
+                SelectorAlgebra::selectCommonGroup
+        );
+
+        var choices = new ArrayList<List<List<ComplexSelectorComponent>>>();
+        for (var group : lcs) {
+            choices.add(flattenGroupChunks(chunks(
+                    groups1,
+                    groups2,
+                    sequence -> !sequence.isEmpty()
+                            && complexIsParentSuperselector(
+                                    Objects.requireNonNull(sequence.peekFirst()),
+                                    group
+                            )
+            )));
+            choices.add(List.of(group));
+            if (!groups1.isEmpty()) {
+                groups1.removeFirst();
+            }
+            if (!groups2.isEmpty()) {
+                groups2.removeFirst();
+            }
+        }
+        choices.add(flattenGroupChunks(chunks(groups1, groups2, ArrayDeque::isEmpty)));
+        choices.addAll(trailing);
+
+        var result = new ArrayList<ComplexSelector>();
+        for (var path : paths(choices.stream().filter(choice -> !choice.isEmpty()).toList())) {
+            if (result.size() >= MAX_WEAVE_RESULTS) {
+                throw new SassValueException(
+                        "Selector algebra produced too many descendant interleavings."
+                );
+            }
+            var components = new ArrayList<ComplexSelectorComponent>();
+            for (var segment : path) {
+                components.addAll(segment);
+            }
+            result.add(new ComplexSelector(leading, components, span));
+        }
+        return result;
+    }
+
+    /// Flattens each chunk of component groups into one contiguous component list.
+    private static List<List<ComplexSelectorComponent>> flattenGroupChunks(
+            List<List<List<ComplexSelectorComponent>>> groupChunks
+    ) {
+        var flattened = new ArrayList<List<ComplexSelectorComponent>>(groupChunks.size());
+        for (var chunk : groupChunks) {
+            var components = new ArrayList<ComplexSelectorComponent>();
+            for (var group : chunk) {
+                components.addAll(group);
+            }
+            flattened.add(components);
+        }
+        return flattened;
+    }
+
+    /// Selects a common LCS group when two groups are equal, related by parent
+    /// superselector, or must unify because they share a unique simple selector.
+    private static @Nullable List<ComplexSelectorComponent> selectCommonGroup(
+            List<ComplexSelectorComponent> group1,
+            List<ComplexSelectorComponent> group2
+    ) {
+        if (groupsEqual(group1, group2)) {
+            return group1;
+        }
+        if (complexIsParentSuperselector(group1, group2)) {
+            return group2;
+        }
+        if (complexIsParentSuperselector(group2, group1)) {
+            return group1;
+        }
+        if (!mustUnify(group1, group2)) {
+            return null;
+        }
+        var unified = unifyComplex(
+                new ComplexSelector(List.of(), group1, group1.get(0).span()),
+                new ComplexSelector(List.of(), group2, group2.get(0).span())
+        );
+        return unified.size() == 1 ? unified.get(0).components() : null;
+    }
+
+    /// Returns whether two component groups are structurally identical.
+    private static boolean groupsEqual(
+            List<ComplexSelectorComponent> first,
+            List<ComplexSelectorComponent> second
+    ) {
+        if (first.size() != second.size()) {
+            return false;
+        }
+        for (var index = 0; index < first.size(); index++) {
+            var a = first.get(index);
+            var b = second.get(index);
+            if (!compoundKey(a.selector()).equals(compoundKey(b.selector()))
+                    || !a.combinators().equals(b.combinators())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// Returns whether {@code complex1} and {@code complex2} share a unique simple
+    /// selector that forces unification during weaving.
+    private static boolean mustUnify(
+            List<ComplexSelectorComponent> complex1,
+            List<ComplexSelectorComponent> complex2
+    ) {
+        var unique = new HashSet<String>();
+        for (var component : complex1) {
             for (var simple : component.selector().components()) {
-                if (simple instanceof PseudoSelector pseudo
-                        && (isPseudoElement(pseudo)
-                        || pseudo.argument() instanceof SelectorPseudoArgument
-                        || pseudo.argument() instanceof NthPseudoArgument)) {
+                if (isUniqueSimple(simple)) {
+                    unique.add(simpleKey(simple));
+                }
+            }
+        }
+        if (unique.isEmpty()) {
+            return false;
+        }
+        for (var component : complex2) {
+            for (var simple : component.selector().components()) {
+                if (isUniqueSimple(simple) && unique.contains(simpleKey(simple))) {
                     return true;
                 }
             }
@@ -305,134 +608,512 @@ public final class SelectorAlgebra {
         return false;
     }
 
-    /// Returns whether every edge in {@code selector} is an implicit descendant
-    /// combinator.
-    ///
-    /// @param selector the selector to inspect
-    /// @return whether the selector contains no explicit combinator
-    private static boolean isDescendantOnly(ComplexSelector selector) {
-        for (var component : selector.components()) {
-            if (!component.combinators().isEmpty()) {
-                return false;
-            }
-        }
-        return true;
+    /// Returns whether a simple selector may appear only once in a compound.
+    private static boolean isUniqueSimple(SimpleSelector simple) {
+        return simple instanceof IdSelector
+                || simple instanceof PseudoSelector pseudo && isPseudoElement(pseudo);
     }
 
-    /// Weaves the prefixes of two descendant-only selectors before their unified
-    /// final compound.
-    ///
-    /// @param selector1 the first descendant selector
-    /// @param selector2 the second descendant selector
-    /// @param base      the unified final compound
-    /// @return every order-preserving prefix interleaving
-    private static @Unmodifiable List<ComplexSelector> weaveDescendantPrefixes(
-            ComplexSelector selector1,
-            ComplexSelector selector2,
-            CompoundSelector base
+    /// Returns a leading combinator list compatible with both inputs.
+    private static @Nullable List<Combinator> mergeLeadingCombinators(
+            List<Combinator> first,
+            List<Combinator> second
     ) {
-        var prefixes1 = selector1.components().subList(0, selector1.components().size() - 1);
-        var prefixes2 = selector2.components().subList(0, selector2.components().size() - 1);
-        var paths = new ArrayList<List<ComplexSelectorComponent>>();
-        weavePrefixes(prefixes1, 0, prefixes2, 0, new ArrayList<>(), paths);
-
-        var result = new ArrayList<ComplexSelector>(paths.size());
-        for (var path : paths) {
-            var components = new ArrayList<ComplexSelectorComponent>(path.size() + 1);
-            for (var component : path) {
-                components.add(new ComplexSelectorComponent(
-                        component.selector(),
-                        List.of(),
-                        component.span()
-                ));
-            }
-            var finalComponent = selector1.components().get(selector1.components().size() - 1);
-            components.add(new ComplexSelectorComponent(base, List.of(), finalComponent.span()));
-            result.add(new ComplexSelector(List.of(), components, selector1.span()));
+        if (first.size() > 1 || second.size() > 1) {
+            return null;
         }
-        return deduplicate(result);
+        if (first.isEmpty()) {
+            return second;
+        }
+        if (second.isEmpty()) {
+            return first;
+        }
+        return first.equals(second) ? first : null;
     }
 
-    /// Recursively emits all order-preserving interleavings of two prefix paths.
+    /// Extracts and merges trailing combinator components from both queues.
     ///
-    /// @param first       the first prefix path
-    /// @param firstIndex  the next component in the first path
-    /// @param second      the second prefix path
-    /// @param secondIndex the next component in the second path
-    /// @param current     the partially woven path
-    /// @param result      the output paths
-    private static void weavePrefixes(
-            List<ComplexSelectorComponent> first,
-            int firstIndex,
-            List<ComplexSelectorComponent> second,
-            int secondIndex,
-            ArrayList<ComplexSelectorComponent> current,
-            ArrayList<List<ComplexSelectorComponent>> result
+    /// @return choice lists prepended for the final weave, or {@code null}
+    private static @Nullable List<List<List<ComplexSelectorComponent>>> mergeTrailingCombinators(
+            ArrayDeque<ComplexSelectorComponent> components1,
+            ArrayDeque<ComplexSelectorComponent> components2,
+            SourceSpan span
     ) {
-        if (result.size() >= MAX_WEAVE_RESULTS) {
-            throw new SassValueException("Selector algebra produced too many descendant interleavings.");
+        var result = new ArrayList<List<List<ComplexSelectorComponent>>>();
+        while (true) {
+            var combinators1 = components1.isEmpty()
+                    ? List.<Combinator>of()
+                    : components1.peekLast().combinators();
+            var combinators2 = components2.isEmpty()
+                    ? List.<Combinator>of()
+                    : components2.peekLast().combinators();
+            if (combinators1.isEmpty() && combinators2.isEmpty()) {
+                return result;
+            }
+            if (combinators1.size() > 1 || combinators2.size() > 1) {
+                return null;
+            }
+
+            @Nullable Combinator combinator1 = combinators1.isEmpty() ? null : combinators1.get(0);
+            @Nullable Combinator combinator2 = combinators2.isEmpty() ? null : combinators2.get(0);
+
+            if (combinator1 == Combinator.FOLLOWING_SIBLING
+                    && combinator2 == Combinator.FOLLOWING_SIBLING) {
+                var component1 = components1.removeLast();
+                var component2 = components2.removeLast();
+                if (compoundIsSuperselector(component1.selector(), component2.selector(), null)) {
+                    result.add(0, List.of(List.of(component2)));
+                } else if (compoundIsSuperselector(component2.selector(), component1.selector(), null)) {
+                    result.add(0, List.of(List.of(component1)));
+                } else {
+                    var choices = new ArrayList<List<ComplexSelectorComponent>>();
+                    choices.add(List.of(component1, component2));
+                    choices.add(List.of(component2, component1));
+                    @Nullable CompoundSelector unified =
+                            unifyCompound(component1.selector(), component2.selector());
+                    if (unified != null) {
+                        choices.add(List.of(new ComplexSelectorComponent(
+                                unified,
+                                component1.combinators(),
+                                span
+                        )));
+                    }
+                    result.add(0, choices);
+                }
+                continue;
+            }
+
+            if ((combinator1 == Combinator.FOLLOWING_SIBLING && combinator2 == Combinator.NEXT_SIBLING)
+                    || (combinator1 == Combinator.NEXT_SIBLING
+                    && combinator2 == Combinator.FOLLOWING_SIBLING)) {
+                var followingComponents = combinator1 == Combinator.FOLLOWING_SIBLING
+                        ? components1
+                        : components2;
+                var nextComponents = combinator1 == Combinator.NEXT_SIBLING
+                        ? components1
+                        : components2;
+                var next = nextComponents.removeLast();
+                var following = followingComponents.removeLast();
+                if (compoundIsSuperselector(following.selector(), next.selector(), null)) {
+                    result.add(0, List.of(List.of(next)));
+                } else {
+                    var choices = new ArrayList<List<ComplexSelectorComponent>>();
+                    choices.add(List.of(following, next));
+                    @Nullable CompoundSelector unified =
+                            unifyCompound(following.selector(), next.selector());
+                    if (unified != null) {
+                        choices.add(List.of(new ComplexSelectorComponent(
+                                unified,
+                                next.combinators(),
+                                span
+                        )));
+                    }
+                    result.add(0, choices);
+                }
+                continue;
+            }
+
+            if ((combinator1 == Combinator.CHILD
+                    && (combinator2 == Combinator.NEXT_SIBLING
+                    || combinator2 == Combinator.FOLLOWING_SIBLING))
+                    || (combinator2 == Combinator.CHILD
+                    && (combinator1 == Combinator.NEXT_SIBLING
+                    || combinator1 == Combinator.FOLLOWING_SIBLING))) {
+                var siblingComponents = combinator1 == Combinator.CHILD ? components2 : components1;
+                result.add(0, List.of(List.of(siblingComponents.removeLast())));
+                continue;
+            }
+
+            if (combinator1 != null && combinator1 == combinator2) {
+                @Nullable CompoundSelector unified = unifyCompound(
+                        components1.removeLast().selector(),
+                        components2.removeLast().selector()
+                );
+                if (unified == null) {
+                    return null;
+                }
+                result.add(0, List.of(List.of(new ComplexSelectorComponent(
+                        unified,
+                        combinators1,
+                        span
+                ))));
+                continue;
+            }
+
+            if (combinator1 != null && combinator2 == null) {
+                if (combinator1 == Combinator.CHILD
+                        && !components2.isEmpty()
+                        && compoundIsSuperselector(
+                                components2.peekLast().selector(),
+                                components1.peekLast().selector(),
+                                null
+                        )) {
+                    components2.removeLast();
+                }
+                result.add(0, List.of(List.of(components1.removeLast())));
+                continue;
+            }
+
+            if (combinator2 != null && combinator1 == null) {
+                if (combinator2 == Combinator.CHILD
+                        && !components1.isEmpty()
+                        && compoundIsSuperselector(
+                                components1.peekLast().selector(),
+                                components2.peekLast().selector(),
+                                null
+                        )) {
+                    components1.removeLast();
+                }
+                result.add(0, List.of(List.of(components2.removeLast())));
+                continue;
+            }
+
+            return null;
         }
-        if (firstIndex == first.size() && secondIndex == second.size()) {
-            result.add(List.copyOf(current));
-            return;
+    }
+
+    /// Removes and returns the first component when it is a rootish pseudo.
+    private static @Nullable ComplexSelectorComponent firstIfRootish(
+            ArrayDeque<ComplexSelectorComponent> queue
+    ) {
+        if (queue.isEmpty()) {
+            return null;
         }
-        if (firstIndex < first.size()) {
-            current.add(first.get(firstIndex));
-            weavePrefixes(first, firstIndex + 1, second, secondIndex, current, result);
-            current.remove(current.size() - 1);
+        var first = queue.peekFirst();
+        for (var simple : first.selector().components()) {
+            if (simple instanceof PseudoSelector pseudo
+                    && !isPseudoElement(pseudo)
+                    && isRootishPseudo(normalizedPseudoName(pseudo.name().value()))) {
+                queue.removeFirst();
+                return first;
+            }
         }
-        if (secondIndex < second.size()) {
-            current.add(second.get(secondIndex));
-            weavePrefixes(first, firstIndex, second, secondIndex + 1, current, result);
-            current.remove(current.size() - 1);
+        return null;
+    }
+
+    /// Returns whether a pseudo class may appear only at the start of a complex selector.
+    private static boolean isRootishPseudo(String normalizedName) {
+        return switch (normalizedName) {
+            case "root", "scope", "host", "host-context" -> true;
+            default -> false;
+        };
+    }
+
+    /// Groups components into the longest runs ending at an empty combinator list.
+    private static ArrayDeque<List<ComplexSelectorComponent>> groupSelectors(
+            Iterable<ComplexSelectorComponent> complex
+    ) {
+        var groups = new ArrayDeque<List<ComplexSelectorComponent>>();
+        var group = new ArrayList<ComplexSelectorComponent>();
+        for (var component : complex) {
+            group.add(component);
+            if (component.combinators().isEmpty()) {
+                groups.add(List.copyOf(group));
+                group = new ArrayList<>();
+            }
         }
+        if (!group.isEmpty()) {
+            groups.add(List.copyOf(group));
+        }
+        return groups;
+    }
+
+    /// Returns all orderings of the initial subsequences of {@code queue1} and
+    /// {@code queue2} until {@code done} reports completion for each queue.
+    private static <T> List<List<T>> chunks(
+            ArrayDeque<T> queue1,
+            ArrayDeque<T> queue2,
+            Predicate<ArrayDeque<T>> done
+    ) {
+        var chunk1 = new ArrayList<T>();
+        while (!queue1.isEmpty() && !done.test(queue1)) {
+            chunk1.add(queue1.removeFirst());
+        }
+        var chunk2 = new ArrayList<T>();
+        while (!queue2.isEmpty() && !done.test(queue2)) {
+            chunk2.add(queue2.removeFirst());
+        }
+        if (chunk1.isEmpty() && chunk2.isEmpty()) {
+            return List.of();
+        }
+        if (chunk1.isEmpty()) {
+            return List.of(chunk2);
+        }
+        if (chunk2.isEmpty()) {
+            return List.of(chunk1);
+        }
+        var firstThenSecond = new ArrayList<T>(chunk1.size() + chunk2.size());
+        firstThenSecond.addAll(chunk1);
+        firstThenSecond.addAll(chunk2);
+        var secondThenFirst = new ArrayList<T>(chunk1.size() + chunk2.size());
+        secondThenFirst.addAll(chunk2);
+        secondThenFirst.addAll(chunk1);
+        return List.of(firstThenSecond, secondThenFirst);
+    }
+
+    /// Returns every path through the given choice lists.
+    private static <T> List<List<T>> paths(List<List<T>> choices) {
+        List<List<T>> paths = List.of(List.of());
+        for (var choice : choices) {
+            var next = new ArrayList<List<T>>();
+            for (var option : choice) {
+                for (var path : paths) {
+                    var combined = new ArrayList<T>(path.size() + 1);
+                    combined.addAll(path);
+                    combined.add(option);
+                    next.add(combined);
+                }
+            }
+            paths = next;
+        }
+        return paths;
+    }
+
+    /// Computes a longest common subsequence with optional element unification.
+    private static <T> List<T> longestCommonSubsequence(
+            List<T> list1,
+            List<T> list2,
+            BiFunction<T, T, @Nullable T> select
+    ) {
+        if (list1.isEmpty() || list2.isEmpty()) {
+            return List.of();
+        }
+        // Dynamic programming table of LCS lengths, then reconstruct selections.
+        var lengths = new int[list1.size() + 1][list2.size() + 1];
+        @SuppressWarnings("unchecked")
+        T[][] selections = (T[][]) new Object[list1.size()][list2.size()];
+        for (var i = 0; i < list1.size(); i++) {
+            for (var j = 0; j < list2.size(); j++) {
+                @Nullable T selected = select.apply(list1.get(i), list2.get(j));
+                if (selected != null) {
+                    lengths[i + 1][j + 1] = lengths[i][j] + 1;
+                    selections[i][j] = selected;
+                } else {
+                    lengths[i + 1][j + 1] = Math.max(lengths[i + 1][j], lengths[i][j + 1]);
+                }
+            }
+        }
+        var result = new ArrayList<T>();
+        var i = list1.size();
+        var j = list2.size();
+        while (i > 0 && j > 0) {
+            @Nullable T selected = selections[i - 1][j - 1];
+            if (selected != null && lengths[i][j] == lengths[i - 1][j - 1] + 1) {
+                result.add(selected);
+                i--;
+                j--;
+            } else if (lengths[i][j - 1] > lengths[i - 1][j]) {
+                j--;
+            } else {
+                i--;
+            }
+        }
+        Collections.reverse(result);
+        return result;
+    }
+
+    /// Like {@link #complexIsSuperselector}, but compares parent paths as though
+    /// they shared an implicit final compound.
+    private static boolean complexIsParentSuperselector(
+            List<ComplexSelectorComponent> complex1,
+            List<ComplexSelectorComponent> complex2
+    ) {
+        if (complex1.size() > complex2.size()) {
+            return false;
+        }
+        var span = complex1.isEmpty()
+                ? (complex2.isEmpty() ? null : complex2.get(0).span())
+                : complex1.get(0).span();
+        if (span == null) {
+            return true;
+        }
+        var base = new ComplexSelectorComponent(
+                new CompoundSelector(
+                        List.of(new PlaceholderSelector("<temp>", span)),
+                        span
+                ),
+                List.of(),
+                span
+        );
+        var first = new ArrayList<>(complex1);
+        first.add(base);
+        var second = new ArrayList<>(complex2);
+        second.add(base);
+        return Boolean.TRUE.equals(complexIsSuperselector(
+                new ComplexSelector(List.of(), first, span),
+                new ComplexSelector(List.of(), second, span)
+        ));
     }
 
     /// Determines whether one complex selector is a superselector of another.
     ///
-    /// A {@code null} result means the current structural model cannot compare
-    /// the two explicit-combinator paths without risking an incorrect answer.
+    /// Matches dart-sass {@code complexIsSuperselector}: the broader selector is
+    /// walked as an ordered subsequence of the narrower selector with compatible
+    /// combinators between matched compounds.
     ///
     /// @param superselector the candidate broader selector
     /// @param subselector   the candidate narrower selector
-    /// @return {@code true}, {@code false}, or {@code null} when unsupported
+    /// @return {@code true} or {@code false}
     private static @Nullable Boolean complexIsSuperselector(
             ComplexSelector superselector,
             ComplexSelector subselector
     ) {
-        var superComponents = superselector.components();
-        var subComponents = subselector.components();
-        if (!compoundIsSuperselector(
-                superComponents.get(superComponents.size() - 1).selector(),
-                subComponents.get(subComponents.size() - 1).selector()
-        )) {
+        // Relative selectors with leading combinators are not superselectors of
+        // ordinary complex selectors (and vice versa) in the Sass algebra.
+        if (!superselector.leadingCombinators().isEmpty()
+                || !subselector.leadingCombinators().isEmpty()) {
             return false;
         }
-        if (superComponents.size() == 1) {
-            return true;
+        var complex1 = superselector.components();
+        var complex2 = subselector.components();
+        if (complex1.isEmpty() || complex2.isEmpty()) {
+            return false;
+        }
+        // Trailing combinators are never comparable as super/sub selectors.
+        if (!complex1.get(complex1.size() - 1).combinators().isEmpty()
+                || !complex2.get(complex2.size() - 1).combinators().isEmpty()) {
+            return false;
         }
 
-        if (isDescendantOnly(superselector)) {
-            return descendantPathIsSuperselector(superselector, subselector);
-        }
-        if (superComponents.size() != subComponents.size()) {
-            return null;
-        }
-        for (var index = 0; index < superComponents.size(); index++) {
-            if (!compoundIsSuperselector(
-                    superComponents.get(index).selector(),
-                    subComponents.get(index).selector()
+        var i1 = 0;
+        var i2 = 0;
+        @Nullable Combinator previousCombinator = null;
+        while (true) {
+            var remaining1 = complex1.size() - i1;
+            var remaining2 = complex2.size() - i2;
+            if (remaining1 == 0 || remaining2 == 0) {
+                return false;
+            }
+            // More complex selectors are never superselectors of less complex ones.
+            if (remaining1 > remaining2) {
+                return false;
+            }
+
+            var component1 = complex1.get(i1);
+            if (component1.combinators().size() > 1) {
+                return false;
+            }
+            if (remaining1 == 1) {
+                for (var parent = i2; parent < complex2.size() - 1; parent++) {
+                    if (complex2.get(parent).combinators().size() > 1) {
+                        return false;
+                    }
+                }
+                @Nullable List<ComplexSelectorComponent> parents =
+                        hasComplicatedSuperselectorSemantics(component1.selector())
+                                ? complex2.subList(i2, complex2.size() - 1)
+                                : null;
+                return compoundIsSuperselector(
+                        component1.selector(),
+                        complex2.get(complex2.size() - 1).selector(),
+                        parents
+                );
+            }
+
+            // Find the first endOfSubselector in complex2 such that
+            // complex2[i2..endOfSubselector] matches component1.selector.
+            var endOfSubselector = i2;
+            while (true) {
+                var component2 = complex2.get(endOfSubselector);
+                if (component2.combinators().size() > 1) {
+                    return false;
+                }
+                @Nullable List<ComplexSelectorComponent> parents =
+                        hasComplicatedSuperselectorSemantics(component1.selector())
+                                ? complex2.subList(i2, endOfSubselector)
+                                : null;
+                if (compoundIsSuperselector(component1.selector(), component2.selector(), parents)) {
+                    break;
+                }
+                endOfSubselector++;
+                if (endOfSubselector == complex2.size() - 1) {
+                    return false;
+                }
+            }
+
+            if (!compatibleWithPreviousCombinator(
+                    previousCombinator,
+                    complex2.subList(i2, endOfSubselector)
             )) {
                 return false;
             }
-            if (index + 1 < superComponents.size() && !relationImplies(
-                    relationAfter(subselector, index),
-                    relationAfter(superselector, index)
-            )) {
+
+            var component2 = complex2.get(endOfSubselector);
+            @Nullable Combinator combinator1 = component1.combinators().isEmpty()
+                    ? null
+                    : component1.combinators().get(0);
+            @Nullable Combinator combinator2 = component2.combinators().isEmpty()
+                    ? null
+                    : component2.combinators().get(0);
+            if (!isSupercombinator(combinator1, combinator2)) {
+                return false;
+            }
+
+            i1++;
+            i2 = endOfSubselector + 1;
+            previousCombinator = combinator1;
+
+            if (complex1.size() - i1 == 1) {
+                if (combinator1 == Combinator.FOLLOWING_SIBLING) {
+                    // `.foo ~ .bar` requires remaining interstitial edges to be sibling edges.
+                    for (var index = i2; index < complex2.size() - 1; index++) {
+                        @Nullable Combinator edge = complex2.get(index).combinators().isEmpty()
+                                ? null
+                                : complex2.get(index).combinators().get(0);
+                        if (!isSupercombinator(combinator1, edge)) {
+                            return false;
+                        }
+                    }
+                } else if (combinator1 != null) {
+                    // `.foo > .bar` and `.foo + .bar` cannot leave leftover intermediates.
+                    if (complex2.size() - i2 > 1) {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Returns whether interstitial parents are allowed after {@code previous}.
+    private static boolean compatibleWithPreviousCombinator(
+            @Nullable Combinator previous,
+            List<ComplexSelectorComponent> parents
+    ) {
+        if (parents.isEmpty() || previous == null) {
+            return true;
+        }
+        // Child and next-sibling require an immediate match — no interstitial parents.
+        if (previous != Combinator.FOLLOWING_SIBLING) {
+            return false;
+        }
+        // Following-sibling allows intermediate siblings only.
+        for (var parent : parents) {
+            @Nullable Combinator edge = parent.combinators().isEmpty()
+                    ? null
+                    : parent.combinators().get(0);
+            if (edge != Combinator.FOLLOWING_SIBLING && edge != Combinator.NEXT_SIBLING) {
                 return false;
             }
         }
         return true;
+    }
+
+    /// Returns whether {@code first} is a supercombinator of {@code second}.
+    ///
+    /// That is, whether {@code X first Y} is a superselector of {@code X second Y}.
+    private static boolean isSupercombinator(
+            @Nullable Combinator first,
+            @Nullable Combinator second
+    ) {
+        if (Objects.equals(first, second)) {
+            return true;
+        }
+        // Descendant (null) is a supercombinator of child.
+        if (first == null && second == Combinator.CHILD) {
+            return true;
+        }
+        // Following sibling is a supercombinator of next sibling.
+        return first == Combinator.FOLLOWING_SIBLING && second == Combinator.NEXT_SIBLING;
     }
 
     /// Determines whether a descendant-only selector is a superselector of a
@@ -460,7 +1141,8 @@ public final class SelectorAlgebra {
                 && required + 1 < superComponents.size(); index++) {
             if (compoundIsSuperselector(
                     superComponents.get(required).selector(),
-                    subComponents.get(index).selector()
+                    subComponents.get(index).selector(),
+                    null
             )) {
                 required++;
             }
@@ -525,6 +1207,11 @@ public final class SelectorAlgebra {
     /// @param simple the additional selector
     /// @return whether the merged compound remains satisfiable
     private static boolean mergeSimple(ArrayList<SimpleSelector> result, SimpleSelector simple) {
+        // :host/:host-context only unify with other host pseudos or selector-taking
+        // pseudos (dart-sass PseudoSelector.unify).
+        if (compoundContainsHostish(result) && !isHostCompatibleSimple(simple)) {
+            return false;
+        }
         if (simple instanceof TypeSelector type) {
             return mergeType(result, type);
         }
@@ -550,6 +1237,43 @@ public final class SelectorAlgebra {
             return mergePseudo(result, pseudo);
         }
         throw new AssertionError("unsupported selector reached algebra merge");
+    }
+
+    /// Returns whether the compound already contains {@code :host} or
+    /// {@code :host-context}.
+    ///
+    /// @param compound the compound components
+    /// @return whether a hostish pseudo is present
+    private static boolean compoundContainsHostish(ArrayList<SimpleSelector> compound) {
+        for (var simple : compound) {
+            if (simple instanceof PseudoSelector pseudo && isHostishPseudo(pseudo)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Returns whether a simple may unify with {@code :host} / {@code :host-context}.
+    ///
+    /// @param simple the simple selector
+    /// @return whether host unification permits this simple
+    private static boolean isHostCompatibleSimple(SimpleSelector simple) {
+        if (!(simple instanceof PseudoSelector pseudo) || isPseudoElement(pseudo)) {
+            return false;
+        }
+        return isHostishPseudo(pseudo) || selectorArgument(pseudo) != null;
+    }
+
+    /// Returns whether a pseudo is {@code :host} or {@code :host-context}.
+    ///
+    /// @param pseudo the pseudo selector
+    /// @return whether it is a shadow-DOM host pseudo
+    private static boolean isHostishPseudo(PseudoSelector pseudo) {
+        if (!pseudo.isClass()) {
+            return false;
+        }
+        var name = normalizedPseudoName(pseudo.name().value());
+        return "host".equals(name) || "host-context".equals(name);
     }
 
     /// Merges a type selector into a compound.
@@ -776,6 +1500,26 @@ public final class SelectorAlgebra {
         if (containsSemantically(result, pseudo)) {
             return true;
         }
+        // dart-sass: non-host simple.unify([host]) redirects to host.unify([simple]),
+        // which places host after the incoming selector-taking pseudo.
+        if (result.size() == 1
+                && result.get(0) instanceof PseudoSelector only
+                && isHostishPseudo(only)
+                && !isHostishPseudo(pseudo)) {
+            if (!isHostCompatibleSimple(pseudo)) {
+                return false;
+            }
+            result.set(0, pseudo);
+            result.add(only);
+            return true;
+        }
+        if (isHostishPseudo(pseudo)) {
+            for (var existing : result) {
+                if (!isHostCompatibleSimple(existing)) {
+                    return false;
+                }
+            }
+        }
         if (isPseudoElement(pseudo)) {
             for (var existing : result) {
                 if (existing instanceof PseudoSelector existingPseudo
@@ -833,25 +1577,46 @@ public final class SelectorAlgebra {
     ///
     /// @param superselector the candidate broader compound
     /// @param subselector   the candidate narrower compound
+    /// @param parents       parent components of {@code subselector} when known
     /// @return whether every required simple selector is covered
     private static boolean compoundIsSuperselector(
             CompoundSelector superselector,
-            CompoundSelector subselector
+            CompoundSelector subselector,
+            @Nullable List<ComplexSelectorComponent> parents
     ) {
+        if (!hasComplicatedSuperselectorSemantics(superselector)
+                && !hasComplicatedSuperselectorSemantics(subselector)) {
+            if (superselector.components().size() > subselector.components().size()) {
+                return false;
+            }
+            for (var simple1 : superselector.components()) {
+                var covered = false;
+                for (var simple2 : subselector.components()) {
+                    if (simpleIsSuperselector(simple1, simple2)) {
+                        covered = true;
+                        break;
+                    }
+                }
+                if (!covered) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         var superPseudoElement = pseudoElementIndex(superselector);
         var subPseudoElement = pseudoElementIndex(subselector);
-        if (superPseudoElement != subPseudoElement) {
+        if (superPseudoElement >= 0 || subPseudoElement >= 0) {
             if (superPseudoElement < 0 || subPseudoElement < 0) {
                 return false;
             }
-        }
-        if (superPseudoElement >= 0) {
             var superPseudo = (PseudoSelector) superselector.components().get(superPseudoElement);
             var subPseudo = (PseudoSelector) subselector.components().get(subPseudoElement);
             return pseudoIsSuperselector(superPseudo, subPseudo)
                     && componentsAreSuperselector(
                             superselector.components().subList(0, superPseudoElement),
-                            subselector.components().subList(0, subPseudoElement)
+                            subselector.components().subList(0, subPseudoElement),
+                            parents
                     )
                     && componentsAreSuperselector(
                             superselector.components().subList(
@@ -861,23 +1626,49 @@ public final class SelectorAlgebra {
                             subselector.components().subList(
                                     subPseudoElement + 1,
                                     subselector.components().size()
-                            )
+                            ),
+                            null
                     );
         }
         return componentsAreSuperselector(
                 superselector.components(),
-                subselector.components()
+                subselector.components(),
+                parents
         );
+    }
+
+    /// Returns whether an extend target compound matches a source compound.
+    ///
+    /// Unlike [#compoundIsSuperselector], a target without a pseudo-element may
+    /// match a source that has one so {@code .foo} extends {@code .foo::bar} and
+    /// {@code .baz} extends {@code ::foo.baz}. General {@code is-superselector}
+    /// keeps the stricter PE pairing rules.
+    private static boolean compoundMatchesExtendee(
+            CompoundSelector target,
+            CompoundSelector source
+    ) {
+        var targetPe = pseudoElementIndex(target);
+        var sourcePe = pseudoElementIndex(source);
+        if (targetPe < 0 && sourcePe >= 0) {
+            return componentsAreSuperselector(
+                    target.components(),
+                    source.components(),
+                    null
+            );
+        }
+        return compoundIsSuperselector(target, source, null);
     }
 
     /// Returns whether one simple-selector segment covers another segment.
     ///
     /// @param superComponents the candidate broader simple selectors
     /// @param subComponents   the candidate narrower simple selectors
+    /// @param parents         parent components of the narrower path when known
     /// @return whether every broader constraint is implied by the narrower segment
     private static boolean componentsAreSuperselector(
             List<SimpleSelector> superComponents,
-            List<SimpleSelector> subComponents
+            List<SimpleSelector> subComponents,
+            @Nullable List<ComplexSelectorComponent> parents
     ) {
         if (superComponents.isEmpty()) {
             return true;
@@ -896,7 +1687,7 @@ public final class SelectorAlgebra {
         for (var superSimple : superComponents) {
             var covered = superSimple instanceof PseudoSelector pseudo
                     && selectorArgument(pseudo) != null
-                    && selectorPseudoIsSuperselector(pseudo, subCompound);
+                    && selectorPseudoIsSuperselector(pseudo, subCompound, parents);
             if (!covered) {
                 for (var subSimple : subComponents) {
                     if (simpleIsSuperselector(superSimple, subSimple)) {
@@ -978,32 +1769,153 @@ public final class SelectorAlgebra {
 
     /// Returns whether a selector-taking pseudo selector covers a compound.
     ///
-    /// @param pseudo       the candidate broader pseudo selector
-    /// @param subselector  the compound selected by the narrower path
+    /// @param pseudo      the candidate broader pseudo selector
+    /// @param subselector the compound selected by the narrower path
+    /// @param parents     parent components of {@code subselector} when known
     /// @return whether the pseudo argument covers the compound
     private static boolean selectorPseudoIsSuperselector(
             PseudoSelector pseudo,
-            CompoundSelector subselector
+            CompoundSelector subselector,
+            @Nullable List<ComplexSelectorComponent> parents
     ) {
-        for (var simple : subselector.components()) {
-            if (simple instanceof PseudoSelector subPseudo
-                    && pseudoIsSuperselector(pseudo, subPseudo)) {
-                return true;
-            }
-        }
-
         @Nullable SelectorList selectors = selectorArgument(pseudo);
-        if (selectors == null || !isUnionSelectorPseudo(pseudo)) {
+        if (selectors == null) {
             return false;
         }
-        var subComplex = singleCompoundComplex(subselector);
-        for (var candidate : selectors.components()) {
-            if (candidate.leadingCombinators().isEmpty()
-                    && Boolean.TRUE.equals(complexIsSuperselector(candidate, subComplex))) {
-                return true;
+        var normalized = normalizedPseudoName(pseudo.name().value());
+        return switch (normalized) {
+            case "is", "matches", "any", "where" -> {
+                for (var simple : subselector.components()) {
+                    if (simple instanceof PseudoSelector subPseudo
+                            && pseudoIsSuperselector(pseudo, subPseudo)) {
+                        yield true;
+                    }
+                }
+                // :is(A) is a superselector of a path covered by any argument branch.
+                var path = new ArrayList<ComplexSelectorComponent>();
+                if (parents != null) {
+                    path.addAll(parents);
+                }
+                path.add(new ComplexSelectorComponent(subselector, List.of(), subselector.span()));
+                for (var candidate : selectors.components()) {
+                    if (candidate.leadingCombinators().isEmpty()
+                            && Boolean.TRUE.equals(complexIsSuperselector(
+                                    candidate,
+                                    new ComplexSelector(List.of(), path, subselector.span())
+                            ))) {
+                        yield true;
+                    }
+                }
+                yield false;
+            }
+            case "has", "host", "host-context" -> {
+                for (var simple : subselector.components()) {
+                    if (simple instanceof PseudoSelector subPseudo
+                            && !isPseudoElement(subPseudo)
+                            && subPseudo.name().hasSameValue(pseudo.name())
+                            && selectorArgument(subPseudo) != null
+                            && isSuperselector(
+                                    selectors,
+                                    Objects.requireNonNull(selectorArgument(subPseudo))
+                            )) {
+                        yield true;
+                    }
+                }
+                yield false;
+            }
+            case "slotted" -> {
+                for (var simple : subselector.components()) {
+                    if (simple instanceof PseudoSelector subPseudo
+                            && isPseudoElement(subPseudo)
+                            && subPseudo.name().hasSameValue(pseudo.name())
+                            && selectorArgument(subPseudo) != null
+                            && isSuperselector(
+                                    selectors,
+                                    Objects.requireNonNull(selectorArgument(subPseudo))
+                            )) {
+                        yield true;
+                    }
+                }
+                yield false;
+            }
+            case "not" -> selectorNotIsSuperselector(selectors, subselector, pseudo);
+            case "current" -> {
+                for (var simple : subselector.components()) {
+                    if (simple instanceof PseudoSelector subPseudo
+                            && pseudoIsSuperselector(pseudo, subPseudo)) {
+                        yield true;
+                    }
+                }
+                yield false;
+            }
+            case "nth-child", "nth-last-child" -> {
+                for (var simple : subselector.components()) {
+                    if (simple instanceof PseudoSelector subPseudo
+                            && pseudoIsSuperselector(pseudo, subPseudo)) {
+                        yield true;
+                    }
+                }
+                yield false;
+            }
+            default -> {
+                for (var simple : subselector.components()) {
+                    if (simple instanceof PseudoSelector subPseudo
+                            && pseudoIsSuperselector(pseudo, subPseudo)) {
+                        yield true;
+                    }
+                }
+                yield false;
+            }
+        };
+    }
+
+    /// Returns whether {@code :not(...)} covers a compound under Sass rules.
+    private static boolean selectorNotIsSuperselector(
+            SelectorList selectors,
+            CompoundSelector subselector,
+            PseudoSelector notPseudo
+    ) {
+        for (var complex : selectors.components()) {
+            if (complex.components().isEmpty()) {
+                return false;
+            }
+            var last = complex.components().get(complex.components().size() - 1).selector();
+            var covered = false;
+            for (var simple2 : subselector.components()) {
+                if (simple2 instanceof TypeSelector type2) {
+                    for (var simple1 : last.components()) {
+                        if (simple1 instanceof TypeSelector type1 && !semanticEquals(type1, type2)) {
+                            covered = true;
+                            break;
+                        }
+                    }
+                } else if (simple2 instanceof IdSelector id2) {
+                    for (var simple1 : last.components()) {
+                        if (simple1 instanceof IdSelector id1 && !semanticEquals(id1, id2)) {
+                            covered = true;
+                            break;
+                        }
+                    }
+                } else if (simple2 instanceof PseudoSelector pseudo2
+                        && !isPseudoElement(pseudo2)
+                        && pseudo2.name().hasSameValue(notPseudo.name())
+                        && selectorArgument(pseudo2) != null) {
+                    if (isSuperselector(
+                            Objects.requireNonNull(selectorArgument(pseudo2)),
+                            new SelectorList(List.of(complex), complex.span())
+                    )) {
+                        covered = true;
+                    }
+                }
+                if (covered) {
+                    break;
+                }
+            }
+            if (!covered) {
+                return false;
             }
         }
-        return false;
+        return true;
     }
 
     /// Returns whether every branch of a selector pseudo implies one simple selector.
@@ -1201,13 +2113,14 @@ public final class SelectorAlgebra {
 
         var result = new ArrayList<ComplexSelector>();
         if (!replacement) {
-            // Preserve the established Sass source ordering: retain every basis
-            // before appending alternatives introduced for the current target.
-            result.addAll(bases);
+            // Match dart-sass: for each basis, keep the original then its
+            // extensions immediately after it. Appending all bases first then
+            // all alternatives yields the wrong interleaving for multi-extend.
             for (var basis : bases) {
+                result.add(basis);
                 result.addAll(replacementAlternatives(basis, target, inserted));
             }
-            return deduplicate(result);
+            return trimSubselectors(deduplicate(result));
         }
         for (var basis : bases) {
             var alternatives = replacementAlternatives(basis, target, inserted);
@@ -1218,6 +2131,43 @@ public final class SelectorAlgebra {
             }
         }
         return deduplicate(result);
+    }
+
+    /// Removes non-original complexes that are subselectors of another complex
+    /// already present, matching dart-sass extend trimming for matching sets.
+    ///
+    /// @param selectors the candidates after extension
+    /// @return selectors with redundant subselectors removed
+    private static @Unmodifiable List<ComplexSelector> trimSubselectors(
+            List<ComplexSelector> selectors
+    ) {
+        if (selectors.size() <= 1) {
+            return selectors;
+        }
+        var result = new ArrayList<ComplexSelector>();
+        for (var index = 0; index < selectors.size(); index++) {
+            var candidate = selectors.get(index);
+            // The first {@code bases.size()} entries are originals; trimming only
+            // applies to selectors introduced by extension. Because originals are
+            // always listed first and we cannot recover that split here, drop a
+            // candidate only when a different selector is a strict superselector.
+            var redundant = false;
+            for (var otherIndex = 0; otherIndex < selectors.size(); otherIndex++) {
+                if (otherIndex == index) {
+                    continue;
+                }
+                var other = selectors.get(otherIndex);
+                if (Boolean.TRUE.equals(complexIsSuperselector(other, candidate))
+                        && !Boolean.TRUE.equals(complexIsSuperselector(candidate, other))) {
+                    redundant = true;
+                    break;
+                }
+            }
+            if (!redundant) {
+                result.add(candidate);
+            }
+        }
+        return List.copyOf(result);
     }
 
     /// Rewrites recursively modeled pseudo-selector arguments in one complex selector.
@@ -1242,6 +2192,21 @@ public final class SelectorAlgebra {
             var simples = new ArrayList<SimpleSelector>(component.selector().components().size());
             var componentChanged = false;
             for (var simple : component.selector().components()) {
+                if (simple instanceof PseudoSelector pseudo
+                        && !isPseudoElement(pseudo)
+                        && "not".equals(normalizedPseudoName(pseudo.name().value()))) {
+                    @Nullable List<SimpleSelector> expanded = transformNotPseudo(
+                            pseudo,
+                            target,
+                            inserted,
+                            replacement
+                    );
+                    if (expanded != null) {
+                        simples.addAll(expanded);
+                        componentChanged = true;
+                        continue;
+                    }
+                }
                 SimpleSelector transformed = simple;
                 if (simple instanceof PseudoSelector pseudo) {
                     @Nullable PseudoSelector transformedPseudo = transformPseudoArgument(
@@ -1269,6 +2234,114 @@ public final class SelectorAlgebra {
             }
         }
         return changed ? new ComplexSelector(source.leadingCombinators(), components, source.span()) : null;
+    }
+
+    /// Extends the argument of a {@code :not()} pseudo selector.
+    ///
+    /// When the original argument is a single complex selector, the result is
+    /// split into multiple adjacent {@code :not()} simples so older browsers
+    /// that only accept compound {@code :not()} arguments keep working.
+    ///
+    /// @return the replacement simple selectors, or {@code null} when unchanged
+    private static @Nullable List<SimpleSelector> transformNotPseudo(
+            PseudoSelector notPseudo,
+            CompoundSelector target,
+            SelectorList inserted,
+            boolean replacement
+    ) {
+        @Nullable SelectorList originalSelectors = selectorArgument(notPseudo);
+        if (originalSelectors == null) {
+            return null;
+        }
+        var transformed = transformTarget(
+                originalSelectors.components(),
+                target,
+                inserted,
+                replacement
+        );
+        var transformedList = new SelectorList(transformed, originalSelectors.span());
+        if (selectorListSemanticallyEquals(originalSelectors, transformedList)) {
+            return null;
+        }
+
+        // Expand bare :is/:matches/:where lists so :not(:is(a, b)) becomes :not(a):not(b).
+        // Nested :not(...) (and other selector-taking pseudos) in the extender are
+        // ignored, matching dart-sass's simplified :not extend algorithm.
+        var expanded = new ArrayList<ComplexSelector>();
+        for (var complex : transformed) {
+            expanded.addAll(expandForNotArgument(complex));
+        }
+
+        if (originalSelectors.components().size() == 1) {
+            var result = new ArrayList<SimpleSelector>(expanded.size());
+            for (var complex : expanded) {
+                result.add(new PseudoSelector(
+                        notPseudo.name(),
+                        notPseudo.element(),
+                        new SelectorPseudoArgument(new SelectorList(List.of(complex), complex.span())),
+                        notPseudo.span()
+                ));
+            }
+            return result;
+        }
+        return List.of(new PseudoSelector(
+                notPseudo.name(),
+                notPseudo.element(),
+                new SelectorPseudoArgument(new SelectorList(expanded, originalSelectors.span())),
+                notPseudo.span()
+        ));
+    }
+
+    /// Expands a complex selector for use as a {@code :not()} argument branch.
+    ///
+    /// Bare {@code :is}/{:matches}/{:where} lists are flattened. Nested
+    /// {@code :not()} and other selector-taking pseudos are dropped.
+    private static List<ComplexSelector> expandForNotArgument(ComplexSelector complex) {
+        if (complex.components().size() != 1
+                || !complex.leadingCombinators().isEmpty()
+                || !complex.components().get(0).combinators().isEmpty()) {
+            return List.of(complex);
+        }
+        var simples = complex.components().get(0).selector().components();
+        if (simples.size() != 1 || !(simples.get(0) instanceof PseudoSelector pseudo)) {
+            return List.of(complex);
+        }
+        if (isPseudoElement(pseudo)) {
+            return List.of(complex);
+        }
+        var normalized = normalizedPseudoName(pseudo.name().value());
+        return switch (normalized) {
+            case "is", "matches", "where" -> {
+                @Nullable SelectorList args = selectorArgument(pseudo);
+                yield args == null ? List.of(complex) : args.components();
+            }
+            default -> {
+                // Nested :not(...) and other functional selector pseudos are ignored.
+                if (selectorArgument(pseudo) != null) {
+                    yield List.of();
+                }
+                yield List.of(complex);
+            }
+        };
+    }
+
+    /// Expands a complex selector that is only a single {@code :is}/{:matches}/{:where}
+    /// into its argument complexes; otherwise returns the complex unchanged.
+    private static List<ComplexSelector> expandUnionPseudoComplex(ComplexSelector complex) {
+        if (complex.components().size() != 1
+                || !complex.leadingCombinators().isEmpty()
+                || !complex.components().get(0).combinators().isEmpty()) {
+            return List.of(complex);
+        }
+        var simples = complex.components().get(0).selector().components();
+        if (simples.size() != 1 || !(simples.get(0) instanceof PseudoSelector pseudo)) {
+            return List.of(complex);
+        }
+        if (isPseudoElement(pseudo) || !isUnionSelectorPseudo(pseudo)) {
+            return List.of(complex);
+        }
+        @Nullable SelectorList args = selectorArgument(pseudo);
+        return args == null ? List.of(complex) : args.components();
     }
 
     /// Returns whether a target may safely be applied inside pseudo selector arguments.
@@ -1308,15 +2381,18 @@ public final class SelectorAlgebra {
         if (originalSelectors == null) {
             return null;
         }
-        var transformedSelectors = new SelectorList(
-                transformTarget(
-                        originalSelectors.components(),
-                        target,
-                        inserted,
-                        replacement
-                ),
-                originalSelectors.span()
+        var transformed = transformTarget(
+                originalSelectors.components(),
+                target,
+                inserted,
+                replacement
         );
+        // Flatten nested same-named union pseudos (e.g. :is(.c, :is(.d, .e)) → :is(.c, .d, .e)).
+        var expanded = new ArrayList<ComplexSelector>();
+        for (var complex : transformed) {
+            expanded.addAll(expandSameNameUnionPseudo(complex, pseudo));
+        }
+        var transformedSelectors = new SelectorList(expanded, originalSelectors.span());
         if (selectorListSemanticallyEquals(originalSelectors, transformedSelectors)) {
             return null;
         }
@@ -1336,6 +2412,43 @@ public final class SelectorAlgebra {
                 transformedArgument,
                 pseudo.span()
         );
+    }
+
+    /// Expands a complex selector that is only a same-named union pseudo into its
+    /// argument complexes, matching dart-sass {@code _extendPseudo} flattening.
+    private static List<ComplexSelector> expandSameNameUnionPseudo(
+            ComplexSelector complex,
+            PseudoSelector outer
+    ) {
+        if (complex.components().size() != 1
+                || !complex.leadingCombinators().isEmpty()
+                || !complex.components().get(0).combinators().isEmpty()) {
+            return List.of(complex);
+        }
+        var simples = complex.components().get(0).selector().components();
+        if (simples.size() != 1 || !(simples.get(0) instanceof PseudoSelector inner)) {
+            return List.of(complex);
+        }
+        if (inner.element() != outer.element() || !inner.name().hasSameValue(outer.name())) {
+            return List.of(complex);
+        }
+        var normalized = normalizedPseudoName(outer.name().value());
+        return switch (normalized) {
+            case "is", "matches", "where", "any", "current" -> {
+                @Nullable SelectorList args = selectorArgument(inner);
+                yield args == null ? List.of(complex) : args.components();
+            }
+            case "nth-child", "nth-last-child" -> {
+                if (!(outer.argument() instanceof NthPseudoArgument outerNth)
+                        || !(inner.argument() instanceof NthPseudoArgument innerNth)
+                        || !outerNth.formula().equals(innerNth.formula())) {
+                    yield List.of(complex);
+                }
+                @Nullable SelectorList args = selectorArgument(inner);
+                yield args == null ? List.of(complex) : args.components();
+            }
+            default -> List.of(complex);
+        };
     }
 
     /// Returns whether one pseudo selector may recursively transform its selector argument.
@@ -1368,67 +2481,149 @@ public final class SelectorAlgebra {
             CompoundSelector target,
             SelectorList inserted
     ) {
+        // Multi-combinator complexes (e.g. ".c ~ ~ .d", "+ ~ .e") never produce
+        // extension alternatives. Single trailing combinators remain extendable.
+        if (hasMultipleCombinators(selector)) {
+            return List.of();
+        }
         var result = new ArrayList<ComplexSelector>();
         for (var index = 0; index < selector.components().size(); index++) {
             var component = selector.components().get(index);
-            if (!compoundIsSuperselector(target, component.selector())) {
+            if (!compoundMatchesExtendee(target, component.selector())) {
                 continue;
             }
             for (var alternative : inserted.components()) {
-                @Nullable ComplexSelector replacement = replaceOccurrence(
+                if (hasMultipleCombinators(alternative)) {
+                    continue;
+                }
+                result.addAll(replaceOccurrence(
                         selector,
                         index,
                         target,
                         alternative
-                );
-                if (replacement != null) {
-                    result.add(replacement);
-                }
+                ));
             }
         }
         return deduplicate(result);
     }
 
+    /// Returns whether a complex selector has multi leading or multi mid-chain
+    /// combinators (invalid CSS), excluding lone trailing combinators.
+    private static boolean hasMultipleCombinators(ComplexSelector complex) {
+        if (complex.leadingCombinators().size() > 1) {
+            return true;
+        }
+        for (var component : complex.components()) {
+            if (component.combinators().size() > 1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// Replaces one matched compound component with a complex selector alternative.
+    ///
+    /// When the extender has ancestor compounds, their prefixes are woven with the
+    /// source prefix using dart-sass {@code weave}, producing every order-preserving
+    /// interleaving before the residual suffix is appended.
     ///
     /// @param source      the source complex selector
     /// @param componentAt the matched component index
     /// @param target      the matched compound selector
     /// @param inserted    the replacement complex selector
-    /// @return the replacement selector, or {@code null} when residual simple
-    ///         selectors conflict with the replacement's final compound
-    private static @Nullable ComplexSelector replaceOccurrence(
+    /// @return the replacement selectors, or empty when unification fails
+    private static @Unmodifiable List<ComplexSelector> replaceOccurrence(
             ComplexSelector source,
             int componentAt,
             CompoundSelector target,
             ComplexSelector inserted
     ) {
+        // Combinator-only extenders cannot merge into compounds; dart-sass keeps
+        // them as free-standing relative selectors beside the original.
+        if (inserted.components().isEmpty()) {
+            return List.of(inserted);
+        }
         var sourceComponent = source.components().get(componentAt);
         var residual = removeTargetSimples(sourceComponent.selector(), target);
         var finalInserted = inserted.components().get(inserted.components().size() - 1);
         @Nullable CompoundSelector mergedFinal = mergeResidual(finalInserted.selector(), residual);
         if (mergedFinal == null) {
-            return null;
+            return List.of();
         }
 
-        var components = new ArrayList<ComplexSelectorComponent>(
-                source.components().size() + inserted.components().size() - 1
+        // Trailing combinators on the matched source compound and on the extender
+        // must agree when both are present; otherwise the replacement is dropped.
+        // When only one side has trailing combinators, those link to the suffix.
+        var sourceLinks = sourceComponent.combinators();
+        var extenderLinks = finalInserted.combinators();
+        @Nullable List<Combinator> linkCombinators;
+        if (sourceLinks.isEmpty()) {
+            linkCombinators = extenderLinks;
+        } else if (extenderLinks.isEmpty()) {
+            linkCombinators = sourceLinks;
+        } else if (sourceLinks.equals(extenderLinks)) {
+            linkCombinators = sourceLinks;
+        } else {
+            return List.of();
+        }
+
+        var span = source.span();
+        var suffix = source.components().subList(componentAt + 1, source.components().size());
+        var extenderComponents = new ArrayList<ComplexSelectorComponent>(
+                inserted.components().size()
         );
-        components.addAll(source.components().subList(0, componentAt));
         for (var index = 0; index < inserted.components().size(); index++) {
             var component = inserted.components().get(index);
             if (index == inserted.components().size() - 1) {
-                components.add(new ComplexSelectorComponent(
+                extenderComponents.add(new ComplexSelectorComponent(
                         mergedFinal,
-                        sourceComponent.combinators(),
+                        linkCombinators,
                         sourceComponent.span()
                 ));
             } else {
-                components.add(component);
+                extenderComponents.add(component);
             }
         }
-        components.addAll(source.components().subList(componentAt + 1, source.components().size()));
-        return new ComplexSelector(source.leadingCombinators(), components, source.span());
+        var extender = new ComplexSelector(
+                inserted.leadingCombinators(),
+                extenderComponents,
+                span
+        );
+
+        List<ComplexSelector> woven;
+        if (componentAt == 0) {
+            // No source ancestors to weave; keep source leading combinators when the
+            // extender has none, otherwise require compatible leading combinators.
+            @Nullable List<Combinator> leading = mergeLeadingCombinators(
+                    source.leadingCombinators(),
+                    extender.leadingCombinators()
+            );
+            if (leading == null) {
+                return List.of();
+            }
+            woven = List.of(new ComplexSelector(leading, extender.components(), span));
+        } else {
+            var prefix = new ComplexSelector(
+                    source.leadingCombinators(),
+                    source.components().subList(0, componentAt),
+                    span
+            );
+            woven = weave(List.of(prefix, extender), span);
+        }
+
+        if (suffix.isEmpty()) {
+            return woven;
+        }
+        var result = new ArrayList<ComplexSelector>(woven.size());
+        for (var complex : woven) {
+            var components = new ArrayList<ComplexSelectorComponent>(
+                    complex.components().size() + suffix.size()
+            );
+            components.addAll(complex.components());
+            components.addAll(suffix);
+            result.add(new ComplexSelector(complex.leadingCombinators(), components, span));
+        }
+        return result;
     }
 
     /// Removes the exact target simple selectors that contributed to a match.
@@ -1878,15 +3073,23 @@ public final class SelectorAlgebra {
         return pseudo.element() || isLegacyPseudoElementName(pseudo.name().value());
     }
 
-    /// Returns a lowercase pseudo name with one recognized vendor prefix removed.
+    /// Returns a lowercase pseudo name with one vendor prefix removed.
+    ///
+    /// Matches dart-sass {@code unvendor}: a single {@code -prefix-} segment is
+    /// stripped so {@code :-pfx-is(...)} participates in {@code :is} algebra.
     ///
     /// @param name the decoded pseudo identifier
     /// @return the normalized pseudo name used for semantic dispatch
     private static String normalizedPseudoName(String name) {
         var normalized = name.toLowerCase(Locale.ROOT);
-        for (var prefix : List.of("-webkit-", "-moz-", "-ms-", "-o-")) {
-            if (normalized.startsWith(prefix)) {
-                return normalized.substring(prefix.length());
+        if (normalized.length() < 2
+                || normalized.charAt(0) != '-'
+                || normalized.charAt(1) == '-') {
+            return normalized;
+        }
+        for (var index = 2; index < normalized.length(); index++) {
+            if (normalized.charAt(index) == '-') {
+                return normalized.substring(index + 1);
             }
         }
         return normalized;
@@ -1903,22 +3106,29 @@ public final class SelectorAlgebra {
                 || name.equalsIgnoreCase("first-letter");
     }
 
-    /// Creates the unsupported-relative-selector diagnostic.
+    /// Returns whether a complex selector uses multi or trailing combinators.
     ///
-    /// @param name the Sass argument name
-    /// @return the constructed exception
-    private static SassValueException unsupportedRelativeSelector(String name) {
-        return new SassValueException("$" + name
-                + ": Relative selectors aren't supported by selector algebra.");
-    }
-
-    /// Creates the unsupported-combinator diagnostic.
+    /// Combinator-only relative selectors (leading combinators with no compounds)
+    /// are not considered bogus for this check: selector functions may retain them
+    /// as identity results, matching dart-sass 1.x.
     ///
-    /// @param name the Sass argument name
-    /// @return the constructed exception
-    private static SassValueException unsupportedCombinators(String name) {
-        return new SassValueException("$" + name
-                + ": Repeated or trailing combinators aren't supported by selector algebra.");
+    /// @param complex the complex selector
+    /// @return whether algebra should decline to unify it
+    private static boolean hasBogusCombinators(ComplexSelector complex) {
+        // Multiple leading combinators (e.g. "> + .c") are invalid CSS.
+        if (complex.leadingCombinators().size() > 1) {
+            return true;
+        }
+        for (var component : complex.components()) {
+            if (component.combinators().size() > 1) {
+                return true;
+            }
+        }
+        if (!complex.components().isEmpty()
+                && !complex.components().get(complex.components().size() - 1).combinators().isEmpty()) {
+            return true;
+        }
+        return false;
     }
 
     /// Creates the unsupported-simple-selector diagnostic.

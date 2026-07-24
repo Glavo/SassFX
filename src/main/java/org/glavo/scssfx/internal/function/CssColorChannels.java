@@ -87,8 +87,10 @@ final class CssColorChannels {
         if (parsed == null) {
             return functionString(functionName, List.of(input));
         }
-        // Reject bracketed/comma lists before interpreting channels.
-        assertCommonListStyle(parsed.channels(), argumentName, false);
+        // Reject bracketed/comma lists before interpreting channels. After a
+        // slash-alpha has already been split off, only space separators remain
+        // valid on the channel portion.
+        assertCommonListStyle(parsed.channels(), argumentName, parsed.alpha() == null);
         var components = expandSpaceList(parsed.channels());
         if (components.isEmpty()) {
             throw new SassValueException(
@@ -295,6 +297,18 @@ final class CssColorChannels {
                             number.slashDenominator()
                     );
                 }
+                // Space lists may end with a nested slash pair when the right
+                // operand was non-numeric ({@code 50% / none}, {@code 3% / var(--a)}).
+                if (last instanceof SassList nested
+                        && nested.separator() == ListSeparator.SLASH
+                        && !nested.hasBrackets()
+                        && nested.asList().size() == 2) {
+                    elements.set(elements.size() - 1, nested.asList().get(0));
+                    return new SlashChannels(
+                            new SassList(elements, ListSeparator.SPACE, false),
+                            nested.asList().get(1)
+                    );
+                }
                 if (last instanceof SassString string
                         && !string.hasQuotes()
                         && string.text().contains("/")) {
@@ -318,6 +332,23 @@ final class CssColorChannels {
     }
 
     private static SassValue parseNumberOrString(String text) {
+        // Recover units that appear in slash-presented strings such as "50%/none".
+        for (var index = 0; index < text.length(); index++) {
+            char ch = text.charAt(index);
+            if (ch == '+' || ch == '-' || ch == '.' || (ch >= '0' && ch <= '9')) {
+                continue;
+            }
+            if (index == 0) {
+                break;
+            }
+            try {
+                double value = Double.parseDouble(text.substring(0, index));
+                String unit = text.substring(index);
+                return unit.isEmpty() ? SassNumber.of(value, null) : SassNumber.of(value, unit);
+            } catch (NumberFormatException ignored) {
+                return new SassString(text, false);
+            }
+        }
         try {
             return SassNumber.of(Double.parseDouble(text), null);
         } catch (NumberFormatException ignored) {
@@ -366,8 +397,10 @@ final class CssColorChannels {
                 // CSS clamps non-finite alpha: +infinity → 1, -infinity/NaN → 0.
                 alpha = clampLikeCss(percentageOrUnitless(number, 1.0, "alpha"), 0.0, 1.0);
             } else {
+                // Slash-alpha is still part of the $channels/$description argument
+                // for fixed-space constructors (dart-sass: "$channels: c is not a number.").
                 throw new SassValueException(
-                        "$alpha: Expected alpha to be a number, was " + alphaValue + "."
+                        "$" + argumentName + ": " + alphaValue + " is not a number."
                 );
             }
         }
@@ -401,6 +434,17 @@ final class CssColorChannels {
             }
             return SassColor.forSpace(ColorSpace.HWB, channel0, whiteness, blackness, alpha);
         }
+        if (space == ColorSpace.HSL) {
+            // Legacy/CSS hsl() clamps negative and NaN saturation to 0% rather
+            // than applying forSpace's hue-flip absolute-value normalization.
+            // Lightness NaN is retained so serialization can emit calc(NaN).
+            @Nullable Double saturation = channel1;
+            if (saturation != null
+                    && (Double.isNaN(saturation) || saturation < 0.0)) {
+                saturation = 0.0;
+            }
+            return SassColor.forSpace(ColorSpace.HSL, channel0, saturation, channel2, alpha);
+        }
         return SassColor.forSpace(space, channel0, channel1, channel2, alpha);
     }
 
@@ -419,27 +463,50 @@ final class CssColorChannels {
         if (!(channel instanceof ColorChannel.Linear linear)) {
             throw new SassValueException("Unknown channel " + channel.name() + ".");
         }
-        // Channels such as HWB whiteness/blackness require a percent unit.
-        if (linear.requiresPercent()
-                && !(number.numeratorUnits().equals(List.of("%"))
-                && number.denominatorUnits().isEmpty())) {
+        // HWB whiteness/blackness strictly require "%". HSL saturation/lightness
+        // still accept unitless magnitudes during the function-units deprecation
+        // period (matching dart-sass).
+        if (linear.requiresPercent()) {
+            boolean percent = number.numeratorUnits().equals(List.of("%"))
+                    && number.denominatorUnits().isEmpty();
+            if (percent) {
+                return number.value();
+            }
+            String name = channel.name();
+            if (number.isUnitless()
+                    && ("saturation".equals(name) || "lightness".equals(name))) {
+                return number.value();
+            }
             throw new SassValueException(
-                    "$" + channel.name() + ": Expected " + number + " to have unit \"%\"."
+                    "$" + name + ": Expected " + number + " to have unit \"%\"."
             );
         }
         // Matches dart-sass {@code _percentageOrUnitless}: unitless is native
         // scale, and percentages scale {@code 0%..100%} onto {@code 0..max}.
+        double magnitude;
         if (number.isUnitless()) {
-            return number.value();
-        }
-        if (number.numeratorUnits().equals(List.of("%"))
+            magnitude = number.value();
+        } else if (number.numeratorUnits().equals(List.of("%"))
                 && number.denominatorUnits().isEmpty()) {
-            return linear.max() * number.value() / 100.0;
+            magnitude = linear.max() * number.value() / 100.0;
+        } else {
+            throw new SassValueException(
+                    "$" + channel.name() + ": Expected " + number
+                            + " to have unit \"%\" or no units."
+            );
         }
-        throw new SassValueException(
-                "$" + channel.name() + ": Expected " + number
-                        + " to have unit \"%\" or no units."
-        );
+        // Global constructors clamp bounded Lab-family channels (for example
+        // lab(101) → 100 and lab(-1) → 0) like dart-sass clampLikeCss.
+        if (linear.lowerClamped() && linear.upperClamped()) {
+            return clampLikeCss(magnitude, linear.min(), linear.max());
+        }
+        if (linear.lowerClamped()) {
+            return Double.isNaN(magnitude) ? linear.min() : Math.max(linear.min(), magnitude);
+        }
+        if (linear.upperClamped()) {
+            return Double.isNaN(magnitude) ? magnitude : Math.min(linear.max(), magnitude);
+        }
+        return magnitude;
     }
 
     private static List<SassValue> expandSpaceList(SassValue value) {

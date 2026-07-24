@@ -57,11 +57,32 @@ public record CssMediaQuery(
     /// {@code and}/{@code or} condition sequences. Condition bodies retain
     /// their CSS text for later serialization.
     ///
+    /// Nested media operators are lowercased only when
+    /// {@link #parseList(String, boolean)} is called with normalization enabled.
+    ///
     /// @param contents the evaluated query-list text
     /// @return an immutable nonempty query list
     /// @throws SassValueException if {@code contents} is not a supported media-query list
     public static @Unmodifiable List<CssMediaQuery> parseList(String contents) {
-        return new Parser(contents).parse();
+        return parseList(contents, true);
+    }
+
+    /// Parses a CSS media-query list with optional nested-keyword normalization.
+    ///
+    /// When {@code normalizeKeywords} is {@code true}, mixed-case nested
+    /// {@code and}/{@code or}/{@code not} operators inside parentheses are
+    /// lowercased to match dart-sass raw media serialization. Interpolated
+    /// media queries must pass {@code false} so author casing is preserved.
+    ///
+    /// @param contents           the evaluated query-list text
+    /// @param normalizeKeywords  whether to lowercase nested media operators
+    /// @return an immutable nonempty query list
+    /// @throws SassValueException if {@code contents} is not a supported media-query list
+    public static @Unmodifiable List<CssMediaQuery> parseList(
+            String contents,
+            boolean normalizeKeywords
+    ) {
+        return new Parser(contents, normalizeKeywords).parse();
     }
 
     /// Merges two query lists as a CSS-expressible intersection.
@@ -173,6 +194,7 @@ public record CssMediaQuery(
     /// @return the CSS condition text
     private static String displayCondition(String condition) {
         if (isNegatedCondition(condition)) {
+            // "(not (...))" → "not (...)" with a lowercase keyword.
             return "not " + condition.substring(5, condition.length() - 1);
         }
         return condition;
@@ -183,6 +205,8 @@ public record CssMediaQuery(
     /// @param condition the stored condition
     /// @return whether the condition uses the normalized negated form
     private static boolean isNegatedCondition(String condition) {
+        // Only the lowercase form produced by keyword normalization uses the
+        // short "not (...)" serialization; mixed-case interpolated text is kept.
         return condition.startsWith("(not (") && condition.endsWith("))");
     }
 
@@ -368,171 +392,146 @@ public record CssMediaQuery(
         /// Contains the complete query-list source.
         private final String contents;
 
+        /// Whether nested media operators should be lowercased.
+        private final boolean normalizeKeywords;
+
         /// Contains the next UTF-16 code-unit offset to read.
         private int index;
 
         /// Creates a parser for one interpolated query list.
         ///
-        /// @param contents the query-list source
-        private Parser(String contents) {
+        /// @param contents          the query-list source
+        /// @param normalizeKeywords whether to lowercase nested media operators
+        private Parser(String contents, boolean normalizeKeywords) {
             this.contents = Objects.requireNonNull(contents, "contents");
+            this.normalizeKeywords = normalizeKeywords;
         }
 
         /// Parses all comma-separated media queries.
         ///
         /// @return the immutable nonempty query list
         private @Unmodifiable List<CssMediaQuery> parse() {
-            skipTrivia();
-            if (atEnd()) {
-                throw failure("Expected a media query.");
-            }
             var queries = new ArrayList<CssMediaQuery>();
-            while (true) {
+            do {
+                skipTrivia();
                 queries.add(parseQuery());
                 skipTrivia();
-                if (atEnd()) {
-                    return List.copyOf(queries);
-                }
-                if (!scan(',')) {
-                    throw failure("Expected ',' or the end of the media query.");
-                }
-                skipTrivia();
-                if (atEnd()) {
-                    throw failure("Expected a media query after ','.");
-                }
+            } while (scan(','));
+            skipTrivia();
+            if (!atEnd()) {
+                // Matches dart-sass stylesheet media parsing: a finished query
+                // followed by leftover tokens surfaces as expected "{".
+                throw failure("expected \"{\".");
             }
+            return List.copyOf(queries);
         }
 
         /// Parses one query ending before a comma or end of input.
+        ///
+        /// Aligns with dart-sass {@code MediaQueryParser._mediaQuery}.
         ///
         /// @return the parsed query
         private CssMediaQuery parseQuery() {
             skipTrivia();
             if (peek() == '(') {
-                return parseConditionQuery();
+                var conditions = new ArrayList<String>();
+                conditions.add(mediaInParens());
+                skipTrivia();
+                var conjunction = true;
+                if (scanIdentifier("and")) {
+                    expectWhitespace();
+                    conditions.addAll(mediaLogicSequence("and"));
+                } else if (scanIdentifier("or")) {
+                    expectWhitespace();
+                    conjunction = false;
+                    conditions.addAll(mediaLogicSequence("or"));
+                }
+                return new CssMediaQuery(null, null, conjunction, conditions);
             }
 
-            var first = identifier("Expected a media type or condition.");
+            var identifier1 = identifier("expected media query.");
+            if (identifier1.equalsIgnoreCase("not")) {
+                expectWhitespace();
+                if (!lookingAtIdentifier()) {
+                    // "@media not (...) {"
+                    return new CssMediaQuery(
+                            null,
+                            null,
+                            true,
+                            List.of("(not " + mediaInParens() + ")")
+                    );
+                }
+            }
+
             skipTrivia();
-            if (first.equalsIgnoreCase("not") && peek() == '(') {
+            if (!lookingAtIdentifier()) {
+                // "@media screen {"
+                return new CssMediaQuery(null, identifier1, true, List.of());
+            }
+
+            var identifier2 = identifier("expected media query.");
+            @Nullable String modifier;
+            String type;
+            if (identifier2.equalsIgnoreCase("and")) {
+                expectWhitespace();
+                // "@media screen and ..."
+                modifier = null;
+                type = identifier1;
+            } else {
+                skipTrivia();
+                modifier = identifier1;
+                type = identifier2;
+                if (scanIdentifier("and")) {
+                    expectWhitespace();
+                } else {
+                    // "@media only screen {"
+                    return new CssMediaQuery(modifier, type, true, List.of());
+                }
+            }
+
+            // Consumed either `IDENTIFIER "and"` or `IDENTIFIER IDENTIFIER "and"`.
+            if (scanIdentifier("not")) {
+                expectWhitespace();
                 return new CssMediaQuery(
-                        null,
-                        null,
+                        modifier,
+                        type,
                         true,
-                        List.of(negatedCondition())
+                        List.of("(not " + mediaInParens() + ")")
                 );
             }
-            if (atQueryEnd()) {
-                return new CssMediaQuery(null, first, true, List.of());
-            }
-            if (!lookingAtIdentifier()) {
-                throw failure("Expected a media condition after media type.");
-            }
 
-            var second = identifier("Expected a media condition.");
-            skipTrivia();
-            if (second.equalsIgnoreCase("and")) {
-                return new CssMediaQuery(null, first, true, conjunctionConditions());
-            }
-            if (second.equalsIgnoreCase("or")) {
-                throw failure("Media types may only be followed by 'and'.");
-            }
-            if (atQueryEnd()) {
-                return new CssMediaQuery(first, second, true, List.of());
-            }
-            if (!lookingAtIdentifier()) {
-                throw failure("Expected 'and' after media modifier and type.");
-            }
-            var conjunction = identifier("Expected 'and' after media modifier and type.");
-            if (!conjunction.equalsIgnoreCase("and")) {
-                throw failure("Expected 'and' after media modifier and type.");
-            }
-            skipTrivia();
-            return new CssMediaQuery(first, second, true, conjunctionConditions());
+            return new CssMediaQuery(modifier, type, true, mediaLogicSequence("and"));
         }
 
-        /// Parses a query made only of one or more parenthesized conditions.
+        /// Consumes one or more media-in-parens expressions separated by {@code operator}.
         ///
-        /// @return the parsed condition query
-        private CssMediaQuery parseConditionQuery() {
-            var conditions = new ArrayList<String>();
-            conditions.add(condition());
-            skipTrivia();
-            if (atQueryEnd()) {
-                return new CssMediaQuery(null, null, true, conditions);
-            }
-            var operator = identifier("Expected 'and', 'or', or the end of the media query.");
-            if (!operator.equalsIgnoreCase("and") && !operator.equalsIgnoreCase("or")) {
-                throw failure("Expected 'and', 'or', or the end of the media query.");
-            }
-            var conjunction = operator.equalsIgnoreCase("and");
-            skipTrivia();
-            conditions.add(condition());
+        /// Stops without error when the next token is not {@code operator}, so a
+        /// mismatched {@code and}/{@code or} is left for the caller (yielding
+        /// {@code expected "{".} after the finished query).
+        ///
+        /// @param operator the required conjunction keyword
+        /// @return the condition list including trailing terms after the first
+        private List<String> mediaLogicSequence(String operator) {
+            var result = new ArrayList<String>();
             while (true) {
+                result.add(mediaInParens());
                 skipTrivia();
-                if (atQueryEnd()) {
-                    return new CssMediaQuery(null, null, conjunction, conditions);
+                if (!scanIdentifier(operator)) {
+                    return result;
                 }
-                var next = identifier("Expected a media condition or the end of the media query.");
-                if (!next.equalsIgnoreCase(operator)) {
-                    throw failure("Media conditions may not mix 'and' and 'or'.");
-                }
-                skipTrivia();
-                conditions.add(condition());
+                expectWhitespace();
             }
         }
 
-        /// Parses conditions joined by {@code and} after a media type.
+        /// Consumes a {@code <media-in-parens>} expression, parentheses included.
         ///
-        /// @return the parsed condition list
-        private @Unmodifiable List<String> conjunctionConditions() {
-            var conditions = new ArrayList<String>();
-            conditions.add(condition());
-            while (true) {
-                skipTrivia();
-                if (atQueryEnd()) {
-                    return List.copyOf(conditions);
-                }
-                var operator = identifier("Expected 'and' or the end of the media query.");
-                if (!operator.equalsIgnoreCase("and")) {
-                    throw failure("Expected 'and' or the end of the media query.");
-                }
-                skipTrivia();
-                conditions.add(condition());
-            }
-        }
-
-        /// Parses one parenthesized media condition or a negated condition.
+        /// Nested media operators inside the parentheses are lowercased so raw
+        /// mixed-case sources match dart-sass serialization.
         ///
-        /// @return the normalized condition text
-        private String condition() {
-            if (lookingAtIdentifier()) {
-                var before = index;
-                var token = identifier("Expected a media condition.");
-                if (token.equalsIgnoreCase("not")) {
-                    skipTrivia();
-                    if (peek() == '(') {
-                        return negatedCondition();
-                    }
-                }
-                index = before;
-            }
-            return parenthesizedCondition();
-        }
-
-        /// Parses {@code not} followed by one parenthesized media condition.
-        ///
-        /// @return the normalized parenthesized negated condition
-        private String negatedCondition() {
-            return "(not " + parenthesizedCondition() + ")";
-        }
-
-        /// Reads one balanced parenthesized condition without parsing its CSS body.
-        ///
-        /// @return the condition with one outer parenthesis pair
-        private String parenthesizedCondition() {
+        /// @return the parenthesized condition text
+        private String mediaInParens() {
             if (peek() != '(') {
-                throw failure("Expected a media condition in parentheses.");
+                throw failure("expected media condition in parentheses.");
             }
             var start = index;
             var depth = 0;
@@ -554,15 +553,122 @@ public record CssMediaQuery(
                 if (next == ')') {
                     depth--;
                     if (depth == 0) {
-                        var contents = this.contents.substring(start + 1, index - 1).strip();
-                        if (contents.isEmpty()) {
+                        var inner = this.contents.substring(start + 1, index - 1).strip();
+                        if (inner.isEmpty()) {
                             throw failure("Media conditions may not be empty.");
                         }
-                        return "(" + contents + ")";
+                        return "(" + normalizeConditionBody(inner) + ")";
                     }
                 }
             }
-            throw failure("Expected ')' to close the media condition.");
+            throw failure("expected \")\".");
+        }
+
+        /// Lowercases nested media operators inside one parenthesized body when possible.
+        ///
+        /// @param body the text between parentheses
+        /// @return the normalized body, or the original text when not media-logic shaped
+        private String normalizeConditionBody(String body) {
+            if (!normalizeKeywords) {
+                return body;
+            }
+            try {
+                return new Parser(body, true).normalizeMediaLogicBody();
+            } catch (SassValueException ignored) {
+                return body;
+            }
+        }
+
+        /// Attempts to parse this parser's entire source as nested media logic.
+        ///
+        /// @return normalized media-logic text
+        private String normalizeMediaLogicBody() {
+            skipTrivia();
+            if (lookingAtIdentifier() && peekIdentifierEquals("not")) {
+                scanIdentifier("not");
+                expectWhitespace();
+                var rest = mediaInParens();
+                skipTrivia();
+                if (!atEnd()) {
+                    throw failure("expected end of media condition.");
+                }
+                return "not " + rest;
+            }
+            if (peek() != '(') {
+                throw failure("expected media condition in parentheses.");
+            }
+            var first = mediaInParens();
+            skipTrivia();
+            if (atEnd()) {
+                // Single nested condition keeps its parentheses; the caller
+                // already supplies the outer pair.
+                return first;
+            }
+            String operator;
+            if (scanIdentifier("and")) {
+                operator = "and";
+            } else if (scanIdentifier("or")) {
+                operator = "or";
+            } else {
+                throw failure("expected media logic operator.");
+            }
+            expectWhitespace();
+            var builder = new StringBuilder(first);
+            while (true) {
+                builder.append(' ').append(operator).append(' ');
+                builder.append(mediaInParens());
+                skipTrivia();
+                if (atEnd()) {
+                    return builder.toString();
+                }
+                if (!scanIdentifier(operator)) {
+                    throw failure("expected media logic operator.");
+                }
+                expectWhitespace();
+            }
+        }
+
+        /// Requires whitespace or a block comment after a media logic keyword.
+        private void expectWhitespace() {
+            if (atEnd()) {
+                throw failure("Expected whitespace.");
+            }
+            if (Character.isWhitespace(peek()) || (peek() == '/' && peek(1) == '*')) {
+                skipTrivia();
+                return;
+            }
+            throw failure("Expected whitespace.");
+        }
+
+        /// Consumes an identifier when it matches {@code expected} case-insensitively.
+        ///
+        /// @param expected the keyword to match
+        /// @return whether the keyword was consumed
+        private boolean scanIdentifier(String expected) {
+            if (!lookingAtIdentifier()) {
+                return false;
+            }
+            var before = index;
+            var token = identifier("expected identifier.");
+            if (token.equalsIgnoreCase(expected)) {
+                return true;
+            }
+            index = before;
+            return false;
+        }
+
+        /// Returns whether the next identifier equals {@code expected} without consuming it.
+        ///
+        /// @param expected the keyword to compare
+        /// @return whether the next identifier matches
+        private boolean peekIdentifierEquals(String expected) {
+            if (!lookingAtIdentifier()) {
+                return false;
+            }
+            var before = index;
+            var token = identifier("expected identifier.");
+            index = before;
+            return token.equalsIgnoreCase(expected);
         }
 
         /// Consumes the remainder of an escape, quoted string, or both.

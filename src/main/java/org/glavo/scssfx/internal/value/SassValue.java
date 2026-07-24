@@ -7,6 +7,7 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.List;
+import java.util.Objects;
 
 /// Represents an immutable value produced by SassScript evaluation.
 ///
@@ -299,6 +300,14 @@ public sealed interface SassValue permits
         throw new SassValueException(this + " is not a color.");
     }
 
+    /// Returns this value when it is a Sass calculation.
+    ///
+    /// @return this calculation
+    /// @throws SassValueException if this value is not a calculation
+    default SassCalculation assertCalculation() {
+        throw new SassValueException(this + " is not a calculation.");
+    }
+
     /// Returns this value when it is a Sass map.
     ///
     /// Empty unbracketed lists are treated as empty maps.
@@ -329,7 +338,26 @@ public sealed interface SassValue permits
     /// @return the zero-based index
     /// @throws SassValueException if the index is invalid
     default int sassIndexToListIndex(SassValue sassIndex, int length) {
-        var index = sassIndex.assertNumber().assertInt();
+        return sassIndexToListIndex(sassIndex, length, "n");
+    }
+
+    /// Converts a Sass list index into a zero-based Java list index.
+    ///
+    /// @param sassIndex the Sass index value
+    /// @param length    the list length
+    /// @param name      the parameter name used in type-failure messages
+    /// @return the zero-based index
+    /// @throws SassValueException if the index is invalid
+    default int sassIndexToListIndex(SassValue sassIndex, int length, String name) {
+        SassNumber number;
+        try {
+            number = sassIndex.assertNumber();
+        } catch (SassValueException exception) {
+            throw new SassValueException(
+                    "$" + name + ": " + Objects.requireNonNull(exception.getMessage(), "index type")
+            );
+        }
+        var index = number.assertInt();
         if (index == 0) {
             throw new SassValueException("List index may not be 0.");
         }

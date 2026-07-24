@@ -1302,7 +1302,7 @@ final class ScssParserTest {
                 () -> parse("@use \"foo+.scss\";")
         );
         assertTrue(invalid.getMessage().contains(
-                "The default namespace \"foo+\" is not a valid CSS identifier."
+                "The default namespace \"foo+\" is not a valid Sass identifier."
         ));
     }
 

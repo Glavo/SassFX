@@ -48,13 +48,18 @@ public final class SelectorParser {
     /// Contains the current UTF-16 offset into {@link #text}.
     private int position;
 
+    /// Whether plain-CSS selector restrictions are active.
+    private final boolean plainCss;
+
     /// Creates a parser for one selector string.
     ///
     /// @param text     the selector source
     /// @param baseSpan the span covering that source
-    private SelectorParser(String text, SourceSpan baseSpan) {
+    /// @param plainCss whether plain CSS selector restrictions apply
+    private SelectorParser(String text, SourceSpan baseSpan, boolean plainCss) {
         this.text = Objects.requireNonNull(text, "text");
         this.baseSpan = Objects.requireNonNull(baseSpan, "baseSpan");
+        this.plainCss = plainCss;
     }
 
     /// Parses a selector list.
@@ -64,7 +69,18 @@ public final class SelectorParser {
     /// @return the parsed selector list
     /// @throws SassValueException if the selector is invalid
     public static SelectorList parse(String text, SourceSpan span) {
-        return new SelectorParser(text, span).parseList();
+        return parse(text, span, false);
+    }
+
+    /// Parses a selector list with optional plain-CSS restrictions.
+    ///
+    /// @param text     the selector source after interpolation
+    /// @param span     the span covering that text
+    /// @param plainCss whether plain CSS selector restrictions apply
+    /// @return the parsed selector list
+    /// @throws SassValueException if the selector is invalid
+    public static SelectorList parse(String text, SourceSpan span, boolean plainCss) {
+        return new SelectorParser(text, span, plainCss).parseList();
     }
 
     /// Parses the complete selector list.
@@ -80,7 +96,7 @@ public final class SelectorParser {
         }
         whitespace();
         if (!isDone()) {
-            throw error("Expected end of selector.");
+            throw error("expected end of selector.");
         }
         return new SelectorList(components, baseSpan);
     }
@@ -104,7 +120,7 @@ public final class SelectorParser {
         var components = new ArrayList<ComplexSelectorComponent>();
         if (!lookingAtSimple()) {
             if (leading.isEmpty()) {
-                throw error("Expected selector.");
+                throw error("expected selector.");
             }
             return new ComplexSelector(leading, List.of(), spanFrom(start));
         }
@@ -112,6 +128,13 @@ public final class SelectorParser {
         while (lookingAtSimple()) {
             var compoundStart = position;
             var compound = parseCompound();
+            // dart-sass: "&" may only be used at the beginning of a compound
+            // outside plain CSS (where mid-compound parent is allowed).
+            if (!plainCss && peek() == '&') {
+                throw error(
+                        "Parent selector must be the first selector in a compound."
+                );
+            }
             var trailing = new ArrayList<Combinator>();
             whitespace();
             while (true) {
@@ -131,10 +154,26 @@ public final class SelectorParser {
                 break;
             }
         }
+        // Plain CSS rejects trailing combinators such as {@code a >}.
+        if (plainCss
+                && !components.isEmpty()
+                && !components.get(components.size() - 1).combinators().isEmpty()) {
+            throw error("expected selector.");
+        }
+        // Also reject a lone trailing combinator with no compounds.
+        if (plainCss && components.isEmpty() && !leading.isEmpty()) {
+            // Leading-only forms such as {@code > a} are parsed with compounds;
+            // a bare trailing combinator already failed lookingAtSimple above.
+        }
         return new ComplexSelector(leading, components, spanFrom(start));
     }
 
     /// Parses one compound selector.
+    ///
+    /// After the first simple selector, only punctuation-led simples may
+    /// continue the compound ({@code .#[]:%*}). A following type name without
+    /// whitespace starts a new compound in the complex-selector loop, matching
+    /// dart-sass ({@code [a]b} → {@code [a] b}).
     ///
     /// @return the parsed compound selector
     private CompoundSelector parseCompound() {
@@ -147,14 +186,30 @@ public final class SelectorParser {
                 && peek() != '>'
                 && peek() != '+'
                 && peek() != '~'
-                && lookingAtSimple()) {
+                && isCompoundContinuationStart(peek())) {
             var simple = parseSimple();
-            if (simple instanceof ParentSelector) {
+            // Sass forbids {@code &} after the first simple; plain CSS nesting
+            // permits parent references mid-compound ({@code a&}, {@code a&b}).
+            if (simple instanceof ParentSelector && !plainCss) {
                 throw error("Parent selector must be the first selector in a compound.");
             }
             simples.add(simple);
         }
         return new CompoundSelector(simples, spanFrom(start));
+    }
+
+    /// Returns whether a character may continue a compound after its first simple.
+    ///
+    /// Aligns with dart-sass {@code _isSimpleSelectorStart}: identifiers that
+    /// begin type selectors do not continue the current compound. Plain CSS also
+    /// allows a mid-compound parent selector.
+    ///
+    /// @param next the next code unit, or end-of-input sentinel
+    /// @return whether compound parsing may consume another simple here
+    private boolean isCompoundContinuationStart(int next) {
+        return next == '.' || next == '#' || next == '[' || next == '%'
+                || next == ':' || next == '*' || next == '|'
+                || (plainCss && next == '&');
     }
 
     /// Parses one simple selector.
@@ -178,7 +233,7 @@ public final class SelectorParser {
             case '*', '|' -> readTypeOrUniversal(start);
             default -> {
                 if (!lookingAtIdentifier()) {
-                    throw error("Expected selector.");
+                    throw error("expected selector.");
                 }
                 yield readTypeOrUniversal(start);
             }
@@ -194,9 +249,12 @@ public final class SelectorParser {
         @Nullable CssIdentifier suffix = null;
         if (lookingAtIdentifier()) {
             suffix = readIdentifier();
+            if (plainCss) {
+                throw error("Parent selectors can't have suffixes in plain CSS.");
             }
-            return new ParentSelector(suffix, spanFrom(start));
         }
+        return new ParentSelector(suffix, spanFrom(start));
+    }
 
     /// Parses a type or universal selector, including a namespace prefix.
     ///
@@ -484,15 +542,23 @@ public final class SelectorParser {
         };
     }
 
-    /// Removes one recognized vendor prefix and lowercases a pseudo name.
+    /// Removes one vendor prefix and lowercases a pseudo name.
+    ///
+    /// Matches dart-sass {@code unvendor}: any single {@code -prefix-} segment
+    /// is stripped so {@code :-pfx-is(...)} parses as a selector-taking pseudo.
     ///
     /// @param name the decoded pseudo name
     /// @return the lowercase, vendor-neutral pseudo name
     private static String normalizedPseudoName(String name) {
         var normalized = name.toLowerCase(Locale.ROOT);
-        for (var prefix : List.of("-webkit-", "-moz-", "-ms-", "-o-")) {
-            if (normalized.startsWith(prefix)) {
-                return normalized.substring(prefix.length());
+        if (normalized.length() < 2
+                || normalized.charAt(0) != '-'
+                || normalized.charAt(1) == '-') {
+            return normalized;
+        }
+        for (var index = 2; index < normalized.length(); index++) {
+            if (normalized.charAt(index) == '-') {
+                return normalized.substring(index + 1);
             }
         }
         return normalized;
@@ -762,7 +828,7 @@ public final class SelectorParser {
     /// @param expected the expected character
     private void expect(int expected) {
         if (peek() != expected) {
-            throw error("Expected \"" + (char) expected + "\".");
+            throw error("expected \"" + (char) expected + "\".");
         }
         read();
     }
@@ -870,7 +936,7 @@ public final class SelectorParser {
     ///
     /// @return the exception to throw
     private SassValueException expectedClosingBracket() {
-        return error("Expected closing ']'.");
+        return error("expected \"]\".");
     }
 
     /// Returns whether text at the current position starts a CSS identifier.

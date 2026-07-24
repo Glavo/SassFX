@@ -99,4 +99,10 @@ public interface SassExpressionVisitor<R> {
     /// @param expression the expression to visit
     /// @return the visit result
     R visitColorExpression(ColorExpression expression);
+
+    /// Visits a parent-selector expression ({@code &}).
+    ///
+    /// @param expression the expression to visit
+    /// @return the visit result
+    R visitSelectorExpression(SelectorExpression expression);
 }

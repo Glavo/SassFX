@@ -76,7 +76,8 @@ public final class SassCalculation implements SassValue {
                 minimum = null;
                 break;
             }
-            if (minimum == null || number.value() < minimum.value()) {
+            if (minimum == null
+                    || number.valueInUnitsOf(minimum) < minimum.value()) {
                 minimum = number;
             }
         }
@@ -103,7 +104,8 @@ public final class SassCalculation implements SassValue {
                 maximum = null;
                 break;
             }
-            if (maximum == null || number.value() > maximum.value()) {
+            if (maximum == null
+                    || number.valueInUnitsOf(maximum) > maximum.value()) {
                 maximum = number;
             }
         }
@@ -216,14 +218,29 @@ public final class SassCalculation implements SassValue {
             args.add(simplify(exponent));
         }
         verifyLength(args, 2);
-        if (args.size() == 2
-                && args.get(0) instanceof SassNumber baseNumber
-                && args.get(1) instanceof SassNumber exponentNumber
-                && baseNumber.isUnitless()
-                && exponentNumber.isUnitless()) {
-            return SassNumber.of(Math.pow(baseNumber.value(), exponentNumber.value()), null);
+        base = args.get(0);
+        exponent = args.size() > 1 ? args.get(1) : null;
+        if (!(base instanceof SassNumber baseNumber)
+                || !(exponent instanceof SassNumber exponentNumber)) {
+            return new SassCalculation("pow", args);
         }
-        return new SassCalculation("pow", args);
+        baseNumber.assertNoUnits();
+        exponentNumber.assertNoUnits();
+        return SassNumber.of(
+                powSpecial(baseNumber.value(), exponentNumber.value()),
+                null
+        );
+    }
+
+    /// Computes a power with dart-sass special cases for exact {@code ±1} and infinity.
+    private static double powSpecial(double base, double exponent) {
+        if (base == 1.0) {
+            return 1.0;
+        }
+        if (base == -1.0 && Double.isInfinite(exponent)) {
+            return 1.0;
+        }
+        return Math.pow(base, exponent);
     }
 
     /// Creates a simplified {@code log()} value.
@@ -239,15 +256,17 @@ public final class SassCalculation implements SassValue {
         if (simplifiedBase != null) {
             args.add(simplifiedBase);
         }
-        if (simplifiedNumber instanceof SassNumber n && n.isUnitless()) {
-            if (simplifiedBase == null) {
-                return SassNumber.of(Math.log(n.value()), null);
-            }
-            if (simplifiedBase instanceof SassNumber b && b.isUnitless()) {
-                return SassNumber.of(Math.log(n.value()) / Math.log(b.value()), null);
-            }
+        if (!(simplifiedNumber instanceof SassNumber n)
+                || (simplifiedBase != null && !(simplifiedBase instanceof SassNumber))) {
+            return new SassCalculation("log", args);
         }
-        return new SassCalculation("log", args);
+        n.assertNoUnits();
+        if (simplifiedBase == null) {
+            return SassNumber.of(Math.log(n.value()), null);
+        }
+        var b = (SassNumber) simplifiedBase;
+        b.assertNoUnits();
+        return SassNumber.of(Math.log(n.value()) / Math.log(b.value()), null);
     }
 
     /// Creates a simplified {@code atan2()} value.
@@ -349,6 +368,24 @@ public final class SassCalculation implements SassValue {
             @Nullable Object numberOrStep,
             @Nullable Object step
     ) {
+        return round(strategyOrNumber, numberOrStep, step, null, null);
+    }
+
+    /// Creates a simplified {@code round()} value with optional legacy global behavior.
+    ///
+    /// @param strategyOrNumber     strategy or number
+    /// @param numberOrStep         number or step
+    /// @param step                 optional step
+    /// @param inLegacySassFunction legacy global function name, or {@code null}
+    /// @param warn                 deprecation reporter, or {@code null}
+    /// @return a number or calculation
+    public static SassValue round(
+            Object strategyOrNumber,
+            @Nullable Object numberOrStep,
+            @Nullable Object step,
+            @Nullable String inLegacySassFunction,
+            @Nullable java.util.function.Consumer<String> warn
+    ) {
         Object first = simplify(strategyOrNumber);
         @Nullable Object second = numberOrStep == null ? null : simplify(numberOrStep);
         @Nullable Object third = step == null ? null : simplify(step);
@@ -356,8 +393,20 @@ public final class SassCalculation implements SassValue {
             if (number.isUnitless()) {
                 return SassNumber.of(Math.rint(number.value()), null);
             }
-            // With units, CSS round requires an explicit step; preserve calculation
-            // unless we only have a unitless-compatible legacy path.
+            if (inLegacySassFunction != null) {
+                if (warn != null) {
+                    warn.accept(
+                            "In future versions of Sass, round() will be interpreted as a CSS "
+                                    + "round() calculation. This requires an explicit modulus when "
+                                    + "rounding numbers with units. If you want to use the Sass "
+                                    + "function, call math.round() instead.\n"
+                                    + "\n"
+                                    + "See https://sass-lang.com/d/import"
+                    );
+                }
+                return matchUnits(Math.rint(number.value()), number);
+            }
+            // With units, CSS round requires an explicit step; preserve calculation.
             return new SassCalculation("round", List.of(first));
         }
         if (second instanceof SassNumber stepNumber && first instanceof SassNumber number
@@ -370,14 +419,31 @@ public final class SassCalculation implements SassValue {
         }
         if (first instanceof SassString strategy
                 && !strategy.hasQuotes()
-                && isRoundStrategy(strategy.text())
-                && second instanceof SassNumber number
-                && third instanceof SassNumber stepNumber) {
-            verifyCompatibleNumbers(List.of(number, stepNumber));
-            if (hasCompatibleUnits(number, stepNumber)) {
-                return roundWithStep(strategy.text().toLowerCase(Locale.ROOT), number, stepNumber);
+                && isRoundStrategy(strategy.text())) {
+            if (second instanceof SassString rest && !rest.hasQuotes() && third == null) {
+                // Forms such as round(up, var(--c)) remain unsimplified.
+                return new SassCalculation("round", List.of(strategy, rest));
             }
-            return new SassCalculation("round", List.of(strategy, number, stepNumber));
+            if (second != null && third == null) {
+                throw new SassValueException("If strategy is not null, step is required.");
+            }
+            if (second instanceof SassNumber number && third instanceof SassNumber stepNumber) {
+                verifyCompatibleNumbers(List.of(number, stepNumber));
+                if (hasCompatibleUnits(number, stepNumber)) {
+                    return roundWithStep(strategy.text().toLowerCase(Locale.ROOT), number, stepNumber);
+                }
+                return new SassCalculation("round", List.of(strategy, number, stepNumber));
+            }
+            if (second != null && third != null) {
+                return new SassCalculation("round", List.of(strategy, second, third));
+            }
+        }
+        if (first instanceof SassString strategy
+                && !strategy.hasQuotes()
+                && isRoundStrategy(strategy.text())
+                && second == null
+                && third == null) {
+            throw new SassValueException("Number to round and step arguments are required.");
         }
         var args = new ArrayList<Object>();
         args.add(first);
@@ -387,7 +453,34 @@ public final class SassCalculation implements SassValue {
         if (third != null) {
             args.add(third);
         }
+        // Special CSS variables may stand in for strategy or numeric slots.
+        if (first instanceof SassString firstString
+                && !firstString.hasQuotes()
+                && isSpecialVariable(firstString.text())
+                && second != null
+                && third != null) {
+            return new SassCalculation("round", args);
+        }
+        if (first instanceof SassString strategy
+                && !strategy.hasQuotes()
+                && !isRoundStrategy(strategy.text())
+                && !isSpecialVariable(strategy.text())
+                && second != null
+                && third != null) {
+            throw new SassValueException(
+                    first + " must be either nearest, up, down or to-zero."
+            );
+        }
         return new SassCalculation("round", args);
+    }
+
+    /// Returns whether text is a CSS special variable call such as {@code var(...)}.
+    private static boolean isSpecialVariable(String text) {
+        var lower = text.toLowerCase(Locale.ROOT);
+        return lower.startsWith("var(")
+                || lower.startsWith("env(")
+                || lower.startsWith("arg(")
+                || lower.startsWith("attr(");
     }
 
     /// Creates a simplified {@code calc-size()} value.
@@ -412,14 +505,57 @@ public final class SassCalculation implements SassValue {
     /// @param right    the right operand
     /// @return a number or operation tree node
     public static Object operate(CalculationOperator operator, Object left, Object right) {
+        return operate(operator, left, right, null, null);
+    }
+
+    /// Combines two calculation operands, optionally allowing legacy unitless mixing.
+    ///
+    /// When {@code inLegacySassFunction} is non-null, unitless numbers may be
+    /// added or subtracted with unitful numbers for global {@code min()}/{@code max()}/
+    /// {@code round()}/{@code abs()} compatibility. The optional {@code warn} callback
+    /// receives the global-builtin deprecation message.
+    ///
+    /// @param operator               the operator
+    /// @param left                   the left operand
+    /// @param right                  the right operand
+    /// @param inLegacySassFunction   the legacy global function name, or {@code null}
+    /// @param warn                   deprecation reporter, or {@code null}
+    /// @return a number or operation tree node
+    public static Object operate(
+            CalculationOperator operator,
+            Object left,
+            Object right,
+            @Nullable String inLegacySassFunction,
+            @Nullable java.util.function.Consumer<String> warn
+    ) {
         left = simplify(left);
         right = simplify(right);
         if (operator == CalculationOperator.PLUS || operator == CalculationOperator.MINUS) {
-            if (left instanceof SassNumber leftNumber && right instanceof SassNumber rightNumber
-                    && hasCompatibleUnits(leftNumber, rightNumber)) {
-                return operator == CalculationOperator.PLUS
-                        ? leftNumber.plus(rightNumber)
-                        : leftNumber.minus(rightNumber);
+            if (left instanceof SassNumber leftNumber && right instanceof SassNumber rightNumber) {
+                boolean compatible = hasCompatibleUnits(leftNumber, rightNumber);
+                if (!compatible
+                        && inLegacySassFunction != null
+                        && leftNumber.isComparableTo(rightNumber)) {
+                    if (warn != null) {
+                        warn.accept(
+                                "In future versions of Sass, " + inLegacySassFunction
+                                        + "() will be interpreted as the CSS "
+                                        + inLegacySassFunction
+                                        + "() calculation. This doesn't allow unitless "
+                                        + "numbers to be mixed with numbers with units. "
+                                        + "If you want to use the Sass function, call math."
+                                        + inLegacySassFunction + "() instead.\n"
+                                        + "\n"
+                                        + "See https://sass-lang.com/d/import"
+                        );
+                    }
+                    compatible = true;
+                }
+                if (compatible) {
+                    return operator == CalculationOperator.PLUS
+                            ? leftNumber.plus(rightNumber)
+                            : leftNumber.minus(rightNumber);
+                }
             }
             verifyCompatibleNumbers(List.of(left, right));
             if (right instanceof SassNumber rightNumber && SassFuzzy.lessThan(rightNumber.value(), 0.0)) {
@@ -452,9 +588,86 @@ public final class SassCalculation implements SassValue {
         return arguments;
     }
 
+    /// Returns this calculation.
+    ///
+    /// @return this calculation
+    @Override
+    public SassCalculation assertCalculation() {
+        return this;
+    }
+
     @Override
     public boolean isSpecialNumber() {
         return true;
+    }
+
+    @Override
+    public SassValue plus(SassValue other) {
+        throw undefinedCalculationOperation("+", other);
+    }
+
+    @Override
+    public SassValue minus(SassValue other) {
+        throw undefinedCalculationOperation("-", other);
+    }
+
+    @Override
+    public SassValue times(SassValue other) {
+        throw undefinedCalculationOperation("*", other);
+    }
+
+    @Override
+    public SassValue dividedBy(SassValue other) {
+        // Outside calc simplification, slash joins CSS text so color channel
+        // forms such as {@code calc(1px + 1%) / 0.4} can reach constructors.
+        return SassValue.super.dividedBy(other);
+    }
+
+    @Override
+    public SassValue modulo(SassValue other) {
+        throw undefinedCalculationOperation("%", other);
+    }
+
+    @Override
+    public SassBoolean greaterThan(SassValue other) {
+        throw undefinedCalculationOperation(">", other);
+    }
+
+    @Override
+    public SassBoolean greaterThanOrEquals(SassValue other) {
+        throw undefinedCalculationOperation(">=", other);
+    }
+
+    @Override
+    public SassBoolean lessThan(SassValue other) {
+        throw undefinedCalculationOperation("<", other);
+    }
+
+    @Override
+    public SassBoolean lessThanOrEquals(SassValue other) {
+        throw undefinedCalculationOperation("<=", other);
+    }
+
+    @Override
+    public SassValue unaryPlus() {
+        throw new SassValueException("Undefined operation \"+" + this + "\".");
+    }
+
+    @Override
+    public SassValue unaryMinus() {
+        throw new SassValueException("Undefined operation \"-" + this + "\".");
+    }
+
+    @Override
+    public SassValue unaryDivide() {
+        throw new SassValueException("Undefined operation \"/" + this + "\".");
+    }
+
+    /// Creates an undefined binary operation failure for calculations.
+    private SassValueException undefinedCalculationOperation(String operator, SassValue other) {
+        return new SassValueException(
+                "Undefined operation \"" + this + " " + operator + " " + other + "\"."
+        );
     }
 
     @Override

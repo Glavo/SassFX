@@ -138,7 +138,7 @@ final class MetaLoadCssTest {
                 )
         );
         assertEquals(
-                "This variable was not declared with !default in the @used module.",
+                "$missing was not declared with !default in the @used module.",
                 failure.getMessage()
         );
     }

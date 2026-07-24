@@ -21,7 +21,7 @@ final class SelectorNestingTest {
         assertEquals("a b", nest("a", "b"));
         assertEquals("a:hover", nest("a", "&:hover"));
         assertEquals("a-child", nest("a", "&-child"));
-        assertEquals("a c, b c, a d, b d", nest("a, b", "c, d"));
+        assertEquals("a c, a d, b c, b d", nest("a, b", "c, d"));
         assertEquals("a > b", nest("a", "> b"));
         assertEquals(".foo.bar", nest(".foo", "&.bar"));
         assertEquals("a:hover, b:hover", nest("a, b", "&:hover"));

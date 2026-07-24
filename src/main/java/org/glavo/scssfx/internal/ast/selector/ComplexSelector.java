@@ -5,6 +5,7 @@ import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.value.SassValueException;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.ArrayList;
@@ -152,11 +153,103 @@ public record ComplexSelector(
         return new ComplexSelector(leadingCombinators, next, span);
     }
 
+    /// Returns whether this complex selector is omitted from emitted CSS.
+    ///
+    /// A complex selector is invisible when any of its compounds contains an
+    /// invisible simple selector, matching dart-sass {@code Selector.isInvisible}.
+    ///
+    /// @return whether CSS emission drops this complex selector
+    public boolean isInvisible() {
+        for (var component : components) {
+            if (component.selector().isInvisible()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Returns whether non-inspect CSS emission drops this complex selector.
+    ///
+    /// Top-level leading combinators such as {@code > a} still serialize (with a
+    /// deprecation). Relative selector arguments are omitted only inside
+    /// selector-taking pseudos that reject them ({@code :is}, {@code :where},
+    /// {@code :not}, {@code :matches}, {@code :any}). {@code :has()} keeps
+    /// relative arguments.
+    ///
+    /// @return whether non-inspect CSS emission drops this complex selector
+    public boolean isBogus() {
+        for (var component : components) {
+            for (var simple : component.selector().components()) {
+                if (simple instanceof PseudoSelector pseudo
+                        && rejectsRelativeSelectorArguments(pseudo)
+                        && selectorArgumentHasRelativeComplex(pseudo)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /// Returns whether a pseudo rejects relative selector-list arguments.
+    ///
+    /// @param pseudo the pseudo selector
+    /// @return whether relative arguments make the complex unemittable
+    private static boolean rejectsRelativeSelectorArguments(PseudoSelector pseudo) {
+        if (pseudo.element() || !(pseudo.argument() instanceof SelectorPseudoArgument)) {
+            return false;
+        }
+        var name = pseudo.name().value().toLowerCase(java.util.Locale.ROOT);
+        if (name.length() >= 2 && name.charAt(0) == '-' && name.charAt(1) != '-') {
+            for (var index = 2; index < name.length(); index++) {
+                if (name.charAt(index) == '-') {
+                    name = name.substring(index + 1);
+                    break;
+                }
+            }
+        }
+        return switch (name) {
+            case "is", "matches", "where", "any", "not" -> true;
+            default -> false;
+        };
+    }
+
+    /// Returns whether a selector-taking pseudo has any relative argument complex.
+    ///
+    /// @param pseudo the pseudo selector
+    /// @return whether an argument complex begins with a combinator
+    private static boolean selectorArgumentHasRelativeComplex(PseudoSelector pseudo) {
+        if (!(pseudo.argument() instanceof SelectorPseudoArgument selectorArgument)) {
+            return false;
+        }
+        for (var complex : selectorArgument.selectors().components()) {
+            if (!complex.leadingCombinators().isEmpty()) {
+                return true;
+            }
+            // Nested relative-rejecting pseudos also make the outer form unemittable.
+            if (complex.isBogus()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// Returns the CSS text of this complex selector.
     ///
     /// @return the serialized complex selector
     /// @throws SassValueException if an unresolved parent selector remains
     public String toCssString() {
+        return toCssString(true);
+    }
+
+    /// Returns the CSS text of this complex selector.
+    ///
+    /// When {@code inspect} is {@code false}, placeholders are omitted and
+    /// selector-taking pseudos are rewritten the way dart-sass serializes CSS.
+    ///
+    /// @param inspect whether placeholder selectors and full structure are retained
+    /// @return the serialized complex selector
+    /// @throws SassValueException if an unresolved parent selector remains
+    public String toCssString(boolean inspect) {
         var result = new StringBuilder();
         for (var combinator : leadingCombinators) {
             if (!result.isEmpty()) {
@@ -164,23 +257,65 @@ public record ComplexSelector(
             }
             result.append(combinator.css());
         }
-        for (var index = 0; index < components.size(); index++) {
-            var component = components.get(index);
+        for (var component : components) {
             if (!result.isEmpty()) {
                 result.append(' ');
             }
+            var compoundStart = result.length();
             for (var simple : component.selector().components()) {
                 if (simple.hasUnresolvedParentReference()) {
                     throw new SassValueException(
                             "Parent selectors aren't allowed here."
                     );
                 }
+                if (!inspect) {
+                    if (simple instanceof PlaceholderSelector) {
+                        continue;
+                    }
+                    if (simple instanceof PseudoSelector pseudo) {
+                        @Nullable String emitted = emitPseudo(pseudo);
+                        if (emitted == null) {
+                            continue;
+                        }
+                        result.append(emitted);
+                        continue;
+                    }
+                }
                 result.append(simple.toCssString());
+            }
+            if (!inspect && result.length() == compoundStart) {
+                // All simples were placeholders or omitted `:not(%…)` forms.
+                result.append('*');
             }
             for (var combinator : component.combinators()) {
                 result.append(' ').append(combinator.css());
             }
         }
+        return result.toString();
+    }
+
+    /// Serializes one pseudo selector for CSS emission.
+    ///
+    /// @param pseudo the pseudo selector
+    /// @return the emitted text, or {@code null} when the pseudo is omitted
+    private static @Nullable String emitPseudo(PseudoSelector pseudo) {
+        if (!(pseudo.argument() instanceof SelectorPseudoArgument selectorArgument)) {
+            return pseudo.toCssString();
+        }
+        var argumentList = selectorArgument.selectors();
+        var name = pseudo.name().value();
+        if ("not".equalsIgnoreCase(name) && argumentList.isInvisible()) {
+            return null;
+        }
+        var emittedArgs = argumentList.toCssString(false);
+        if (emittedArgs.isEmpty() && !"not".equalsIgnoreCase(name)) {
+            // Fully invisible selector-taking pseudos make the complex invisible;
+            // emission should not reach an empty non-`:not` argument list.
+            return null;
+        }
+        var result = new StringBuilder(pseudo.element() ? "::" : ":");
+        result.append(pseudo.name().toCssString());
+        result.append('(').append(emittedArgs).append(')');
         return result.toString();
     }
 }

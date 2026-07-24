@@ -6,7 +6,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 /// Parses plain CSS identifiers using the lexical rules shared by Sass.
 @NotNullByDefault
-final class CssIdentifierParser {
+public final class CssIdentifierParser {
     /// Prevents instantiation.
     private CssIdentifierParser() {
     }
@@ -40,7 +40,7 @@ final class CssIdentifierParser {
     ///
     /// @param text the text to inspect
     /// @return whether parsing the complete text succeeds
-    static boolean isIdentifier(String text) {
+    public static boolean isIdentifier(String text) {
         try {
             parse(text);
             return true;

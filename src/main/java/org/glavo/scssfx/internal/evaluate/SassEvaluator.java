@@ -43,6 +43,7 @@ import org.glavo.scssfx.internal.ast.NumberExpression;
 import org.glavo.scssfx.internal.ast.ParameterList;
 import org.glavo.scssfx.internal.ast.ParenthesizedExpression;
 import org.glavo.scssfx.internal.ast.ReturnRule;
+import org.glavo.scssfx.internal.ast.SelectorExpression;
 import org.glavo.scssfx.internal.ast.UseRule;
 import org.glavo.scssfx.internal.ast.SassExpression;
 import org.glavo.scssfx.internal.module.ConfiguredValue;
@@ -69,6 +70,7 @@ import org.glavo.scssfx.internal.ast.Stylesheet;
 import org.glavo.scssfx.internal.ast.TextInterpolationPart;
 import org.glavo.scssfx.internal.ast.StaticImport;
 import org.glavo.scssfx.internal.ast.UnaryOperationExpression;
+import org.glavo.scssfx.internal.ast.UnaryOperator;
 import org.glavo.scssfx.internal.ast.UnknownAtRule;
 import org.glavo.scssfx.internal.ast.VariableDeclaration;
 import org.glavo.scssfx.internal.ast.VariableExpression;
@@ -97,6 +99,7 @@ import org.glavo.scssfx.internal.css.CssParentNode;
 import org.glavo.scssfx.internal.css.CssStyleRule;
 import org.glavo.scssfx.internal.css.CssStylesheet;
 import org.glavo.scssfx.internal.css.CssValue;
+import org.glavo.scssfx.internal.value.CalculationOperation;
 import org.glavo.scssfx.internal.value.CalculationOperator;
 import org.glavo.scssfx.internal.value.ListSeparator;
 import org.glavo.scssfx.internal.value.SassArgumentList;
@@ -248,6 +251,14 @@ public final class SassEvaluator implements
     /// Contains `@extend` directives collected during the active module body.
     private final ArrayList<PendingExtension> pendingExtensions = new ArrayList<>();
 
+    /// Maps each style rule to the canonical URL of the module that defined it.
+    ///
+    /// Used so `@extend` only rewrites selectors visible to the extending module
+    /// (the defining module and its transitive upstream), matching dart-sass
+    /// module isolation.
+    private final IdentityHashMap<CssStyleRule, URI> styleRuleOrigins =
+            new IdentityHashMap<>();
+
     /// Creates an evaluator with an empty environment and no module loader.
     public SassEvaluator() {
         this(new Environment(), null);
@@ -345,7 +356,7 @@ public final class SassEvaluator implements
         collectExtensions(module, extensions, new IdentityHashMap<>());
         var styleRules = new ArrayList<CssStyleRule>();
         collectStyleRules(cssStylesheet, styleRules);
-        applyExtensions(styleRules, extensions);
+        applyExtensions(styleRules, extensions, module);
         return new LoadedModule(
                 module.url(),
                 module.variables(),
@@ -413,24 +424,34 @@ public final class SassEvaluator implements
         if (!stylesheetActive) {
             throw new IllegalStateException("legacy imports require active stylesheet execution");
         }
-        for (var child : imported.children()) {
-            if (child instanceof UseRule || child instanceof ForwardRule) {
-                throw new EvaluationException(
-                        "Module directives in files loaded through @import aren't supported.",
-                        child.span()
-                );
-            }
-        }
-
         var previousStylesheet = stylesheet;
         var previousUrl = currentUrl;
         var previousConfiguration = currentConfiguration;
         stylesheet = imported;
         currentUrl = url;
-        currentConfiguration = ModuleConfiguration.empty();
+        // Keep the active import configuration so @forward in imported files can
+        // apply configured !default values the way dart-sass does for
+        // import-to-forward chains.
+        currentConfiguration = previousConfiguration == null
+                ? ModuleConfiguration.empty()
+                : previousConfiguration;
         diagnostics.addAll(imported.parseTimeWarnings());
         try {
             for (var child : imported.children()) {
+                if (child instanceof ForwardRule forward) {
+                    // @forward inside an @import-ed file loads the target as another
+                    // legacy import so its public members become visible to the
+                    // importer. Full module-boundary forwarding remains separate.
+                    executeForwardAsLegacyImport(forward);
+                    continue;
+                }
+                if (child instanceof UseRule use) {
+                    // dart-sass still evaluates @use inside @import-ed files so
+                    // the used module's CSS is included and its members remain
+                    // available to the imported file under their namespace.
+                    visitUseRule(use);
+                    continue;
+                }
                 child.accept(this);
             }
             for (var entry : imported.globalVariables().entrySet()) {
@@ -450,6 +471,32 @@ public final class SassEvaluator implements
             currentUrl = previousUrl;
             currentConfiguration = previousConfiguration;
         }
+    }
+
+    /// Loads a {@code @forward} target as a legacy import into the current
+    /// environment.
+    ///
+    /// Used when the containing stylesheet itself was loaded by {@code @import}.
+    /// Members of the forwarded file become visible to the importer without a
+    /// module namespace, matching dart-sass import-to-forward chains for the
+    /// unprefixed plain-forward form used by most sass-spec fixtures.
+    ///
+    /// @param forward the forward rule
+    private void executeForwardAsLegacyImport(ForwardRule forward) {
+        if (moduleRegistry == null) {
+            throw new EvaluationException(
+                    "Module loading isn't available.",
+                    forward.span()
+            );
+        }
+        // Prefix / show / hide filters are not applied in this import path yet;
+        // plain {@code @forward "url"} is the form required by residual specs.
+        moduleRegistry.loadImport(
+                forward.url(),
+                currentUrl,
+                forward.span(),
+                this
+        );
     }
 
     /// Executes one stylesheet body, optionally retaining the resulting state.
@@ -696,12 +743,12 @@ public final class SassEvaluator implements
     private static void assertConfigurationConsumed(
             ModuleConfiguration configuration
     ) {
-        @Nullable ConfiguredValue unused = configuration.firstUnused();
+        @Nullable var unused = configuration.firstUnusedEntry();
         if (unused != null && configuration.isExplicit()) {
             throw new EvaluationException(
-                    "This variable was not declared with !default in the "
-                            + "@used module.",
-                    unused.configurationSpan()
+                    "$" + unused.getKey()
+                            + " was not declared with !default in the @used module.",
+                    unused.getValue().configurationSpan()
             );
         }
     }
@@ -741,7 +788,7 @@ public final class SassEvaluator implements
                 var supports = evaluateSupportsCondition(staticImport.supports()).strip();
                 if (supports.isEmpty()) {
                     throw new EvaluationException(
-                            "Expected supports condition.",
+                            "Expected @supports condition.",
                             staticImport.supports().span()
                     );
                 }
@@ -972,7 +1019,12 @@ public final class SassEvaluator implements
 
         @Unmodifiable List<CssMediaQuery> queries;
         try {
-            queries = CssMediaQuery.parseList(performInterpolation(statement.query()));
+            // Plain (non-interpolated) media queries normalize nested and/or/not
+            // keywords like dart-sass; interpolated text keeps author casing.
+            queries = CssMediaQuery.parseList(
+                    performInterpolation(statement.query()),
+                    statement.query().asPlain() != null
+            );
         } catch (SassValueException cause) {
             throw new EvaluationException(
                     Objects.requireNonNull(cause.getMessage(), "media query failure message"),
@@ -1094,7 +1146,7 @@ public final class SassEvaluator implements
         var condition = evaluateSupportsCondition(statement.condition()).strip();
         if (condition.isEmpty()) {
             throw new EvaluationException(
-                    "Expected supports condition.",
+                    "Expected @supports condition.",
                     statement.condition().span()
             );
         }
@@ -1166,7 +1218,7 @@ public final class SassEvaluator implements
     /// @return the continue result
     @Override
     public StatementResult visitUnknownAtRule(UnknownAtRule statement) {
-        var name = statement.name();
+        var name = performInterpolation(statement.name()).strip();
         var rule = new CssUnknownAtRule(
                 name,
                 performInterpolation(statement.value()).strip(),
@@ -1196,7 +1248,7 @@ public final class SassEvaluator implements
             if (nestInPlace
                     || activeStyleRule == null
                     || inKeyframes
-                    || name.equals("font-face")) {
+                    || name.equalsIgnoreCase("font-face")) {
                 for (var child : statement.children()) {
                     child.accept(this);
                 }
@@ -1269,7 +1321,11 @@ public final class SassEvaluator implements
         var selectorText = performInterpolation(statement.selector());
         SelectorList parsed;
         try {
-            parsed = SelectorList.parse(selectorText, statement.selector().span());
+            parsed = SelectorList.parse(
+                    selectorText,
+                    statement.selector().span(),
+                    isPlainCss()
+            );
         } catch (SassValueException cause) {
             throw new EvaluationException(
                     Objects.requireNonNull(cause.getMessage(), "selector failure message"),
@@ -1281,6 +1337,22 @@ public final class SassEvaluator implements
         if (isPlainCss() && containsPlaceholderSelector(parsed)) {
             throw new EvaluationException(
                     "Placeholder selectors aren't allowed in plain CSS.",
+                    statement.selector().span()
+            );
+        }
+        if (isPlainCss() && parsed.hasParentSelectorSuffix()) {
+            throw new EvaluationException(
+                    "Parent selectors can't have suffixes in plain CSS.",
+                    statement.selector().span()
+            );
+        }
+        // Top-level leading combinators are legal relative selectors in Sass
+        // (with deprecation) but forbidden when the source is plain CSS.
+        if (isPlainCss()
+                && (styleRuleForParent == null || atRootExcludingStyleRule)
+                && hasLeadingCombinator(parsed)) {
+            throw new EvaluationException(
+                    "Top-level leading combinators aren't allowed in plain CSS.",
                     statement.selector().span()
             );
         }
@@ -1352,6 +1424,7 @@ public final class SassEvaluator implements
                 statement.span(),
                 isPlainCss()
         );
+        styleRuleOrigins.put(rule, currentUrl);
         addCssChild(rule, merge);
         if (!isPlainCss()) {
             extendableStyleRules.add(rule);
@@ -1422,6 +1495,7 @@ public final class SassEvaluator implements
                 target,
                 statement.optional(),
                 mediaQueries,
+                currentUrl,
                 statement.span()
         ));
         return StatementResult.CONTINUE;
@@ -1556,30 +1630,46 @@ public final class SassEvaluator implements
     ///
     /// @param styleRules  every style rule in the combined CSS tree
     /// @param extensions  every extension from the module graph
+    /// @param root        the entry module used for upstream reachability
     private void applyExtensions(
             List<CssStyleRule> styleRules,
-            List<PendingExtension> extensions
+            List<PendingExtension> extensions,
+            LoadedModule root
     ) {
         if (extensions.isEmpty()) {
             return;
         }
+        var modulesByUrl = indexModulesByUrl(root);
         for (var extension : extensions) {
-            var matched = false;
+            var found = false;
             for (var rule : styleRules) {
-                matched |= applyExtensionToRule(extension, rule, true);
+                var result = applyExtensionToRule(
+                        extension,
+                        rule,
+                        true,
+                        modulesByUrl
+                );
+                found |= result.found();
             }
             // Fixed-point for extension chains introduced by earlier matches.
             var changed = true;
             while (changed) {
                 changed = false;
                 for (var rule : styleRules) {
-                    if (applyExtensionToRule(extension, rule, false)) {
-                        matched = true;
-                        changed = true;
-                    }
+                    var result = applyExtensionToRule(
+                            extension,
+                            rule,
+                            false,
+                            modulesByUrl
+                    );
+                    found |= result.found();
+                    changed |= result.changed();
                 }
             }
-            if (!matched && !extension.optional()) {
+            // "Found" means a matching compound existed, even when unification
+            // produced no additional selector alternative (namespace/universal
+            // cases that keep the original form only).
+            if (!found && !extension.optional()) {
                 throw new EvaluationException(
                         "The target selector was not found.\n"
                                 + "Use \"@extend " + extension.target().toCssString()
@@ -1596,18 +1686,142 @@ public final class SassEvaluator implements
         }
     }
 
+    /// Indexes every module in the dependency graph by canonical URL.
+    private static Map<URI, LoadedModule> indexModulesByUrl(LoadedModule root) {
+        var result = new LinkedHashMap<URI, LoadedModule>();
+        var seen = new IdentityHashMap<LoadedModule, Boolean>();
+        indexModulesByUrl(root, result, seen);
+        return result;
+    }
+
+    private static void indexModulesByUrl(
+            LoadedModule module,
+            Map<URI, LoadedModule> result,
+            IdentityHashMap<LoadedModule, Boolean> seen
+    ) {
+        if (seen.put(module, Boolean.TRUE) != null) {
+            return;
+        }
+        if (module.url() != null) {
+            result.putIfAbsent(module.url(), module);
+        }
+        for (var upstream : module.upstream()) {
+            indexModulesByUrl(upstream, result, seen);
+        }
+    }
+
+    /// Returns whether an extension from {@code originUrl} may rewrite a rule
+    /// defined in {@code ruleUrl}.
+    ///
+    /// An extension sees its own module and every module that module transitively
+    /// {@code @use}s. Sibling modules are invisible to each other.
+    private static boolean moduleCanExtend(
+            @Nullable URI originUrl,
+            @Nullable URI ruleUrl,
+            Map<URI, LoadedModule> modulesByUrl
+    ) {
+        if (Objects.equals(originUrl, ruleUrl)) {
+            return true;
+        }
+        // Anonymous roots can see every rule in the final combined stylesheet.
+        if (originUrl == null) {
+            return true;
+        }
+        @Nullable LoadedModule origin = modulesByUrl.get(originUrl);
+        if (origin == null) {
+            return Objects.equals(originUrl, ruleUrl);
+        }
+        return moduleReachable(origin, ruleUrl, new IdentityHashMap<>());
+    }
+
+    /// Returns whether {@code ruleUrl} is {@code module} or one of its upstreams.
+    private static boolean moduleReachable(
+            LoadedModule module,
+            @Nullable URI ruleUrl,
+            IdentityHashMap<LoadedModule, Boolean> seen
+    ) {
+        if (seen.put(module, Boolean.TRUE) != null) {
+            return false;
+        }
+        if (Objects.equals(module.url(), ruleUrl)) {
+            return true;
+        }
+        for (var upstream : module.upstream()) {
+            if (moduleReachable(upstream, ruleUrl, seen)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Returns whether an extension target is private to its defining module.
+    ///
+    /// Private selectors are placeholders, classes, or IDs whose names begin with
+    /// {@code -} or {@code _}.
+    private static boolean isPrivateTarget(SelectorList target) {
+        for (var complex : target.components()) {
+            for (var component : complex.components()) {
+                for (var simple : component.selector().components()) {
+                    if (isPrivateSimple(simple)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean isPrivateSimple(
+            org.glavo.scssfx.internal.ast.selector.SimpleSelector simple
+    ) {
+        String name;
+        if (simple instanceof org.glavo.scssfx.internal.ast.selector.PlaceholderSelector placeholder) {
+            name = placeholder.name().value();
+        } else if (simple instanceof org.glavo.scssfx.internal.ast.selector.ClassSelector classSelector) {
+            name = classSelector.name().value();
+        } else if (simple instanceof org.glavo.scssfx.internal.ast.selector.IdSelector idSelector) {
+            name = idSelector.name().value();
+        } else {
+            return false;
+        }
+        return !name.isEmpty() && (name.charAt(0) == '-' || name.charAt(0) == '_');
+    }
+
+    /// Result of attempting to apply one extension to one style rule.
+    ///
+    /// @param found   whether the extension target matched a compound in the rule
+    /// @param changed whether the rule selector was rewritten
+    private record ExtensionApplyResult(boolean found, boolean changed) {
+        static final ExtensionApplyResult NONE = new ExtensionApplyResult(false, false);
+        static final ExtensionApplyResult FOUND_ONLY = new ExtensionApplyResult(true, false);
+    }
+
     /// Applies one extension to one style rule when media contexts allow it.
     ///
     /// @param extension     the pending extension
     /// @param rule          the candidate style rule
     /// @param rejectCrossMedia whether a cross-media match should error
-    /// @return whether the rule selector changed
-    private boolean applyExtensionToRule(
+    /// @param modulesByUrl  modules keyed by canonical URL for visibility checks
+    /// @return whether the target was found and whether the rule selector changed
+    private ExtensionApplyResult applyExtensionToRule(
             PendingExtension extension,
             CssStyleRule rule,
-            boolean rejectCrossMedia
+            boolean rejectCrossMedia,
+            Map<URI, LoadedModule> modulesByUrl
     ) {
+        @Nullable URI ruleOrigin = styleRuleOrigins.get(rule);
+        // Private targets may only be extended inside the defining module.
+        if (isPrivateTarget(extension.target())
+                && !Objects.equals(extension.originUrl(), ruleOrigin)) {
+            return ExtensionApplyResult.NONE;
+        }
+        if (!moduleCanExtend(extension.originUrl(), ruleOrigin, modulesByUrl)) {
+            return ExtensionApplyResult.NONE;
+        }
         var before = rule.selector().value();
+        if (!SelectorAlgebra.containsExtendee(before, extension.target())) {
+            return ExtensionApplyResult.NONE;
+        }
         SelectorList after;
         try {
             after = SelectorAlgebra.extend(
@@ -1624,7 +1838,7 @@ public final class SassEvaluator implements
             );
         }
         if (selectorCssEquals(before, after)) {
-            return false;
+            return ExtensionApplyResult.FOUND_ONLY;
         }
         if (!mediaContextsCompatible(extension.mediaContext(), mediaContextOf(rule))) {
             if (rejectCrossMedia) {
@@ -1633,10 +1847,11 @@ public final class SassEvaluator implements
                         extension.span()
                 );
             }
-            return false;
+            // Target matched but media forbids rewriting; still counts as found.
+            return ExtensionApplyResult.FOUND_ONLY;
         }
         rule.setSelector(new CssValue<>(after, rule.selector().span()));
-        return true;
+        return new ExtensionApplyResult(true, true);
     }
 
     /// Returns the innermost media-query list enclosing a style rule.
@@ -1677,11 +1892,21 @@ public final class SassEvaluator implements
         return left.toCssString().equals(right.toCssString());
     }
 
-    /// Removes pure-placeholder complexes from a selector list.
+    /// Removes CSS-invisible complexes from a selector list after extensions.
+    ///
+    /// Invisible complexes include pure placeholders, compounds that contain
+    /// placeholders, and selector-taking pseudos other than {@code :not} whose
+    /// arguments are entirely invisible. Remaining complexes still retain
+    /// placeholders inside {@code :not} and mixed selector-taking pseudos; CSS
+    /// serialization drops or rewrites those forms when emitting output.
     private static SelectorList stripPlaceholderComplexes(SelectorList selectors) {
+        if (!selectors.isInvisible()
+                && selectors.components().stream().noneMatch(ComplexSelector::isInvisible)) {
+            return selectors;
+        }
         var kept = new ArrayList<ComplexSelector>();
         for (var complex : selectors.components()) {
-            if (!isPurePlaceholderComplex(complex)) {
+            if (!complex.isInvisible()) {
                 kept.add(complex);
             }
         }
@@ -1689,19 +1914,6 @@ public final class SassEvaluator implements
             return selectors;
         }
         return new SelectorList(kept, selectors.span());
-    }
-
-    /// Returns whether a complex selector is a lone placeholder compound.
-    private static boolean isPurePlaceholderComplex(ComplexSelector complex) {
-        if (!complex.leadingCombinators().isEmpty() || complex.components().size() != 1) {
-            return false;
-        }
-        var compound = complex.components().get(0);
-        if (!compound.combinators().isEmpty()) {
-            return false;
-        }
-        var simples = compound.selector().components();
-        return simples.size() == 1 && simples.get(0) instanceof PlaceholderSelector;
     }
 
     /// Returns whether the active CSS position already uses native nesting.
@@ -1739,6 +1951,19 @@ public final class SassEvaluator implements
         return false;
     }
 
+    /// Returns whether any complex selector begins with a leading combinator.
+    ///
+    /// @param selectors the selector list to inspect
+    /// @return whether a leading combinator is present
+    private static boolean hasLeadingCombinator(SelectorList selectors) {
+        for (var complex : selectors.components()) {
+            if (!complex.leadingCombinators().isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// Evaluates a property name and value and writes a CSS declaration.
     ///
     /// Nested property blocks prefix child names with the parent name. Blank
@@ -1752,7 +1977,7 @@ public final class SassEvaluator implements
                 && fontFace == null
                 && !(requireCssParent() instanceof CssUnknownAtRule)) {
             throw new EvaluationException(
-                    "Declarations may only be used within style rules or @font-face rules.",
+                    "Declarations may only be used within style rules.",
                     statement.span()
             );
         }
@@ -1824,6 +2049,12 @@ public final class SassEvaluator implements
     /// @return the continue result, [StatementResult#CONTINUE]
     @Override
     public StatementResult visitVariableDeclaration(VariableDeclaration statement) {
+        if (isPlainCss()) {
+            throw new EvaluationException(
+                    "Sass variables aren't allowed in plain CSS.",
+                    statement.nameSpan()
+            );
+        }
         if (statement.isGuarded()) {
             if (statement.namespace() == null && environment.atRoot()) {
                 environment.markVariableConfigurable(statement.name());
@@ -2211,6 +2442,53 @@ public final class SassEvaluator implements
         return SassNull.NULL;
     }
 
+    /// Evaluates a parent-selector expression as the current style-rule selector.
+    ///
+    /// The returned value uses the same nested list form as
+    /// {@code selector.parse()}, so comparisons such as {@code & == $sel}
+    /// work with selector-function results.
+    ///
+    /// @param expression the parent-selector expression
+    /// @return a comma-separated list of space-separated complex selectors
+    /// @throws EvaluationException when {@code &} is used outside a style rule
+    @Override
+    public SassValue visitSelectorExpression(SelectorExpression expression) {
+        Objects.requireNonNull(expression, "expression");
+        if (styleRuleForParent == null) {
+            // dart-sass: parent selectors aren't available outside style rules
+            // when evaluating {@code &} as a value.
+            throw new EvaluationException(
+                    "Parent selectors aren't allowed here.",
+                    expression.span()
+            );
+        }
+        return selectorListAsSassValue(styleRuleForParent.selector().value());
+    }
+
+    /// Converts a resolved selector list into Sass's nested list representation.
+    ///
+    /// @param selector the style-rule selector
+    /// @return a comma-separated list of space-separated complex-selector parts
+    private static SassList selectorListAsSassValue(
+            org.glavo.scssfx.internal.ast.selector.SelectorList selector
+    ) {
+        var complexes = new ArrayList<SassValue>();
+        for (var complex : selector.components()) {
+            var parts = new ArrayList<SassValue>();
+            for (var combinator : complex.leadingCombinators()) {
+                parts.add(new SassString(combinator.css(), false));
+            }
+            for (var component : complex.components()) {
+                parts.add(new SassString(component.selector().toCssString(), false));
+                for (var combinator : component.combinators()) {
+                    parts.add(new SassString(combinator.css(), false));
+                }
+            }
+            complexes.add(new SassList(parts, ListSeparator.SPACE, false));
+        }
+        return new SassList(complexes, ListSeparator.COMMA, false);
+    }
+
     /// Resolves a variable from the current lexical or module environment.
     ///
     /// @param expression the variable reference
@@ -2218,6 +2496,12 @@ public final class SassEvaluator implements
     /// @throws EvaluationException if the variable or namespace is undefined
     @Override
     public SassValue visitVariableExpression(VariableExpression expression) {
+        if (isPlainCss()) {
+            throw new EvaluationException(
+                    "Sass variables aren't allowed in plain CSS.",
+                    expression.span()
+            );
+        }
         @Nullable VariableBinding binding = nullableValueOperation(
                 expression.span(),
                 () -> environment.findVariable(expression.name(), expression.namespace())
@@ -2357,8 +2641,15 @@ public final class SassEvaluator implements
                         expression.span()
                 );
             }
+            // Reject Sass-only argument forms before any plain-CSS callable path.
+            assertPlainCssArguments(expression.arguments(), expression.span());
             if (PLAIN_CSS_CALCULATION_FUNCTIONS.contains(name)) {
-                return new SassString(expression.span().text(), false);
+                assertPlainCssCalculationCall(expression);
+                // Evaluate calculations so simplifiable forms such as
+                // {@code calc(1px)} become {@code 1px}. Non-simplifying
+                // operations keep a calculation value that serializes with the
+                // same operators; spacing may differ slightly from source.
+                return visitCalculation(expression, null);
             }
             return runCallable(
                     new PlainCssCallable(expression.originalName()),
@@ -2367,19 +2658,7 @@ public final class SassEvaluator implements
             );
         }
 
-        if (expression.namespace() == null) {
-            var lowerName = expression.name().toLowerCase(java.util.Locale.ROOT);
-            if (CALCULATION_FUNCTIONS.contains(lowerName)) {
-                return visitCalculation(expression, null);
-            }
-            if (LEGACY_CALCULATION_FUNCTIONS.contains(lowerName)
-                    && expression.arguments().named().isEmpty()
-                    && expression.arguments().rest() == null
-                    && expression.arguments().positional().stream().allMatch(this::isCalculationSafe)) {
-                return visitCalculation(expression, lowerName);
-            }
-        }
-
+        // Local/user-defined functions shadow calculation and built-in names.
         @Nullable Callable callable;
         try {
             callable = environment.getFunction(expression.name(), expression.namespace());
@@ -2392,6 +2671,19 @@ public final class SassEvaluator implements
             );
         }
         if (callable == null && expression.namespace() == null) {
+            var lowerName = expression.name().toLowerCase(java.util.Locale.ROOT);
+            if (CALCULATION_FUNCTIONS.contains(lowerName)) {
+                return visitCalculation(expression, null);
+            }
+            if (LEGACY_CALCULATION_FUNCTIONS.contains(lowerName)
+                    && expression.arguments().named().isEmpty()
+                    && expression.arguments().rest() == null
+                    && expression.arguments().positional().stream().allMatch(this::isCalculationSafe)) {
+                // Global min/max/round/abs use calculation evaluation when every
+                // argument is calculation-safe, with legacy unitless mixing allowed
+                // inside operate() for deprecation compatibility with dart-sass.
+                return visitCalculation(expression, lowerName);
+            }
             callable = BUILT_IN_FUNCTIONS.get(expression.name());
         }
         if (callable == null && expression.namespace() == null) {
@@ -2539,6 +2831,12 @@ public final class SassEvaluator implements
                     + "(" + performInterpolation(function.arguments()) + ")";
         }
         if (condition instanceof IfConditionExpression.Sass sass) {
+            if (isPlainCss()) {
+                throw new EvaluationException(
+                        "sass() conditions aren't allowed in plain CSS",
+                        sass.span()
+                );
+            }
             return evaluate(sass.expression()).isTruthy();
         }
         if (condition instanceof IfConditionExpression.Raw raw) {
@@ -2587,6 +2885,12 @@ public final class SassEvaluator implements
 
     /// Evaluates one division and applies slash-presentation compatibility rules.
     ///
+    /// Number/number pairs with {@code allowsSlash} retain slash-number
+    /// presentation so CSS color channel parsers can recover alpha from the
+    /// last space-list element. Non-numeric pairs fall through to the default
+    /// slash-string join ({@code 50%/none}, {@code var(--a)/0.4}) which color
+    /// constructors split again.
+    ///
     /// @param left       the evaluated left operand
     /// @param right      the evaluated right operand
     /// @param expression the division expression
@@ -2625,15 +2929,29 @@ public final class SassEvaluator implements
 
     /// Returns whether an operand may participate in slash-number presentation.
     ///
-    /// Calculation forms such as {@code calc(infinity)} evaluate to numbers and
-    /// still participate in slash-alpha presentation used by CSS color channels.
-    /// Interpolated function names remain excluded because their results are not
-    /// stable number values at evaluation time.
+    /// Pure CSS calculation functions keep slash presentation so forms such as
+    /// {@code calc(1)/0.5} remain slash-separated numbers for color channels.
+    /// Legacy global math ({@code abs}/{@code min}/{@code max}/{@code round}) and
+    /// user-defined functions force real division, matching dart-sass.
     ///
     /// @param expression the unevaluated operand
     /// @return whether slash presentation is permitted
-    private static boolean operandAllowsSlash(SassExpression expression) {
-        return !(expression instanceof InterpolatedFunctionExpression);
+    private boolean operandAllowsSlash(SassExpression expression) {
+        if (!(expression instanceof FunctionExpression function)) {
+            return true;
+        }
+        if (function.namespace() != null) {
+            return false;
+        }
+        var lower = function.name().toLowerCase(java.util.Locale.ROOT);
+        if (!CALCULATION_FUNCTIONS.contains(lower)) {
+            return false;
+        }
+        try {
+            return environment.getFunction(function.name(), null) == null;
+        } catch (SassValueException ignored) {
+            return false;
+        }
     }
 
     /// Evaluates a structured supports condition to canonical CSS text.
@@ -2656,6 +2974,9 @@ public final class SassEvaluator implements
         if (condition instanceof SupportsDeclaration declaration) {
             var name = evaluateSupportsValue(declaration.name());
             var value = evaluateSupportsValue(declaration.value());
+            // Custom-property values already include post-colon whitespace/comments
+            // captured by the parser, so only a bare colon is emitted. Ordinary
+            // declarations use the canonical ": " separator.
             return "(" + name
                     + (declaration.customProperty() ? ":" : ": ")
                     + value + ")";
@@ -2921,8 +3242,13 @@ public final class SassEvaluator implements
         }
         if (callable instanceof PlainCssCallable plainCss) {
             if (!evaluated.named().isEmpty()) {
+                // In plain CSS sources, {@code $name:} is reported as a Sass
+                // variable. In SCSS, unknown CSS functions reject keywords
+                // with the plain-CSS callable diagnostic.
                 throw new EvaluationException(
-                        "Plain CSS functions don't support keyword arguments.",
+                        isPlainCss()
+                                ? "Sass variables aren't allowed in plain CSS."
+                                : "Plain CSS functions don't support keyword arguments.",
                         span
                 );
             }
@@ -3133,6 +3459,9 @@ public final class SassEvaluator implements
                 rule.span(),
                 rule.fromPlainCss()
         );
+        // load-css injects foreign CSS into the caller's stylesheet, so for
+        // @extend visibility the cloned rules belong to the caller.
+        styleRuleOrigins.put(injected, currentUrl);
         addCssChild(injected, merge);
         if (!isPlainCss()) {
             extendableStyleRules.add(injected);
@@ -3813,16 +4142,17 @@ public final class SassEvaluator implements
                     expression.span()
             );
         }
+        checkCalculationArguments(expression);
         try {
             var calcArgs = new ArrayList<Object>(arguments.positional().size());
             for (var argument : arguments.positional()) {
-                calcArgs.add(visitCalculationExpression(argument));
+                calcArgs.add(visitCalculationExpression(argument, inLegacySassFunction));
             }
             var name = expression.name().toLowerCase(java.util.Locale.ROOT);
             if (inSupportsDeclaration) {
                 return SassCalculation.unsimplified(name, calcArgs);
             }
-            return simplifyCalculation(name, calcArgs);
+            return simplifyCalculation(name, calcArgs, inLegacySassFunction, expression.span());
         } catch (SassValueException exception) {
             throw new EvaluationException(
                     Objects.requireNonNull(exception.getMessage(), "calculation failure"),
@@ -3833,10 +4163,55 @@ public final class SassEvaluator implements
         }
     }
 
+    /// Verifies that a calculation call has a dart-sass-compatible argument count.
+    ///
+    /// @param expression the calculation call
+    private void checkCalculationArguments(FunctionExpression expression) {
+        var name = expression.name().toLowerCase(java.util.Locale.ROOT);
+        int count = expression.arguments().positional().size();
+        @Nullable Integer maxArgs = switch (name) {
+            case "calc", "sqrt", "sin", "cos", "tan", "asin", "acos", "atan",
+                    "abs", "exp", "sign" -> 1;
+            case "min", "max", "hypot" -> null;
+            case "pow", "atan2", "log", "mod", "rem", "calc-size" -> 2;
+            case "round", "clamp" -> 3;
+            default -> throw new EvaluationException(
+                    "Unknown calculation " + name + "().",
+                    expression.span()
+            );
+        };
+        if (count == 0) {
+            throw new EvaluationException("Missing argument.", expression.span());
+        }
+        if (maxArgs != null && count > maxArgs) {
+            throw new EvaluationException(
+                    "Only " + maxArgs + " argument" + (maxArgs == 1 ? "" : "s")
+                            + " allowed, but " + count
+                            + (count == 1 ? " was" : " were") + " passed.",
+                    expression.span()
+            );
+        }
+    }
+
     /// Evaluates one expression as a calculation argument.
     private Object visitCalculationExpression(SassExpression expression) {
+        return visitCalculationExpression(expression, null);
+    }
+
+    /// Evaluates one expression as a calculation argument with optional legacy mode.
+    ///
+    /// @param expression             the argument expression
+    /// @param inLegacySassFunction   the legacy global function name, or {@code null}
+    /// @return a calculation operand
+    private Object visitCalculationExpression(
+            SassExpression expression,
+            @Nullable String inLegacySassFunction
+    ) {
         if (expression instanceof ParenthesizedExpression parenthesized) {
-            Object inner = visitCalculationExpression(parenthesized.expression());
+            Object inner = visitCalculationExpression(
+                    parenthesized.expression(),
+                    inLegacySassFunction
+            );
             if (inner instanceof SassString string && !string.hasQuotes()) {
                 return new SassString("(" + string.text() + ")", false);
             }
@@ -3864,14 +4239,19 @@ public final class SassEvaluator implements
                 case DIVIDED_BY -> CalculationOperator.DIVIDED_BY;
                 default -> throw new EvaluationException(
                         "This operation can't be used in a calculation.",
-                        binary.span()
+                        binary.operatorSpan()
                 );
             };
+            if (operator == CalculationOperator.PLUS || operator == CalculationOperator.MINUS) {
+                assertCalculationSumWhitespace(binary);
+            }
             try {
                 return SassCalculation.operate(
                         operator,
-                        visitCalculationExpression(binary.left()),
-                        visitCalculationExpression(binary.right())
+                        visitCalculationExpression(binary.left(), inLegacySassFunction),
+                        visitCalculationExpression(binary.right(), inLegacySassFunction),
+                        inLegacySassFunction,
+                        message -> reportDeprecation(message, "global-builtin", binary.span())
                 );
             } catch (SassValueException exception) {
                 throw new EvaluationException(
@@ -3894,7 +4274,7 @@ public final class SassEvaluator implements
                 return string;
             }
             throw new EvaluationException(
-                    "Value " + result + " can't be used in a calculation.",
+                    "Value " + inspectCalculationValue(result) + " can't be used in a calculation.",
                     expression.span()
             );
         }
@@ -3902,23 +4282,112 @@ public final class SassEvaluator implements
                 && !list.hasBrackets()
                 && list.separator() == ListSeparator.SPACE
                 && list.contents().size() > 1) {
-            // Space-separated multi-value lists become unquoted strings in calc context.
+            var elements = new ArrayList<Object>(list.contents().size());
+            for (var element : list.contents()) {
+                elements.add(visitCalculationExpression(element, inLegacySassFunction));
+            }
+            checkAdjacentCalculationValues(elements, list);
+            for (var index = 0; index < elements.size(); index++) {
+                if (elements.get(index) instanceof CalculationOperation
+                        && list.contents().get(index) instanceof ParenthesizedExpression) {
+                    elements.set(
+                            index,
+                            new SassString("(" + elements.get(index) + ")", false)
+                    );
+                }
+            }
             var builder = new StringBuilder();
-            for (var index = 0; index < list.contents().size(); index++) {
+            for (var index = 0; index < elements.size(); index++) {
                 if (index > 0) {
                     builder.append(' ');
                 }
-                Object element = visitCalculationExpression(list.contents().get(index));
-                builder.append(element instanceof SassValue value
-                        ? value.toCssString()
-                        : String.valueOf(element));
+                Object element = elements.get(index);
+                if (element instanceof SassString string && !string.hasQuotes()) {
+                    builder.append(string.text());
+                } else if (element instanceof SassNumber number) {
+                    builder.append(number.toCalculationCssString());
+                } else if (element instanceof SassCalculation calculation) {
+                    builder.append(calculation.toCssString());
+                } else {
+                    builder.append(element);
+                }
             }
             return new SassString(builder.toString(), false);
         }
         throw new EvaluationException(
-                "Value can't be used in a calculation.",
+                "This expression can't be used in a calculation.",
                 expression.span()
         );
+    }
+
+    /// Requires an explicit operator between adjacent non-string calculation values.
+    ///
+    /// @param elements the evaluated space-list elements
+    /// @param list     the original space list expression
+    private void checkAdjacentCalculationValues(
+            List<Object> elements,
+            ListExpression list
+    ) {
+        for (var index = 1; index < elements.size(); index++) {
+            Object previous = elements.get(index - 1);
+            Object current = elements.get(index);
+            if (previous instanceof SassString || current instanceof SassString) {
+                continue;
+            }
+            var currentNode = list.contents().get(index);
+            if (currentNode instanceof UnaryOperationExpression unary
+                    && (unary.operator() == UnaryOperator.PLUS
+                    || unary.operator() == UnaryOperator.MINUS)) {
+                throw new EvaluationException(
+                        "\"+\" and \"-\" must be surrounded by whitespace in calculations.",
+                        unary.span()
+                );
+            }
+            if (currentNode instanceof NumberExpression number) {
+                var text = number.span().text();
+                if (!text.isEmpty()
+                        && (text.charAt(0) == '-' || text.charAt(0) == '+')) {
+                    throw new EvaluationException(
+                            "\"+\" and \"-\" must be surrounded by whitespace in calculations.",
+                            number.span()
+                    );
+                }
+            }
+            throw new EvaluationException(
+                    "Missing math operator.",
+                    list.span()
+            );
+        }
+    }
+
+    /// Requires whitespace on both sides of a calculation {@code +} or {@code -}.
+    ///
+    /// @param binary the addition or subtraction operation
+    private static void assertCalculationSumWhitespace(BinaryOperationExpression binary) {
+        var leftEnd = binary.left().span().end().offset();
+        var operatorStart = binary.operatorSpan().start().offset();
+        var operatorEnd = binary.operatorSpan().end().offset();
+        var rightStart = binary.right().span().start().offset();
+        if (operatorStart <= leftEnd || rightStart <= operatorEnd) {
+            throw new EvaluationException(
+                    "\"+\" and \"-\" must be surrounded by whitespace in calculations.",
+                    binary.operatorSpan()
+            );
+        }
+    }
+
+    /// Returns the inspect form used in calculation value diagnostics.
+    ///
+    /// Multi-element space-separated lists are parenthesized to match dart-sass
+    /// ({@code Value (1 2 3) can't be used in a calculation.}).
+    private static String inspectCalculationValue(SassValue value) {
+        if (value instanceof SassList list
+                && !list.hasBrackets()
+                && list.separator() == ListSeparator.SPACE
+                && list.contents().size() > 1) {
+            return "(" + list + ")";
+        }
+        return value.toString();
     }
 
     /// Returns whether an expression is valid in a CSS calculation argument.
@@ -3954,7 +4423,12 @@ public final class SassEvaluator implements
     }
 
     /// Dispatches a calculation by name to the matching simplifier.
-    private static SassValue simplifyCalculation(String name, List<Object> args) {
+    private SassValue simplifyCalculation(
+            String name,
+            List<Object> args,
+            @Nullable String inLegacySassFunction,
+            SourceSpan span
+    ) {
         return switch (name) {
             case "calc" -> {
                 if (args.size() != 1) {
@@ -3967,49 +4441,49 @@ public final class SassEvaluator implements
             }
             case "sqrt" -> SassCalculation.singleArgument(
                     "sqrt",
-                    onlyArg(args, "sqrt"),
+                    unaryArg(args),
                     number -> SassNumber.of(Math.sqrt(number.assertNoUnits().value()), null),
                     true
             );
             case "sin" -> SassCalculation.singleArgument(
                     "sin",
-                    onlyArg(args, "sin"),
+                    unaryArg(args),
                     number -> SassNumber.of(Math.sin(calculationRadians(number)), null),
                     false
             );
             case "cos" -> SassCalculation.singleArgument(
                     "cos",
-                    onlyArg(args, "cos"),
+                    unaryArg(args),
                     number -> SassNumber.of(Math.cos(calculationRadians(number)), null),
                     false
             );
             case "tan" -> SassCalculation.singleArgument(
                     "tan",
-                    onlyArg(args, "tan"),
+                    unaryArg(args),
                     number -> SassNumber.of(Math.tan(calculationRadians(number)), null),
                     false
             );
             case "asin" -> SassCalculation.singleArgument(
                     "asin",
-                    onlyArg(args, "asin"),
+                    unaryArg(args),
                     number -> calculationDegrees(Math.asin(number.value())),
                     true
             );
             case "acos" -> SassCalculation.singleArgument(
                     "acos",
-                    onlyArg(args, "acos"),
+                    unaryArg(args),
                     number -> calculationDegrees(Math.acos(number.value())),
                     true
             );
             case "atan" -> SassCalculation.singleArgument(
                     "atan",
-                    onlyArg(args, "atan"),
+                    unaryArg(args),
                     number -> calculationDegrees(Math.atan(number.value())),
                     true
             );
             case "abs" -> SassCalculation.singleArgument(
                     "abs",
-                    onlyArg(args, "abs"),
+                    unaryArg(args),
                     number -> SassNumber.withUnits(
                             Math.abs(number.value()),
                             number.numeratorUnits(),
@@ -4019,13 +4493,13 @@ public final class SassEvaluator implements
             );
             case "exp" -> SassCalculation.singleArgument(
                     "exp",
-                    onlyArg(args, "exp"),
+                    unaryArg(args),
                     number -> SassNumber.of(Math.exp(number.assertNoUnits().value()), null),
                     false
             );
             case "sign" -> SassCalculation.singleArgument(
                     "sign",
-                    onlyArg(args, "sign"),
+                    unaryArg(args),
                     number -> {
                         double value = number.value();
                         double sign = value > 0 ? 1.0 : value < 0 ? -1.0 : value;
@@ -4046,41 +4520,63 @@ public final class SassEvaluator implements
                     args.size() > 2 ? args.get(2) : null
             );
             case "pow" -> SassCalculation.pow(
-                    onlyArg(args, "pow"),
+                    firstArg(args),
                     args.size() > 1 ? args.get(1) : null
             );
             case "log" -> SassCalculation.log(
-                    onlyArg(args, "log"),
+                    firstArg(args),
                     args.size() > 1 ? args.get(1) : null
             );
             case "atan2" -> SassCalculation.atan2(
-                    onlyArg(args, "atan2"),
+                    firstArg(args),
                     args.size() > 1 ? args.get(1) : null
             );
             case "mod" -> SassCalculation.mod(
-                    onlyArg(args, "mod"),
+                    firstArg(args),
                     args.size() > 1 ? args.get(1) : null
             );
             case "rem" -> SassCalculation.rem(
-                    onlyArg(args, "rem"),
+                    firstArg(args),
                     args.size() > 1 ? args.get(1) : null
             );
             case "round" -> SassCalculation.round(
-                    onlyArg(args, "round"),
+                    firstArg(args),
                     args.size() > 1 ? args.get(1) : null,
-                    args.size() > 2 ? args.get(2) : null
+                    args.size() > 2 ? args.get(2) : null,
+                    inLegacySassFunction,
+                    message -> reportDeprecation(message, "global-builtin", span)
             );
             case "calc-size" -> SassCalculation.calcSize(
-                    onlyArg(args, "calc-size"),
+                    firstArg(args),
                     args.size() > 1 ? args.get(1) : null
             );
             default -> throw new SassValueException("Unknown calculation " + name + "().");
         };
     }
 
-    private static Object onlyArg(List<Object> args, String name) {
+    /// Returns the first calculation argument, allowing multi-arg callers to read more.
+    private static Object firstArg(List<Object> args) {
         if (args.isEmpty()) {
             throw new SassValueException("Missing argument.");
+        }
+        return args.get(0);
+    }
+
+    /// Returns the sole argument for a unary calculation function.
+    private static Object unaryArg(List<Object> args) {
+        if (args.isEmpty()) {
+            throw new SassValueException("Missing argument.");
+        }
+        if (args.size() > 1) {
+            // Special numbers may expand to more tokens at CSS evaluation time.
+            for (var arg : args) {
+                if (arg instanceof SassString || arg instanceof SassCalculation) {
+                    return args.get(0);
+                }
+            }
+            throw new SassValueException(
+                    "Only 1 argument allowed, but " + args.size() + " were passed."
+            );
         }
         return args.get(0);
     }
@@ -4093,7 +4589,14 @@ public final class SassEvaluator implements
         if (number.isUnitless()) {
             return number.value();
         }
-        return number.coerce(List.of("rad"), List.of()).value();
+        try {
+            return number.coerce(List.of("rad"), List.of()).value();
+        } catch (SassValueException exception) {
+            throw new SassValueException(
+                    "$number: Expected " + number
+                            + " to have an angle unit (deg, grad, rad, turn)."
+            );
+        }
     }
 
     private static SassNumber calculationDegrees(double radians) {
@@ -4266,6 +4769,102 @@ public final class SassEvaluator implements
     /// @return whether an active stylesheet was parsed as plain CSS
     private boolean isPlainCss() {
         return stylesheet != null && stylesheet.plainCss();
+    }
+
+    /// Rejects Sass-only argument shapes in plain CSS function calls.
+    ///
+    /// @param arguments the invocation arguments
+    /// @param span      the function call span used when a span is unavailable
+    private void assertPlainCssArguments(ArgumentList arguments, SourceSpan span) {
+        if (!arguments.named().isEmpty()) {
+            @Nullable SourceSpan namedSpan = arguments.namedSpans().values().stream()
+                    .findFirst()
+                    .orElse(span);
+            throw new EvaluationException(
+                    "Sass variables aren't allowed in plain CSS.",
+                    namedSpan
+            );
+        }
+        if (arguments.rest() != null) {
+            throw new EvaluationException(
+                    "expected \")\".",
+                    arguments.rest().span()
+            );
+        }
+        if (arguments.keywordRest() != null) {
+            throw new EvaluationException(
+                    "expected \")\".",
+                    arguments.keywordRest().span()
+            );
+        }
+        for (var argument : arguments.positional()) {
+            rejectPlainCssForbiddenExpression(argument);
+        }
+    }
+
+    /// Validates calculation-function arity and forbidden nested Sass forms.
+    ///
+    /// @param expression the calculation call
+    private void assertPlainCssCalculationCall(FunctionExpression expression) {
+        var arguments = expression.arguments();
+        var name = expression.name().toLowerCase(java.util.Locale.ROOT);
+        if (arguments.positional().isEmpty()
+                && arguments.rest() == null
+                && "calc".equals(name)) {
+            throw new EvaluationException("Missing argument.", expression.span());
+        }
+        for (var argument : arguments.positional()) {
+            rejectPlainCssForbiddenExpression(argument);
+        }
+    }
+
+    /// Walks an expression tree and rejects Sass-only constructs in plain CSS.
+    ///
+    /// @param expression the expression to inspect
+    private void rejectPlainCssForbiddenExpression(SassExpression expression) {
+        if (expression instanceof VariableExpression variable) {
+            throw new EvaluationException(
+                    "Sass variables aren't allowed in plain CSS.",
+                    variable.span()
+            );
+        }
+        if (expression instanceof FunctionExpression function) {
+            if (function.namespace() != null) {
+                throw new EvaluationException(
+                        "Module namespaces aren't allowed in plain CSS.",
+                        function.span()
+                );
+            }
+            assertPlainCssArguments(function.arguments(), function.span());
+            return;
+        }
+        if (expression instanceof BinaryOperationExpression binary) {
+            rejectPlainCssForbiddenExpression(binary.left());
+            rejectPlainCssForbiddenExpression(binary.right());
+            return;
+        }
+        if (expression instanceof UnaryOperationExpression unary) {
+            rejectPlainCssForbiddenExpression(unary.operand());
+            return;
+        }
+        if (expression instanceof ParenthesizedExpression parenthesized) {
+            rejectPlainCssForbiddenExpression(parenthesized.expression());
+            return;
+        }
+        if (expression instanceof ListExpression list) {
+            for (var element : list.contents()) {
+                rejectPlainCssForbiddenExpression(element);
+            }
+            return;
+        }
+        if (expression instanceof InterpolatedFunctionExpression
+                || expression instanceof LegacyIfExpression
+                || expression instanceof IfExpression) {
+            // Nested if()/interpolated forms inside calc are not plain CSS calc
+            // operands; fall through to normal evaluation paths that already
+            // reject interpolation in plain CSS.
+            return;
+        }
     }
 
     /// Runs a span-free value operation and attaches source information on failure.

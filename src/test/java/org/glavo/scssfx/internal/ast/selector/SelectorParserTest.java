@@ -111,12 +111,13 @@ final class SelectorParserTest {
         assertEquals("a]b", quoted.value());
     }
 
-    /// Verifies attribute values decode CSS escapes while output retains source spelling.
+    /// Verifies attribute values decode CSS escapes and emit dart-sass CSS form.
     @Test
     void decodesAttributeValuesForSemanticComparison() {
         var selector = parse("[data=\\78][title='a\\20 b']");
 
-        assertEquals("[data=\\78][title='a\\20 b']", selector.toCssString());
+        // Identifiers emit unquoted; values that need quotes use dart-sass quote choice.
+        assertEquals("[data=x][title=\"a b\"]", selector.toCssString());
         var components = selector.components().get(0).components().get(0).selector().components();
         var escapedIdentifier = assertInstanceOf(AttributeSelector.class, components.get(0));
         assertEquals("x", escapedIdentifier.value());
@@ -192,7 +193,7 @@ final class SelectorParserTest {
     @Test
     void rejectsMalformedStructuredSelectors() {
         assertEquals("Expected escape sequence.", failure(".\\"));
-        assertEquals("Expected closing ']'.", failure("[data=value"));
+        assertEquals("expected \"]\".", failure("[data=value"));
         assertEquals(
                 "Parent selector must be the first selector in a compound.",
                 failure(".item&")

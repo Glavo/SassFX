@@ -42,6 +42,18 @@ public record CompoundSelector(
         return result.toString();
     }
 
+    /// Returns whether any simple selector in this compound is CSS-invisible.
+    ///
+    /// @return whether this compound makes its enclosing complex selector invisible
+    public boolean isInvisible() {
+        for (var component : components) {
+            if (component.isInvisible()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// Returns whether this compound begins with a parent selector.
     ///
     /// @return whether the first simple selector is `&`

@@ -500,7 +500,7 @@ final class ForwardModuleTest {
                         """
         );
         assertEquals(
-                "This variable was not declared with !default in the @used module.",
+                "$p-color was not declared with !default in the @used module.",
                 assertThrows(
                         SassCompilationException.class,
                         () -> compile(showEntry)
@@ -542,7 +542,7 @@ final class ForwardModuleTest {
                         """
         );
         assertEquals(
-                "This variable was not declared with !default in the @used module.",
+                "$p-color was not declared with !default in the @used module.",
                 assertThrows(
                         SassCompilationException.class,
                         () -> compile(showCacheEntry)
@@ -610,7 +610,7 @@ final class ForwardModuleTest {
                         """
         );
         assertEquals(
-                "This variable was not declared with !default in the @used module.",
+                "$value was not declared with !default in the @used module.",
                 assertThrows(
                         SassCompilationException.class,
                         () -> compile(hardOuterEntry)
@@ -712,7 +712,7 @@ final class ForwardModuleTest {
                         """
         );
         assertEquals(
-                "This variable was not declared with !default in the @used module.",
+                "$value was not declared with !default in the @used module.",
                 assertThrows(
                         SassCompilationException.class,
                         () -> compile(fixedEntry)
@@ -729,7 +729,7 @@ final class ForwardModuleTest {
                 "@use \"loop-a\";"
         );
         assertEquals(
-                "Module loop: this module is already being loaded.",
+                "Module loop: loop-a.scss is already being loaded.",
                 assertThrows(
                         SassCompilationException.class,
                         () -> compile(loopEntry)

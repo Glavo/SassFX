@@ -23,6 +23,7 @@ import org.glavo.scssfx.internal.ast.NullExpression;
 import org.glavo.scssfx.internal.ast.NumberExpression;
 import org.glavo.scssfx.internal.ast.ParenthesizedExpression;
 import org.glavo.scssfx.internal.ast.SassExpression;
+import org.glavo.scssfx.internal.ast.SelectorExpression;
 import org.glavo.scssfx.internal.ast.StringExpression;
 import org.glavo.scssfx.internal.ast.UnaryOperationExpression;
 import org.glavo.scssfx.internal.ast.UnaryOperator;
@@ -58,11 +59,33 @@ class SassExpressionParser extends Parser {
     /// Records whether the current expression is being parsed within parentheses.
     private boolean inParentheses;
 
+    /// Counts nested expression productions so silent comments can remain
+    /// unconsumed inside expressions (including plain CSS slash-only forms).
+    private int expressionDepth;
+
     /// Creates a parser for expressions in an indexed source.
     ///
     /// @param source the source containing SassScript expressions
     SassExpressionParser(SourceFile source) {
         super(source);
+    }
+
+    /// Returns whether this parser is reading a plain CSS stylesheet.
+    ///
+    /// Plain CSS rejects Sass-only operators and keywords at parse time so
+    /// identifiers such as {@code and}, {@code true}, and {@code null} remain
+    /// ordinary unquoted strings.
+    ///
+    /// @return whether plain CSS restrictions are active
+    protected boolean isPlainCssSource() {
+        return false;
+    }
+
+    /// Returns whether an expression production is currently active.
+    ///
+    /// @return whether expression parsing is nested at least once
+    protected final boolean inExpression() {
+        return expressionDepth > 0;
     }
 
     /// Appends a parse-time diagnostic in source-processing order.
@@ -143,7 +166,12 @@ class SassExpressionParser extends Parser {
         if (!lookingAtExpression()) {
             throw scanner.error("Expected expression.");
         }
-        return commaExpression(until);
+        expressionDepth++;
+        try {
+            return commaExpression(until);
+        } finally {
+            expressionDepth--;
+        }
     }
 
     /// Parses a comma-separated expression or a single lower-level expression.
@@ -289,6 +317,18 @@ class SassExpressionParser extends Parser {
                 scanner.restore(beforeTrivia);
                 return left;
             }
+            if (isPlainCssSource()
+                    && operator != BinaryOperator.SINGLE_EQUALS
+                    && operator != BinaryOperator.PLUS
+                    && operator != BinaryOperator.MINUS
+                    && operator != BinaryOperator.TIMES
+                    && operator != BinaryOperator.DIVIDED_BY) {
+                throw scanner.error(
+                        "Operators aren't allowed in plain CSS.",
+                        operatorStart.position(),
+                        scanner.position() - operatorStart.position()
+                );
+            }
 
             var operatorEnd = scanner.state();
             whitespace(true);
@@ -417,8 +457,14 @@ class SassExpressionParser extends Parser {
             }
             case '/' -> scanOneCodeUnitOperator(BinaryOperator.DIVIDED_BY);
             case '%' -> scanOneCodeUnitOperator(BinaryOperator.MODULO);
-            case 'a' -> scanIdentifier("and") ? BinaryOperator.AND : null;
-            case 'o' -> scanIdentifier("or") ? BinaryOperator.OR : null;
+            // Plain CSS keeps "and"/"or" as ordinary identifiers so space lists
+            // such as {@code true and false} serialize without Sass evaluation.
+            case 'a' -> !isPlainCssSource() && scanIdentifier("and")
+                    ? BinaryOperator.AND
+                    : null;
+            case 'o' -> !isPlainCssSource() && scanIdentifier("or")
+                    ? BinaryOperator.OR
+                    : null;
             default -> null;
         };
         if (result == null) {
@@ -448,6 +494,10 @@ class SassExpressionParser extends Parser {
 
     /// Returns whether an expression consists solely of slash operations over
     /// numbers or plain function calls.
+    ///
+    /// Unquoted identifiers such as {@code none} are intentionally excluded:
+    /// they become slash-joined strings via the default division fallback, which
+    /// color channel parsers re-split (for example {@code 50%/none}).
     ///
     /// @param expression the expression to inspect
     /// @return whether the tree may represent a slash-separated value
@@ -511,7 +561,25 @@ class SassExpressionParser extends Parser {
             case '/' -> unaryExpression();
             case '%' -> percentExpression();
             case '.' -> numberExpression();
-            case '&' -> throw scanner.error("Selector expressions are not available.");
+            case '&' -> {
+                if (isPlainCssSource()) {
+                    throw scanner.error("The parent selector isn't allowed in plain CSS.");
+                }
+                var start = scanner.state();
+                scanner.expect('&');
+                // dart-sass warns when {@code &&} is written; keep the second
+                // ampersand unconsumed so it can begin another expression.
+                if (scanner.peek() == '&') {
+                    addParseTimeWarning(new Diagnostic(
+                            DiagnosticSeverity.WARNING,
+                            "In Sass, \"&&\" means two copies of the parent selector. You "
+                                    + "probably want to use \"and\" instead.",
+                            scanner.spanFrom(start),
+                            null
+                    ));
+                }
+                yield new SelectorExpression(scanner.spanFrom(start));
+            }
             case '!' -> importantExpression();
             default -> {
                 if (CssCharacters.isDigit(next)) {
@@ -698,6 +766,15 @@ class SassExpressionParser extends Parser {
                     1
             );
         };
+        // Plain CSS permits unary slash (for forms such as {@code 1///bar})
+        // but rejects other unary operators at parse time.
+        if (isPlainCssSource() && operator != UnaryOperator.DIVIDE) {
+            throw scanner.error(
+                    "Operators aren't allowed in plain CSS.",
+                    start.position(),
+                    1
+            );
+        }
         whitespace(true);
         var operand = singleExpression();
         return new UnaryOperationExpression(operator, operand, scanner.spanFrom(start));
@@ -1054,7 +1131,10 @@ class SassExpressionParser extends Parser {
             if (plain.equalsIgnoreCase("if") && scanner.peek() == '(') {
                 return ifExpression(start);
             }
-            if (plain.equals("not")) {
+            // In plain CSS, not/true/false/null are ordinary identifiers so
+            // declarations like {@code x: null} and {@code not: not true}
+            // preserve source text rather than Sass keyword semantics.
+            if (!isPlainCssSource() && plain.equals("not")) {
                 whitespace(true);
                 var operand = singleExpression();
                 return new UnaryOperationExpression(
@@ -1068,7 +1148,7 @@ class SassExpressionParser extends Parser {
             }
 
             lower = plain.toLowerCase(Locale.ROOT);
-            if (scanner.peek() != '(') {
+            if (!isPlainCssSource() && scanner.peek() != '(') {
                 switch (plain) {
                     case "true" -> {
                         return new BooleanExpression(true, identifier.span());
@@ -1219,84 +1299,94 @@ class SassExpressionParser extends Parser {
         scanner.expect('(');
         whitespace(true);
 
-        var positional = new ArrayList<SassExpression>();
-        var named = new LinkedHashMap<String, SassExpression>();
-        var namedSpans = new LinkedHashMap<String, SourceSpan>();
-        @Nullable SassExpression rest = null;
-        @Nullable SassExpression keywordRest = null;
-        while (lookingAtExpression()) {
-            var argument = expressionUntilComma(true);
-            whitespace(true);
-
-            if (argument instanceof VariableExpression variable
-                    && scanner.scan(':')) {
+        // Function-call parentheses are not "grouping parentheses" for slash
+        // division: arguments must keep allowsSlash metadata so modern color
+        // channel lists like {@code hsl(180 60% 50% / 0.4)} work even when the
+        // call itself is nested inside outer parentheses.
+        var previousInParentheses = inParentheses;
+        inParentheses = false;
+        try {
+            var positional = new ArrayList<SassExpression>();
+            var named = new LinkedHashMap<String, SassExpression>();
+            var namedSpans = new LinkedHashMap<String, SourceSpan>();
+            @Nullable SassExpression rest = null;
+            @Nullable SassExpression keywordRest = null;
+            while (lookingAtExpression()) {
+                var argument = expressionUntilComma(true);
                 whitespace(true);
-                if (named.containsKey(variable.name())) {
-                    throw scanner.error(
-                            "Duplicate argument.",
-                            variable.span()
-                    );
-                }
-                var value = expressionUntilComma(true);
-                named.put(variable.name(), value);
-                namedSpans.put(
-                        variable.name(),
-                        scanner.source().span(
-                                scanner.source().generatedStartOffset(variable.span()),
-                                scanner.source().generatedEndOffset(value.span())
-                        )
-                );
-            } else if (scanner.scan('.')) {
-                scanner.expect('.');
-                scanner.expect('.');
-                if (rest == null) {
-                    rest = argument;
-                } else {
-                    keywordRest = argument;
+
+                if (argument instanceof VariableExpression variable
+                        && scanner.scan(':')) {
                     whitespace(true);
-                    if (scanner.scan(',')) {
-                        whitespace(true);
+                    if (named.containsKey(variable.name())) {
+                        throw scanner.error(
+                                "Duplicate argument.",
+                                variable.span()
+                        );
                     }
+                    var value = expressionUntilComma(true);
+                    named.put(variable.name(), value);
+                    namedSpans.put(
+                            variable.name(),
+                            scanner.source().span(
+                                    scanner.source().generatedStartOffset(variable.span()),
+                                    scanner.source().generatedEndOffset(value.span())
+                            )
+                    );
+                } else if (scanner.scan('.')) {
+                    scanner.expect('.');
+                    scanner.expect('.');
+                    if (rest == null) {
+                        rest = argument;
+                    } else {
+                        keywordRest = argument;
+                        whitespace(true);
+                        if (scanner.scan(',')) {
+                            whitespace(true);
+                        }
+                        break;
+                    }
+                } else if (!named.isEmpty()) {
+                    throw scanner.error(
+                            "Positional arguments must come before keyword arguments.",
+                            argument.span()
+                    );
+                } else {
+                    positional.add(argument);
+                }
+
+                whitespace(true);
+                if (!scanner.scan(',')) {
                     break;
                 }
-            } else if (!named.isEmpty()) {
-                throw scanner.error(
-                        "Positional arguments must come before keyword arguments.",
-                        argument.span()
-                );
-            } else {
-                positional.add(argument);
-            }
+                whitespace(true);
 
-            whitespace(true);
-            if (!scanner.scan(',')) {
-                break;
+                if (allowEmptySecondArgument
+                        && positional.size() == 1
+                        && named.isEmpty()
+                        && rest == null
+                        && scanner.peek() == ')') {
+                    var empty = scanner.source().span(
+                            scanner.position(),
+                            scanner.position()
+                    );
+                    positional.add(StringExpression.plain("", empty));
+                    break;
+                }
             }
-            whitespace(true);
+            scanner.expect(')');
 
-            if (allowEmptySecondArgument
-                    && positional.size() == 1
-                    && named.isEmpty()
-                    && rest == null
-                    && scanner.peek() == ')') {
-                var empty = scanner.source().span(
-                        scanner.position(),
-                        scanner.position()
-                );
-                positional.add(StringExpression.plain("", empty));
-                break;
-            }
+            return new ArgumentList(
+                    positional,
+                    named,
+                    namedSpans,
+                    rest,
+                    keywordRest,
+                    scanner.spanFrom(start)
+            );
+        } finally {
+            inParentheses = previousInParentheses;
         }
-        scanner.expect(')');
-
-        return new ArgumentList(
-                positional,
-                named,
-                namedSpans,
-                rest,
-                keywordRest,
-                scanner.spanFrom(start)
-        );
     }
 
     /// Parses a variable or function member after a namespace and dot.

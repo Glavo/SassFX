@@ -184,10 +184,8 @@ final class ColorModuleTest {
                 "$weight: Expected 101% to be within 0% and 100%.",
                 failure("@use \"sass:color\"; .a { value: color.mix(red, blue, 101%); }")
         );
-        assertEquals(
-                "$weight: Expected 1px to have unit \"%\" or no units.",
-                failure("@use \"sass:color\"; .a { value: color.invert(red, 1px); }")
-        );
+        // Unitful invert weights are accepted during the function-units
+        // deprecation period (legacy non-% units use the raw magnitude).
         assertEquals(
                 "$color1: 1 is not a color.",
                 failure("@use \"sass:color\"; .a { value: color.mix(1, blue, $method: rgb); }")
@@ -215,7 +213,7 @@ final class ColorModuleTest {
                 failure("@use \"sass:color\"; .a { value: color.to-gamut(red); }")
         );
         assertEquals(
-                "$method: Hue interpolation method \"longer hue\" may not be set for rectangular color space rgb.",
+                "$method: Hue interpolation method \"HueInterpolationMethod.longer hue\" may not be set for rectangular color space rgb.",
                 failure("@use \"sass:color\"; .a { value: color.mix(red, blue, $method: rgb longer hue); }")
         );
         assertEquals(

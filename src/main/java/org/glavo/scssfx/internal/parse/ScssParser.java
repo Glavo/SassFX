@@ -110,6 +110,10 @@ final class ScssParser extends SassExpressionParser {
     /// Records whether the parser is inside an include content block.
     private boolean inContentBlock;
 
+    /// Records whether the parser is inside a plain-CSS {@code @function --name}
+    /// rule, where the {@code result} descriptor is parsed like a custom property.
+    private boolean inPlainCssFunction;
+
     /// Records whether module directives are still allowed at the stylesheet root.
     private boolean moduleDirectivesAllowed = true;
 
@@ -129,12 +133,28 @@ final class ScssParser extends SassExpressionParser {
         this.plainCss = plainCss;
     }
 
+    /// {@inheritDoc}
+    @Override
+    protected boolean isPlainCssSource() {
+        return plainCss;
+    }
+
     /// Consumes a Sass silent comment unless plain-CSS restrictions are active.
     ///
+    /// Silent comments inside expressions are left alone so slash-only forms
+    /// such as {@code 1///bar} can be parsed as unary division rather than
+    /// comment tokens.
+    ///
     /// @return {@code true} after consuming the comment
-    /// @throws ParseException if a silent comment occurs in plain CSS
+    /// @throws ParseException if a silent comment occurs in plain CSS outside
+    /// an expression
     @Override
     protected boolean silentComment() {
+        // Match dart-sass CssParser: silent comments are not tokenized inside
+        // plain-CSS expressions, so {@code 1///bar} remains slash operators.
+        if (plainCss && inExpression()) {
+            return false;
+        }
         if (plainCss) {
             throw scanner.error("Silent comments aren't allowed in plain CSS.");
         }
@@ -246,7 +266,7 @@ final class ScssParser extends SassExpressionParser {
         selector = selectorPrefix.interpolation(scanner.spanFrom(start));
         requirePlainCssText(selector);
         if (selector.parts().isEmpty()) {
-            throw scanner.error("Expected selector.");
+            throw scanner.error("expected selector.");
         }
         ArrayList<SassStatement> children;
         if (plainCss) {
@@ -467,7 +487,13 @@ final class ScssParser extends SassExpressionParser {
     private SassStatement atRule(StatementContext context, boolean atStylesheetRoot) {
         var start = scanner.state();
         scanner.expect('@');
-        var name = identifier(false, false);
+        // Support both plain names and interpolated names such as @#{function}.
+        var nameInterpolation = interpolatedIdentifier();
+        requirePlainCssText(nameInterpolation);
+        @Nullable String name = nameInterpolation.asPlain();
+        if (name == null) {
+            return unknownAtRule(start, nameInterpolation);
+        }
         if (plainCss) {
             return switch (name) {
                 case "at-root", "content", "debug", "each", "error", "extend",
@@ -486,13 +512,13 @@ final class ScssParser extends SassExpressionParser {
                                 scanner.position() - start.position()
                         );
                     }
-                    yield unknownAtRule(start, name);
+                    yield unknownAtRule(start, nameInterpolation);
                 }
                 case "font-face" -> fontFaceRule(start, context);
                 case "media" -> mediaRule(start, context);
                 case "supports" -> supportsRule(start, context);
                 case "import" -> importRule(start, context);
-                default -> unknownAtRule(start, name);
+                default -> unknownAtRule(start, nameInterpolation);
             };
         }
         return switch (name) {
@@ -504,7 +530,18 @@ final class ScssParser extends SassExpressionParser {
             case "supports" -> supportsRule(start, context);
             case "while" -> whileRule(start, context);
             case "mixin" -> mixinRule(start, context);
-            case "function" -> functionRule(start, context);
+            case "function" -> {
+                // CSS Custom Functions use @function --name(...). Route those to the
+                // plain-CSS at-rule path instead of Sass @function declarations.
+                var afterName = scanner.state();
+                whitespace(true);
+                if (scanner.peek() == '-' && scanner.peek(1) == '-') {
+                    scanner.restore(afterName);
+                    yield unknownAtRule(start, nameInterpolation);
+                }
+                scanner.restore(afterName);
+                yield functionRule(start, context);
+            }
             case "include" -> includeRule(start, context);
             case "content" -> contentRule(start, context);
             case "return" -> returnRule(start, context);
@@ -521,7 +558,7 @@ final class ScssParser extends SassExpressionParser {
             );
             case "at-root" -> atRootRule(start);
             case "extend" -> extendRule(start, context);
-            default -> unknownAtRule(start, name);
+            default -> unknownAtRule(start, nameInterpolation);
         };
     }
 
@@ -620,7 +657,7 @@ final class ScssParser extends SassExpressionParser {
         var selector = almostAnyValue();
         @Nullable String plain = selector.asPlain();
         if (selector.parts().isEmpty() || plain != null && plain.isBlank()) {
-            throw scanner.error("Expected selector.");
+            throw scanner.error("expected selector.");
         }
         var optional = false;
         if (scanner.scan('!')) {
@@ -637,7 +674,12 @@ final class ScssParser extends SassExpressionParser {
     /// @param start the state at the leading at sign
     /// @param name the decoded at-rule name
     /// @return the opaque rule
-    private UnknownAtRule unknownAtRule(ScannerState start, String name) {
+    /// Parses an opaque at-rule accepted by plain CSS.
+    ///
+    /// @param start the state at the leading at sign
+    /// @param name  the at-rule name (may contain interpolation)
+    /// @return the opaque rule
+    private UnknownAtRule unknownAtRule(ScannerState start, Interpolation name) {
         whitespace(false);
         var value = interpolatedDeclarationValue(
                 true,
@@ -645,8 +687,22 @@ final class ScssParser extends SassExpressionParser {
                 () -> scanner.peek() == '{'
         );
         requirePlainCssText(value);
+        @Nullable String plainName = name.asPlain();
         if (scanner.peek() == '{') {
-            var children = statementBlock(StatementContext.STYLE_RULE);
+            var wasInPlainCssFunction = inPlainCssFunction;
+            // Plain @function --name and @#{function} --name both enter CSS function mode.
+            // The prelude is already consumed, so inspect its leading plain text for `--`.
+            var preludePlain = value.initialPlain().stripLeading();
+            if ((plainName != null && plainName.equalsIgnoreCase("function"))
+                    || (plainName == null && preludePlain.startsWith("--"))) {
+                inPlainCssFunction = true;
+            }
+            ArrayList<SassStatement> children;
+            try {
+                children = statementBlock(StatementContext.STYLE_RULE);
+            } finally {
+                inPlainCssFunction = wasInPlainCssFunction;
+            }
             var span = scanner.spanFrom(start);
             whitespaceWithoutComments(false);
             return new UnknownAtRule(name, value, children, span);
@@ -841,13 +897,13 @@ final class ScssParser extends SassExpressionParser {
             if (scanner.peek() == '#' && scanner.peek(1) == '{') {
                 return supportsInterpolationCondition();
             }
-            throw scanner.error("Expected supports condition.");
+            throw scanner.error("Expected @supports condition.");
         }
 
         scanner.expect('(');
         whitespace(true);
         if (scanner.peek() == ')') {
-            throw scanner.error("Expected supports condition.");
+            throw scanner.error("Expected @supports condition.");
         }
         if (scanner.peek() == '#' && scanner.peek(1) == '{') {
             var interpolationStart = scanner.state();
@@ -901,15 +957,18 @@ final class ScssParser extends SassExpressionParser {
                 throw scanner.error("Expected \":\".");
             }
             colonConsumed = true;
-            whitespace(true);
 
             boolean customProperty = name instanceof StringExpression string
                     && isPlainCustomPropertyName(string);
             SassExpression value;
             if (customProperty) {
+                // Keep post-colon spaces and comments in the raw value so
+                // serialization can emit dart-sass forms such as `--a: b` and
+                // `--a: /**/ b`.
                 var rawValue = interpolatedDeclarationValue(true, true);
                 value = new StringExpression(rawValue, false);
             } else {
+                whitespace(true);
                 value = expression();
             }
             whitespace(true);
@@ -1513,7 +1572,7 @@ final class ScssParser extends SassExpressionParser {
         scanner.expect('(');
         whitespace(true);
         if (scanner.peek() == ')') {
-            throw scanner.error("Expected supports condition.");
+            throw scanner.error("Expected @supports condition.");
         }
         var condition = importSupportsCondition();
         whitespace(true);
@@ -1537,15 +1596,16 @@ final class ScssParser extends SassExpressionParser {
                 throw scanner.error("Expected \":\".");
             }
             colonConsumed = true;
-            whitespace(true);
 
             boolean customProperty = name instanceof StringExpression string
                     && isPlainCustomPropertyName(string);
             SassExpression value;
             if (customProperty) {
+                // Preserve post-colon whitespace/comments for import supports().
                 var rawValue = interpolatedDeclarationValue(true, true);
                 value = new StringExpression(rawValue, false);
             } else {
+                whitespace(true);
                 value = expression();
             }
             return new SupportsDeclaration(
@@ -1714,9 +1774,15 @@ final class ScssParser extends SassExpressionParser {
         do {
             whitespace(true);
             if (scanner.peek() == '$') {
+                // Empty {@code $} without a following name is invalid.
+                if (!lookingAtIdentifier(1) && scanner.peek(1) != '-' && scanner.peek(1) != '\\') {
+                    throw scanner.error("Expected variable, mixin, or function name");
+                }
                 variables.add(variableName());
-            } else {
+            } else if (lookingAtIdentifier()) {
                 mixinsAndFunctions.add(identifier(true, false));
+            } else {
+                throw scanner.error("Expected variable, mixin, or function name");
             }
             whitespace(false);
         } while (scanner.scan(','));
@@ -1826,7 +1892,7 @@ final class ScssParser extends SassExpressionParser {
             return CssIdentifierParser.parse(path, true, false);
         } catch (ParseException ignored) {
             throw scanner.error(
-                    "The default namespace \"" + path + "\" is not a valid CSS identifier.\n\n"
+                    "The default namespace \"" + path + "\" is not a valid Sass identifier.\n\n"
                             + "Recommendation: add an \"as\" clause to define an explicit namespace."
             );
         }
@@ -2113,8 +2179,14 @@ final class ScssParser extends SassExpressionParser {
                 declarationsOnly ? declarationNameEnd : beforeColon
         ));
         var customProperty = name.initialPlain().startsWith("--");
-        if (customProperty) {
-            if (declarationsOnly) {
+        // Plain-CSS @function --name treats the result descriptor like a custom
+        // property: raw CSS tokens with only #{...} interpolation evaluated.
+        @Nullable String plainName = name.asPlain();
+        var cssFunctionResult = inPlainCssFunction
+                && plainName != null
+                && plainName.equalsIgnoreCase("result");
+        if (customProperty || cssFunctionResult) {
+            if (customProperty && declarationsOnly) {
                 throw scanner.error(
                         "Declarations whose names begin with \"--\" may not be nested.",
                         name.span()
@@ -2160,12 +2232,21 @@ final class ScssParser extends SassExpressionParser {
         SassExpression value;
         try {
             value = expression();
+            // Children may follow optional whitespace after the value.
+            var afterValue = scanner.state();
+            whitespace(false);
             if (scanner.peek() == '{') {
                 if (couldBeSelector) {
+                    // Force the ambiguous {@code a:b {} } form back to selector
+                    // parsing, matching dart-sass.
+                    scanner.restore(afterValue);
                     expectStatementSeparator();
                 }
-            } else if (!atEndOfStatement()) {
-                expectStatementSeparator();
+            } else {
+                scanner.restore(afterValue);
+                if (!atEndOfStatement()) {
+                    expectStatementSeparator();
+                }
             }
         } catch (ParseException failure) {
             if (!couldBeSelector) {
@@ -2186,9 +2267,15 @@ final class ScssParser extends SassExpressionParser {
             return null;
         }
 
+        var afterValue = scanner.state();
+        whitespace(false);
         if (scanner.peek() == '{') {
+            if (plainCss) {
+                throw scanner.error("Nested declarations aren't allowed in plain CSS.");
+            }
             return nestedDeclaration(name, value, start);
         }
+        scanner.restore(afterValue);
         expectStatementSeparator();
         return Declaration.sassScript(name, value, scanner.spanFrom(start));
     }
@@ -2282,13 +2369,9 @@ final class ScssParser extends SassExpressionParser {
                 }
                 continue;
             }
-            if (character == '$') {
-                throw scanner.error(
-                        "Sass variables aren't allowed in plain CSS.",
-                        index,
-                        1
-                );
-            }
+            // Dollar signs may appear in plain-CSS values (for example CSS
+            // custom-function result descriptors). Sass variable *declarations*
+            // are still rejected during parse via rejectPlainCss.
             if (character == '#'
                     && index + 1 < content.length()
                     && content.charAt(index + 1) == '{') {

@@ -92,8 +92,11 @@ public final class ModuleRegistry {
         @Nullable LoadedModule builtIn = builtInModules.find(url);
         if (builtIn != null) {
             if (hasOwnConfiguration) {
+                // Prefer the sass: name when present so diagnostics match dart-sass
+                // ({@code Built-in module sass:color can't be configured.}).
+                String name = url.startsWith("sass:") ? url : "sass:" + url;
                 throw new EvaluationException(
-                        "Built-in modules can't be configured.",
+                        "Built-in module " + name + " can't be configured.",
                         loadSpan
                 );
             }
@@ -127,8 +130,9 @@ public final class ModuleRegistry {
                     && !originalConfiguration.sameOriginal(configuration)
                     && existing.couldHaveBeenConfigured(configuration.names())) {
                 throw new EvaluationException(
-                        "This module was already loaded, so it can't be "
-                                + "configured using \"with\".",
+                        displayUrl(canonical)
+                                + " was already loaded, so it can't be configured using "
+                                + "\"with\".",
                         loadSpan
                 );
             }
@@ -136,7 +140,8 @@ public final class ModuleRegistry {
         }
         if (active.containsKey(canonical)) {
             throw new EvaluationException(
-                    "Module loop: this module is already being loaded.",
+                    "Module loop: " + displayUrl(canonical)
+                            + " is already being loaded.",
                     loadSpan
             );
         }
@@ -247,5 +252,25 @@ public final class ModuleRegistry {
     /// @return the loaded URLs in first-seen order
     public @Unmodifiable Set<URI> loadedUrls() {
         return Collections.unmodifiableSet(new LinkedHashSet<>(loadedUrls));
+    }
+
+    /// Returns a short display name for a canonical stylesheet URL.
+    ///
+    /// Module-loop diagnostics use the last path segment when present so
+    /// messages match dart-sass ({@code input.scss}) rather than the full URI.
+    ///
+    /// @param url the canonical URL
+    /// @return a human-readable stylesheet name
+    private static String displayUrl(URI url) {
+        Objects.requireNonNull(url, "url");
+        @Nullable String path = url.getPath();
+        if (path != null && !path.isEmpty()) {
+            var slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+            var name = slash >= 0 ? path.substring(slash + 1) : path;
+            if (!name.isEmpty()) {
+                return name;
+            }
+        }
+        return url.toString();
     }
 }

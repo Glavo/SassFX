@@ -90,7 +90,9 @@ public final class CalculationOperation {
 
     static String serializeOperand(Object operand) {
         if (operand instanceof SassNumber number) {
-            return number.toCssString();
+            // Nested non-finite numbers keep bare CSS keywords so outer calc()
+            // does not emit calc(calc(infinity)).
+            return number.toCalculationCssString();
         }
         if (operand instanceof SassCalculation calculation) {
             return calculation.toCssString();

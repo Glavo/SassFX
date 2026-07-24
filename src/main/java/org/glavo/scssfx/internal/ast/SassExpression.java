@@ -22,7 +22,8 @@ public sealed interface SassExpression extends SassNode permits
         LegacyIfExpression,
         IfExpression,
         MapExpression,
-        ColorExpression {
+        ColorExpression,
+        SelectorExpression {
     /// Dispatches this expression to its type-specific visitor method.
     ///
     /// @param visitor the visitor that receives this expression

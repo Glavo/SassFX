@@ -12,6 +12,10 @@ import java.util.Objects;
 
 /// Represents a plain-CSS at-rule without compiler-specific semantics.
 ///
+/// The name may contain interpolation (for example {@code @#{function}}) so
+/// that CSS at-rules discovered only after evaluation still participate in
+/// plain-CSS emission.
+///
 /// @param name the at-rule name without the leading at sign
 /// @param value the raw interpolated prelude
 /// @param children the block children, or {@code null} for a semicolon-terminated rule
@@ -19,7 +23,7 @@ import java.util.Objects;
 @ApiStatus.Internal
 @NotNullByDefault
 public record UnknownAtRule(
-        String name,
+        Interpolation name,
         Interpolation value,
         @Nullable @Unmodifiable List<SassStatement> children,
         SourceSpan span
@@ -27,14 +31,36 @@ public record UnknownAtRule(
     /// Creates an immutable unknown at-rule.
     public UnknownAtRule {
         Objects.requireNonNull(name, "name");
-        if (name.isEmpty()) {
-            throw new IllegalArgumentException("name must not be empty");
-        }
         Objects.requireNonNull(value, "value");
         if (children != null) {
             children = List.copyOf(children);
         }
         Objects.requireNonNull(span, "span");
+    }
+
+    /// Creates an unknown at-rule with a plain name.
+    ///
+    /// @param plainName the decoded at-rule name without {@code @}
+    /// @param value     the prelude
+    /// @param children  the children, or {@code null}
+    /// @param span      the full span
+    /// @return the rule
+    public static UnknownAtRule plain(
+            String plainName,
+            Interpolation value,
+            @Nullable List<SassStatement> children,
+            SourceSpan span
+    ) {
+        Objects.requireNonNull(plainName, "plainName");
+        if (plainName.isEmpty()) {
+            throw new IllegalArgumentException("name must not be empty");
+        }
+        return new UnknownAtRule(
+                Interpolation.plain(plainName, span),
+                value,
+                children,
+                span
+        );
     }
 
     /// Returns whether this rule owns a block.

@@ -29,6 +29,18 @@ public sealed interface SimpleSelector permits
     /// @return the CSS spelling
     String toCssString();
 
+    /// Returns whether this simple selector is invisible in emitted CSS.
+    ///
+    /// Placeholder selectors are invisible. Selector-taking pseudos other than
+    /// {@code :not} are invisible when every complex selector in their argument
+    /// is invisible. {@code :not} with only placeholders remains visible because
+    /// it is semantically equivalent to the universal selector.
+    ///
+    /// @return whether CSS emission omits this simple selector or its complex
+    default boolean isInvisible() {
+        return false;
+    }
+
     /// Returns whether this selector contains a parent-selector reference.
     ///
     /// Implementations with recursive selector arguments override this method.

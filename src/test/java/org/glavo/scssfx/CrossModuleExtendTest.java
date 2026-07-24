@@ -46,7 +46,7 @@ final class CrossModuleExtendTest {
         ).output();
         assertEquals(
                 """
-                        .primary, .secondary {
+                        .secondary, .primary {
                           color: red;
                           border: 1px solid;
                         }

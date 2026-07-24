@@ -254,3 +254,9 @@ tasks.check {
     dependsOn(smokeTestShadedCli)
     dependsOn(sassSpec)
 }
+
+tasks.register("printTestRuntimeClasspath") {
+    doLast {
+        println(sourceSets["test"].runtimeClasspath.asPath)
+    }
+}

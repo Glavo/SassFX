@@ -355,15 +355,13 @@ public final class Environment {
         Objects.requireNonNull(module, "module");
         Objects.requireNonNull(useSpan, "useSpan");
         if (namespace == null) {
+            // Conflicting members among multiple {@code as *} modules are not
+            // reported here; lookup via [#fromOneGlobalModule] fails later with
+            // "available from multiple global modules". Only collisions with
+            // already-declared root variables are rejected at load time.
             for (var entry : module.variables().entrySet()) {
                 var name = entry.getKey();
-                @Nullable VariableBinding existing = fromOneGlobalModule(
-                        name,
-                        "variable",
-                        LoadedModule::variables
-                );
-                if (variableFrames.get(0).containsKey(name)
-                        || existing != null && existing != entry.getValue()) {
+                if (variableFrames.get(0).containsKey(name)) {
                     throw new SassValueException(
                             "This module and the new module both define a variable named \"$"
                                     + name + "\"."
@@ -705,7 +703,7 @@ public final class Environment {
     /// @return the span-free value-layer failure
     private static SassValueException missingModule(String namespace) {
         return new SassValueException(
-                "There is no module with namespace \"" + namespace + "\"."
+                "There is no module with the namespace \"" + namespace + "\"."
         );
     }
 

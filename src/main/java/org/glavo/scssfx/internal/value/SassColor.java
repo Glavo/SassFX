@@ -841,6 +841,13 @@ public final class SassColor implements SassValue {
         if (!(firstWeight >= 0.0 && firstWeight <= 1.0)) {
             throw new IllegalArgumentException("firstWeight must be between 0 and 1");
         }
+        // Preserve the original space when the mix degenerates to one input.
+        if (SassFuzzy.equals(firstWeight, 1.0)) {
+            return this;
+        }
+        if (SassFuzzy.equals(firstWeight, 0.0)) {
+            return other;
+        }
 
         var left = toSpace(ColorSpace.RGB, false);
         var right = other.toSpace(ColorSpace.RGB, false);
@@ -863,9 +870,22 @@ public final class SassColor implements SassValue {
 
     /// Returns the RGB complement of this color without preserving source format.
     ///
+    /// Missing RGB channels are rejected because Sass does not yet define how
+    /// to invert them.
+    ///
     /// @return the color with every RGB channel subtracted from 255
+    /// @throws SassValueException if an RGB channel is missing
     public SassColor inverted() {
         var rgb = toSpace(ColorSpace.RGB, false);
+        if (rgb.isChannel0Missing()) {
+            throw missingChannelInvertError(rgb, "red");
+        }
+        if (rgb.isChannel1Missing()) {
+            throw missingChannelInvertError(rgb, "green");
+        }
+        if (rgb.isChannel2Missing()) {
+            throw missingChannelInvertError(rgb, "blue");
+        }
         return SassColor.rgb(
                 255.0 - rgb.channel0(),
                 255.0 - rgb.channel1(),
@@ -873,6 +893,15 @@ public final class SassColor implements SassValue {
                 rgb.alpha(),
                 null
         ).toSpace(space, false);
+    }
+
+    /// Builds the dart-sass missing-channel diagnostic for invert.
+    private static SassValueException missingChannelInvertError(SassColor color, String channel) {
+        return new SassValueException(
+                "$" + channel + ": Because the CSS working group is still deciding on the "
+                        + "best behavior, Sass doesn't currently support modifying missing "
+                        + "channels (color: " + color.toCssString() + ")."
+        );
     }
 
     /// Returns this color with zero chroma/saturation in the original space.

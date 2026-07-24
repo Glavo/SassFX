@@ -9,6 +9,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Objects;
 
@@ -18,6 +19,8 @@ import java.util.Objects;
 /// @param target       the single-compound selectors being extended
 /// @param optional     whether an unmatched target is allowed
 /// @param mediaContext the active media-query list, or {@code null} outside media
+/// @param originUrl    the canonical URL of the module that declared the extend,
+///                     or {@code null} for the anonymous root stylesheet
 /// @param span         the `@extend` source span
 @ApiStatus.Internal
 @NotNullByDefault
@@ -26,6 +29,7 @@ public record PendingExtension(
         SelectorList target,
         boolean optional,
         @Nullable @Unmodifiable List<CssMediaQuery> mediaContext,
+        @Nullable URI originUrl,
         SourceSpan span
 ) {
     /// Creates one pending extension.

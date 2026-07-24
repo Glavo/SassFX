@@ -7,6 +7,7 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Locale;
 import java.util.Objects;
 
 /// Represents a pseudo-class or pseudo-element selector.
@@ -47,6 +48,18 @@ public record PseudoSelector(
             result.append('(').append(argument.toCssString()).append(')');
         }
         return result.toString();
+    }
+
+    @Override
+    public boolean isInvisible() {
+        if (!(argument instanceof SelectorPseudoArgument selectorArgument)) {
+            return false;
+        }
+        // `:not(%foo)` stays visible: it means "not nothing" and serializes away.
+        if ("not".equals(name.value().toLowerCase(Locale.ROOT))) {
+            return false;
+        }
+        return selectorArgument.selectors().isInvisible();
     }
 
     @Override

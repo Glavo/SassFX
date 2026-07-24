@@ -197,8 +197,8 @@ final class FilesystemImporterTest {
 
         assertEquals(
                 "It's not clear which file to import. Found:\n"
-                        + "  " + regular + "\n"
-                        + "  " + partial,
+                        + "  _tokens.scss\n"
+                        + "  tokens.scss",
                 failure.getMessage()
         );
     }

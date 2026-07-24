@@ -81,7 +81,7 @@ final class SassCompilerTest {
 
         assertEquals(
                 """
-                        a c, b c, a d, b d {
+                        a c, a d, b c, b d {
                           color: red;
                         }
 
@@ -676,7 +676,7 @@ final class SassCompilerTest {
 
         assertEquals(
                 """
-                        @supports ((display: grid) and selector(.button)) or (not ((display: flex) and (--theme:dark))) {
+                        @supports ((display: grid) and selector(.button)) or (not ((display: flex) and (--theme: dark))) {
                           Pane {
                             -fx-opacity: 1;
                           }
@@ -685,7 +685,7 @@ final class SassCompilerTest {
         );
     }
 
-    /// Serializes custom-property supports declarations without a colon space.
+    /// Serializes custom-property supports declarations with CSS-like spacing.
     @Test
     void serializesCustomPropertySupportsDeclarations() throws Exception {
         var result = compile(
@@ -707,7 +707,7 @@ final class SassCompilerTest {
 
         assertEquals(
                 """
-                        @supports (--theme:dark) {
+                        @supports (--theme: dark) {
                           Pane {
                             -fx-opacity: 1;
                           }
@@ -740,7 +740,7 @@ final class SassCompilerTest {
 
         assertEquals(
                 """
-                        @supports ((display: grid) and selector(.button)) or (not (--theme:dark)) {
+                        @supports ((display: grid) and selector(.button)) or (not (--theme: dark)) {
                           Pane {
                             -fx-opacity: 1;
                           }
@@ -931,7 +931,7 @@ final class SassCompilerTest {
                 ).getMessage()
         );
         assertEquals(
-                "Expected supports condition.",
+                "Expected @supports condition.",
                 assertCompilationFailure(
                         "$condition: \"\"; @supports #{$condition} { Pane {} }"
                 ).getMessage()

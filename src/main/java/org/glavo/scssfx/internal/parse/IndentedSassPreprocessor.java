@@ -105,7 +105,9 @@ final class IndentedSassPreprocessor {
                 if (isComment(normalized)) {
                     appendLine(output, line, normalized);
                     output.appendSynthetic("\n", line.endOffset());
-                } else if (isBlockHeader(normalized) && !looksLikePropertyDeclaration(normalized)) {
+                } else if (isBlockHeader(normalized)
+                        && !looksLikePropertyDeclaration(normalized)
+                        && !normalized.startsWith("@include ")) {
                     // Empty functions, mixins, control directives, and style rules need
                     // braces. Property declarations keep a trailing semicolon.
                     appendLine(output, line, normalized);
@@ -871,7 +873,7 @@ final class IndentedSassPreprocessor {
         var separator = text.indexOf(' ');
         var name = separator < 0 ? text : text.substring(0, separator);
         return switch (name) {
-            case "@use", "@forward", "@import", "@extend", "@return",
+            case "@use", "@forward", "@import", "@extend", "@return", "@content",
                     "@debug", "@warn", "@error", "@charset", "@namespace" -> true;
             default -> false;
         };

@@ -153,7 +153,7 @@ final class BuiltInModuleTest {
                 SassCompilationException.class,
                 () -> compile("@use \"sass:math\"; a { x: math.sqrt(9px); }")
         );
-        assertEquals("Expected 9px to have no units.", failure.getMessage());
+        assertEquals("$number: Expected 9px to have no units.", failure.getMessage());
     }
 
     /// Evaluates the first string, legacy color, and static meta module APIs.
@@ -285,14 +285,14 @@ final class BuiltInModuleTest {
     @Test
     void rejectsDirectBuiltInConfigurations() {
         assertEquals(
-                "Built-in modules can't be configured.",
+                "Built-in module sass:math can't be configured.",
                 assertThrows(
                         SassCompilationException.class,
                         () -> compile("@use \"sass:math\" with ($pi: 4);")
                 ).getMessage()
         );
         assertEquals(
-                "Built-in modules can't be configured.",
+                "Built-in module sass:math can't be configured.",
                 assertThrows(
                         SassCompilationException.class,
                         () -> compile("@forward \"sass:math\" with ($pi: 4);")
@@ -328,7 +328,7 @@ final class BuiltInModuleTest {
                 )
         );
         assertEquals(
-                "This variable was not declared with !default in the @used module.",
+                "$pi was not declared with !default in the @used module.",
                 failure.getMessage()
         );
     }

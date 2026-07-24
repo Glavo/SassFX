@@ -71,7 +71,7 @@ final class StaticImportOutputTest {
                 """
                         @import "theme.css" layer(theme) supports(display: grid) screen;
                         @import "custom.css" supports((display: grid) and selector(.button) and \
-                        (--theme:dark));
+                        (--theme: dark));
                         @import "quoted.css" supports(--theme: dark);""",
                 result.output()
         );
@@ -108,7 +108,7 @@ final class StaticImportOutputTest {
                 )
         );
 
-        assertEquals("Expected supports condition.", failure.getMessage());
+        assertEquals("Expected @supports condition.", failure.getMessage());
     }
 
     /// Places root imports before CSS emitted by used modules.

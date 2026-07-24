@@ -423,11 +423,9 @@ public final class SassSpecBatchMain {
             var message = new StringBuilder(lines[index].substring("Error: ".length()));
             for (var next = index + 1; next < lines.length; next++) {
                 var line = lines[next];
-                // Span dumps begin with "  ," (legacy) or "  ,-->" / box-drawing markers.
-                if (line.startsWith("  ,")
-                        || line.startsWith("  ┌")
-                        || line.startsWith("  ╷")
-                        || line.startsWith("  ╔")) {
+                // Span dumps begin with two- or four-space ", " leaders (single-span
+                // vs multi-span dart-sass layouts), ",-->", or box-drawing markers.
+                if (isErrorSpanDumpLine(line)) {
                     break;
                 }
                 message.append('\n').append(line);
@@ -435,6 +433,26 @@ public final class SassSpecBatchMain {
             return message.toString().stripTrailing();
         }
         throw new IllegalArgumentException("Missing Error: line");
+    }
+
+    /// Returns whether a line starts a dart-sass source-span dump rather than
+    /// continuing the primary error message.
+    ///
+    /// @param line one line of an {@code error} expectation file
+    /// @return whether the line begins a span dump
+    private static boolean isErrorSpanDumpLine(String line) {
+        if (line.startsWith("  ┌")
+                || line.startsWith("  ╷")
+                || line.startsWith("  ╔")
+                || line.startsWith("  ,-->")
+                || line.startsWith("    ,-->")) {
+            return true;
+        }
+        // "  ," or "    ," optionally followed by spaces then a digit or end.
+        if (line.startsWith("  ,") || line.startsWith("    ,")) {
+            return true;
+        }
+        return false;
     }
 
     private static String normalizeCss(String css) {

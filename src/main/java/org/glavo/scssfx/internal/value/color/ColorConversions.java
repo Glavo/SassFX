@@ -122,6 +122,13 @@ public final class ColorConversions {
             -0.07637293667466007, -0.42149333240224324, 1.58692401983678180
     };
 
+    /// Direct LMS → linear sRGB matrix from dart-sass (avoids LMS→XYZ→sRGB drift).
+    private static final double[] LMS_TO_LINEAR_SRGB = {
+            4.07674163607595800, -3.30771153925806200, 0.23096990318210417,
+            -1.26843797328503200, 2.60975734928768900, -0.34131937600265710,
+            -0.00419607613867551, -0.70341861793593630, 1.70761469407461200
+    };
+
     private static final double REC2020_ALPHA = 1.09929682680944;
     private static final double REC2020_BETA = 0.018053968510807;
 
@@ -237,6 +244,9 @@ public final class ColorConversions {
             @Nullable Double lightness,
             @Nullable Double alpha
     ) {
+        var missingHue = hue == null;
+        var missingChroma = saturation == null;
+        var missingLightness = lightness == null;
         var scaledHue = ((hue != null ? hue : 0.0) / 360.0) % 1.0;
         if (scaledHue < 0.0) {
             scaledHue += 1.0;
@@ -264,7 +274,19 @@ public final class ColorConversions {
         if (dest == ColorSpace.HWB) {
             return srgbToPolar(ColorSpace.HWB, red, green, blue, alpha);
         }
-        return convert(ColorSpace.SRGB, dest, red, green, blue, alpha);
+        if (dest == ColorSpace.HSL) {
+            return new ConvertedChannels(hue, saturation, lightness, alpha);
+        }
+        return convertSrgbWithMissing(
+                dest,
+                red,
+                green,
+                blue,
+                alpha,
+                missingLightness,
+                missingChroma,
+                missingHue
+        );
     }
 
     /// Converts channels from HWB into {@code dest}.
@@ -302,9 +324,25 @@ public final class ColorConversions {
             );
         }
         if (dest == ColorSpace.HSL) {
-            return srgbToPolar(ColorSpace.HSL, red, green, blue, alpha);
+            var polar = srgbToPolar(ColorSpace.HSL, red, green, blue, alpha);
+            // Preserve missing HWB hue as missing HSL hue.
+            return new ConvertedChannels(
+                    hue == null ? null : polar.channel0(),
+                    polar.channel1(),
+                    polar.channel2(),
+                    alpha
+            );
         }
-        return convert(ColorSpace.SRGB, dest, red, green, blue, alpha);
+        return convertSrgbWithMissing(
+                dest,
+                red,
+                green,
+                blue,
+                alpha,
+                false,
+                false,
+                hue == null
+        );
     }
 
     /// Normalizes RGB endpoints that differ only by Sass numeric fuzziness.
@@ -326,12 +364,52 @@ public final class ColorConversions {
             @Nullable Double b,
             @Nullable Double alpha
     ) {
+        return convertFromLab(
+                dest,
+                lightness,
+                a,
+                b,
+                alpha,
+                false,
+                false
+        );
+    }
+
+    /// Converts channels from Lab into {@code dest}, optionally marking polar
+    /// missingness that originated in LCH/OKLCH.
+    private static ConvertedChannels convertFromLab(
+            ColorSpace dest,
+            @Nullable Double lightness,
+            @Nullable Double a,
+            @Nullable Double b,
+            @Nullable Double alpha,
+            boolean missingChroma,
+            boolean missingHue
+    ) {
         if (dest == ColorSpace.LCH) {
-            return labToLch(ColorSpace.LCH, lightness, a, b, alpha, false, false);
+            return labToLch(
+                    ColorSpace.LCH,
+                    lightness,
+                    a,
+                    b,
+                    alpha,
+                    missingChroma || (a == null && b == null),
+                    missingHue
+            );
         }
         if (dest == ColorSpace.LAB) {
-            return new ConvertedChannels(lightness, a, b, alpha);
+            // Zero or missing lightness makes a/b powerless → missing.
+            var powerlessAB = lightness == null || SassFuzzy.equals(lightness, 0.0);
+            return new ConvertedChannels(
+                    lightness,
+                    a == null || powerlessAB ? null : a,
+                    b == null || powerlessAB ? null : b,
+                    alpha
+            );
         }
+        var missingLightness = lightness == null;
+        var missingA = a == null;
+        var missingB = b == null;
         var l = lightness != null ? lightness : 0.0;
         var f1 = (l + 16.0) / 116.0;
         var x = convertLabFToXorZ((a != null ? a : 0.0) / 500.0 + f1) * D50[0];
@@ -339,7 +417,18 @@ public final class ColorConversions {
                 ? Math.pow((l + 16.0) / 116.0, 3.0)
                 : l / LAB_KAPPA) * D50[1];
         var z = convertLabFToXorZ(f1 - (b != null ? b : 0.0) / 200.0) * D50[2];
-        return convert(ColorSpace.XYZ_D50, dest, x, y, z, alpha);
+        return fromXyzD50(
+                dest,
+                x,
+                y,
+                z,
+                alpha,
+                missingLightness,
+                missingChroma,
+                missingHue,
+                missingA,
+                missingB
+        );
     }
 
     /// Converts channels from LCH into {@code dest}.
@@ -350,6 +439,17 @@ public final class ColorConversions {
             @Nullable Double hue,
             @Nullable Double alpha
     ) {
+        if (dest == ColorSpace.LCH) {
+            var powerlessHue = chroma == null || SassFuzzy.equals(chroma, 0.0);
+            return new ConvertedChannels(
+                    lightness,
+                    chroma == null ? null : Math.abs(chroma),
+                    hue == null || powerlessHue ? null : hue,
+                    alpha
+            );
+        }
+        // LCH → rectangular Lab uses computed a/b (0 when chroma/hue are missing).
+        // Only polar missingness is forwarded for LCH/OKLCH destinations.
         var hueRadians = Math.toRadians(hue != null ? hue : 0.0);
         var c = chroma != null ? chroma : 0.0;
         return convertFromLab(
@@ -357,7 +457,9 @@ public final class ColorConversions {
                 lightness,
                 c * Math.cos(hueRadians),
                 c * Math.sin(hueRadians),
-                alpha
+                alpha,
+                chroma == null,
+                hue == null
         );
     }
 
@@ -369,19 +471,69 @@ public final class ColorConversions {
             @Nullable Double b,
             @Nullable Double alpha
     ) {
+        return convertFromOklab(
+                dest,
+                lightness,
+                a,
+                b,
+                alpha,
+                false,
+                false
+        );
+    }
+
+    /// Converts channels from OKLab into {@code dest}, optionally marking polar
+    /// missingness that originated in OKLCH.
+    private static ConvertedChannels convertFromOklab(
+            ColorSpace dest,
+            @Nullable Double lightness,
+            @Nullable Double a,
+            @Nullable Double b,
+            @Nullable Double alpha,
+            boolean missingChroma,
+            boolean missingHue
+    ) {
         if (dest == ColorSpace.OKLCH) {
-            return labToLch(ColorSpace.OKLCH, lightness, a, b, alpha, false, false);
+            return labToLch(
+                    ColorSpace.OKLCH,
+                    lightness,
+                    a,
+                    b,
+                    alpha,
+                    missingChroma || (a == null && b == null),
+                    missingHue
+            );
         }
         if (dest == ColorSpace.OKLAB) {
-            return new ConvertedChannels(lightness, a, b, alpha);
+            var powerlessAB = lightness == null || SassFuzzy.equals(lightness, 0.0);
+            return new ConvertedChannels(
+                    lightness,
+                    a == null || powerlessAB ? null : a,
+                    b == null || powerlessAB ? null : b,
+                    alpha
+            );
         }
+        var missingLightness = lightness == null;
+        var missingA = a == null;
+        var missingB = b == null;
         var l = lightness != null ? lightness : 0.0;
         var aa = a != null ? a : 0.0;
         var bb = b != null ? b : 0.0;
         var long_ = Math.pow(OKLAB_TO_LMS[0] * l + OKLAB_TO_LMS[1] * aa + OKLAB_TO_LMS[2] * bb, 3.0);
         var medium = Math.pow(OKLAB_TO_LMS[3] * l + OKLAB_TO_LMS[4] * aa + OKLAB_TO_LMS[5] * bb, 3.0);
         var short_ = Math.pow(OKLAB_TO_LMS[6] * l + OKLAB_TO_LMS[7] * aa + OKLAB_TO_LMS[8] * bb, 3.0);
-        return convert(ColorSpace.LMS, dest, long_, medium, short_, alpha);
+        return fromLms(
+                dest,
+                long_,
+                medium,
+                short_,
+                alpha,
+                missingLightness,
+                missingChroma,
+                missingHue,
+                missingA,
+                missingB
+        );
     }
 
     /// Converts channels from OKLCH into {@code dest}.
@@ -392,14 +544,179 @@ public final class ColorConversions {
             @Nullable Double hue,
             @Nullable Double alpha
     ) {
+        if (dest == ColorSpace.OKLCH) {
+            var powerlessHue = chroma == null || SassFuzzy.equals(chroma, 0.0);
+            return new ConvertedChannels(
+                    lightness,
+                    chroma == null ? null : Math.abs(chroma),
+                    hue == null || powerlessHue ? null : hue,
+                    alpha
+            );
+        }
         var hueRadians = Math.toRadians(hue != null ? hue : 0.0);
         var c = chroma != null ? chroma : 0.0;
+        // Polar → rectangular OKLab keeps computed a/b (including zeros for black)
+        // rather than applying same-space powerless-channel nulling.
+        if (dest == ColorSpace.OKLAB) {
+            return new ConvertedChannels(
+                    lightness,
+                    c * Math.cos(hueRadians),
+                    c * Math.sin(hueRadians),
+                    alpha
+            );
+        }
         return convertFromOklab(
                 dest,
                 lightness,
                 c * Math.cos(hueRadians),
                 c * Math.sin(hueRadians),
-                alpha
+                alpha,
+                chroma == null,
+                hue == null
+        );
+    }
+
+    /// Converts XYZ-D50 channels into {@code dest}, preserving Lab/OKLab missingness.
+    private static ConvertedChannels fromXyzD50(
+            ColorSpace dest,
+            double x,
+            double y,
+            double z,
+            @Nullable Double alpha,
+            boolean missingLightness,
+            boolean missingChroma,
+            boolean missingHue,
+            boolean missingA,
+            boolean missingB
+    ) {
+        if (dest == ColorSpace.LAB || dest == ColorSpace.LCH) {
+            return fromXyzD50ToLab(
+                    dest,
+                    x,
+                    y,
+                    z,
+                    alpha,
+                    missingChroma,
+                    missingHue,
+                    missingLightness,
+                    missingA,
+                    missingB
+            );
+        }
+        if (dest == ColorSpace.XYZ_D50) {
+            return new ConvertedChannels(x, y, z, alpha);
+        }
+        // Bridge through XYZ-D65 for remaining spaces while keeping missing flags.
+        double[] d65 = multiply(XYZ_D50_TO_XYZ_D65, x, y, z);
+        return fromXyzD65(
+                dest,
+                d65[0],
+                d65[1],
+                d65[2],
+                alpha,
+                false,
+                false,
+                false,
+                missingLightness,
+                missingChroma,
+                missingHue,
+                missingA,
+                missingB
+        );
+    }
+
+    /// Converts LMS channels into {@code dest}, preserving OKLab missingness.
+    private static ConvertedChannels fromLms(
+            ColorSpace dest,
+            double long_,
+            double medium,
+            double short_,
+            @Nullable Double alpha,
+            boolean missingLightness,
+            boolean missingChroma,
+            boolean missingHue,
+            boolean missingA,
+            boolean missingB
+    ) {
+        if (dest == ColorSpace.OKLAB || dest == ColorSpace.OKLCH) {
+            return fromLmsToOklab(
+                    dest,
+                    long_,
+                    medium,
+                    short_,
+                    alpha,
+                    missingChroma,
+                    missingHue,
+                    missingLightness,
+                    missingA,
+                    missingB
+            );
+        }
+        if (dest == ColorSpace.LMS) {
+            return new ConvertedChannels(long_, medium, short_, alpha);
+        }
+        // Prefer the dart-sass direct LMS→linear sRGB path for sRGB-family destinations
+        // so extreme and near-white round-trips match their floating-point results.
+        if (dest == ColorSpace.SRGB
+                || dest == ColorSpace.SRGB_LINEAR
+                || dest == ColorSpace.RGB
+                || dest == ColorSpace.HSL
+                || dest == ColorSpace.HWB) {
+            double[] linear = multiply(LMS_TO_LINEAR_SRGB, long_, medium, short_);
+            return switch (dest) {
+                case SRGB_LINEAR -> new ConvertedChannels(linear[0], linear[1], linear[2], alpha);
+                case RGB -> new ConvertedChannels(
+                        srgbFromLinear(linear[0]) * 255.0,
+                        srgbFromLinear(linear[1]) * 255.0,
+                        srgbFromLinear(linear[2]) * 255.0,
+                        alpha
+                );
+                case HSL, HWB -> {
+                    var polar = srgbToPolar(
+                            dest,
+                            srgbFromLinear(linear[0]),
+                            srgbFromLinear(linear[1]),
+                            srgbFromLinear(linear[2]),
+                            alpha
+                    );
+                    if (dest == ColorSpace.HSL) {
+                        yield new ConvertedChannels(
+                                missingHue || polar.channel0() == null ? null : polar.channel0(),
+                                missingChroma ? null : polar.channel1(),
+                                missingLightness ? null : polar.channel2(),
+                                alpha
+                        );
+                    }
+                    yield new ConvertedChannels(
+                            missingHue || polar.channel0() == null ? null : polar.channel0(),
+                            polar.channel1(),
+                            polar.channel2(),
+                            alpha
+                    );
+                }
+                default -> new ConvertedChannels(
+                        srgbFromLinear(linear[0]),
+                        srgbFromLinear(linear[1]),
+                        srgbFromLinear(linear[2]),
+                        alpha
+                );
+            };
+        }
+        double[] xyz = multiply(LMS_TO_XYZ_D65, long_, medium, short_);
+        return fromXyzD65(
+                dest,
+                xyz[0],
+                xyz[1],
+                xyz[2],
+                alpha,
+                false,
+                false,
+                false,
+                missingLightness,
+                missingChroma,
+                missingHue,
+                missingA,
+                missingB
         );
     }
 
@@ -440,6 +757,39 @@ public final class ColorConversions {
             boolean missing1,
             boolean missing2
     ) {
+        return fromXyzD65(
+                dest,
+                x,
+                y,
+                z,
+                alpha,
+                missing0,
+                missing1,
+                missing2,
+                false,
+                false,
+                false,
+                false,
+                false
+        );
+    }
+
+    /// Converts one XYZ-D65 color into {@code dest} with Lab/OKLab missing flags.
+    private static ConvertedChannels fromXyzD65(
+            ColorSpace dest,
+            double x,
+            double y,
+            double z,
+            @Nullable Double alpha,
+            boolean missing0,
+            boolean missing1,
+            boolean missing2,
+            boolean missingLightness,
+            boolean missingChroma,
+            boolean missingHue,
+            boolean missingA,
+            boolean missingB
+    ) {
         return switch (dest) {
             case XYZ_D65 -> new ConvertedChannels(
                     missing0 ? null : x,
@@ -467,18 +817,54 @@ public final class ColorConversions {
             }
             case LAB, LCH -> {
                 double[] d50 = multiply(XYZ_D65_TO_XYZ_D50, x, y, z);
-                yield fromXyzD50ToLab(dest, d50[0], d50[1], d50[2], alpha, false, false);
+                yield fromXyzD50ToLab(
+                        dest,
+                        d50[0],
+                        d50[1],
+                        d50[2],
+                        alpha,
+                        missingChroma,
+                        missingHue,
+                        missingLightness,
+                        missingA,
+                        missingB
+                );
             }
             case OKLAB, OKLCH -> {
                 double[] lms = multiply(XYZ_D65_TO_LMS, x, y, z);
-                yield fromLmsToOklab(dest, lms[0], lms[1], lms[2], alpha, false, false);
+                yield fromLmsToOklab(
+                        dest,
+                        lms[0],
+                        lms[1],
+                        lms[2],
+                        alpha,
+                        missingChroma,
+                        missingHue,
+                        missingLightness,
+                        missingA,
+                        missingB
+                );
             }
             case HSL, HWB -> {
                 double[] linear = multiply(XYZ_D65_TO_LINEAR_SRGB, x, y, z);
                 double red = srgbFromLinear(linear[0]);
                 double green = srgbFromLinear(linear[1]);
                 double blue = srgbFromLinear(linear[2]);
-                yield srgbToPolar(dest, red, green, blue, alpha);
+                var polar = srgbToPolar(dest, red, green, blue, alpha);
+                if (dest == ColorSpace.HSL) {
+                    yield new ConvertedChannels(
+                            missingHue || polar.channel0() == null ? null : polar.channel0(),
+                            missingChroma ? null : polar.channel1(),
+                            missingLightness ? null : polar.channel2(),
+                            alpha
+                    );
+                }
+                yield new ConvertedChannels(
+                        missingHue || polar.channel0() == null ? null : polar.channel0(),
+                        polar.channel1(),
+                        polar.channel2(),
+                        alpha
+                );
             }
             case RGB -> {
                 double[] linear = multiply(XYZ_D65_TO_LINEAR_SRGB, x, y, z);
@@ -563,18 +949,38 @@ public final class ColorConversions {
             double z,
             @Nullable Double alpha,
             boolean missingChroma,
-            boolean missingHue
+            boolean missingHue,
+            boolean missingLightness,
+            boolean missingA,
+            boolean missingB
     ) {
         var f0 = convertXyzComponentToLabF(x / D50[0]);
         var f1 = convertXyzComponentToLabF(y / D50[1]);
         var f2 = convertXyzComponentToLabF(z / D50[2]);
-        var lightness = 116.0 * f1 - 16.0;
+        // Only drop channels that were missing on the source; computed zeros from
+        // black stay as 0 rather than becoming CSS missing components.
+        @Nullable Double lightness = missingLightness ? null : 116.0 * f1 - 16.0;
         var a = 500.0 * (f0 - f1);
         var b = 200.0 * (f1 - f2);
         if (dest == ColorSpace.LAB) {
-            return new ConvertedChannels(lightness, a, b, alpha);
+            // missingA/missingB apply only to rectangular Lab destinations.
+            return new ConvertedChannels(
+                    lightness,
+                    missingA ? null : a,
+                    missingB ? null : b,
+                    alpha
+            );
         }
-        return labToLch(ColorSpace.LCH, lightness, a, b, alpha, missingChroma, missingHue);
+        // Polar LCH always receives computed a/b (dart-sass LMS/XYZ path).
+        return labToLch(
+                ColorSpace.LCH,
+                lightness,
+                a,
+                b,
+                alpha,
+                missingChroma,
+                missingHue
+        );
     }
 
     /// Converts LMS into OKLab or OKLCH.
@@ -585,12 +991,17 @@ public final class ColorConversions {
             double short_,
             @Nullable Double alpha,
             boolean missingChroma,
-            boolean missingHue
+            boolean missingHue,
+            boolean missingLightness,
+            boolean missingA,
+            boolean missingB
     ) {
         var longScaled = cubeRootPreservingSign(long_);
         var mediumScaled = cubeRootPreservingSign(medium);
         var shortScaled = cubeRootPreservingSign(short_);
-        var lightness = LMS_TO_OKLAB[0] * longScaled
+        @Nullable Double lightness = missingLightness
+                ? null
+                : LMS_TO_OKLAB[0] * longScaled
                 + LMS_TO_OKLAB[1] * mediumScaled
                 + LMS_TO_OKLAB[2] * shortScaled;
         var a = LMS_TO_OKLAB[3] * longScaled
@@ -600,9 +1011,122 @@ public final class ColorConversions {
                 + LMS_TO_OKLAB[7] * mediumScaled
                 + LMS_TO_OKLAB[8] * shortScaled;
         if (dest == ColorSpace.OKLAB) {
-            return new ConvertedChannels(lightness, a, b, alpha);
+            return new ConvertedChannels(
+                    lightness,
+                    missingA ? null : a,
+                    missingB ? null : b,
+                    alpha
+            );
         }
-        return labToLch(ColorSpace.OKLCH, lightness, a, b, alpha, missingChroma, missingHue);
+        // Polar OKLCH always receives computed a/b (dart-sass does not null them).
+        return labToLch(
+                ColorSpace.OKLCH,
+                lightness,
+                a,
+                b,
+                alpha,
+                missingChroma,
+                missingHue
+        );
+    }
+
+    /// Converts sRGB channels into {@code dest} while preserving analogous missingness.
+    private static ConvertedChannels convertSrgbWithMissing(
+            ColorSpace dest,
+            double red,
+            double green,
+            double blue,
+            @Nullable Double alpha,
+            boolean missingLightness,
+            boolean missingChroma,
+            boolean missingHue
+    ) {
+        if (dest == ColorSpace.SRGB) {
+            return new ConvertedChannels(red, green, blue, alpha);
+        }
+        if (dest == ColorSpace.HSL || dest == ColorSpace.HWB) {
+            var polar = srgbToPolar(dest, red, green, blue, alpha);
+            if (dest == ColorSpace.HSL) {
+                return new ConvertedChannels(
+                        missingHue ? null : polar.channel0(),
+                        missingChroma ? null : polar.channel1(),
+                        missingLightness ? null : polar.channel2(),
+                        alpha
+                );
+            }
+            return new ConvertedChannels(
+                    missingHue ? null : polar.channel0(),
+                    polar.channel1(),
+                    polar.channel2(),
+                    alpha
+            );
+        }
+        double[] xyz = toXyzD65(ColorSpace.SRGB, red, green, blue);
+        // Missing HSL/HWB chroma maps to polar chroma, not rectangular a/b.
+        // Rectangular destinations keep computed zeros from sat=0.
+        return switch (dest) {
+            case LAB -> {
+                double[] d50 = multiply(XYZ_D65_TO_XYZ_D50, xyz[0], xyz[1], xyz[2]);
+                yield fromXyzD50ToLab(
+                        dest,
+                        d50[0],
+                        d50[1],
+                        d50[2],
+                        alpha,
+                        false,
+                        false,
+                        missingLightness,
+                        false,
+                        false
+                );
+            }
+            case LCH -> {
+                double[] d50 = multiply(XYZ_D65_TO_XYZ_D50, xyz[0], xyz[1], xyz[2]);
+                yield fromXyzD50ToLab(
+                        dest,
+                        d50[0],
+                        d50[1],
+                        d50[2],
+                        alpha,
+                        missingChroma,
+                        missingHue,
+                        missingLightness,
+                        false,
+                        false
+                );
+            }
+            case OKLAB -> {
+                double[] lms = multiply(XYZ_D65_TO_LMS, xyz[0], xyz[1], xyz[2]);
+                yield fromLmsToOklab(
+                        dest,
+                        lms[0],
+                        lms[1],
+                        lms[2],
+                        alpha,
+                        false,
+                        false,
+                        missingLightness,
+                        false,
+                        false
+                );
+            }
+            case OKLCH -> {
+                double[] lms = multiply(XYZ_D65_TO_LMS, xyz[0], xyz[1], xyz[2]);
+                yield fromLmsToOklab(
+                        dest,
+                        lms[0],
+                        lms[1],
+                        lms[2],
+                        alpha,
+                        missingChroma,
+                        missingHue,
+                        missingLightness,
+                        false,
+                        false
+                );
+            }
+            default -> convert(ColorSpace.SRGB, dest, red, green, blue, alpha);
+        };
     }
 
     /// Converts one sRGB triple into HSL or HWB.
@@ -635,6 +1159,9 @@ public final class ColorConversions {
 
         if (dest == ColorSpace.HSL) {
             var lightness = (min + max) / 2.0;
+            // Fuzzy endpoints keep pure white/black from floating conversion noise
+            // at sat=0 (most sRGB-family whites). Exact == alone yields spurious
+            // high saturation when max/min straddle 1.0 by epsilon.
             var saturation = SassFuzzy.equals(lightness, 0.0) || SassFuzzy.equals(lightness, 1.0)
                     ? 0.0
                     : 100.0 * (max - lightness) / Math.min(lightness, 1.0 - lightness);

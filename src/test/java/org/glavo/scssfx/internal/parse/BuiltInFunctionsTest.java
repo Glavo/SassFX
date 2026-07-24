@@ -99,7 +99,7 @@ final class BuiltInFunctionsTest {
                 () -> evaluate("math.div(1, 2)")
         );
         assertEquals(
-                "There is no module with namespace \"math\".",
+                "There is no module with the namespace \"math\".",
                 failure.getMessage()
         );
     }

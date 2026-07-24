@@ -121,6 +121,10 @@ public final class CssSerializer {
                     buffer.append(';');
                 }
                 buffer.append('\n');
+                // Blank lines are driven by explicit group-end markers (between
+                // style rules, etc.). dart-sass does not insert an automatic
+                // blank line between a trailing {@code @import} and the first
+                // following style rule in expanded output.
                 if (previous.isGroupEnd()) {
                     buffer.append('\n');
                 }
@@ -192,7 +196,7 @@ public final class CssSerializer {
     ) {
         writeIndentation(buffer, indentation);
         buffer.forSpan(rule.selector().span(), () ->
-                buffer.append(rule.selector().value().toCssString()));
+                buffer.append(rule.selector().value().toCssString(false)));
         buffer.append(" {");
         writeExpandedChildren(rule, buffer, indentation);
         buffer.append('}');
@@ -345,7 +349,7 @@ public final class CssSerializer {
             buffer.append('}');
         } else if (node instanceof CssStyleRule rule) {
             buffer.forSpan(rule.selector().span(), () ->
-                    buffer.append(rule.selector().value().toCssString()));
+                    buffer.append(rule.selector().value().toCssString(false)));
             buffer.append('{');
             writeCompressedChildren(rule, buffer);
             buffer.append('}');

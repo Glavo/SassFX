@@ -558,7 +558,7 @@ public final class SassNumber implements SassValue {
                     number
             );
         }
-        if (other instanceof SassColor) {
+        if (other instanceof SassColor || other instanceof SassCalculation) {
             throw undefinedOperation("+", other);
         }
         return SassValue.super.plus(other);
@@ -577,7 +577,7 @@ public final class SassNumber implements SassValue {
                     number
             );
         }
-        if (other instanceof SassColor) {
+        if (other instanceof SassColor || other instanceof SassCalculation) {
             throw undefinedOperation("-", other);
         }
         return SassValue.super.minus(other);
@@ -609,6 +609,9 @@ public final class SassNumber implements SassValue {
     /// @throws SassValueException if a fallback operand cannot be represented in CSS
     @Override
     public SassValue dividedBy(SassValue other) {
+        if (other instanceof SassCalculation) {
+            throw undefinedOperation("/", other);
+        }
         if (!(other instanceof SassNumber number)) {
             return SassValue.super.dividedBy(other);
         }
@@ -661,6 +664,36 @@ public final class SassNumber implements SassValue {
     @Override
     public String toCssString() {
         return serialize(true);
+    }
+
+    /// Serializes this number as a calculation operand.
+    ///
+    /// Non-finite values use bare CSS keywords ({@code infinity},
+    /// {@code -infinity}, {@code NaN}) so they can appear inside an outer
+    /// {@code calc()} without nesting {@code calc(calc(...))}. Unitful
+    /// non-finite numbers expand as {@code infinity * 1px}-style products.
+    ///
+    /// @return the calculation-operand CSS text
+    public String toCalculationCssString() {
+        if (slashNumerator != null) {
+            return toCssString();
+        }
+        if (Double.isFinite(value)) {
+            return toCssString();
+        }
+        var result = new StringBuilder();
+        if (Double.isNaN(value)) {
+            result.append("NaN");
+        } else {
+            result.append(value > 0 ? "infinity" : "-infinity");
+        }
+        for (var unit : numeratorUnits) {
+            result.append(" * 1").append(unit);
+        }
+        for (var unit : denominatorUnits) {
+            result.append(" / 1").append(unit);
+        }
+        return result.toString();
     }
 
     /// Compares magnitudes using Sass fuzzy equality and requires identical units.
