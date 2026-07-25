@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-package org.glavo.scssfx.language;
+package org.glavo.scssfx.color;
 
 import org.glavo.scssfx.*;
 
@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Verifies batch48 must-fail diagnostics and color white residual conversion.
 @NotNullByDefault
-final class LanguageBatch48Test {
+final class ColorSpaceAndMixinNameTest {
     @Test
     void rejectsIncludeNamesBeginningWithDoubleHyphen() {
         var failure = assertThrows(

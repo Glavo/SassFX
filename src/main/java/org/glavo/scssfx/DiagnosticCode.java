@@ -38,5 +38,8 @@ public enum DiagnosticCode {
     SELECTOR_ERROR,
 
     /// Serialization failure for CSS or BSS output.
-    SERIALIZE_ERROR
+    SERIALIZE_ERROR,
+
+    /// Undefined binary or unary operation on values (colors, strings, …).
+    UNDEFINED_OPERATION
 }

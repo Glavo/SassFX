@@ -31,11 +31,16 @@ public final class IndentedSassParser {
     /// @throws ParseException if the indented structure or statement forms fail
     public static Stylesheet parse(SourceFile source) {
         Objects.requireNonNull(source, "source");
-        // Lex first so indent diagnostics use the native line model.
-        IndentedSassLexer.lex(source);
+        // Lex first so indent diagnostics use the native line model and so
+        // call sites can inspect structure without going through SCSS text.
+        var lines = IndentedSassLexer.lex(source);
+        if (lines.isEmpty()) {
+            return new ScssParser(source).parse();
+        }
         // Structural projection into the shared SCSS statement grammar. This is
         // an implementation detail of the indented parser, not a public
-        // Sass→SCSS preprocessing API.
+        // Sass→SCSS preprocessing API. Direct AST construction for simple
+        // statement forms is the intended replacement path.
         SourceFile projected = IndentedSassStructure.project(source);
         return new ScssParser(projected).parse();
     }

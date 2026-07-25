@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-package org.glavo.scssfx.language;
+package org.glavo.scssfx.selector;
 
 import org.glavo.scssfx.*;
 
@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Verifies batch38 @extend diagnostics and indented selector-comment handling.
 @NotNullByDefault
-final class LanguageBatch38Test {
+final class ExtendTargetAndSelectorCommentTest {
     @Test
     void rejectsComplexExtendTargetsWithDirectiveMessage() {
         var failure = assertThrows(

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-package org.glavo.scssfx.language;
+package org.glavo.scssfx.parser;
 
 import org.glavo.scssfx.*;
 
@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Verifies batch36 silent-comment and moz-document residual fixes.
 @NotNullByDefault
-final class LanguageBatch36Test {
+final class TrailingCommentSerializationTest {
     /// Custom properties keep trailing silent comments in indented syntax.
     @Test
     void customPropertyKeepsTrailingSilentCommentInSass() throws Exception {

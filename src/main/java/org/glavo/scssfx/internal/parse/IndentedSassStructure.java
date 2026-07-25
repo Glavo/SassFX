@@ -92,7 +92,8 @@ final class IndentedSassStructure {
                     throw error(
                             source,
                             line,
-                            "Inconsistent indentation, expected " + expectedIndent + " spaces."
+                            org.glavo.scssfx.DiagnosticCode.INDENTED_INCONSISTENT_INDENT,
+                            expectedIndent
                     );
                 }
             }
@@ -2195,14 +2196,16 @@ final class IndentedSassStructure {
     /// @param source the original source
     /// @param line   the offending line
     /// @param code   the stable diagnostic code
+    /// @param args   format arguments for [org.glavo.scssfx.DiagnosticMessages]
     /// @return the parse failure
     private static ParseException error(
             SourceFile source,
             LogicalLine line,
-            org.glavo.scssfx.DiagnosticCode code
+            org.glavo.scssfx.DiagnosticCode code,
+            Object... args
     ) {
         SourceSpan span = source.span(line.startOffset(), line.endOffset());
-        return new ParseException(code, span);
+        return new ParseException(code, span, args);
     }
 
     /// Creates a preprocessing failure associated with a source range.
@@ -2256,7 +2259,15 @@ final class IndentedSassStructure {
     /// @param endOffset the source end offset
     /// @param pieces source-backed pieces forming the unchanged statement text
     /// @param comment whether the line is a comment
-    private record LogicalLine(
+    /// One logical statement or comment line produced by the indented lexer.
+    ///
+    /// @param indent      indentation width used for block structure
+    /// @param text        normalized statement text
+    /// @param startOffset source start offset
+    /// @param endOffset   source end offset
+    /// @param pieces      source-backed pieces forming the statement text
+    /// @param comment     whether the line is a comment
+    record LogicalLine(
             int indent,
             String text,
             int startOffset,

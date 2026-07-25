@@ -56,7 +56,7 @@ public final class EvaluationException extends RuntimeException {
     ) {
         this(
                 org.glavo.scssfx.DiagnosticMessages.error(
-                        org.glavo.scssfx.DiagnosticCode.EVALUATION_ERROR,
+                        classifyMessage(message),
                         span,
                         message
                 ),
@@ -64,6 +64,15 @@ public final class EvaluationException extends RuntimeException {
                 List.of(new SassStackFrame("root stylesheet", span)),
                 cause
         );
+    }
+
+    /// Maps a pre-rendered value-layer message onto a stable diagnostic code.
+    private static org.glavo.scssfx.DiagnosticCode classifyMessage(String message) {
+        Objects.requireNonNull(message, "message");
+        if (message.startsWith("Undefined operation ")) {
+            return org.glavo.scssfx.DiagnosticCode.UNDEFINED_OPERATION;
+        }
+        return org.glavo.scssfx.DiagnosticCode.EVALUATION_ERROR;
     }
 
     /// Creates an evaluation failure with explicit diagnostic and trace data.

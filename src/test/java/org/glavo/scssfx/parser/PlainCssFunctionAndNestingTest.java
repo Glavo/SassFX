@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-package org.glavo.scssfx.language;
+package org.glavo.scssfx.parser;
 
 import org.glavo.scssfx.*;
 
@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /// Verifies batch47 CSS custom functions, keyframe nesting, and custom-property
 /// nesting diagnostics.
 @NotNullByDefault
-final class LanguageBatch47Test {
+final class PlainCssFunctionAndNestingTest {
     @Test
     void plainCssFunctionKeepsRawResultAndInterpolatedEvaluatesScript() throws Exception {
         assertEquals(

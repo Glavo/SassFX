@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-package org.glavo.scssfx.language;
+package org.glavo.scssfx.css;
 
 import org.glavo.scssfx.*;
 
@@ -13,22 +13,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /// Verifies batch40 color-arithmetic rejection, font-face bubbling, and at-root
 /// comment handling.
 @NotNullByDefault
-final class LanguageBatch40Test {
+final class FontFaceAndColorArithmeticTest {
     @Test
     void rejectsColorArithmetic() {
         var failure = assertThrows(
-                Exception.class,
+                SassCompilationException.class,
                 () -> compile("$v: #abc + #123;", Syntax.SCSS)
         );
         assertTrue(
                 failure.getMessage().contains("Undefined operation \"#abc + #123\"."),
                 failure.getMessage()
         );
+        assertEquals("UNDEFINED_OPERATION", failure.primaryDiagnostic().code());
         failure = assertThrows(
-                Exception.class,
+                SassCompilationException.class,
                 () -> compile("$v: #abc - #123;", Syntax.SCSS)
         );
         assertTrue(failure.getMessage().contains("Undefined operation"), failure.getMessage());
+        assertEquals("UNDEFINED_OPERATION", failure.primaryDiagnostic().code());
     }
 
     @Test

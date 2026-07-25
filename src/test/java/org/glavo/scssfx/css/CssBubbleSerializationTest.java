@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-package org.glavo.scssfx.language;
+package org.glavo.scssfx.css;
 
 import org.glavo.scssfx.*;
 
@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Language-gap probes for the batch60 wave.
 @NotNullByDefault
-final class LanguageBatch60Test {
+final class CssBubbleSerializationTest {
 
     private static String compile(String source, Syntax syntax) throws Exception {
         return new SassCompiler()

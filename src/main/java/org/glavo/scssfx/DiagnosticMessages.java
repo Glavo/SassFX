@@ -30,20 +30,18 @@ public final class DiagnosticMessages {
         Object[] safeArgs = args == null ? new Object[0] : args;
         return switch (code) {
             case PARSE_ERROR, EVALUATION_ERROR, MODULE_ERROR, SELECTOR_ERROR,
-                    SERIALIZE_ERROR, UNSUPPORTED_FEATURE, EXPECTED_TOKEN ->
+                    SERIALIZE_ERROR, UNSUPPORTED_FEATURE, EXPECTED_TOKEN,
+                    UNDEFINED_OPERATION ->
                     requireMessage(safeArgs);
             case INDENTED_NESTING_WITHOUT_HEADER ->
                     "Indented Sass statements must be nested below a block header.";
             case INDENTED_TEXT_AFTER_COMMENT ->
                     "Unexpected text after end of comment";
             case INDENTED_INCONSISTENT_INDENT ->
+                    // Match dart-sass wording exactly: "spaces" even when tabs
+                    // contributed to the measured indent width.
                     safeArgs.length > 0
-                            ? String.format(
-                                    Locale.ROOT,
-                                    "Inconsistent indentation; expected %s, was %s.",
-                                    safeArgs[0],
-                                    safeArgs.length > 1 ? safeArgs[1] : "?"
-                            )
+                            ? "Inconsistent indentation, expected " + safeArgs[0] + " spaces."
                             : "Inconsistent indentation.";
         };
     }

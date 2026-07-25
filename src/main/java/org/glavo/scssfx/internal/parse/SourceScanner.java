@@ -218,7 +218,31 @@ final class SourceScanner {
         if (length < 0) {
             throw new IllegalArgumentException("length must not be negative");
         }
-        return new ParseException(message, source.span(start, Math.addExact(start, length)));
+        return new ParseException(
+                org.glavo.scssfx.DiagnosticCode.PARSE_ERROR,
+                source.span(start, Math.addExact(start, length)),
+                message
+        );
+    }
+
+    /// Creates a structured parse failure for an explicit source range.
+    ///
+    /// @param code   the stable diagnostic code
+    /// @param start  the inclusive UTF-16 start offset
+    /// @param length the nonnegative UTF-16 range length
+    /// @param args   format arguments for [org.glavo.scssfx.DiagnosticMessages]
+    /// @return the parse failure
+    ParseException error(
+            org.glavo.scssfx.DiagnosticCode code,
+            int start,
+            int length,
+            Object... args
+    ) {
+        Objects.requireNonNull(code, "code");
+        if (length < 0) {
+            throw new IllegalArgumentException("length must not be negative");
+        }
+        return new ParseException(code, source.span(start, Math.addExact(start, length)), args);
     }
 
     /// Creates a parse failure for an already projected source span.
@@ -228,8 +252,27 @@ final class SourceScanner {
     /// @return the parse failure
     ParseException error(String message, SourceSpan span) {
         return new ParseException(
-                Objects.requireNonNull(message, "message"),
-                Objects.requireNonNull(span, "span")
+                org.glavo.scssfx.DiagnosticCode.PARSE_ERROR,
+                Objects.requireNonNull(span, "span"),
+                Objects.requireNonNull(message, "message")
+        );
+    }
+
+    /// Creates a structured parse failure for an already projected source span.
+    ///
+    /// @param code the stable diagnostic code
+    /// @param span the source span associated with the failure
+    /// @param args format arguments for [org.glavo.scssfx.DiagnosticMessages]
+    /// @return the parse failure
+    ParseException error(
+            org.glavo.scssfx.DiagnosticCode code,
+            SourceSpan span,
+            Object... args
+    ) {
+        return new ParseException(
+                Objects.requireNonNull(code, "code"),
+                Objects.requireNonNull(span, "span"),
+                args
         );
     }
 

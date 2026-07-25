@@ -11,9 +11,9 @@ import java.util.Objects;
 
 /// Lexes indentation-based Sass into structural logical lines.
 ///
-/// Each logical line carries its indent depth, statement text, comment flag,
-/// and original source offsets. [IndentedSassParser] consumes these lines to
-/// recover block structure without exposing a Sass→SCSS text API.
+/// Each [IndentedSassStructure.LogicalLine] carries indent depth, statement
+/// text, comment flag, and original source offsets. [IndentedSassParser]
+/// consumes these lines to recover block structure.
 @ApiStatus.Internal
 @NotNullByDefault
 public final class IndentedSassLexer {
@@ -25,9 +25,8 @@ public final class IndentedSassLexer {
     /// @param source the original indented source
     /// @return immutable logical lines in source order
     /// @throws ParseException if physical lines cannot form valid logical lines
-    public static @Unmodifiable List<?> lex(SourceFile source) {
+    public static @Unmodifiable List<IndentedSassStructure.LogicalLine> lex(SourceFile source) {
         Objects.requireNonNull(source, "source");
-        // Structural line model is shared with the projection step.
         return List.copyOf(IndentedSassStructure.logicalLines(source));
     }
 }

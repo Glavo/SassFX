@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-package org.glavo.scssfx.language;
+package org.glavo.scssfx.css;
 
 import org.glavo.scssfx.*;
 
@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Verifies batch37 charset, source-map comment, and pseudo-argument fixes.
 @NotNullByDefault
-final class LanguageBatch37Test {
+final class CommentAndCharsetTest {
     @Test
     void discardsCharsetRule() throws Exception {
         assertEquals(
