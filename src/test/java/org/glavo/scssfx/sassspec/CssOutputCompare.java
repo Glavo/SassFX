@@ -3,25 +3,23 @@ package org.glavo.scssfx.sassspec;
 
 import org.jetbrains.annotations.NotNullByDefault;
 
-/// Compares expanded CSS outputs with transport-level normalization and
-/// Sass-compatible tolerance for floating-point channel noise.
+/// Compares expanded CSS outputs with transport-level normalization.
 ///
-/// Blank-line layout between rules can differ from outdated fixtures while still
-/// matching dart-sass expanded output; consecutive blank lines are collapsed.
-/// Numeric tokens may differ by a relative ULP-scale amount after color matrix
-/// conversions between Java and Dart floating-point paths.
+/// Blank-line layout between top-level rules can differ from outdated fixtures
+/// while still matching current dart-sass expanded output; consecutive blank
+/// lines are collapsed.
+///
+/// Color conversion follows dart-sass 1.101.3 matrices and operation order.
+/// A tiny numeric tolerance remains only for residual differences between Java
+/// and Dart implementations of {@code Math.pow} / {@code pow} on extreme
+/// out-of-range channels — not for alternate conversion algorithms.
 @NotNullByDefault
 final class CssOutputCompare {
-    /// Relative tolerance for large converted color/channel magnitudes.
-    ///
-    /// Extreme {@code color.to-space} out-of-range cases accumulate multi-matrix
-    /// error between Java and Dart doubles; 1e-6 still rejects genuine content
-    /// bugs while accepting that noise.
-    private static final double RELATIVE_TOLERANCE = 1e-6;
+    /// Relative tolerance for last-digit IEEE noise on huge channel magnitudes.
+    private static final double RELATIVE_TOLERANCE = 1e-12;
 
-    /// Absolute floor so tiny near-zero residuals (often signed zeros after
-    /// matrix cancel) still match.
-    private static final double ABSOLUTE_TOLERANCE = 1e-3;
+    /// Absolute floor for near-zero residuals after matrix cancellation.
+    private static final double ABSOLUTE_TOLERANCE = 1e-12;
 
     private CssOutputCompare() {
     }

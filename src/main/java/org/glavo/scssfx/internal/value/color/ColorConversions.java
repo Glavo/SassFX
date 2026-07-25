@@ -26,17 +26,9 @@ public final class ColorConversions {
     /// Lab conversion epsilon constant.
     static final double LAB_EPSILON = 216.0 / 24389.0;
 
-    private static final double[] LMS_TO_OKLAB = {
-            0.21045426830931400, 0.79361777470230540, -0.00407204301161930,
-            1.97799853243116840, -2.42859224204858000, 0.45059370961741100,
-            0.02590404246554780, 0.78277171245752960, -0.80867575492307740
-    };
+    private static final double[] LMS_TO_OKLAB = ColorMatrices.LMS_TO_OKLAB;
 
-    private static final double[] OKLAB_TO_LMS = {
-            1.00000000000000020, 0.39633777737617490, 0.21580375730991360,
-            0.99999999999999980, -0.10556134581565854, -0.06385417282581334,
-            0.99999999999999990, -0.08948417752981180, -1.29148554801940940
-    };
+    private static final double[] OKLAB_TO_LMS = ColorMatrices.OKLAB_TO_LMS;
 
     private static final double[] LINEAR_SRGB_TO_XYZ_D65 = {
             0.41239079926595950, 0.35758433938387796, 0.18048078840183430,
@@ -246,7 +238,17 @@ public final class ColorConversions {
         );
     }
 
-    /// Converts from a linear-capable source space through the XYZ-D65 hub.
+    /// Converts between linear-capable spaces using dart-sass {@code convertLinear}.
+    ///
+    /// The algorithm is:
+    /// <ol>
+    ///   <li>Pick a linear hub for the destination ({@code xyz-d50} for Lab,
+    ///       {@code lms} for OKLab, {@code srgb} for HSL/HWB, else the dest itself).</li>
+    ///   <li>{@code toLinear} on the source channels.</li>
+    ///   <li>Multiply by the precomputed source→hub matrix (one multiply, no XYZ
+    ///       intermediate hops).</li>
+    ///   <li>{@code fromLinear} on the hub, then finish polar/Lab/OKLab conversion.</li>
+    /// </ol>
     private static ConvertedChannels convertLinearHub(
             ColorSpace source,
             ColorSpace dest,
@@ -255,28 +257,255 @@ public final class ColorConversions {
             @Nullable Double channel2,
             @Nullable Double alpha
     ) {
-        // Prefer dart-sass direct linear→linear sRGB matrices for sRGB-family
-        // destinations so pure whites (a98/display-p3/srgb-linear 1 1 1) stay
-        // exactly achromatic instead of picking up XYZ hub residual noise.
-        @Nullable ConvertedChannels direct = convertLinearToSrgbFamily(
-                source,
-                dest,
-                channel0,
-                channel1,
-                channel2,
-                alpha
-        );
-        if (direct != null) {
-            return direct;
-        }
         var missing0 = channel0 == null;
         var missing1 = channel1 == null;
         var missing2 = channel2 == null;
-        double[] xyz = toXyzD65(source, channel0 != null ? channel0 : 0.0,
-                channel1 != null ? channel1 : 0.0,
-                channel2 != null ? channel2 : 0.0);
-        return fromXyzD65(dest, xyz[0], xyz[1], xyz[2], alpha, missing0, missing1, missing2);
+
+        // Encoding-only conversions (no matrix), matching dart-sass convert overrides.
+        if (source == ColorSpace.SRGB && dest == ColorSpace.SRGB_LINEAR) {
+            return new ConvertedChannels(
+                    missing0 ? null : srgbToLinear(channel0),
+                    missing1 ? null : srgbToLinear(channel1),
+                    missing2 ? null : srgbToLinear(channel2),
+                    alpha
+            );
+        }
+        if (source == ColorSpace.SRGB_LINEAR && dest == ColorSpace.SRGB) {
+            return new ConvertedChannels(
+                    missing0 ? null : srgbFromLinear(channel0),
+                    missing1 ? null : srgbFromLinear(channel1),
+                    missing2 ? null : srgbFromLinear(channel2),
+                    alpha
+            );
+        }
+        if (source == ColorSpace.DISPLAY_P3 && dest == ColorSpace.DISPLAY_P3_LINEAR) {
+            return new ConvertedChannels(
+                    missing0 ? null : srgbToLinear(channel0),
+                    missing1 ? null : srgbToLinear(channel1),
+                    missing2 ? null : srgbToLinear(channel2),
+                    alpha
+            );
+        }
+        if (source == ColorSpace.DISPLAY_P3_LINEAR && dest == ColorSpace.DISPLAY_P3) {
+            return new ConvertedChannels(
+                    missing0 ? null : srgbFromLinear(channel0),
+                    missing1 ? null : srgbFromLinear(channel1),
+                    missing2 ? null : srgbFromLinear(channel2),
+                    alpha
+            );
+        }
+        if (source == ColorSpace.SRGB && dest == ColorSpace.RGB) {
+            return new ConvertedChannels(
+                    missing0 ? null : channel0 * 255.0,
+                    missing1 ? null : channel1 * 255.0,
+                    missing2 ? null : channel2 * 255.0,
+                    alpha
+            );
+        }
+        if (source == ColorSpace.RGB && dest == ColorSpace.SRGB) {
+            return new ConvertedChannels(
+                    missing0 ? null : channel0 / 255.0,
+                    missing1 ? null : channel1 / 255.0,
+                    missing2 ? null : channel2 / 255.0,
+                    alpha
+            );
+        }
+
+        // dart-sass ColorSpace.convertLinear hub selection.
+        ColorSpace linearDest = switch (dest) {
+            case HSL, HWB -> ColorSpace.SRGB;
+            case LAB, LCH -> ColorSpace.XYZ_D50;
+            case OKLAB, OKLCH -> ColorSpace.LMS;
+            default -> dest;
+        };
+
+        double l0 = toLinear(source, channel0 != null ? channel0 : 0.0);
+        double l1 = toLinear(source, channel1 != null ? channel1 : 0.0);
+        double l2 = toLinear(source, channel2 != null ? channel2 : 0.0);
+
+        ColorSpace matrixSource = linearForm(source);
+        ColorSpace matrixDest = linearForm(linearDest);
+        double t0;
+        double t1;
+        double t2;
+        if (matrixSource == matrixDest) {
+            t0 = l0;
+            t1 = l1;
+            t2 = l2;
+        } else {
+            double[] transformed = multiply(
+                    transformationMatrix(matrixSource, matrixDest),
+                    l0,
+                    l1,
+                    l2
+            );
+            t0 = transformed[0];
+            t1 = transformed[1];
+            t2 = transformed[2];
+        }
+
+        // linearDest.fromLinear — identity for XYZ/LMS hubs.
+        t0 = fromLinear(linearDest, t0);
+        t1 = fromLinear(linearDest, t1);
+        t2 = fromLinear(linearDest, t2);
+
+        return switch (dest) {
+            case HSL, HWB -> srgbToPolar(dest, t0, t1, t2, alpha);
+            case LAB, LCH -> fromXyzD50ToLab(
+                    dest, t0, t1, t2, alpha,
+                    false, false, false, false, false
+            );
+            case OKLAB, OKLCH -> fromLmsToOklab(
+                    dest, t0, t1, t2, alpha,
+                    false, false, false, false, false
+            );
+            // RGB fromLinear already scales to 0..255 (dart-sass RgbColorSpace).
+            default -> new ConvertedChannels(
+                    missing0 ? null : t0,
+                    missing1 ? null : t1,
+                    missing2 ? null : t2,
+                    alpha
+            );
+        };
     }
+
+    /// Maps a color space to its linear-light form used for matrix multiplies.
+    private static ColorSpace linearForm(ColorSpace space) {
+        return switch (space) {
+            case RGB, SRGB -> ColorSpace.SRGB_LINEAR;
+            case DISPLAY_P3 -> ColorSpace.DISPLAY_P3_LINEAR;
+            default -> space;
+        };
+    }
+
+    /// Applies the space-specific linearization used by dart-sass {@code toLinear}.
+    private static double toLinear(ColorSpace space, double channel) {
+        return switch (space) {
+            case RGB -> srgbToLinear(channel / 255.0);
+            case SRGB, DISPLAY_P3 -> srgbToLinear(channel);
+            case A98_RGB -> a98ToLinear(channel);
+            case PROPHOTO_RGB -> prophotoToLinear(channel);
+            case REC2020 -> rec2020ToLinear(channel);
+            default -> channel;
+        };
+    }
+
+    /// Applies the space-specific encoding used by dart-sass {@code fromLinear}.
+    private static double fromLinear(ColorSpace space, double channel) {
+        return switch (space) {
+            case RGB -> srgbFromLinear(channel) * 255.0;
+            case SRGB, DISPLAY_P3 -> srgbFromLinear(channel);
+            case A98_RGB -> a98FromLinear(channel);
+            case PROPHOTO_RGB -> prophotoFromLinear(channel);
+            case REC2020 -> rec2020FromLinear(channel);
+            default -> channel;
+        };
+    }
+
+    /// Returns the dart-sass precomputed matrix from one linear hub to another.
+    ///
+    /// Source/dest must already be in linear form ({@code srgb-linear},
+    /// {@code display-p3-linear}, {@code xyz-d65}, {@code lms}, …).
+    private static double[] transformationMatrix(ColorSpace source, ColorSpace dest) {
+        if (source == dest) {
+            return IDENTITY_3X3;
+        }
+        return switch (source) {
+            case SRGB_LINEAR -> switch (dest) {
+                case DISPLAY_P3, DISPLAY_P3_LINEAR -> ColorMatrices.LINEAR_SRGB_TO_LINEAR_DISPLAY_P3;
+                case A98_RGB -> ColorMatrices.LINEAR_SRGB_TO_LINEAR_A98_RGB;
+                case PROPHOTO_RGB -> ColorMatrices.LINEAR_SRGB_TO_LINEAR_PROPHOTO_RGB;
+                case REC2020 -> ColorMatrices.LINEAR_SRGB_TO_LINEAR_REC2020;
+                case XYZ_D65 -> ColorMatrices.LINEAR_SRGB_TO_XYZ_D65;
+                case XYZ_D50 -> ColorMatrices.LINEAR_SRGB_TO_XYZ_D50;
+                case LMS -> ColorMatrices.LINEAR_SRGB_TO_LMS;
+                default -> throw unsupportedMatrix(source, dest);
+            };
+            case DISPLAY_P3_LINEAR -> switch (dest) {
+                case SRGB, SRGB_LINEAR, RGB -> ColorMatrices.LINEAR_DISPLAY_P3_TO_LINEAR_SRGB;
+                case A98_RGB -> ColorMatrices.LINEAR_DISPLAY_P3_TO_LINEAR_A98_RGB;
+                case PROPHOTO_RGB -> ColorMatrices.LINEAR_DISPLAY_P3_TO_LINEAR_PROPHOTO_RGB;
+                case REC2020 -> ColorMatrices.LINEAR_DISPLAY_P3_TO_LINEAR_REC2020;
+                case XYZ_D65 -> ColorMatrices.LINEAR_DISPLAY_P3_TO_XYZ_D65;
+                case XYZ_D50 -> ColorMatrices.LINEAR_DISPLAY_P3_TO_XYZ_D50;
+                case LMS -> ColorMatrices.LINEAR_DISPLAY_P3_TO_LMS;
+                default -> throw unsupportedMatrix(source, dest);
+            };
+            case A98_RGB -> switch (dest) {
+                case SRGB, SRGB_LINEAR, RGB -> ColorMatrices.LINEAR_A98_RGB_TO_LINEAR_SRGB;
+                case DISPLAY_P3, DISPLAY_P3_LINEAR -> ColorMatrices.LINEAR_A98_RGB_TO_LINEAR_DISPLAY_P3;
+                case PROPHOTO_RGB -> ColorMatrices.LINEAR_A98_RGB_TO_LINEAR_PROPHOTO_RGB;
+                case REC2020 -> ColorMatrices.LINEAR_A98_RGB_TO_LINEAR_REC2020;
+                case XYZ_D65 -> ColorMatrices.LINEAR_A98_RGB_TO_XYZ_D65;
+                case XYZ_D50 -> ColorMatrices.LINEAR_A98_RGB_TO_XYZ_D50;
+                case LMS -> ColorMatrices.LINEAR_A98_RGB_TO_LMS;
+                default -> throw unsupportedMatrix(source, dest);
+            };
+            case PROPHOTO_RGB -> switch (dest) {
+                case SRGB, SRGB_LINEAR, RGB -> ColorMatrices.LINEAR_PROPHOTO_RGB_TO_LINEAR_SRGB;
+                case DISPLAY_P3, DISPLAY_P3_LINEAR -> ColorMatrices.LINEAR_PROPHOTO_RGB_TO_LINEAR_DISPLAY_P3;
+                case A98_RGB -> ColorMatrices.LINEAR_PROPHOTO_RGB_TO_LINEAR_A98_RGB;
+                case REC2020 -> ColorMatrices.LINEAR_PROPHOTO_RGB_TO_LINEAR_REC2020;
+                case XYZ_D65 -> ColorMatrices.LINEAR_PROPHOTO_RGB_TO_XYZ_D65;
+                case XYZ_D50 -> ColorMatrices.LINEAR_PROPHOTO_RGB_TO_XYZ_D50;
+                case LMS -> ColorMatrices.LINEAR_PROPHOTO_RGB_TO_LMS;
+                default -> throw unsupportedMatrix(source, dest);
+            };
+            case REC2020 -> switch (dest) {
+                case SRGB, SRGB_LINEAR, RGB -> ColorMatrices.LINEAR_REC2020_TO_LINEAR_SRGB;
+                case DISPLAY_P3, DISPLAY_P3_LINEAR -> ColorMatrices.LINEAR_REC2020_TO_LINEAR_DISPLAY_P3;
+                case A98_RGB -> ColorMatrices.LINEAR_REC2020_TO_LINEAR_A98_RGB;
+                case PROPHOTO_RGB -> ColorMatrices.LINEAR_REC2020_TO_LINEAR_PROPHOTO_RGB;
+                case XYZ_D65 -> ColorMatrices.LINEAR_REC2020_TO_XYZ_D65;
+                case XYZ_D50 -> ColorMatrices.LINEAR_REC2020_TO_XYZ_D50;
+                case LMS -> ColorMatrices.LINEAR_REC2020_TO_LMS;
+                default -> throw unsupportedMatrix(source, dest);
+            };
+            case XYZ_D65 -> switch (dest) {
+                case SRGB, SRGB_LINEAR, RGB -> ColorMatrices.XYZ_D65_TO_LINEAR_SRGB;
+                case DISPLAY_P3, DISPLAY_P3_LINEAR -> ColorMatrices.XYZ_D65_TO_LINEAR_DISPLAY_P3;
+                case A98_RGB -> ColorMatrices.XYZ_D65_TO_LINEAR_A98_RGB;
+                case PROPHOTO_RGB -> ColorMatrices.XYZ_D65_TO_LINEAR_PROPHOTO_RGB;
+                case REC2020 -> ColorMatrices.XYZ_D65_TO_LINEAR_REC2020;
+                case XYZ_D50 -> ColorMatrices.XYZ_D65_TO_XYZ_D50;
+                case LMS -> ColorMatrices.XYZ_D65_TO_LMS;
+                default -> throw unsupportedMatrix(source, dest);
+            };
+            case XYZ_D50 -> switch (dest) {
+                case SRGB, SRGB_LINEAR, RGB -> ColorMatrices.XYZ_D50_TO_LINEAR_SRGB;
+                case DISPLAY_P3, DISPLAY_P3_LINEAR -> ColorMatrices.XYZ_D50_TO_LINEAR_DISPLAY_P3;
+                case A98_RGB -> ColorMatrices.XYZ_D50_TO_LINEAR_A98_RGB;
+                case PROPHOTO_RGB -> ColorMatrices.XYZ_D50_TO_LINEAR_PROPHOTO_RGB;
+                case REC2020 -> ColorMatrices.XYZ_D50_TO_LINEAR_REC2020;
+                case XYZ_D65 -> ColorMatrices.XYZ_D50_TO_XYZ_D65;
+                case LMS -> ColorMatrices.XYZ_D50_TO_LMS;
+                default -> throw unsupportedMatrix(source, dest);
+            };
+            case LMS -> switch (dest) {
+                case SRGB, SRGB_LINEAR, RGB -> ColorMatrices.LMS_TO_LINEAR_SRGB;
+                case DISPLAY_P3, DISPLAY_P3_LINEAR -> ColorMatrices.LMS_TO_LINEAR_DISPLAY_P3;
+                case A98_RGB -> ColorMatrices.LMS_TO_LINEAR_A98_RGB;
+                case PROPHOTO_RGB -> ColorMatrices.LMS_TO_LINEAR_PROPHOTO_RGB;
+                case REC2020 -> ColorMatrices.LMS_TO_LINEAR_REC2020;
+                case XYZ_D65 -> ColorMatrices.LMS_TO_XYZ_D65;
+                case XYZ_D50 -> ColorMatrices.LMS_TO_XYZ_D50;
+                default -> throw unsupportedMatrix(source, dest);
+            };
+            default -> throw unsupportedMatrix(source, dest);
+        };
+    }
+
+    private static IllegalStateException unsupportedMatrix(ColorSpace source, ColorSpace dest) {
+        return new IllegalStateException(
+                "No dart-sass transformation matrix from " + source + " to " + dest + "."
+        );
+    }
+
+    private static final double[] IDENTITY_3X3 = {
+            1, 0, 0,
+            0, 1, 0,
+            0, 0, 1
+    };
 
     /// Converts a linear RGB-like space into an sRGB-family destination when a
     /// direct matrix is available.
@@ -653,9 +882,19 @@ public final class ColorConversions {
         var aa = a != null ? a : 0.0;
         var bb = b != null ? b : 0.0;
         // Match dart-sass: Math.pow(...)+0.0 forces -0.0 to +0.0.
-        var long_ = Math.pow(OKLAB_TO_LMS[0] * l + OKLAB_TO_LMS[1] * aa + OKLAB_TO_LMS[2] * bb, 3.0) + 0.0;
-        var medium = Math.pow(OKLAB_TO_LMS[3] * l + OKLAB_TO_LMS[4] * aa + OKLAB_TO_LMS[5] * bb, 3.0) + 0.0;
-        var short_ = Math.pow(OKLAB_TO_LMS[6] * l + OKLAB_TO_LMS[7] * aa + OKLAB_TO_LMS[8] * bb, 3.0) + 0.0;
+        // Match dart-sass: Math.pow(sum, 3) + 0.0 forces -0.0 → +0.0.
+        var long_ = Math.pow(
+                OKLAB_TO_LMS[0] * l + OKLAB_TO_LMS[1] * aa + OKLAB_TO_LMS[2] * bb,
+                3.0
+        ) + 0.0;
+        var medium = Math.pow(
+                OKLAB_TO_LMS[3] * l + OKLAB_TO_LMS[4] * aa + OKLAB_TO_LMS[5] * bb,
+                3.0
+        ) + 0.0;
+        var short_ = Math.pow(
+                OKLAB_TO_LMS[6] * l + OKLAB_TO_LMS[7] * aa + OKLAB_TO_LMS[8] * bb,
+                3.0
+        ) + 0.0;
         return fromLms(
                 dest,
                 long_,
@@ -1471,15 +1710,18 @@ public final class ColorConversions {
     }
 
     /// Converts one XYZ component into the intermediate Lab f value.
+    ///
+    /// Matches dart-sass: {@code math.pow(component, 1/3) + 0.0} so negative zero
+    /// is canonicalized the same way.
     private static double convertXyzComponentToLabF(double component) {
         return component > LAB_EPSILON
-                ? Math.cbrt(component)
+                ? Math.pow(component, 1.0 / 3.0) + 0.0
                 : (LAB_KAPPA * component + 16.0) / 116.0;
     }
 
-    /// Returns the signed cube root of a value.
+    /// Returns the signed cube root of a value (dart-sass {@code _cubeRootPreservingSign}).
     private static double cubeRootPreservingSign(double value) {
-        return Math.signum(value) * Math.cbrt(Math.abs(value));
+        return Math.pow(Math.abs(value), 1.0 / 3.0) * Math.signum(value);
     }
 
     /// Holds three converted color channels and alpha.
