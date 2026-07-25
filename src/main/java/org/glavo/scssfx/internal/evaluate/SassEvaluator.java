@@ -122,6 +122,7 @@ import org.jetbrains.annotations.Unmodifiable;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -285,6 +286,24 @@ public final class SassEvaluator implements
     /// (the defining module and its transitive upstream), matching dart-sass
     /// module isolation.
     private final IdentityHashMap<CssStyleRule, URI> styleRuleOrigins =
+            new IdentityHashMap<>();
+
+    /// When non-null, style rules attribute their extend-origin to this URL
+    /// instead of {@link #currentUrl}.
+    ///
+    /// Legacy {@code @import} evaluates the imported file under the imported URL
+    /// for resolution, but CSS selectors participate in the importer's extend
+    /// scope (no module boundary). Attribution keeps {@code @extend} working
+    /// without a {@code @use} edge to the imported file.
+    private @Nullable URI styleRuleAttributionUrl;
+
+    /// Maps each style rule to the module URL that introduced each complex.
+    ///
+    /// Keys are {@link SelectorAlgebra#complexKey(ComplexSelector)}. Original
+    /// complexes use the rule's defining module; complexes added by {@code @extend}
+    /// use the extending module. Sibling modules must not treat each other's
+    /// extension products as extend targets (dart-sass per-module ExtensionStore).
+    private final IdentityHashMap<CssStyleRule, Map<String, URI>> styleRuleComplexOrigins =
             new IdentityHashMap<>();
 
     /// Creates an evaluator with an empty environment and no module loader.
@@ -466,6 +485,10 @@ public final class SassEvaluator implements
         currentUrl = url;
         legacyImportDepth++;
         var previousImportGeneration = currentImportGeneration;
+        var previousAttribution = styleRuleAttributionUrl;
+        // Attribute imported style rules to the importer for {@code @extend}
+        // visibility (dart-sass: @import has no module isolation for CSS).
+        styleRuleAttributionUrl = previousUrl != null ? previousUrl : styleRuleAttributionUrl;
         // When the imported stylesheet forwards other files, snapshot visible
         // variables as an implicit configuration (dart-sass toImplicitConfiguration)
         // so importer $vars configure downstream !default through @forward.
@@ -517,11 +540,17 @@ public final class SassEvaluator implements
         } finally {
             legacyImportDepth--;
             currentImportGeneration = previousImportGeneration;
+            styleRuleAttributionUrl = previousAttribution;
             environment.restoreModuleTables(moduleSnapshot);
             stylesheet = previousStylesheet;
             currentUrl = previousUrl;
             currentConfiguration = previousConfiguration;
         }
+    }
+
+    /// Returns the module URL used for style-rule {@code @extend} attribution.
+    private @Nullable URI styleRuleOriginUrl() {
+        return styleRuleAttributionUrl != null ? styleRuleAttributionUrl : currentUrl;
     }
 
     /// Loads a {@code @forward} target as an isolated module and surfaces it to
@@ -695,6 +724,12 @@ public final class SassEvaluator implements
         // the load was triggered under a legacy {@code @import}. Import-path CSS
         // re-emission applies only to {@code @use} written in the import body.
         legacyImportDepth = 0;
+        // Nested module evaluation must not inherit the importer's style-rule
+        // attribution; otherwise a module first loaded under {@code @import}
+        // permanently attributes its rules to the importer and breaks later
+        // {@code @use}-path {@code @extend} visibility.
+        var previousAttribution = styleRuleAttributionUrl;
+        styleRuleAttributionUrl = null;
         preModuleComments.clear();
         var previousExtendableRules = new ArrayList<>(extendableStyleRules);
         var previousPendingExtensions = new ArrayList<>(pendingExtensions);
@@ -751,6 +786,7 @@ public final class SassEvaluator implements
             nestedDeclarationDepth = previousNestedDepth;
             inKeyframes = previousInKeyframes;
             legacyImportDepth = previousLegacyImportDepth;
+            styleRuleAttributionUrl = previousAttribution;
             preModuleComments.clear();
             preModuleComments.putAll(previousPreModuleComments);
             extendableStyleRules.clear();
@@ -777,6 +813,7 @@ public final class SassEvaluator implements
                 currentConfiguration = previousConfiguration;
                 stylesheetActive = previousActive;
                 styleRuleDepth = previousStyleRuleDepth;
+                styleRuleAttributionUrl = previousAttribution;
                 nestedDeclarationDepth = previousNestedDepth;
                 inKeyframes = previousInKeyframes;
                 legacyImportDepth = previousLegacyImportDepth;
@@ -792,6 +829,7 @@ public final class SassEvaluator implements
                 extendableStyleRules.clear();
                 pendingExtensions.clear();
                 legacyImportDepth = previousLegacyImportDepth;
+                styleRuleAttributionUrl = previousAttribution;
                 // Keep extensionVisibilityModules for root executeRoot apply phase.
             }
         }
@@ -1339,7 +1377,98 @@ public final class SassEvaluator implements
         if (generation != null) {
             styleRuleImportGeneration.put(copy, generation);
         }
+        @Nullable Map<String, URI> complexOrigins = styleRuleComplexOrigins.get(source);
+        if (complexOrigins != null) {
+            styleRuleComplexOrigins.put(copy, new LinkedHashMap<>(complexOrigins));
+        } else {
+            registerOriginalComplexes(
+                    copy,
+                    copy.selector().value(),
+                    styleRuleOrigins.get(copy)
+            );
+        }
         return copy;
+    }
+
+    /// Records each complex of {@code selector} as originating from {@code originUrl}.
+    private void registerOriginalComplexes(
+            CssStyleRule rule,
+            SelectorList selector,
+            @Nullable URI originUrl
+    ) {
+        var map = styleRuleComplexOrigins.computeIfAbsent(rule, ignored -> new LinkedHashMap<>());
+        for (var complex : selector.components()) {
+            map.putIfAbsent(complexOriginKey(complex), originUrl);
+        }
+    }
+
+    /// Records complexes newly introduced by an extension.
+    private void recordExtensionComplexes(
+            CssStyleRule rule,
+            SelectorList before,
+            SelectorList after,
+            @Nullable URI extensionOrigin
+    ) {
+        var beforeKeys = new HashSet<String>();
+        for (var complex : before.components()) {
+            beforeKeys.add(complexOriginKey(complex));
+        }
+        var map = styleRuleComplexOrigins.computeIfAbsent(rule, ignored -> new LinkedHashMap<>());
+        for (var complex : after.components()) {
+            String key = complexOriginKey(complex);
+            if (!beforeKeys.contains(key)) {
+                map.put(key, extensionOrigin);
+            }
+        }
+    }
+
+    /// Returns a stable key for complex-origin tracking.
+    ///
+    /// Falls back to CSS text when the algebra key rejects parent selectors or
+    /// other forms that appear in plain-CSS nesting before resolution.
+    private static String complexOriginKey(ComplexSelector complex) {
+        try {
+            return SelectorAlgebra.complexKey(complex);
+        } catch (RuntimeException | AssertionError ignored) {
+            // Algebra keys reject parent selectors used in plain-CSS nesting.
+            return complex.toCssString();
+        }
+    }
+
+    /// Returns whether {@code selector} contains the extension target in a complex
+    /// whose introducing module is visible to {@code extensionOrigin}.
+    private boolean containsVisibleExtendee(
+            CssStyleRule rule,
+            SelectorList selector,
+            SelectorList target,
+            @Nullable URI extensionOrigin,
+            Map<URI, LoadedModule> modulesByUrl
+    ) {
+        @Nullable Map<String, URI> complexOrigins = styleRuleComplexOrigins.get(rule);
+        @Nullable URI ruleOrigin = styleRuleOrigins.get(rule);
+        for (var complex : selector.components()) {
+            var single = new SelectorList(List.of(complex), complex.span());
+            if (!SelectorAlgebra.containsExtendee(single, target)) {
+                continue;
+            }
+            @Nullable URI complexOrigin = complexOrigins == null
+                    ? ruleOrigin
+                    : complexOrigins.getOrDefault(complexOriginKey(complex), ruleOrigin);
+            // Document-original complexes of this rule are always matchable once
+            // the rule itself is visible (including import-path CSS copies where
+            // the defining module is not on the extender's {@code @use} graph).
+            if (Objects.equals(complexOrigin, ruleOrigin)) {
+                return true;
+            }
+            // Extension products: only modules that can reach the introducing
+            // module may retarget them (blocks sibling diamond cross-extends).
+            if (extensionOrigin == null
+                    || Objects.equals(extensionOrigin, complexOrigin)
+                    || moduleCanExtend(extensionOrigin, complexOrigin, modulesByUrl)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// Evaluates an {@code @supports} rule while preserving its CSS condition.
@@ -1669,7 +1798,9 @@ public final class SassEvaluator implements
                 // Snapshot media active at definition time (not after bubbling).
                 mediaQueries
         );
-        styleRuleOrigins.put(rule, currentUrl);
+        @Nullable URI origin = styleRuleOriginUrl();
+        styleRuleOrigins.put(rule, origin);
+        registerOriginalComplexes(rule, nestedSelector, origin);
         addCssChild(rule, merge);
         if (!isPlainCss()) {
             extendableStyleRules.add(rule);
@@ -1739,7 +1870,9 @@ public final class SassEvaluator implements
                 target,
                 statement.optional(),
                 mediaQueries,
-                currentUrl,
+                // Match style-rule attribution so @extend inside a legacy
+                // @import sees siblings under the same origin URL.
+                styleRuleOriginUrl(),
                 statement.span(),
                 currentImportGeneration
         ));
@@ -2075,12 +2208,12 @@ public final class SassEvaluator implements
             Set<String> originalKeys
     ) {
         int ruleGeneration = styleRuleImportGeneration.getOrDefault(rule, 0);
+        @Nullable URI ruleOrigin = styleRuleOrigins.get(rule);
         // Generation 0 is the module-graph original; import-path copies use >0.
         // Extends only rewrite rules from the same generation (isolated copies).
         if (ruleGeneration != extension.importGeneration()) {
             return ExtensionApplyResult.NONE;
         }
-        @Nullable URI ruleOrigin = styleRuleOrigins.get(rule);
         // Private targets may only be extended inside the defining module.
         if (isPrivateTarget(extension.target())
                 && !Objects.equals(extension.originUrl(), ruleOrigin)) {
@@ -2093,7 +2226,15 @@ public final class SassEvaluator implements
             return ExtensionApplyResult.NONE;
         }
         var before = rule.selector().value();
-        if (!SelectorAlgebra.containsExtendee(before, extension.target())) {
+        // Match only complexes introduced by modules visible to this extender so
+        // sibling {@code @extend} products on a shared rule are not retargeted.
+        if (!containsVisibleExtendee(
+                rule,
+                before,
+                extension.target(),
+                extension.originUrl(),
+                modulesByUrl
+        )) {
             return ExtensionApplyResult.NONE;
         }
         SelectorList after;
@@ -2126,6 +2267,7 @@ public final class SassEvaluator implements
             return ExtensionApplyResult.FOUND_ONLY;
         }
         rule.setSelector(new CssValue<>(after, rule.selector().span()));
+        recordExtensionComplexes(rule, before, after, extension.originUrl());
         return new ExtensionApplyResult(true, true);
     }
 
@@ -4055,11 +4197,19 @@ public final class SassEvaluator implements
         if (reattributeOrigins) {
             // load-css treats injected CSS as part of the caller's stylesheet.
             styleRuleOrigins.put(injected, currentUrl);
+            registerOriginalComplexes(injected, nestedSelector, currentUrl);
         } else {
             // Re-emitting {@code @use} CSS (e.g. inside {@code @import}) keeps the
             // defining module so private placeholders and upstream visibility work.
             @Nullable URI sourceOrigin = styleRuleOrigins.get(rule);
-            styleRuleOrigins.put(injected, sourceOrigin != null ? sourceOrigin : currentUrl);
+            @Nullable URI origin = sourceOrigin != null ? sourceOrigin : currentUrl;
+            styleRuleOrigins.put(injected, origin);
+            @Nullable Map<String, URI> sourceComplexes = styleRuleComplexOrigins.get(rule);
+            if (sourceComplexes != null) {
+                styleRuleComplexOrigins.put(injected, new LinkedHashMap<>(sourceComplexes));
+            } else {
+                registerOriginalComplexes(injected, nestedSelector, origin);
+            }
         }
         if (markingImportGeneration > 0) {
             styleRuleImportGeneration.put(injected, markingImportGeneration);

@@ -2911,9 +2911,11 @@ public final class SelectorAlgebra {
 
     /// Returns a source-span-independent semantic key for a complex selector.
     ///
+    /// Used by {@code @extend} to track which module introduced each complex.
+    ///
     /// @param selector the selector to key
     /// @return the semantic key
-    private static String complexKey(ComplexSelector selector) {
+    public static String complexKey(ComplexSelector selector) {
         var result = new StringBuilder();
         for (var index = 0; index < selector.components().size(); index++) {
             if (index > 0) {
