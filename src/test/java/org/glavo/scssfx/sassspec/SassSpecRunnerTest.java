@@ -37,6 +37,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Runs versioned HRX compatibility fixtures through the public file compiler API.
 ///
@@ -417,10 +418,11 @@ final class SassSpecRunnerTest {
                     CssTarget.DEFAULT,
                     options
             );
-            assertEquals(
-                    normalizeCss(expectedOutput),
-                    normalizeCss(result.output()),
-                    "CSS output for " + resolved.displayName()
+            assertTrue(
+                    CssOutputCompare.equals(expectedOutput, result.output()),
+                    () -> "CSS output for " + resolved.displayName()
+                            + "\nexpected:\n" + CssOutputCompare.normalize(expectedOutput)
+                            + "\nactual:\n" + CssOutputCompare.normalize(result.output())
             );
             assertDiagnostics(resolved, result.diagnostics());
             assertLoadedUrls(resolved, caseRoot, result.loadedUrls());

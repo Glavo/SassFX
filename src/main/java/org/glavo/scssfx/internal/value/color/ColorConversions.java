@@ -643,24 +643,19 @@ public final class ColorConversions {
                     missingHue
             );
         }
-        if (dest == ColorSpace.OKLAB) {
-            var powerlessAB = lightness == null || SassFuzzy.equals(lightness, 0.0);
-            return new ConvertedChannels(
-                    lightness,
-                    a == null || powerlessAB ? null : a,
-                    b == null || powerlessAB ? null : b,
-                    alpha
-            );
-        }
+        // dart-sass OklabColorSpace.convert always routes through LMS, even when
+        // the destination is OKLab itself (unlike Lab which short-circuits). That
+        // round-trip is observable for extreme chroma (oklch far → oklab).
         var missingLightness = lightness == null;
         var missingA = a == null;
         var missingB = b == null;
         var l = lightness != null ? lightness : 0.0;
         var aa = a != null ? a : 0.0;
         var bb = b != null ? b : 0.0;
-        var long_ = Math.pow(OKLAB_TO_LMS[0] * l + OKLAB_TO_LMS[1] * aa + OKLAB_TO_LMS[2] * bb, 3.0);
-        var medium = Math.pow(OKLAB_TO_LMS[3] * l + OKLAB_TO_LMS[4] * aa + OKLAB_TO_LMS[5] * bb, 3.0);
-        var short_ = Math.pow(OKLAB_TO_LMS[6] * l + OKLAB_TO_LMS[7] * aa + OKLAB_TO_LMS[8] * bb, 3.0);
+        // Match dart-sass: Math.pow(...)+0.0 forces -0.0 to +0.0.
+        var long_ = Math.pow(OKLAB_TO_LMS[0] * l + OKLAB_TO_LMS[1] * aa + OKLAB_TO_LMS[2] * bb, 3.0) + 0.0;
+        var medium = Math.pow(OKLAB_TO_LMS[3] * l + OKLAB_TO_LMS[4] * aa + OKLAB_TO_LMS[5] * bb, 3.0) + 0.0;
+        var short_ = Math.pow(OKLAB_TO_LMS[6] * l + OKLAB_TO_LMS[7] * aa + OKLAB_TO_LMS[8] * bb, 3.0) + 0.0;
         return fromLms(
                 dest,
                 long_,
@@ -694,16 +689,8 @@ public final class ColorConversions {
         }
         var hueRadians = Math.toRadians(hue != null ? hue : 0.0);
         var c = chroma != null ? chroma : 0.0;
-        // Polar → rectangular OKLab keeps computed a/b (including zeros for black)
-        // rather than applying same-space powerless-channel nulling.
-        if (dest == ColorSpace.OKLAB) {
-            return new ConvertedChannels(
-                    lightness,
-                    c * Math.cos(hueRadians),
-                    c * Math.sin(hueRadians),
-                    alpha
-            );
-        }
+        // Always go through OKLab→LMS like dart-sass OklchColorSpace.convert,
+        // including when the destination is OKLab (no polar short-circuit).
         return convertFromOklab(
                 dest,
                 lightness,

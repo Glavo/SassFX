@@ -282,9 +282,9 @@ public final class SassSpecBatchMain {
                     CssTarget.DEFAULT,
                     options
             );
-            String expected = normalizeCss(expectedOutput);
-            String actual = normalizeCss(result.output());
-            if (!expected.equals(actual)) {
+            String expected = CssOutputCompare.normalize(expectedOutput);
+            String actual = CssOutputCompare.normalize(result.output());
+            if (!CssOutputCompare.equals(expectedOutput, result.output())) {
                 throw new OutputMismatch(upstream,
                         "CSS mismatch expected=<<<" + expected + ">>> actual=<<<" + actual + ">>>");
             }
@@ -637,20 +637,6 @@ public final class SassSpecBatchMain {
             return true;
         }
         return false;
-    }
-
-    private static String normalizeCss(String css) {
-        String normalized = normalizeLineEndings(css);
-        int end = normalized.length();
-        while (end > 0) {
-            char ch = normalized.charAt(end - 1);
-            if (ch == '\n' || ch == ' ' || ch == '\t') {
-                end--;
-                continue;
-            }
-            break;
-        }
-        return normalized.substring(0, end);
     }
 
     private static String normalizeLineEndings(String text) {

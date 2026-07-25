@@ -15,13 +15,16 @@ import java.util.Objects;
 
 /// Records one `@extend` directive for end-of-module application.
 ///
-/// @param extender     the resolved selectors of the extending style rule
-/// @param target       the single-compound selectors being extended
-/// @param optional     whether an unmatched target is allowed
-/// @param mediaContext the active media-query list, or {@code null} outside media
-/// @param originUrl    the canonical URL of the module that declared the extend,
-///                     or {@code null} for the anonymous root stylesheet
-/// @param span         the `@extend` source span
+/// @param extender         the resolved selectors of the extending style rule
+/// @param target           the single-compound selectors being extended
+/// @param optional         whether an unmatched target is allowed
+/// @param mediaContext     the active media-query list, or {@code null} outside media
+/// @param originUrl        the canonical URL of the module that declared the extend,
+///                         or {@code null} for the anonymous root stylesheet
+/// @param span             the `@extend` source span
+/// @param importGeneration zero for ordinary module-graph extensions; a positive id
+///                         shared with CSS rules re-emitted for one import-path
+///                         {@code @use} copy so extends stay isolated per copy
 @ApiStatus.Internal
 @NotNullByDefault
 public record PendingExtension(
@@ -30,8 +33,21 @@ public record PendingExtension(
         boolean optional,
         @Nullable @Unmodifiable List<CssMediaQuery> mediaContext,
         @Nullable URI originUrl,
-        SourceSpan span
+        SourceSpan span,
+        int importGeneration
 ) {
+    /// Creates one pending extension with import generation {@code 0}.
+    public PendingExtension(
+            SelectorList extender,
+            SelectorList target,
+            boolean optional,
+            @Nullable List<CssMediaQuery> mediaContext,
+            @Nullable URI originUrl,
+            SourceSpan span
+    ) {
+        this(extender, target, optional, mediaContext, originUrl, span, 0);
+    }
+
     /// Creates one pending extension.
     public PendingExtension {
         Objects.requireNonNull(extender, "extender");
@@ -39,6 +55,9 @@ public record PendingExtension(
         Objects.requireNonNull(span, "span");
         if (mediaContext != null) {
             mediaContext = List.copyOf(mediaContext);
+        }
+        if (importGeneration < 0) {
+            throw new IllegalArgumentException("importGeneration must be non-negative");
         }
     }
 }

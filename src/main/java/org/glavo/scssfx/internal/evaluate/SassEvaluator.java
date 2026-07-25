@@ -264,6 +264,21 @@ public final class SassEvaluator implements
     /// {@code @extend} visibility so private/upstream checks still see them.
     private final ArrayList<LoadedModule> extensionVisibilityModules = new ArrayList<>();
 
+    /// Import-copy generation for each style rule re-emitted under {@code @import}.
+    /// Generation {@code 0} is the ordinary module-graph CSS.
+    private final IdentityHashMap<CssStyleRule, Integer> styleRuleImportGeneration =
+            new IdentityHashMap<>();
+
+    /// Next positive generation id for import-path CSS copies.
+    private int nextImportGeneration = 1;
+
+    /// Generation active while evaluating an import-path {@code @use} inject and
+    /// subsequent statements in the same import body that should extend that copy.
+    private int currentImportGeneration;
+
+    /// When non-zero, {@link #injectStyleRule} stamps each new rule with this generation.
+    private int markingImportGeneration;
+
     /// Maps each style rule to the canonical URL of the module that defined it.
     ///
     /// Used so `@extend` only rewrites selectors visible to the extending module
@@ -450,6 +465,7 @@ public final class SassEvaluator implements
         stylesheet = imported;
         currentUrl = url;
         legacyImportDepth++;
+        var previousImportGeneration = currentImportGeneration;
         // When the imported stylesheet forwards other files, snapshot visible
         // variables as an implicit configuration (dart-sass toImplicitConfiguration)
         // so importer $vars configure downstream !default through @forward.
@@ -500,6 +516,7 @@ public final class SassEvaluator implements
             }
         } finally {
             legacyImportDepth--;
+            currentImportGeneration = previousImportGeneration;
             environment.restoreModuleTables(moduleSnapshot);
             stylesheet = previousStylesheet;
             currentUrl = previousUrl;
@@ -569,13 +586,7 @@ public final class SassEvaluator implements
             }
             importForwardedMembers(ForwardedModuleView.create(module, forward));
             if (module.transitivelyContainsCss()) {
-                var loadedExtensions = new ArrayList<PendingExtension>();
-                collectExtensions(module, loadedExtensions, new IdentityHashMap<>());
-                pendingExtensions.addAll(loadedExtensions);
-                extensionVisibilityModules.add(module);
-                // Preserve defining-module origins so private placeholders and
-                // upstream visibility still apply after CSS is re-emitted here.
-                injectModuleCss(ModuleCss.combine(module), false);
+                injectModuleCssIsolated(module);
             }
         } catch (SassValueException cause) {
             throw new EvaluationException(
@@ -1018,13 +1029,10 @@ public final class SassEvaluator implements
                 // applyExtensions can rewrite the injected CSS (dart-sass
                 // compound_through_import / isolated import+use chains).
                 if (module.transitivelyContainsCss()) {
-                    var loadedExtensions = new ArrayList<PendingExtension>();
-                    collectExtensions(module, loadedExtensions, new IdentityHashMap<>());
-                    pendingExtensions.addAll(loadedExtensions);
-                    extensionVisibilityModules.add(module);
-                    // Keep original module origins on cloned style rules so
-                    // {@code @extend} visibility matches the used module graph.
-                    injectModuleCss(ModuleCss.combine(module), false);
+                    // Apply this module graph's extensions to an isolated CSS copy
+                    // before emitting it. Root-level applyExtensions must not also
+                    // rewrite that copy or the original {@code @use} instance.
+                    injectModuleCssIsolated(module);
                 }
                 environment.addModule(module, statement.namespace(), statement.span(), false);
             } else {
@@ -1708,7 +1716,8 @@ public final class SassEvaluator implements
                 statement.optional(),
                 mediaQueries,
                 currentUrl,
-                statement.span()
+                statement.span(),
+                currentImportGeneration
         ));
         return StatementResult.CONTINUE;
     }
@@ -2027,13 +2036,22 @@ public final class SassEvaluator implements
             boolean rejectCrossMedia,
             Map<URI, LoadedModule> modulesByUrl
     ) {
+        int ruleGeneration = styleRuleImportGeneration.getOrDefault(rule, 0);
+        // Generation 0 is the module-graph original; import-path copies use >0.
+        // Extends only rewrite rules from the same generation (isolated copies).
+        if (ruleGeneration != extension.importGeneration()) {
+            return ExtensionApplyResult.NONE;
+        }
         @Nullable URI ruleOrigin = styleRuleOrigins.get(rule);
         // Private targets may only be extended inside the defining module.
         if (isPrivateTarget(extension.target())
                 && !Objects.equals(extension.originUrl(), ruleOrigin)) {
             return ExtensionApplyResult.NONE;
         }
-        if (!moduleCanExtend(extension.originUrl(), ruleOrigin, modulesByUrl)) {
+        // Import-path copies are self-contained: the extend origin may be a
+        // legacy-imported URL that is not present on the module graph index.
+        if (extension.importGeneration() == 0
+                && !moduleCanExtend(extension.originUrl(), ruleOrigin, modulesByUrl)) {
             return ExtensionApplyResult.NONE;
         }
         var before = rule.selector().value();
@@ -3844,6 +3862,43 @@ public final class SassEvaluator implements
         }
     }
 
+    /// Clones a module's combined CSS, applies that graph's extensions in isolation,
+    /// and injects the finalized copy under the current CSS parent.
+    ///
+    /// Used for {@code @use} (and legacy-forward) inside {@code @import}: dart-sass
+    /// re-emits a CSS copy whose extensions do not interact with a simultaneous
+    /// {@code @use} of the same modules from the importer.
+    ///
+    /// @param module the module graph to re-emit
+    private void injectModuleCssIsolated(LoadedModule module) {
+        int generation = nextImportGeneration++;
+        currentImportGeneration = generation;
+        // Re-emit CSS under this generation and schedule the module's extensions
+        // against the same generation so root applyExtensions stays isolated from
+        // concurrent {@code @use} of the same modules.
+        var extensions = new ArrayList<PendingExtension>();
+        collectExtensions(module, extensions, new IdentityHashMap<>());
+        for (var extension : extensions) {
+            pendingExtensions.add(new PendingExtension(
+                    extension.extender(),
+                    extension.target(),
+                    extension.optional(),
+                    extension.mediaContext(),
+                    extension.originUrl(),
+                    extension.span(),
+                    generation
+            ));
+        }
+        extensionVisibilityModules.add(module);
+        var previousMarking = markingImportGeneration;
+        markingImportGeneration = generation;
+        try {
+            injectModuleCss(ModuleCss.combine(module), false);
+        } finally {
+            markingImportGeneration = previousMarking;
+        }
+    }
+
     /// Clones and injects one combined module stylesheet under the current CSS parent.
     ///
     /// @param stylesheet         the combined module CSS
@@ -3958,6 +4013,9 @@ public final class SassEvaluator implements
             // defining module so private placeholders and upstream visibility work.
             @Nullable URI sourceOrigin = styleRuleOrigins.get(rule);
             styleRuleOrigins.put(injected, sourceOrigin != null ? sourceOrigin : currentUrl);
+        }
+        if (markingImportGeneration > 0) {
+            styleRuleImportGeneration.put(injected, markingImportGeneration);
         }
         addCssChild(injected, merge);
         if (!isPlainCss()) {

@@ -594,13 +594,16 @@ final class IndentedSassStructure {
                 }
             }
         }
+        // Indented Sass auto-closes an open loud comment at EOF (dart-sass).
+        // Drop trailing blank lines that are only end-of-file padding so
+        // {@code /* a\n} becomes {@code /* a */} rather than a multi-line form.
         if (!combined.toString().contains("*/")) {
-            throw error(
-                    source,
-                    startOffset,
-                    endOffset,
-                    "Expected closing comment delimiter."
-            );
+            while (!combined.isEmpty()
+                    && (combined.charAt(combined.length() - 1) == '\n'
+                    || combined.charAt(combined.length() - 1) == '\r')) {
+                combined.setLength(combined.length() - 1);
+            }
+            combined.append(" */");
         }
         // Keep only the first complete loud comment. Trailing whitespace and
         // further comments after {@code */} are discarded; any other text is an
