@@ -469,18 +469,42 @@ final class IndentedSassStructure {
                     }
                     combined.append(' ').append(continuationText);
                 } else {
-                    combined.append('\n').append(continuationText);
+                    // Forced continuations for open parens/brackets keep a newline
+                    // and the absolute indent width as spaces so raw CSS conditions
+                    // preserve author whitespace ({@code @supports a(\n  b)}).
+                    // Open quotes must not inject indent spaces — dart-sass strips
+                    // leading indent after a string line-continuation.
+                    int spaces = state.openQuote()
+                            ? 0
+                            : continuationIndentation.columns();
+                    combined.append('\n');
+                    if (spaces > 0) {
+                        combined.append(" ".repeat(spaces));
+                    }
+                    combined.append(continuationText);
                 }
                 var continuationLineStart = lineStart(source, lastLine);
                 var continuationStart = continuationLineStart
                         + continuationIndentation.length();
                 var continuationEnd = continuationStart + continuationText.length();
-                pieces.add(new LinePiece(
-                        needsIndentedContinuation ? " " : "\n",
-                        previousContentEnd,
-                        continuationStart,
-                        false
-                ));
+                if (needsIndentedContinuation) {
+                    pieces.add(new LinePiece(
+                            " ",
+                            previousContentEnd,
+                            continuationStart,
+                            false
+                    ));
+                } else {
+                    int spaces = state.openQuote()
+                            ? 0
+                            : continuationIndentation.columns();
+                    pieces.add(new LinePiece(
+                            "\n" + (spaces > 0 ? " ".repeat(spaces) : ""),
+                            previousContentEnd,
+                            continuationStart,
+                            false
+                    ));
+                }
                 pieces.add(new LinePiece(
                         continuationText,
                         continuationStart,

@@ -2,7 +2,7 @@
 package org.glavo.scssfx;
 
 import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml. jackson.core.JsonToken;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import java.io.IOException;

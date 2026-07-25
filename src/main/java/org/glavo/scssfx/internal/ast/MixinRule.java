@@ -112,6 +112,19 @@ public record MixinRule(
                 if (containsContent(declaration.children())) {
                     return true;
                 }
+            } else if (statement instanceof IncludeRule includeRule
+                    && includeRule.content() != null) {
+                // dart-sass StatementSearchVisitor walks include content blocks,
+                // so `@mixin b { @include meta.apply(...) { @content } }` accepts
+                // content even though `@content` is not a direct child of the mixin.
+                if (containsContent(includeRule.content().children())) {
+                    return true;
+                }
+            } else if (statement instanceof UnknownAtRule unknown
+                    && !unknown.children().isEmpty()) {
+                if (containsContent(unknown.children())) {
+                    return true;
+                }
             }
         }
         return false;
