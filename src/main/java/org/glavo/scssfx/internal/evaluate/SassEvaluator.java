@@ -3937,6 +3937,7 @@ public final class SassEvaluator implements
         return result.toString();
     }
 
+
     /// Evaluates interpolation parts to their unquoted textual representation.
     ///
     /// Nested calculations inside {@code #{…}} fully simplify even when the
@@ -4272,9 +4273,13 @@ public final class SassEvaluator implements
             throw new EvaluationException("Module loading isn't available.", span);
         }
         try {
+            // dart-sass resolves load-css against the include's source URL so a
+            // mixin defined in another file loads relative to that definition
+            // site (see through_other_mixin), not the outermost caller.
+            @Nullable URI baseUrl = span.url() != null ? span.url() : currentUrl;
             var module = moduleRegistry.load(
                     url,
-                    currentUrl,
+                    baseUrl,
                     span,
                     this,
                     configuration,
@@ -4282,12 +4287,11 @@ public final class SassEvaluator implements
                     true
             );
             assertConfigurationConsumed(configuration, true);
-            var loadedExtensions = new ArrayList<PendingExtension>();
-            collectExtensions(module, loadedExtensions, new IdentityHashMap<>());
-            pendingExtensions.addAll(loadedExtensions);
-            // load-css reattributes origins to the caller so extensions treat
-            // the injected CSS as part of the including stylesheet.
-            injectModuleCss(ModuleCss.combine(module), true);
+            // Fully resolve the loaded graph on a clone before injection
+            // (dart-sass {@code _combineCss(module, clone: true)}). Extensions
+            // must not rewrite the host's earlier {@code @use} copy of a shared
+            // module, and must not remain pending for the root apply phase.
+            injectLoadCssCss(module);
         } catch (SassValueException cause) {
             throw new EvaluationException(
                     Objects.requireNonNull(cause.getMessage(), "module failure message"),
@@ -4296,6 +4300,58 @@ public final class SassEvaluator implements
                     cause
             );
         }
+    }
+
+    /// Clones a load-css module graph, applies its extensions in isolation, and
+    /// injects the resolved CSS under the current parent.
+    ///
+    /// @param module the loaded module graph whose CSS is being included
+    private void injectLoadCssCss(LoadedModule module) {
+        var combined = ModuleCss.combine(module);
+        var extensions = new ArrayList<PendingExtension>();
+        collectExtensions(module, extensions, new IdentityHashMap<>());
+        if (extensions.isEmpty()) {
+            // load-css reattributes origins to the caller so host {@code @extend}
+            // sees the injected CSS as part of the including stylesheet.
+            injectModuleCss(combined, true);
+            return;
+        }
+
+        // Clone into a temporary stylesheet so shared module CSS already present
+        // on the host (via {@code @use}) is not rewritten in place.
+        var isolated = new CssStylesheet(combined.span());
+        var previousStylesheet = cssStylesheet;
+        var previousParent = cssParent;
+        var previousMarking = markingImportGeneration;
+        int generation = nextImportGeneration++;
+        markingImportGeneration = generation;
+        cssStylesheet = isolated;
+        cssParent = isolated;
+        try {
+            injectModuleCss(combined, false);
+            var stamped = new ArrayList<PendingExtension>(extensions.size());
+            for (var extension : extensions) {
+                stamped.add(new PendingExtension(
+                        extension.extender(),
+                        extension.target(),
+                        extension.optional(),
+                        extension.mediaContext(),
+                        extension.originUrl(),
+                        extension.span(),
+                        generation
+                ));
+            }
+            var rules = new ArrayList<CssStyleRule>();
+            collectStyleRules(isolated, rules);
+            extensionVisibilityModules.add(module);
+            applyExtensions(rules, stamped, module);
+        } finally {
+            markingImportGeneration = previousMarking;
+            cssStylesheet = previousStylesheet;
+            cssParent = previousParent;
+        }
+        // Re-inject the already-extended clone as part of the caller stylesheet.
+        injectModuleCss(isolated, true);
     }
 
     /// Clones a module's combined CSS, applies that graph's extensions in isolation,

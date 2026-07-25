@@ -228,8 +228,22 @@ public final class Environment {
         Objects.requireNonNull(value, "value");
         Objects.requireNonNull(originSpan, "originSpan");
         if (namespace != null) {
-            @Nullable VariableBinding binding =
-                    requireModule(namespace).variables().get(name);
+            // dart-sass routes namespaced assignment through
+            // {@code _modulesByVariable}: a name that was {@code @forward}ed is
+            // written on the forwarded binding even when a local member shadows
+            // it for reads (shadowed variable_assignment).
+            var module = requireModule(namespace);
+            @Nullable VariableBinding binding = null;
+            for (var forwarded : module.forwardedModules()) {
+                @Nullable VariableBinding candidate = forwarded.variables().get(name);
+                if (candidate != null) {
+                    binding = candidate;
+                    break;
+                }
+            }
+            if (binding == null) {
+                binding = module.variables().get(name);
+            }
             if (binding == null) {
                 throw new SassValueException("Undefined variable.");
             }

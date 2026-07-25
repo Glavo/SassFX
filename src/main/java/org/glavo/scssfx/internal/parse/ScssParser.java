@@ -482,10 +482,20 @@ final class ScssParser extends SassExpressionParser {
             case STYLE_RULE -> declarationOrStyleRule();
             case DECLARATION, FONT_FACE -> declarationChild();
             // dart-sass: property-like children in @function are rejected as
-            // declarations rather than with the generic return/variable message.
-            case FUNCTION -> throw scanner.error(
-                    "@function rules may not contain declarations."
-            );
+            // declarations. Local and namespaced variable assignments are allowed
+            // (and must be disambiguated from property declarations).
+            case FUNCTION -> {
+                if (scanner.peek() == '$') {
+                    yield variableDeclarationWithoutNamespace();
+                }
+                @Nullable VariableDeclaration namespaced = tryNamespacedVariableDeclaration();
+                if (namespaced != null) {
+                    yield namespaced;
+                }
+                throw scanner.error(
+                        "@function rules may not contain declarations."
+                );
+            }
         };
     }
 
@@ -532,10 +542,13 @@ final class ScssParser extends SassExpressionParser {
             case "while" -> whileRule(start, context);
             default -> {
                 // Consume the remainder of the rule for a complete span, then reject.
+                // Use STYLE_RULE for nested bodies so ordinary declarations do not
+                // surface as "@function rules may not contain declarations" before
+                // the intended at-rule diagnostic (issue_1941 / nested @mixin).
                 whitespace(false);
                 interpolatedDeclarationValue(true, false, () -> scanner.peek() == '{');
                 if (scanner.peek() == '{') {
-                    statementBlock(context);
+                    statementBlock(StatementContext.STYLE_RULE);
                 } else {
                     expectStatementSeparator();
                 }
@@ -1864,12 +1877,36 @@ final class ScssParser extends SassExpressionParser {
             whitespace(true);
             var argumentStart = scanner.state();
             if (scanner.peek() == 'u' || scanner.peek() == 'U') {
+                var beforeUrl = scanner.state();
                 var name = identifier(false, false);
-                if (!name.equalsIgnoreCase("url")) {
+                if (name.equalsIgnoreCase("url")) {
+                    var url = importUrl(argumentStart, name);
+                    imports.add(staticImport(url, argumentStart));
+                } else if (!plainCss) {
+                    // {@code @import unquoted} begins with {@code u} but is not url().
+                    scanner.restore(beforeUrl);
+                    if (controlDirectiveDepth > 0 || inMixin) {
+                        throw scanner.error("This at-rule is not allowed here.");
+                    }
+                    var urlStart = scanner.state();
+                    var path = unquotedImportUrl();
+                    var dynamic = new DynamicImport(
+                            path,
+                            scanner.spanFrom(urlStart)
+                    );
+                    imports.add(dynamic);
+                    addParseTimeWarning(new Diagnostic(
+                            DiagnosticSeverity.DEPRECATION,
+                            "Sass @import rules are deprecated and will be removed in "
+                                    + "Dart Sass 3.0.0.\n\n"
+                                    + "More info and automated migrator: "
+                                    + "https://sass-lang.com/d/import",
+                            dynamic.span(),
+                            "import"
+                    ));
+                } else {
                     throw scanner.error("Expected string or url().");
                 }
-                var url = importUrl(argumentStart, name);
-                imports.add(staticImport(url, argumentStart));
             } else if (scanner.peek() == '\'' || scanner.peek() == '"') {
                 var urlStart = scanner.state();
                 var url = string();
@@ -1897,6 +1934,25 @@ final class ScssParser extends SassExpressionParser {
                             "import"
                     ));
                 }
+            } else if (!plainCss && lookingAtUnquotedImportUrl()) {
+                // Legacy unquoted load paths ({@code @import unquoted, sub/x}).
+                if (controlDirectiveDepth > 0 || inMixin) {
+                    throw scanner.error("This at-rule is not allowed here.");
+                }
+                var urlStart = scanner.state();
+                var url = unquotedImportUrl();
+                var rawUrl = Interpolation.plain(url, scanner.spanFrom(urlStart));
+                var dynamic = new DynamicImport(url, rawUrl.span());
+                imports.add(dynamic);
+                addParseTimeWarning(new Diagnostic(
+                        DiagnosticSeverity.DEPRECATION,
+                        "Sass @import rules are deprecated and will be removed in "
+                                + "Dart Sass 3.0.0.\n\n"
+                                + "More info and automated migrator: "
+                                + "https://sass-lang.com/d/import",
+                        dynamic.span(),
+                        "import"
+                ));
             } else {
                 throw scanner.error("Expected string or url().");
             }
@@ -2094,13 +2150,25 @@ final class ScssParser extends SassExpressionParser {
         if (query instanceof SupportsFunction function) {
             buffer.add(function.name());
             buffer.append('(');
-            buffer.add(function.arguments());
+            // Plain argument text from indented open-paren joins may contain
+            // newline+indent; CSS emission collapses that to a single space.
+            @Nullable String plainArguments = function.arguments().asPlain();
+            if (plainArguments != null) {
+                buffer.append(collapseImportSupportsWhitespace(plainArguments));
+            } else {
+                buffer.add(function.arguments());
+            }
             buffer.append(')');
             return;
         }
         if (query instanceof SupportsAnything anything) {
             buffer.append('(');
-            buffer.add(anything.contents());
+            @Nullable String plainContents = anything.contents().asPlain();
+            if (plainContents != null) {
+                buffer.append(collapseImportSupportsWhitespace(plainContents));
+            } else {
+                buffer.add(anything.contents());
+            }
             buffer.append(')');
             return;
         }
@@ -2185,6 +2253,46 @@ final class ScssParser extends SassExpressionParser {
         return result;
     }
 
+    /// Collapses line-break whitespace from indented open-paren joins inside a
+    /// plain import {@code supports()} body.
+    ///
+    /// Multiple spaces that do not cross a line break are preserved so silent
+    /// comments and deliberate spacing still match dart-sass. Only newline
+    /// (and following indent) sequences are reduced to a single space.
+    ///
+    /// @param text the raw condition or argument text
+    /// @return text with line-break whitespace folded to one space
+    private static String collapseImportSupportsWhitespace(String text) {
+        if (text.indexOf('\n') < 0
+                && text.indexOf('\r') < 0
+                && text.indexOf('\f') < 0) {
+            return text;
+        }
+        var result = new StringBuilder(text.length());
+        for (var index = 0; index < text.length(); index++) {
+            var character = text.charAt(index);
+            if (character == '\n' || character == '\r' || character == '\f') {
+                if (character == '\r'
+                        && index + 1 < text.length()
+                        && text.charAt(index + 1) == '\n') {
+                    index++;
+                }
+                while (index + 1 < text.length()) {
+                    var next = text.charAt(index + 1);
+                    if (next == ' ' || next == '\t') {
+                        index++;
+                        continue;
+                    }
+                    break;
+                }
+                result.append(' ');
+                continue;
+            }
+            result.append(character);
+        }
+        return result.toString();
+    }
+
     /// Returns whether the current position terminates one import argument.
     ///
     /// @return whether no modifier begins here
@@ -2193,6 +2301,48 @@ final class ScssParser extends SassExpressionParser {
             case CssCharacters.END_OF_INPUT, ',', ';', '}' -> true;
             default -> false;
         };
+    }
+
+    /// Returns whether an unquoted Sass load path may begin here.
+    ///
+    /// @return whether {@link #unquotedImportUrl()} can consume a path
+    private boolean lookingAtUnquotedImportUrl() {
+        return lookingAtInterpolatedIdentifier() || scanner.peek() == '.'
+                || scanner.peek() == '/' || scanner.peek() == '\\';
+    }
+
+    /// Consumes a legacy unquoted {@code @import} load path.
+    ///
+    /// Accepts dotted segments and path separators such as {@code sub/unquoted}
+    /// and {@code ./foo}.
+    ///
+    /// @return the decoded load path text
+    private String unquotedImportUrl() {
+        var start = scanner.state();
+        while (true) {
+            var next = scanner.peek();
+            if (next == '/' || next == '\\') {
+                scanner.read();
+                continue;
+            }
+            if (next == '.'
+                    && (scanner.peek(1) == '/'
+                    || scanner.peek(1) == '\\'
+                    || scanner.peek(1) == '.')) {
+                scanner.read();
+                continue;
+            }
+            if (lookingAtInterpolatedIdentifier()) {
+                // Consume one path segment without expanding interpolation.
+                identifier(false, false);
+                continue;
+            }
+            break;
+        }
+        if (scanner.position() == start.position()) {
+            throw scanner.error("Expected string or url().");
+        }
+        return scanner.substring(start.position());
     }
 
     /// Returns whether a quoted URL denotes a plain CSS import.
