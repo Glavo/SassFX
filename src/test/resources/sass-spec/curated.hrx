@@ -365,7 +365,7 @@ $item: item
   color: red
 <===> syntax/indented-advanced/output.css
 .item {
-  content: "prefix item";
+  content: "prefix     item";
   color: red;
 }
 <===> diagnostics/statements/input.scss

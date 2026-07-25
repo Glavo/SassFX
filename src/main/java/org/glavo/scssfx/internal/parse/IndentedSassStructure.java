@@ -433,9 +433,13 @@ final class IndentedSassStructure {
                         && looksLikeDeclarationOrAssignment(combined.toString())) {
                     break;
                 }
-                var continuationText = continuation
-                        .substring(continuationIndentation.length())
-                        .stripTrailing();
+                // Quoted line-continuations ({@code 'line1 \\\n      line2'}) keep
+                // the full physical indent as string content (dart-sass). Other
+                // continuations strip the full physical indent.
+                int stripLength = state.openQuote() && needsForcedContinuation
+                        ? 0
+                        : continuationIndentation.length();
+                var continuationText = continuation.substring(stripLength).stripTrailing();
                 // {@code @mixin name} / {@code @function name} only continue for a
                 // parameter list. Body statements such as {@code b: c} open a block.
                 // Do not advance {@code lastLine} before this check or the body
@@ -471,9 +475,8 @@ final class IndentedSassStructure {
                 } else {
                     // Forced continuations for open parens/brackets keep a newline
                     // and the absolute indent width as spaces so raw CSS conditions
-                    // preserve author whitespace ({@code @supports a(\n  b)}).
-                    // Open quotes must not inject indent spaces — dart-sass strips
-                    // leading indent after a string line-continuation.
+                    // and custom properties preserve author whitespace.
+                    // Open quotes: relative indent already remains in continuationText.
                     int spaces = state.openQuote()
                             ? 0
                             : continuationIndentation.columns();
@@ -484,8 +487,7 @@ final class IndentedSassStructure {
                     combined.append(continuationText);
                 }
                 var continuationLineStart = lineStart(source, lastLine);
-                var continuationStart = continuationLineStart
-                        + continuationIndentation.length();
+                var continuationStart = continuationLineStart + stripLength;
                 var continuationEnd = continuationStart + continuationText.length();
                 if (needsIndentedContinuation) {
                     pieces.add(new LinePiece(
@@ -582,52 +584,407 @@ final class IndentedSassStructure {
             int startOffset,
             int endOffset
     ) {
-        var combined = new StringBuilder(text);
+        // Mirror dart-sass {@code SassParser._loudComment}: empty first line after
+        // {@code /*} becomes a single space; later lines use {@code  * } prefixes
+        // with relative indent, except content that still runs on the first
+        // physical continuation after an empty opener (no {@code  * } then).
+        // Pieces retain original offsets so interpolations such as
+        // {@code /* #{a\n  + b} */} keep ordered spans for binary operators.
+        var buffer = new StringBuilder();
+        var pieces = new ArrayList<LinePiece>();
         var lastLine = line;
-        if (!text.contains("*/")) {
-            while (++lastLine < source.lineCount()) {
-                var commentLine = source.lineText(lastLine);
-                combined.append('\n').append(commentLine.stripTrailing());
-                endOffset = lineStart(source, lastLine) + commentLine.length();
-                if (commentLine.contains("*/")) {
+        var first = true;
+        var afterEmptyOpener = false;
+        var parentIndent = indent;
+        var contentStart = startOffset + indentation(source.lineText(line)).length();
+
+        appendCommentPiece(buffer, pieces, "/*", contentStart, contentStart + 2, true);
+
+        // First physical line after {@code /*}.
+        var firstBody = text.length() > 2
+                ? normalizeCommentNewlines(text.substring(2))
+                : "";
+        var firstBodyStripped = firstBody.stripLeading();
+        if (firstBodyStripped.isEmpty() && !loudCommentClosed(text)) {
+            appendCommentPiece(buffer, pieces, " ", contentStart + 2, contentStart + 2, false);
+            afterEmptyOpener = true;
+            first = false;
+        } else if (!firstBody.isEmpty()) {
+            appendFirstBodySegments(
+                    buffer,
+                    pieces,
+                    firstBody,
+                    contentStart + 2
+            );
+            first = false;
+            if (loudCommentClosed(buffer.toString()) && !hasOpenInterpolation(buffer)) {
+                return finishLoudComment(
+                        source, indent, startOffset, endOffset, buffer, pieces, lastLine + 1
+                );
+            }
+        }
+
+        var nextLine = lastLine + 1;
+        if (!loudCommentClosed(buffer.toString())
+                || afterEmptyOpener
+                || hasOpenInterpolation(buffer)) {
+            while (nextLine < source.lineCount()) {
+                var commentLine = source.lineText(nextLine);
+                var lineIndentInfo = indentation(commentLine);
+                var lineIndent = lineIndentInfo.columns();
+                var openInterp = hasOpenInterpolation(buffer);
+                var rawBodyCandidate = commentLine.substring(lineIndentInfo.length());
+                // Blank lines stay inside the open comment (dart-sass preserves them
+                // as {@code \n *}) even at the parent indentation.
+                var blankLine = rawBodyCandidate.isBlank();
+                if (!blankLine
+                        && !afterEmptyOpener
+                        && !openInterp
+                        && lineIndent <= parentIndent) {
+                    break;
+                }
+                if (blankLine && !openInterp) {
+                    // Only preserve empty lines that sit between comment content,
+                    // not trailing blanks before EOF or a sibling statement.
+                    if (!hasIndentedCommentContinuation(source, nextLine + 1, parentIndent)) {
+                        break;
+                    }
+                }
+                lastLine = nextLine;
+                var lineStartOffset = lineStart(source, lastLine);
+                endOffset = lineStartOffset + commentLine.length();
+                nextLine = lastLine + 1;
+                var bodyStart = lineStartOffset + lineIndentInfo.length();
+                // Preserve trailing spaces on comment lines ({@code /* a \n * */}).
+                var rawBody = rawBodyCandidate;
+                if (blankLine) {
+                    // Empty physical line inside an open loud comment → {@code \n *}.
+                    appendCommentPiece(
+                            buffer,
+                            pieces,
+                            "\n *",
+                            bodyStart,
+                            bodyStart,
+                            false
+                    );
+                    first = false;
+                    continue;
+                }
+                var body = normalizeCommentNewlines(rawBody);
+                var segments = body.split("\n", -1);
+                var segmentOriginalCursor = bodyStart;
+                for (var segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+                    var segment = segments[segmentIndex];
+                    if (segmentIndex > 0) {
+                        openInterp = hasOpenInterpolation(buffer);
+                        // Form-feed / CR consumed one original code unit.
+                        segmentOriginalCursor++;
+                    }
+                    var stripped = openInterp || (!afterEmptyOpener && !first)
+                            ? segment.stripLeading()
+                            : segment;
+                    var leadingStrip = segment.length() - stripped.length();
+                    var segmentStart = segmentOriginalCursor + leadingStrip;
+                    var segmentEnd = segmentStart + stripped.length();
+
+                    if (afterEmptyOpener) {
+                        appendCommentPiece(
+                                buffer, pieces, stripped, segmentStart, segmentEnd, true
+                        );
+                        afterEmptyOpener = false;
+                        first = false;
+                    } else if (openInterp) {
+                        appendCommentPiece(
+                                buffer, pieces, " ", segmentStart, segmentStart, false
+                        );
+                        appendCommentPiece(
+                                buffer, pieces, stripped, segmentStart, segmentEnd, true
+                        );
+                        first = false;
+                    } else if (first && segmentIndex == 0) {
+                        appendCommentPiece(
+                                buffer, pieces, stripped, segmentStart, segmentEnd, true
+                        );
+                        first = false;
+                    } else {
+                        var relative = segmentIndex == 0
+                                ? Math.max(0, lineIndent - parentIndent)
+                                : 0;
+                        var starPrefix = new StringBuilder("\n * ");
+                        for (var i = 3; i < relative; i++) {
+                            starPrefix.append(' ');
+                        }
+                        appendCommentPiece(
+                                buffer,
+                                pieces,
+                                starPrefix.toString(),
+                                segmentStart,
+                                segmentStart,
+                                false
+                        );
+                        appendCommentPiece(
+                                buffer, pieces, stripped, segmentStart, segmentEnd, true
+                        );
+                        first = false;
+                    }
+                    segmentOriginalCursor += segment.length();
+                }
+                if (loudCommentClosed(buffer.toString()) && !hasOpenInterpolation(buffer)) {
                     break;
                 }
             }
         }
+
         // Indented Sass auto-closes an open loud comment at EOF (dart-sass).
-        // Drop trailing blank lines that are only end-of-file padding so
-        // {@code /* a\n} becomes {@code /* a */} rather than a multi-line form.
-        if (!combined.toString().contains("*/")) {
-            while (!combined.isEmpty()
-                    && (combined.charAt(combined.length() - 1) == '\n'
-                    || combined.charAt(combined.length() - 1) == '\r')) {
-                combined.setLength(combined.length() - 1);
+        if (!loudCommentClosed(buffer.toString())) {
+            while (!buffer.isEmpty()) {
+                char last = buffer.charAt(buffer.length() - 1);
+                if (last == '\n' || last == '\r') {
+                    trimLastCommentPiece(buffer, pieces);
+                    continue;
+                }
+                break;
             }
-            combined.append(" */");
+            if (!buffer.toString().endsWith(" ") && !buffer.toString().endsWith("/*")) {
+                appendCommentPiece(buffer, pieces, " ", endOffset, endOffset, false);
+            } else if (buffer.toString().endsWith("/*")) {
+                appendCommentPiece(buffer, pieces, " ", endOffset, endOffset, false);
+            }
+            appendCommentPiece(buffer, pieces, "*/", endOffset, endOffset, false);
         }
-        // Keep only the first complete loud comment. Trailing whitespace and
-        // further comments after {@code */} are discarded; any other text is an
-        // error (dart-sass content-after-close).
-        var closed = firstLoudCommentPrefix(combined.toString());
+
+        return finishLoudComment(
+                source, indent, startOffset, endOffset, buffer, pieces, nextLine
+        );
+    }
+
+    /// Appends first-line body segments, splitting on normalized newlines.
+    private static void appendFirstBodySegments(
+            StringBuilder buffer,
+            List<LinePiece> pieces,
+            String firstBody,
+            int bodyStartOffset
+    ) {
+        var segments = firstBody.split("\n", -1);
+        var cursor = bodyStartOffset;
+        for (var segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+            var segment = segments[segmentIndex];
+            if (segmentIndex > 0) {
+                cursor++; // skip original newline code unit
+                if (hasOpenInterpolation(buffer)) {
+                    var stripped = segment.stripLeading();
+                    var lead = segment.length() - stripped.length();
+                    appendCommentPiece(
+                            buffer, pieces, " ", cursor + lead, cursor + lead, false
+                    );
+                    appendCommentPiece(
+                            buffer,
+                            pieces,
+                            stripped,
+                            cursor + lead,
+                            cursor + lead + stripped.length(),
+                            true
+                    );
+                } else {
+                    var stripped = segment.stripLeading();
+                    var lead = segment.length() - stripped.length();
+                    appendCommentPiece(
+                            buffer,
+                            pieces,
+                            "\n * ",
+                            cursor + lead,
+                            cursor + lead,
+                            false
+                    );
+                    appendCommentPiece(
+                            buffer,
+                            pieces,
+                            stripped,
+                            cursor + lead,
+                            cursor + lead + stripped.length(),
+                            true
+                    );
+                }
+            } else {
+                appendCommentPiece(
+                        buffer, pieces, segment, cursor, cursor + segment.length(), true
+                );
+            }
+            cursor += segment.length();
+        }
+    }
+
+    /// Appends one comment fragment and records its projection piece.
+    private static void appendCommentPiece(
+            StringBuilder buffer,
+            List<LinePiece> pieces,
+            String text,
+            int startOffset,
+            int endOffset,
+            boolean original
+    ) {
+        if (text.isEmpty()) {
+            return;
+        }
+        buffer.append(text);
+        pieces.add(new LinePiece(text, startOffset, endOffset, original));
+    }
+
+    /// Drops the last character of the buffer and trims the trailing piece.
+    private static void trimLastCommentPiece(StringBuilder buffer, List<LinePiece> pieces) {
+        if (buffer.isEmpty()) {
+            return;
+        }
+        buffer.setLength(buffer.length() - 1);
+        if (pieces.isEmpty()) {
+            return;
+        }
+        var last = pieces.get(pieces.size() - 1);
+        if (last.text().length() <= 1) {
+            pieces.remove(pieces.size() - 1);
+            return;
+        }
+        pieces.set(
+                pieces.size() - 1,
+                new LinePiece(
+                        last.text().substring(0, last.text().length() - 1),
+                        last.startOffset(),
+                        last.endOffset(),
+                        last.original()
+                )
+        );
+    }
+
+    /// Validates the collected comment text and builds the logical line.
+    private static CollectedComment finishLoudComment(
+            SourceFile source,
+            int indent,
+            int startOffset,
+            int endOffset,
+            StringBuilder buffer,
+            List<LinePiece> pieces,
+            int nextLine
+    ) {
+        var closed = firstLoudCommentPrefix(buffer.toString());
         if (closed.errorMessage() != null) {
             throw error(source, startOffset, endOffset, closed.errorMessage());
         }
         var commentText = closed.text();
-        // Source span still covers the original collected range so multi-line
-        // diagnostics point at the full comment when useful.
+        // If residual after {@code */} was dropped, keep pieces that still match
+        // the retained prefix length.
+        if (!commentText.equals(buffer.toString())) {
+            var retained = new ArrayList<LinePiece>();
+            var length = 0;
+            for (var piece : pieces) {
+                if (length >= commentText.length()) {
+                    break;
+                }
+                var remaining = commentText.length() - length;
+                if (piece.text().length() <= remaining) {
+                    retained.add(piece);
+                    length += piece.text().length();
+                } else {
+                    retained.add(new LinePiece(
+                            piece.text().substring(0, remaining),
+                            piece.startOffset(),
+                            piece.original()
+                                    ? piece.startOffset() + remaining
+                                    : piece.endOffset(),
+                            piece.original()
+                    ));
+                    length = commentText.length();
+                }
+            }
+            pieces = retained;
+        }
         return new CollectedComment(
                 new LogicalLine(
                         indent,
                         commentText,
                         startOffset,
                         endOffset,
-                        List.of(new LinePiece(
-                                commentText, startOffset, endOffset, false
-                        )),
+                        List.copyOf(pieces),
                         true
                 ),
-                lastLine + 1
+                nextLine
         );
+    }
+
+    /// Returns whether a later non-blank line still belongs to the open comment.
+    ///
+    /// @param source the source file
+    /// @param fromLine the first line to inspect
+    /// @param parentIndent the comment's opening indentation
+    /// @return whether indented comment content follows
+    private static boolean hasIndentedCommentContinuation(
+            SourceFile source,
+            int fromLine,
+            int parentIndent
+    ) {
+        for (var line = fromLine; line < source.lineCount(); line++) {
+            var raw = source.lineText(line);
+            var indentInfo = indentation(raw);
+            var body = raw.substring(indentInfo.length());
+            if (body.isBlank()) {
+                continue;
+            }
+            return indentInfo.columns() > parentIndent;
+        }
+        return false;
+    }
+
+    /// Converts CSS newline code points inside comment text to {@code \n}.
+    ///
+    /// @param text comment body fragment
+    /// @return the fragment with {@code \r}/{@code \f} normalized
+    private static String normalizeCommentNewlines(String text) {
+        if (text.indexOf('\r') < 0 && text.indexOf('\f') < 0) {
+            return text;
+        }
+        var result = new StringBuilder(text.length());
+        for (var index = 0; index < text.length(); index++) {
+            var character = text.charAt(index);
+            if (character == '\r') {
+                if (index + 1 < text.length() && text.charAt(index + 1) == '\n') {
+                    index++;
+                }
+                result.append('\n');
+            } else if (character == '\f') {
+                result.append('\n');
+            } else {
+                result.append(character);
+            }
+        }
+        return result.toString();
+    }
+
+    /// Returns whether {@code text} contains a complete top-level {@code /*…*/}.
+    ///
+    /// @param text candidate comment text
+    /// @return whether a closing {@code */} is present
+    private static boolean loudCommentClosed(String text) {
+        var index = text.indexOf("*/");
+        return index >= 0;
+    }
+
+    /// Returns whether the comment buffer still has an open {@code #{…}} frame.
+    ///
+    /// @param buffer the accumulated comment text
+    /// @return whether interpolation is unterminated
+    private static boolean hasOpenInterpolation(CharSequence buffer) {
+        var depth = 0;
+        for (var index = 0; index < buffer.length(); index++) {
+            var character = buffer.charAt(index);
+            if (character == '#'
+                    && index + 1 < buffer.length()
+                    && buffer.charAt(index + 1) == '{') {
+                depth++;
+                index++;
+            } else if (character == '}' && depth > 0) {
+                depth--;
+            }
+        }
+        return depth > 0;
     }
 
     /// Result of isolating the first complete loud comment in a line group.
@@ -800,6 +1157,32 @@ final class IndentedSassStructure {
         return new Indentation(columns, length);
     }
 
+    /// Returns how many leading characters produce at most {@code columns} of indent.
+    ///
+    /// @param text    the physical line
+    /// @param columns the maximum indent columns to consume
+    /// @return the character count of the consumed prefix
+    private static int indentLengthForColumns(String text, int columns) {
+        if (columns <= 0) {
+            return 0;
+        }
+        var seen = 0;
+        var length = 0;
+        while (length < text.length() && seen < columns) {
+            var character = text.charAt(length);
+            if (character == ' ') {
+                seen++;
+                length++;
+            } else if (character == '\t') {
+                seen += 2;
+                length++;
+            } else {
+                break;
+            }
+        }
+        return length;
+    }
+
     /// Scans one accumulated statement for continuation and delimiter errors.
     ///
     /// Quotes are represented as stack frames so interpolation inside a quoted
@@ -841,13 +1224,20 @@ final class IndentedSassStructure {
             }
             if (character == '/' && index + 1 < text.length()
                     && text.charAt(index + 1) == '*') {
+                // Unclosed loud comments force a physical-line continuation even
+                // when the closer is at a shallower indent ({@code b: c /* d\n*/ e}).
                 index += 2;
-                while (index + 1 < text.length()
-                        && !(text.charAt(index) == '*' && text.charAt(index + 1) == '/')) {
+                var closed = false;
+                while (index + 1 < text.length()) {
+                    if (text.charAt(index) == '*' && text.charAt(index + 1) == '/') {
+                        index++; // consume '/' of '*/' via the for-loop increment
+                        closed = true;
+                        break;
+                    }
                     index++;
                 }
-                if (index + 1 < text.length()) {
-                    index++; // consume '/' of '*/'
+                if (!closed) {
+                    return new ContinuationState(true, true, false, null);
                 }
                 continue;
             }
@@ -904,8 +1294,12 @@ final class IndentedSassStructure {
         // Trailing commas force a join when a next line exists (selectors like
         // {@code a, // comment} / {@code a,}), but are valid terminators at EOF
         // ({@code b: c, d,}) so they are optional rather than mandatory.
+        // {@code @extend a,} must not swallow a same-indent sibling as another
+        // target (extend/whitespace multiple_selectors/comma). {@code @forward}/
+        // {@code @use} trailing commas still join show/hide members.
         var trailingComma = lastSignificant >= 0
-                && text.charAt(lastSignificant) == ',';
+                && text.charAt(lastSignificant) == ','
+                && !isExtendAtRule(text.strip());
         // Trailing spaced binary operators and {@code and}/{@code or}/{@code not}
         // force a same-indent continuation only for declarations/assignments
         // ({@code b: 3 %} / {@code $a: b +}). Selector lines ending in combinators
@@ -1423,6 +1817,29 @@ final class IndentedSassStructure {
         };
     }
 
+    /// Returns whether {@code text} is an {@code @extend} statement.
+    private static boolean isExtendAtRule(String text) {
+        return atRuleNameEquals(text, "@extend");
+    }
+
+    /// Returns whether {@code text} is an {@code @import} statement.
+    private static boolean isImportAtRule(String text) {
+        return atRuleNameEquals(text, "@import");
+    }
+
+    /// Returns whether the statement begins with the given at-rule name.
+    private static boolean atRuleNameEquals(String text, String name) {
+        var stripped = text.strip();
+        if (!stripped.regionMatches(true, 0, name, 0, name.length())) {
+            return false;
+        }
+        if (stripped.length() == name.length()) {
+            return true;
+        }
+        var next = stripped.charAt(name.length());
+        return Character.isWhitespace(next) || next == ',' || next == ';' || next == '{';
+    }
+
     /// Returns whether an empty {@code @include} should omit braces.
     ///
     /// Plain includes are statement-terminated. Includes with a {@code using}
@@ -1557,8 +1974,12 @@ final class IndentedSassStructure {
         // ({@code @each $a in b,}). Declarations with a trailing comma do not
         // use more-indented lines as list continuations (dart-sass requires
         // parentheses for multi-line lists); same-indent selector commas are
-        // handled by forced continuation instead.
-        if (endsWithTopLevelComma(stripped) && !looksLikeDeclarationOrAssignment(stripped)) {
+        // handled by forced continuation instead. {@code @extend a,} and a
+        // complete {@code @import …,} do not continue onto indented children.
+        if (endsWithTopLevelComma(stripped)
+                && !looksLikeDeclarationOrAssignment(stripped)
+                && !isExtendAtRule(stripped)
+                && !isImportAtRule(stripped)) {
             return true;
         }
         // Trailing binary operator leaves a declaration/assignment open

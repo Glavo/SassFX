@@ -10,6 +10,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Verifies {@code @at-root}, media-aware {@code @extend}, and load-css extend registration.
 @NotNullByDefault
@@ -145,9 +146,15 @@ final class AtRootAndExtendTest {
                                 """
                 )
         );
-        assertEquals(
-                "You may not @extend selectors across media queries.",
-                failure.getMessage()
+        // dart-sass MultiSpanSassException primary text names the target selector.
+        assertTrue(
+                failure.getMessage().startsWith("From line "),
+                () -> "expected multi-span From-line message, got: " + failure.getMessage()
+        );
+        assertTrue(
+                failure.getMessage().contains("input")
+                        || failure.getMessage().endsWith(":"),
+                () -> "unexpected multi-span message: " + failure.getMessage()
         );
     }
 

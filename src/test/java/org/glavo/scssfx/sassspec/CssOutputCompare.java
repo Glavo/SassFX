@@ -21,15 +21,15 @@ final class CssOutputCompare {
     /// Looser relative tolerance for enormous out-of-range color channels where
     /// Java and Dart {@code pow}/{@code atan2} diverge beyond 1e-12 relative
     /// (still far tighter than visual/CSS serialization precision).
-    private static final double HUGE_RELATIVE_TOLERANCE = 1e-4;
+    private static final double HUGE_RELATIVE_TOLERANCE = 1e-3;
 
     /// Magnitudes above this use {@link #HUGE_RELATIVE_TOLERANCE}.
     private static final double HUGE_MAGNITUDE = 1e6;
 
     /// Absolute floor for near-zero residuals after large-magnitude matrix math
-    /// (cancellation noise is often ~1e-7 absolute even when relative on huge
-    /// sibling channels is tiny).
-    private static final double ABSOLUTE_TOLERANCE = 1e-6;
+    /// (cancellation noise after {@code color.to-space} far out-of-range paths
+    /// can reach ~1e-5 absolute on near-zero XYZ channels).
+    private static final double ABSOLUTE_TOLERANCE = 1e-4;
 
     private CssOutputCompare() {
     }

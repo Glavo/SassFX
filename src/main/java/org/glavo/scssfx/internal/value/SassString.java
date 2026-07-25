@@ -105,10 +105,11 @@ public record SassString(String text, boolean hasQuotes) implements SassValue {
     @Override
     public String toCssString(boolean quote) {
         if (!hasQuotes || !quote) {
-            // Unquoted emission only rewrites private-use code points. Escaping
-            // all controls would alter intentional raw CSS fragments built via
-            // interpolation; PUA escapes match dart-sass glyph-font output.
-            return escapePrivateUseOnly(text);
+            // Unquoted emission folds newlines the way dart-sass
+            // {@code _visitUnquotedString} does: each LF becomes a single space
+            // and spaces immediately after that newline are dropped. Private-use
+            // code points are escaped for glyph-font readability.
+            return escapePrivateUseOnly(foldUnquotedNewlines(text));
         }
 
         var includesSingleQuote = false;
@@ -131,6 +132,33 @@ public record SassString(String text, boolean hasQuotes) implements SassValue {
         var result = new StringBuilder(text.length() + 2).append(quoteChar);
         result.append(escapeSpecialCodePoints(text, quoteChar));
         return result.append(quoteChar).toString();
+    }
+
+    /// Folds LF and following spaces for unquoted CSS string emission.
+    ///
+    /// @param text the raw unquoted string text
+    /// @return text with newlines collapsed to single spaces
+    private static String foldUnquotedNewlines(String text) {
+        if (text.indexOf('\n') < 0) {
+            return text;
+        }
+        var result = new StringBuilder(text.length());
+        var afterNewline = false;
+        for (var index = 0; index < text.length(); index++) {
+            var character = text.charAt(index);
+            if (character == '\n') {
+                result.append(' ');
+                afterNewline = true;
+            } else if (character == ' ') {
+                if (!afterNewline) {
+                    result.append(' ');
+                }
+            } else {
+                afterNewline = false;
+                result.append(character);
+            }
+        }
+        return result.toString();
     }
 
     /// Escapes private-use code points only (for unquoted CSS emission).

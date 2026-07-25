@@ -11,6 +11,7 @@ import org.jetbrains.annotations.Unmodifiable;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -259,7 +260,13 @@ public final class SelectorAlgebra {
             SelectorList extendee,
             SelectorList extender
     ) {
-        return extend(selector, extendee, extender, originalKeysOf(selector));
+        return extend(
+                selector,
+                extendee,
+                extender,
+                originalKeysOf(selector),
+                new HashMap<>()
+        );
     }
 
     /// Extends {@code selector} while protecting the given original complex keys
@@ -279,10 +286,37 @@ public final class SelectorAlgebra {
             SelectorList extender,
             Set<String> originalKeys
     ) {
+        return extend(selector, extendee, extender, originalKeys, new HashMap<>());
+    }
+
+    /// Extends {@code selector} with source-specificity tracking for second-law
+    /// subselector trimming (dart-sass {@code ExtensionStore._sourceSpecificity}).
+    ///
+    /// @param selector          the selector list to extend
+    /// @param extendee          the single-compound targets to match
+    /// @param extender          the selector alternatives to insert
+    /// @param originalKeys      semantic keys of document-original complexes
+    /// @param sourceSpecificity max original-extender specificity per simple key;
+    ///                          mutated when new extender simples are recorded
+    /// @return the original and extended selector alternatives
+    /// @throws SassValueException if an input uses unsupported selector syntax
+    public static SelectorList extend(
+            SelectorList selector,
+            SelectorList extendee,
+            SelectorList extender,
+            Set<String> originalKeys,
+            Map<String, Integer> sourceSpecificity
+    ) {
         assertSupported(selector, "selector");
         assertCompoundTargets(extendee, "extendee");
         assertSupported(extender, "extender");
         Objects.requireNonNull(originalKeys, "originalKeys");
+        Objects.requireNonNull(sourceSpecificity, "sourceSpecificity");
+
+        // Callers that implement stylesheet {@code @extend} must pre-populate
+        // {@code sourceSpecificity} (dart-sass ExtensionStore). The
+        // {@code selector.extend} built-in leaves the map empty so products that
+        // are pure subselectors of originals are trimmed (no-op / format tests).
 
         var current = new ArrayList<>(selector.components());
         for (var target : extendee.components()) {
@@ -292,10 +326,86 @@ public final class SelectorAlgebra {
                     targetCompound,
                     extender,
                     false,
-                    originalKeys
+                    originalKeys,
+                    sourceSpecificity
             ));
         }
         return new SelectorList(current, selector.span());
+    }
+
+    /// Records the specificity of each simple in {@code extender} for second-law
+    /// trimming, matching dart-sass {@code putIfAbsent} on original extenders.
+    ///
+    /// @param extender          the extender selector list
+    /// @param sourceSpecificity the map to update
+    public static void recordSourceSpecificity(
+            SelectorList extender,
+            Map<String, Integer> sourceSpecificity
+    ) {
+        Objects.requireNonNull(extender, "extender");
+        Objects.requireNonNull(sourceSpecificity, "sourceSpecificity");
+        for (var complex : extender.components()) {
+            int specificity = complexSpecificity(complex);
+            for (var component : complex.components()) {
+                for (var simple : component.selector().components()) {
+                    sourceSpecificity.putIfAbsent(simpleKey(simple), specificity);
+                    if (simple instanceof PseudoSelector pseudo) {
+                        @Nullable SelectorList nested = selectorArgument(pseudo);
+                        if (nested != null) {
+                            recordSourceSpecificity(nested, sourceSpecificity);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Returns CSS specificity for a complex selector in base-1000 form.
+    ///
+    /// @param complex the complex selector
+    /// @return the specificity total
+    public static int complexSpecificity(ComplexSelector complex) {
+        var total = 0;
+        for (var component : complex.components()) {
+            for (var simple : component.selector().components()) {
+                total += simpleSpecificity(simple);
+            }
+        }
+        return total;
+    }
+
+    /// Returns CSS specificity for a simple selector in base-1000 form.
+    ///
+    /// Matches dart-sass: IDs are {@code 1_000_000}, classes/attributes/pseudo-classes
+    /// and placeholders are {@code 1_000}, types and pseudo-elements are {@code 1},
+    /// and universals contribute {@code 0}.
+    ///
+    /// @param simple the simple selector
+    /// @return the specificity contribution
+    public static int simpleSpecificity(SimpleSelector simple) {
+        if (simple instanceof IdSelector) {
+            return 1_000_000;
+        }
+        if (simple instanceof ClassSelector
+                || simple instanceof AttributeSelector
+                || simple instanceof PlaceholderSelector) {
+            return 1_000;
+        }
+        if (simple instanceof TypeSelector) {
+            return 1;
+        }
+        if (simple instanceof UniversalSelector || simple instanceof ParentSelector) {
+            return 0;
+        }
+        if (simple instanceof PseudoSelector pseudo) {
+            if (isPseudoElement(pseudo)) {
+                return 1;
+            }
+            // Selector-taking pseudo-classes use their own base specificity only;
+            // argument contents contribute through nested source tracking.
+            return 1_000;
+        }
+        return 1_000;
     }
 
     /// Returns semantic keys for every complex in {@code selector}.
@@ -333,6 +443,7 @@ public final class SelectorAlgebra {
         var current = new ArrayList<>(selector.components());
         // Replacement drops matched originals, so no original-key protection.
         var originalKeys = Set.<String>of();
+        var sourceSpecificity = Map.<String, Integer>of();
         for (var target : original.components()) {
             var targetCompound = target.components().get(0).selector();
             current = new ArrayList<>(transformTarget(
@@ -340,7 +451,8 @@ public final class SelectorAlgebra {
                     targetCompound,
                     replacement,
                     true,
-                    originalKeys
+                    originalKeys,
+                    sourceSpecificity
             ));
         }
         return new SelectorList(current, selector.span());
@@ -2231,24 +2343,43 @@ public final class SelectorAlgebra {
             CompoundSelector target,
             SelectorList inserted,
             boolean replacement,
-            Set<String> originalKeys
+            Set<String> originalKeys,
+            Map<String, Integer> sourceSpecificity
     ) {
         var bases = new ArrayList<ComplexSelector>(selectors.size());
         for (var candidate : selectors) {
+            // Nested {@code :not} on document originals always runs. Pure {@code :not}
+            // compounds produced by earlier simple extensions may be expanded further
+            // (compound-unification-in-not). Hybrid products such as {@code .a:not(.c)}
+            // from {@code @extend :not(...)} must not receive more nested {@code :not}
+            // from other extensions, or re-application trims them away
+            // (extend-result-of-extend). Complex self-extenders still cannot re-enter
+            // products (issue_2399 / issue_2055).
+            boolean allowNotNested = originalKeys.isEmpty()
+                    || originalKeys.contains(complexKey(candidate))
+                    || isSimpleExtender(inserted) && isOnlyNotCompound(candidate);
             @Nullable ComplexSelector nested = transformNestedPseudoArguments(
                     candidate,
                     target,
                     inserted,
-                    replacement
+                    replacement,
+                    allowNotNested,
+                    sourceSpecificity
             );
             if (nested == null) {
                 bases.add(candidate);
             } else {
-                // Nested rewrites of a document original remain originals so they
-                // are not trimmed (dart-sass updates {@code _originals} similarly).
+                // Promote nested rewrites of originals so further midstream
+                // {@code :is}/{:matches} chains and trimming still see them.
+                // Skip promotion when the rewrite is a nested {@code :not} product
+                // so fixed-point does not re-expand forever (issue_2399).
+                // Nested non-{:not} rewrites replace in place (module midstream
+                // extend and selector.extend idempotent :is/:matches).
                 String beforeKey = complexKey(candidate);
                 String afterKey = complexKey(nested);
-                if (originalKeys.contains(beforeKey) && !beforeKey.equals(afterKey)) {
+                if (originalKeys.contains(beforeKey)
+                        && !beforeKey.equals(afterKey)
+                        && !complexHasNotPseudo(nested)) {
                     originalKeys.add(afterKey);
                 }
                 bases.add(nested);
@@ -2264,7 +2395,7 @@ public final class SelectorAlgebra {
                 result.add(basis);
                 result.addAll(replacementAlternatives(basis, target, inserted));
             }
-            return trimSubselectors(deduplicate(result), originalKeys);
+            return trimSubselectors(deduplicate(result), originalKeys, sourceSpecificity);
         }
         for (var basis : bases) {
             var alternatives = replacementAlternatives(basis, target, inserted);
@@ -2280,14 +2411,24 @@ public final class SelectorAlgebra {
     /// Removes non-original complexes that are subselectors of another complex
     /// already present, matching dart-sass extend trimming for matching sets.
     ///
-    /// @param selectors    the candidates after extension
-    /// @param originalKeys semantic keys of document-original complexes
+    /// A product is only trimmed when another complex is a strict superselector
+    /// and its specificity is at least the product's max source specificity
+    /// (dart-sass second law of extend).
+    ///
+    /// @param selectors         the candidates after extension
+    /// @param originalKeys      semantic keys of document-original complexes
+    /// @param sourceSpecificity max original-extender specificity per simple key
     /// @return selectors with redundant extension-produced subselectors removed
     private static @Unmodifiable List<ComplexSelector> trimSubselectors(
             List<ComplexSelector> selectors,
-            Set<String> originalKeys
+            Set<String> originalKeys,
+            Map<String, Integer> sourceSpecificity
     ) {
         if (selectors.size() <= 1) {
+            return selectors;
+        }
+        // Cap quadratic cost for huge extension products (dart-sass).
+        if (selectors.size() > 100) {
             return selectors;
         }
         var result = new ArrayList<ComplexSelector>();
@@ -2298,14 +2439,15 @@ public final class SelectorAlgebra {
                 result.add(candidate);
                 continue;
             }
+            int maxSourceSpecificity = maxSourceSpecificity(candidate, sourceSpecificity);
             var redundant = false;
             for (var otherIndex = 0; otherIndex < selectors.size(); otherIndex++) {
                 if (otherIndex == index) {
                     continue;
                 }
                 var other = selectors.get(otherIndex);
-                if (Boolean.TRUE.equals(complexIsSuperselector(other, candidate))
-                        && !Boolean.TRUE.equals(complexIsSuperselector(candidate, other))) {
+                if (complexSpecificity(other) >= maxSourceSpecificity
+                        && Boolean.TRUE.equals(complexIsSuperselector(other, candidate))) {
                     redundant = true;
                     break;
                 }
@@ -2317,6 +2459,55 @@ public final class SelectorAlgebra {
         return List.copyOf(result);
     }
 
+    /// Returns the maximum source specificity of simples in {@code complex}.
+    private static int maxSourceSpecificity(
+            ComplexSelector complex,
+            Map<String, Integer> sourceSpecificity
+    ) {
+        var max = 0;
+        for (var component : complex.components()) {
+            for (var simple : component.selector().components()) {
+                max = Math.max(max, sourceSpecificity.getOrDefault(simpleKey(simple), 0));
+            }
+        }
+        return max;
+    }
+
+    /// Returns whether every alternative of {@code extender} is a single simple
+    /// selector with no combinators (safe for nested {@code :not} on products).
+    private static boolean isSimpleExtender(SelectorList extender) {
+        for (var complex : extender.components()) {
+            if (!complex.leadingCombinators().isEmpty()
+                    || complex.components().size() != 1
+                    || !complex.components().get(0).combinators().isEmpty()
+                    || complex.components().get(0).selector().components().size() != 1) {
+                return false;
+            }
+        }
+        return !extender.components().isEmpty();
+    }
+
+    /// Returns whether {@code complex} is a single compound of only {@code :not(...)}
+    /// simples (no type/class/id hosts).
+    private static boolean isOnlyNotCompound(ComplexSelector complex) {
+        if (!complex.leadingCombinators().isEmpty() || complex.components().size() != 1) {
+            return false;
+        }
+        var compound = complex.components().get(0);
+        if (!compound.combinators().isEmpty() || compound.selector().components().isEmpty()) {
+            return false;
+        }
+        for (var simple : compound.selector().components()) {
+            if (!(simple instanceof PseudoSelector pseudo)
+                    || isPseudoElement(pseudo)
+                    || !"not".equals(normalizedPseudoName(pseudo.name().value()))
+                    || selectorArgument(pseudo) == null) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /// Rewrites recursively modeled pseudo-selector arguments in one complex selector.
     ///
     /// @param source       the source complex selector
@@ -2324,11 +2515,14 @@ public final class SelectorAlgebra {
     /// @param inserted     the selector alternatives to insert
     /// @param replacement  whether matched nested alternatives are replaced
     /// @return the rewritten selector, or {@code null} when no nested argument changed
+    /// @param allowNotNested whether {@code :not(...)} arguments may be rewritten
     private static @Nullable ComplexSelector transformNestedPseudoArguments(
             ComplexSelector source,
             CompoundSelector target,
             SelectorList inserted,
-            boolean replacement
+            boolean replacement,
+            boolean allowNotNested,
+            Map<String, Integer> sourceSpecificity
     ) {
         if (!mayTransformPseudoArgumentsForTarget(target)) {
             return null;
@@ -2339,18 +2533,27 @@ public final class SelectorAlgebra {
             var simples = new ArrayList<SimpleSelector>(component.selector().components().size());
             var componentChanged = false;
             for (var simple : component.selector().components()) {
-                if (simple instanceof PseudoSelector pseudo
+                if (allowNotNested
+                        && simple instanceof PseudoSelector pseudo
                         && !isPseudoElement(pseudo)
                         && "not".equals(normalizedPseudoName(pseudo.name().value()))) {
                     @Nullable List<SimpleSelector> expanded = transformNotPseudo(
                             pseudo,
                             target,
                             inserted,
-                            replacement
+                            replacement,
+                            sourceSpecificity
                     );
                     if (expanded != null) {
-                        simples.addAll(expanded);
-                        componentChanged = true;
+                        // Deduplicate against simples already emitted so fixed-point
+                        // re-application of the same {@code @extend} does not grow
+                        // {@code :not(.a):not(.b)} into an unbounded chain.
+                        for (var replacementSimple : expanded) {
+                            if (!compoundContainsSimple(simples, replacementSimple)) {
+                                simples.add(replacementSimple);
+                                componentChanged = true;
+                            }
+                        }
                         continue;
                     }
                 }
@@ -2360,14 +2563,17 @@ public final class SelectorAlgebra {
                             pseudo,
                             target,
                             inserted,
-                            replacement
+                            replacement,
+                            sourceSpecificity
                     );
                     if (transformedPseudo != null) {
                         transformed = transformedPseudo;
                         componentChanged = true;
                     }
                 }
-                simples.add(transformed);
+                if (!compoundContainsSimple(simples, transformed)) {
+                    simples.add(transformed);
+                }
             }
             if (componentChanged) {
                 components.add(new ComplexSelectorComponent(
@@ -2380,7 +2586,47 @@ public final class SelectorAlgebra {
                 components.add(component);
             }
         }
-        return changed ? new ComplexSelector(source.leadingCombinators(), components, source.span()) : null;
+        if (!changed) {
+            return null;
+        }
+        var rewritten = new ComplexSelector(
+                source.leadingCombinators(),
+                components,
+                source.span(),
+                source.lineBreak()
+        );
+        // Idempotent nested transforms must not report a change (fixed-point stop).
+        if (complexKey(rewritten).equals(complexKey(source))) {
+            return null;
+        }
+        return rewritten;
+    }
+
+    /// Returns whether {@code simples} already contains a semantically equal simple.
+    private static boolean compoundContainsSimple(
+            List<SimpleSelector> simples,
+            SimpleSelector candidate
+    ) {
+        for (var existing : simples) {
+            if (semanticEquals(existing, candidate)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Returns whether a complex contains a {@code :not(...)} simple selector.
+    private static boolean complexHasNotPseudo(ComplexSelector complex) {
+        for (var component : complex.components()) {
+            for (var simple : component.selector().components()) {
+                if (simple instanceof PseudoSelector pseudo
+                        && !isPseudoElement(pseudo)
+                        && "not".equals(normalizedPseudoName(pseudo.name().value()))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /// Extends the argument of a {@code :not()} pseudo selector.
@@ -2394,7 +2640,8 @@ public final class SelectorAlgebra {
             PseudoSelector notPseudo,
             CompoundSelector target,
             SelectorList inserted,
-            boolean replacement
+            boolean replacement,
+            Map<String, Integer> sourceSpecificity
     ) {
         @Nullable SelectorList originalSelectors = selectorArgument(notPseudo);
         if (originalSelectors == null) {
@@ -2408,7 +2655,8 @@ public final class SelectorAlgebra {
                 target,
                 inserted,
                 replacement,
-                nestedOriginals
+                nestedOriginals,
+                sourceSpecificity
         );
         var transformedList = new SelectorList(transformed, originalSelectors.span());
         if (selectorListSemanticallyEquals(originalSelectors, transformedList)) {
@@ -2418,8 +2666,30 @@ public final class SelectorAlgebra {
         // Expand bare :is/:matches/:where lists so :not(:is(a, b)) becomes :not(a):not(b).
         // Nested :not(...) (and other selector-taking pseudos) in the extender are
         // ignored, matching dart-sass's simplified :not extend algorithm.
+        // Multi-compound complexes are also dropped when the original :not only
+        // held single-compound arguments (dart-sass {@code _extendPseudo}).
+        var originalHadComplex = false;
+        for (var complex : originalSelectors.components()) {
+            if (complex.components().size() > 1) {
+                originalHadComplex = true;
+                break;
+            }
+        }
         var expanded = new ArrayList<ComplexSelector>();
+        var anySimpleCompound = false;
         for (var complex : transformed) {
+            if (complex.components().size() == 1) {
+                anySimpleCompound = true;
+            }
+        }
+        for (var complex : transformed) {
+            if (!originalHadComplex
+                    && anySimpleCompound
+                    && complex.components().size() > 1) {
+                // Drop multi-compound extenders such as {@code .bar .baz} from
+                // {@code *:not(.foo)} (issue_2139).
+                continue;
+            }
             expanded.addAll(expandForNotArgument(complex));
         }
 
@@ -2523,7 +2793,8 @@ public final class SelectorAlgebra {
             PseudoSelector pseudo,
             CompoundSelector target,
             SelectorList inserted,
-            boolean replacement
+            boolean replacement,
+            Map<String, Integer> sourceSpecificity
     ) {
         if (!supportsRecursivePseudoArgumentTransformation(pseudo)) {
             return null;
@@ -2540,7 +2811,8 @@ public final class SelectorAlgebra {
                 target,
                 inserted,
                 replacement,
-                nestedOriginals
+                nestedOriginals,
+                sourceSpecificity
         );
         // Flatten nested same-named union pseudos (e.g. :is(.c, :is(.d, .e)) → :is(.c, .d, .e)).
         // Drop same-named nth-child branches with a different An+B formula so
@@ -2814,10 +3086,15 @@ public final class SelectorAlgebra {
                 extenderComponents.add(component);
             }
         }
+        // Products inherit line breaks from the matched source complex so
+        // multi-line selector lists keep newlines after {@code @extend}
+        // (223_test_duplicated_selector_with_newlines).
+        boolean lineBreak = source.lineBreak() || inserted.lineBreak();
         var extender = new ComplexSelector(
                 inserted.leadingCombinators(),
                 extenderComponents,
-                span
+                span,
+                lineBreak
         );
 
         List<ComplexSelector> woven;
@@ -2831,7 +3108,12 @@ public final class SelectorAlgebra {
             if (leading == null) {
                 return List.of();
             }
-            woven = List.of(new ComplexSelector(leading, extender.components(), span));
+            woven = List.of(new ComplexSelector(
+                    leading,
+                    extender.components(),
+                    span,
+                    lineBreak
+            ));
         } else {
             var prefix = new ComplexSelector(
                     source.leadingCombinators(),
@@ -2839,6 +3121,13 @@ public final class SelectorAlgebra {
                     span
             );
             woven = weave(List.of(prefix, extender), span);
+            if (lineBreak) {
+                var withBreaks = new ArrayList<ComplexSelector>(woven.size());
+                for (var complex : woven) {
+                    withBreaks.add(complex.withLineBreak(true));
+                }
+                woven = withBreaks;
+            }
         }
 
         if (suffix.isEmpty()) {
@@ -2851,7 +3140,12 @@ public final class SelectorAlgebra {
             );
             components.addAll(complex.components());
             components.addAll(suffix);
-            result.add(new ComplexSelector(complex.leadingCombinators(), components, span));
+            result.add(new ComplexSelector(
+                    complex.leadingCombinators(),
+                    components,
+                    span,
+                    complex.lineBreak()
+            ));
         }
         return result;
     }

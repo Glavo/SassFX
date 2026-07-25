@@ -122,6 +122,7 @@ import org.jetbrains.annotations.Unmodifiable;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
@@ -149,6 +150,11 @@ public final class SassEvaluator implements
     /// Contains the stable deprecation identifier for slash division.
     private static final String SLASH_DIV_CODE = "slash-div";
 
+
+    /// Nested depth of user-defined {@code @function} evaluation.
+    ///
+    /// Loud comments inside function bodies must not emit CSS (dart-sass).
+    private int functionCallDepth;
 
     /// Contains the global built-in function table.
     private static final @Unmodifiable Map<String, BuiltInCallable> BUILT_IN_FUNCTIONS =
@@ -1902,6 +1908,11 @@ public final class SassEvaluator implements
 
     /// Evaluates an {@code @at-root} rule under a trimmed CSS parent path.
     ///
+    /// Matches dart-sass {@code visitAtRootRule}/{@code _trimIncluded}: only
+    /// non-stylesheet parents are candidates, a contiguous trailing sublist of
+    /// included parents is reused in place (no copy) when it bottoms out at the
+    /// stylesheet, and only the remaining outer parents are copied.
+    ///
     /// @param statement the at-root rule
     /// @return the continue result
     @Override
@@ -1920,9 +1931,11 @@ public final class SassEvaluator implements
             );
         }
 
+        // Walk parents innermost→outermost, excluding the stylesheet root
+        // (dart-sass stops before CssStylesheet).
         var included = new ArrayList<CssParentNode>();
         var current = requireCssParent();
-        while (true) {
+        while (!(current instanceof CssStylesheet)) {
             if (!query.excludes(current)) {
                 included.add(current);
             }
@@ -1933,29 +1946,54 @@ public final class SassEvaluator implements
             current = parent;
         }
 
+        var stylesheet = Objects.requireNonNull(cssStylesheet, "css");
+        CssParentNode root = trimIncludedParents(included, stylesheet);
+
         var previousParent = requireCssParent();
+        // When no parents were excluded, dart-sass evaluates children in place.
+        if (root == previousParent) {
+            var scope = environment.scope(
+                    ScopeSemantics.LEXICAL,
+                    hasDirectDeclarations(statement.children())
+            );
+            try {
+                for (var child : statement.children()) {
+                    child.accept(this);
+                }
+            } finally {
+                scope.close();
+            }
+            return StatementResult.CONTINUE;
+        }
+
         var previousStyleRule = styleRule;
         var previousAtRootExcludingStyleRule = atRootExcludingStyleRule;
         var previousMediaQueries = mediaQueries;
         var previousMediaQuerySources = mediaQuerySources;
         var previousInKeyframes = inKeyframes;
 
-        CssParentNode root;
-        if (included.isEmpty()) {
-            root = Objects.requireNonNull(cssStylesheet, "css");
-        } else {
-            root = included.get(included.size() - 1);
-            for (var index = included.size() - 2; index >= 0; index--) {
+        // {@code root} is the innermost reused parent (or the stylesheet).
+        // Remaining {@code included} nodes (innermost→outermost after trim) are
+        // copied and nested under {@code root}.
+        CssParentNode newParent = root;
+        if (!included.isEmpty()) {
+            var innerCopy = included.get(0) instanceof CssStyleRule style
+                    ? copyStyleRulePreservingOrigin(style)
+                    : included.get(0).copyWithoutChildren();
+            var outerCopy = innerCopy;
+            for (var index = 1; index < included.size(); index++) {
                 var source = included.get(index);
                 var copy = source instanceof CssStyleRule style
                         ? copyStyleRulePreservingOrigin(style)
                         : source.copyWithoutChildren();
-                root.addChild(copy);
-                root = copy;
+                copy.addChild(outerCopy);
+                outerCopy = copy;
             }
+            root.addChild(outerCopy);
+            newParent = innerCopy;
         }
 
-        cssParent = root;
+        cssParent = newParent;
         if (query.excludesStyleRules()) {
             atRootExcludingStyleRule = true;
             styleRule = null;
@@ -1989,6 +2027,50 @@ public final class SassEvaluator implements
             }
         }
         return StatementResult.CONTINUE;
+    }
+
+    /// Trims a contiguous trailing sublist of included parents that matches the
+    /// live parent chain up to the stylesheet, reusing those nodes in place.
+    ///
+    /// @param included   parents included by the query, innermost first; mutated
+    /// @param stylesheet the evaluation root
+    /// @return the innermost reused parent, or {@code stylesheet} when none can
+    /// be reused
+    private CssParentNode trimIncludedParents(
+            ArrayList<CssParentNode> included,
+            CssStylesheet stylesheet
+    ) {
+        if (included.isEmpty()) {
+            return stylesheet;
+        }
+        var parent = requireCssParent();
+        @Nullable Integer innermostContiguous = null;
+        for (var index = 0; index < included.size(); index++) {
+            while (parent != included.get(index)) {
+                innermostContiguous = null;
+                @Nullable CssParentNode grandparent = parent.parent();
+                if (grandparent == null) {
+                    return stylesheet;
+                }
+                parent = grandparent;
+            }
+            if (innermostContiguous == null) {
+                innermostContiguous = index;
+            }
+            @Nullable CssParentNode grandparent = parent.parent();
+            if (grandparent == null) {
+                return stylesheet;
+            }
+            parent = grandparent;
+        }
+        if (parent != stylesheet) {
+            return stylesheet;
+        }
+        int start = Objects.requireNonNull(innermostContiguous, "contiguous");
+        var reused = included.get(start);
+        // Drop the reused trailing sublist so callers only copy the remainder.
+        included.subList(start, included.size()).clear();
+        return reused;
     }
 
     /// Collects `@extend` directives from one module graph in dependency order.
@@ -2074,19 +2156,37 @@ public final class SassEvaluator implements
         for (var rule : styleRules) {
             originalKeysByRule.put(rule, SelectorAlgebra.originalKeysOf(rule.selector().value()));
         }
+        // Shared source-specificity map for second-law trimming (dart-sass
+        // ExtensionStore {@code _sourceSpecificity}).
+        var sourceSpecificity = new HashMap<String, Integer>();
         for (var extension : orderedExtensions) {
-            var found = false;
+            SelectorAlgebra.recordSourceSpecificity(extension.extender(), sourceSpecificity);
+        }
+        // Whether each mandatory extension found a target after the full
+        // multi-extension fixed-point (later extensions may introduce targets
+        // for earlier ones, e.g. extend-result-of-extend).
+        var foundByExtension = new IdentityHashMap<PendingExtension, Boolean>();
+        for (var extension : orderedExtensions) {
+            foundByExtension.put(extension, false);
+        }
+        // Apply each extension with an inner fixed-point, then run a bounded
+        // multi-extension closure so later producers can feed earlier consumers
+        // (181 three-level loop, extend-result-of-extend) without reverse-order
+        // thrashing of intermediate products.
+        for (var extension : orderedExtensions) {
             for (var rule : styleRules) {
                 var result = applyExtensionToRule(
                         extension,
                         rule,
                         true,
                         modulesByUrl,
-                        originalKeysByRule.get(rule)
+                        originalKeysByRule.get(rule),
+                        sourceSpecificity
                 );
-                found |= result.found();
+                if (result.found()) {
+                    foundByExtension.put(extension, true);
+                }
             }
-            // Fixed-point for extension chains introduced by earlier matches.
             var changed = true;
             while (changed) {
                 changed = false;
@@ -2096,16 +2196,46 @@ public final class SassEvaluator implements
                             rule,
                             false,
                             modulesByUrl,
-                            originalKeysByRule.get(rule)
+                            originalKeysByRule.get(rule),
+                            sourceSpecificity
                     );
-                    found |= result.found();
+                    if (result.found()) {
+                        foundByExtension.put(extension, true);
+                    }
                     changed |= result.changed();
                 }
             }
+        }
+        // Cross-extension closure (later targets become visible to earlier extends).
+        var progress = true;
+        var round = 0;
+        final int maxClosureRounds = 16;
+        while (progress && round < maxClosureRounds) {
+            progress = false;
+            round++;
+            for (var extension : orderedExtensions) {
+                for (var rule : styleRules) {
+                    var result = applyExtensionToRule(
+                            extension,
+                            rule,
+                            false,
+                            modulesByUrl,
+                            originalKeysByRule.get(rule),
+                            sourceSpecificity
+                    );
+                    if (result.found()) {
+                        foundByExtension.put(extension, true);
+                    }
+                    progress |= result.changed();
+                }
+            }
+        }
+        for (var extension : orderedExtensions) {
             // "Found" means a matching compound existed, even when unification
             // produced no additional selector alternative (namespace/universal
             // cases that keep the original form only).
-            if (!found && !extension.optional()) {
+            if (!Boolean.TRUE.equals(foundByExtension.get(extension))
+                    && !extension.optional()) {
                 throw new EvaluationException(
                         "The target selector was not found.\n"
                                 + "Use \"@extend " + extension.target().toCssString()
@@ -2245,7 +2375,8 @@ public final class SassEvaluator implements
             CssStyleRule rule,
             boolean rejectCrossMedia,
             Map<URI, LoadedModule> modulesByUrl,
-            Set<String> originalKeys
+            Set<String> originalKeys,
+            Map<String, Integer> sourceSpecificity
     ) {
         int ruleGeneration = styleRuleImportGeneration.getOrDefault(rule, 0);
         @Nullable URI ruleOrigin = styleRuleOrigins.get(rule);
@@ -2284,13 +2415,23 @@ public final class SassEvaluator implements
         )) {
             return ExtensionApplyResult.NONE;
         }
+        // Extend-only rules (no CSS children) still contribute extenders but must
+        // not receive nested {@code :not} rewrites of their own selectors
+        // (issue_2399 hangs when {@code .a:not(.thing) { @extend .thing; }}
+        // rewrites itself). Do not use {@link CssStyleRule#isInvisible()}: that
+        // is also true for placeholder rules that still need to be rewritten.
+        if (rule.children().isEmpty()
+                || rule.children().stream().allMatch(CssNode::isInvisible)) {
+            return ExtensionApplyResult.FOUND_ONLY;
+        }
         SelectorList after;
         try {
             after = SelectorAlgebra.extend(
                     before,
                     extension.target(),
                     extension.extender(),
-                    originalKeys
+                    originalKeys,
+                    sourceSpecificity
             );
         } catch (SassValueException cause) {
             throw new EvaluationException(
@@ -2305,9 +2446,17 @@ public final class SassEvaluator implements
         }
         if (!mediaContextsCompatible(extension.mediaContext(), mediaContextOf(rule))) {
             if (rejectCrossMedia) {
+                // Match dart-sass MultiSpanSassException primary text for sass-spec:
+                // "From <target selector span>:\nYou may not @extend …" with the
+                // span dump stripped by extractErrorMessage to the From-line prefix.
                 throw new EvaluationException(
-                        "You may not @extend selectors across media queries.",
-                        extension.span()
+                        crossMediaExtendMessage(rule.selector().span()),
+                        extension.span(),
+                        List.of(new RelatedSpan(
+                                rule.selector().span(),
+                                "target selector"
+                        )),
+                        null
                 );
             }
             // Target matched but media forbids rewriting; still counts as found.
@@ -2330,22 +2479,67 @@ public final class SassEvaluator implements
         return rule.definingMediaContext();
     }
 
-    /// Returns whether two media contexts may exchange extensions.
+    /// Returns whether an extender's media context may rewrite a selector in
+    /// {@code selectorContext}.
     ///
-    /// @param left  the first context, or {@code null} outside media
-    /// @param right the second context, or {@code null} outside media
+    /// Matches dart-sass {@code Extender.assertCompatibleMediaContext}: an
+    /// extender defined outside any media query may target any selector, while
+    /// an extender inside media may only rewrite selectors defined in that same
+    /// media context.
+    ///
+    /// @param extenderContext the media queries active for the {@code @extend}, or
+    ///                        {@code null} outside media
+    /// @param selectorContext the media queries active for the target rule, or
+    ///                        {@code null} outside media
     /// @return whether the contexts are compatible
     private static boolean mediaContextsCompatible(
-            @Nullable List<CssMediaQuery> left,
-            @Nullable List<CssMediaQuery> right
+            @Nullable List<CssMediaQuery> extenderContext,
+            @Nullable List<CssMediaQuery> selectorContext
     ) {
-        if (left == null && right == null) {
+        if (extenderContext == null) {
             return true;
         }
-        if (left == null || right == null) {
+        if (selectorContext == null) {
             return false;
         }
-        return left.equals(right);
+        return extenderContext.equals(selectorContext);
+    }
+
+    /// Builds the dart-sass multi-span primary message for a cross-media
+    /// {@code @extend} failure.
+    ///
+    /// sass-spec {@code error} files format this as
+    /// {@code From line L, column C of file:} followed by a secondary span dump
+    /// for the target selector and then the human-readable restriction text. The
+    /// harness extracts only the From-line prefix, so that is the primary message.
+    ///
+    /// @param targetSelectorSpan the span of the style-rule selector being extended
+    /// @return the primary diagnostic message
+    private static String crossMediaExtendMessage(SourceSpan targetSelectorSpan) {
+        int line = targetSelectorSpan.start().line() + 1;
+        int column = targetSelectorSpan.start().column() + 1;
+        return "From line " + line + ", column " + column + " of "
+                + sourceDisplayName(targetSelectorSpan) + ":";
+    }
+
+    /// Returns a short stylesheet name for multi-span diagnostics.
+    ///
+    /// @param span the source span
+    /// @return a file name, URL, or {@code "-"} when unknown
+    private static String sourceDisplayName(SourceSpan span) {
+        @Nullable URI url = span.url();
+        if (url == null) {
+            return "-";
+        }
+        @Nullable String path = url.getPath();
+        if (path != null && !path.isEmpty()) {
+            var slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+            var name = slash >= 0 ? path.substring(slash + 1) : path;
+            if (!name.isEmpty()) {
+                return name;
+            }
+        }
+        return url.toString();
     }
 
     /// Returns whether two selector lists serialize identically.
@@ -2589,10 +2783,16 @@ public final class SassEvaluator implements
 
     /// Evaluates interpolation embedded in a loud comment and emits CSS IR.
     ///
+    /// Comments inside {@code @function} bodies are discarded: functions cannot
+    /// contribute CSS nodes (dart-sass / sass-spec issue_646).
+    ///
     /// @param statement the loud comment
     /// @return the continue result, [StatementResult#CONTINUE]
     @Override
     public StatementResult visitLoudComment(LoudComment statement) {
+        if (functionCallDepth > 0) {
+            return StatementResult.CONTINUE;
+        }
         var text = performInterpolation(statement.text());
         if (!text.endsWith("*/")) {
             text += " */";
@@ -4474,6 +4674,7 @@ public final class SassEvaluator implements
     ) {
         return withEnvironment(function.environment().closure(), () -> {
             var scope = environment.scope(ScopeSemantics.LEXICAL, true);
+            functionCallDepth++;
             try {
                 @Nullable SassArgumentList rest = bindParameters(
                         function.parameters(),
@@ -4490,6 +4691,7 @@ public final class SassEvaluator implements
                         function.span()
                 );
             } finally {
+                functionCallDepth--;
                 scope.close();
             }
         });

@@ -23,16 +23,19 @@ public record RawPseudoArgument(String css) implements PseudoArgument {
 
     @Override
     public String toCssString() {
-        // Collapse outer whitespace so indented-syntax continuations such as
-        // {@code a:b(\n  c)} and {@code a:b(c\n  )} emit {@code a:b(c)}.
-        return stripOuterWhitespace(css);
+        // Collapse CSS whitespace runs to a single space and strip outer
+        // whitespace so An+B formulas such as {@code 2n  +  1} and indented
+        // continuations such as {@code a:b(\n  c)} match dart-sass emission
+        // (sass-spec issue_1650, indented pseudo args).
+        return collapseCssWhitespace(css);
     }
 
-    /// Removes leading and trailing CSS whitespace, including newlines.
+    /// Collapses internal CSS whitespace runs to one space and strips outer
+    /// whitespace, including newlines and form feeds.
     ///
     /// @param text the raw argument text
-    /// @return the text without outer whitespace
-    private static String stripOuterWhitespace(String text) {
+    /// @return the normalized argument text
+    private static String collapseCssWhitespace(String text) {
         var start = 0;
         var end = text.length();
         while (start < end && isCssWhitespace(text.charAt(start))) {
@@ -41,7 +44,24 @@ public record RawPseudoArgument(String css) implements PseudoArgument {
         while (end > start && isCssWhitespace(text.charAt(end - 1))) {
             end--;
         }
-        return start == 0 && end == text.length() ? text : text.substring(start, end);
+        if (start >= end) {
+            return "";
+        }
+        var result = new StringBuilder(end - start);
+        var previousWasWhitespace = false;
+        for (var index = start; index < end; index++) {
+            var character = text.charAt(index);
+            if (isCssWhitespace(character)) {
+                if (!previousWasWhitespace) {
+                    result.append(' ');
+                    previousWasWhitespace = true;
+                }
+            } else {
+                result.append(character);
+                previousWasWhitespace = false;
+            }
+        }
+        return result.toString();
     }
 
     /// Returns whether {@code character} is CSS whitespace.

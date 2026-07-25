@@ -66,9 +66,39 @@ public record AtRootQuery(
             throw new SassValueException("Expected at-rule name.");
         }
         var names = new LinkedHashSet<String>();
-        for (var part : rest.split("\\s+")) {
-            if (!part.isEmpty()) {
-                names.add(part.toLowerCase(Locale.ROOT));
+        // Names may be bare identifiers or quoted strings
+        // ({@code without: "media" supports}).
+        var index = 0;
+        while (index < rest.length()) {
+            while (index < rest.length() && Character.isWhitespace(rest.charAt(index))) {
+                index++;
+            }
+            if (index >= rest.length()) {
+                break;
+            }
+            var character = rest.charAt(index);
+            if (character == '"' || character == '\'') {
+                var quote = character;
+                index++;
+                var start = index;
+                while (index < rest.length() && rest.charAt(index) != quote) {
+                    if (rest.charAt(index) == '\\' && index + 1 < rest.length()) {
+                        index += 2;
+                    } else {
+                        index++;
+                    }
+                }
+                if (index >= rest.length()) {
+                    throw new SassValueException("Expected " + quote + ".");
+                }
+                names.add(rest.substring(start, index).toLowerCase(Locale.ROOT));
+                index++; // closing quote
+            } else {
+                var start = index;
+                while (index < rest.length() && !Character.isWhitespace(rest.charAt(index))) {
+                    index++;
+                }
+                names.add(rest.substring(start, index).toLowerCase(Locale.ROOT));
             }
         }
         if (names.isEmpty()) {

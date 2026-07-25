@@ -47,6 +47,52 @@ final class CommentAndCharsetTest {
     }
 
     @Test
+    void collapsesInternalWhitespaceInNthPseudoArguments() throws Exception {
+        assertEquals(
+                """
+                :nth-of-type(2n+1),
+                :nth-of-type(2n+ 1),
+                :nth-of-type(2n +1),
+                :nth-of-type(2n + 1),
+                :nth-of-type(2n + 1) {
+                  color: red;
+                }""".replace("\r\n", "\n").strip(),
+                compile(
+                        """
+                        :nth-of-type(2n+1),
+                        :nth-of-type(2n+  1),
+                        :nth-of-type(2n  +1),
+                        :nth-of-type(2n  +  1),
+                        :nth-of-type( 2n  +  1 )
+                        { color: red; }
+                        """.replace("\r\n", "\n"),
+                        Syntax.SCSS
+                ).strip()
+        );
+        assertEquals(
+                """
+                :nth-of-type(2n-1),
+                :nth-of-type(2n- 1),
+                :nth-of-type(2n -1),
+                :nth-of-type(2n - 1),
+                :nth-of-type(2n - 1) {
+                  color: red;
+                }""".replace("\r\n", "\n").strip(),
+                compile(
+                        """
+                        :nth-of-type(2n-1),
+                        :nth-of-type(2n-  1),
+                        :nth-of-type(2n  -1),
+                        :nth-of-type(2n  -  1),
+                        :nth-of-type( 2n  -  1 )
+                        { color: red; }
+                        """.replace("\r\n", "\n"),
+                        Syntax.SCSS
+                ).strip()
+        );
+    }
+
+    @Test
     void unterminatedLoudCommentSaysExpectedMoreInput() {
         var failure = assertThrows(
                 Exception.class,

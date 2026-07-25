@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.css;
 
+import org.glavo.scssfx.internal.ast.selector.CssIdentifier;
 import org.glavo.scssfx.internal.value.SassValueException;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -157,10 +158,10 @@ public record CssMediaQuery(
     private String writeCss(boolean compressed) {
         var result = new StringBuilder();
         if (modifier != null) {
-            result.append(modifier).append(' ');
+            result.append(serializeMediaToken(modifier)).append(' ');
         }
         if (type != null) {
-            result.append(type);
+            result.append(serializeMediaToken(type));
             if (!conditions.isEmpty()) {
                 result.append(" and ");
                 result.append(displayCondition(conditions.get(0)));
@@ -182,6 +183,24 @@ public record CssMediaQuery(
             result.append(displayCondition(conditions.get(index)));
         }
         return result.toString();
+    }
+
+    /// Serializes a media modifier or type as a CSS identifier.
+    ///
+    /// Tokens are stored decoded (or as raw author text for mixed-case
+    /// interpolation). Canonical hex escapes such as a trailing tab must emit
+    /// their mandatory terminator space so expanded layout can keep a second
+    /// space before `{` (sass/ruby-sass#96).
+    ///
+    /// @param token the decoded or raw media token
+    /// @return a CSS-safe identifier spelling
+    private static String serializeMediaToken(String token) {
+        try {
+            return CssIdentifier.of(token).toCssString();
+        } catch (IllegalArgumentException ignored) {
+            // Non-identifier interpolated text is emitted unchanged.
+            return token;
+        }
     }
 
     /// Returns a human-readable form of one stored condition.
@@ -342,17 +361,21 @@ public record CssMediaQuery(
         return first == null ? second == null : second != null && first.equalsIgnoreCase(second);
     }
 
-    /// Validates and trims one required CSS token.
+    /// Validates one required CSS media token.
+    ///
+    /// Tokens are not stripped: decoded identifiers may legitimately end with
+    /// whitespace code points such as tab ({@code \9}) that must survive for
+    /// canonical CSS serialization.
     ///
     /// @param value the token text
     /// @param role  the component name used in failure text
-    /// @return the nonempty trimmed token
+    /// @return the nonempty token
     private static String requiredToken(String value, String role) {
-        var normalized = Objects.requireNonNull(value, role).strip();
-        if (normalized.isEmpty()) {
+        Objects.requireNonNull(value, role);
+        if (value.isEmpty()) {
             throw new IllegalArgumentException(role + " must not be empty");
         }
-        return normalized;
+        return value;
     }
 
     /// Copies and validates stored media conditions.
@@ -721,28 +744,76 @@ public record CssMediaQuery(
 
         /// Reads one CSS identifier used as a media token.
         ///
+        /// Escapes are decoded so serialization can re-emit canonical hex
+        /// escapes (including their mandatory trailing space).
+        ///
         /// @param message the failure text when no identifier begins here
-        /// @return the identifier spelling
+        /// @return the decoded identifier value
         private String identifier(String message) {
             if (!lookingAtIdentifier()) {
                 throw failure(message);
             }
-            var start = index;
-            index++;
+            var result = new StringBuilder();
+            result.appendCodePoint(consumeIdentCodePoint());
             while (!atEnd()) {
                 var next = peek();
-                if (next == '\\') {
-                    index++;
-                    if (!atEnd()) {
-                        index++;
-                    }
-                } else if (isIdentifierContinue(next)) {
-                    index++;
+                if (next == '\\' || isIdentifierContinue(next)) {
+                    result.appendCodePoint(consumeIdentCodePoint());
                 } else {
                     break;
                 }
             }
-            return contents.substring(start, index);
+            return result.toString();
+        }
+
+        /// Consumes one identifier code point, decoding a CSS escape when present.
+        ///
+        /// @return the decoded code point
+        private int consumeIdentCodePoint() {
+            if (peek() != '\\') {
+                return contents.charAt(index++);
+            }
+            index++; // backslash
+            if (atEnd()) {
+                return 0xFFFD;
+            }
+            var next = peek();
+            if (isHex(next)) {
+                var value = 0;
+                for (var count = 0; count < 6 && !atEnd() && isHex(peek()); count++) {
+                    value = value * 16 + hexValue(contents.charAt(index++));
+                }
+                if (!atEnd() && Character.isWhitespace(peek())) {
+                    index++;
+                }
+                if (value == 0 || value > 0x10FFFF
+                        || value >= Character.MIN_SURROGATE && value <= Character.MAX_SURROGATE) {
+                    return 0xFFFD;
+                }
+                return value;
+            }
+            if (next == '\n' || next == '\r' || next == '\f') {
+                return 0xFFFD;
+            }
+            return contents.charAt(index++);
+        }
+
+        /// Returns whether {@code value} is a hexadecimal digit.
+        private static boolean isHex(char value) {
+            return value >= '0' && value <= '9'
+                    || value >= 'a' && value <= 'f'
+                    || value >= 'A' && value <= 'F';
+        }
+
+        /// Returns the integer value of one hexadecimal digit.
+        private static int hexValue(char value) {
+            if (value >= '0' && value <= '9') {
+                return value - '0';
+            }
+            if (value >= 'a' && value <= 'f') {
+                return value - 'a' + 10;
+            }
+            return value - 'A' + 10;
         }
 
         /// Returns whether a CSS identifier begins at the current position.

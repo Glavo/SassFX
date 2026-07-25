@@ -192,7 +192,123 @@ public final class CssSerializer {
         if (writeIndent) {
             writeIndentation(buffer, indentation);
         }
-        buffer.forSpan(comment.span(), () -> buffer.append(comment.text()));
+        buffer.forSpan(comment.span(), () -> {
+            // Match dart-sass: multi-line comments are re-indented relative to the
+            // least-indented continuation line and the current CSS indentation.
+            @Nullable Integer minimum = minimumContinuationIndentation(comment.text());
+            if (minimum == null) {
+                buffer.append(comment.text());
+                return;
+            }
+            int columnHint = comment.span() != null
+                    ? comment.span().start().column()
+                    : indentation * INDENT_WIDTH;
+            int sourceMinimum = Math.min(minimum, columnHint);
+            writeWithIndent(buffer, comment.text(), sourceMinimum, indentation);
+        });
+    }
+
+    /// Returns the indentation of the least-indented non-empty continuation line.
+    ///
+    /// @param text multi-line CSS text
+    /// @return the column minimum, {@code -1} when newlines exist but none are
+    /// indented, or {@code null} when {@code text} has no newlines
+    private static @Nullable Integer minimumContinuationIndentation(String text) {
+        var firstNewline = text.indexOf('\n');
+        if (firstNewline < 0) {
+            return null;
+        }
+        @Nullable Integer min = null;
+        var index = firstNewline + 1;
+        while (index <= text.length()) {
+            var lineStart = index;
+            while (index < text.length()) {
+                var character = text.charAt(index);
+                if (character != ' ' && character != '\t') {
+                    break;
+                }
+                index++;
+            }
+            if (index >= text.length()) {
+                break;
+            }
+            if (text.charAt(index) == '\n') {
+                index++;
+                continue;
+            }
+            var column = index - lineStart;
+            min = min == null ? column : Math.min(min, column);
+            while (index < text.length() && text.charAt(index) != '\n') {
+                index++;
+            }
+            if (index < text.length()) {
+                index++;
+            }
+        }
+        return min == null ? -1 : min;
+    }
+
+    /// Writes {@code text}, replacing {@code minimumIndentation} with the current
+    /// expanded CSS indentation for each non-empty line after the first.
+    ///
+    /// @param buffer              the output buffer
+    /// @param text                the multi-line text
+    /// @param minimumIndentation  source indentation to strip from continuations
+    /// @param indentation         current CSS indentation depth
+    private static void writeWithIndent(
+            SourceMapBuffer buffer,
+            String text,
+            int minimumIndentation,
+            int indentation
+    ) {
+        var firstNewline = text.indexOf('\n');
+        if (firstNewline < 0) {
+            buffer.append(text);
+            return;
+        }
+        buffer.append(text.substring(0, firstNewline));
+        var index = firstNewline + 1;
+        while (true) {
+            var lineStart = index;
+            var newlines = 1;
+            while (true) {
+                if (index >= text.length()) {
+                    buffer.append(' ');
+                    return;
+                }
+                var character = text.charAt(index);
+                if (character == ' ' || character == '\t') {
+                    index++;
+                    continue;
+                }
+                if (character == '\n') {
+                    lineStart = index + 1;
+                    newlines++;
+                    index++;
+                    continue;
+                }
+                break;
+            }
+            for (var count = 0; count < newlines; count++) {
+                buffer.append('\n');
+            }
+            writeIndentation(buffer, indentation);
+            var contentStart = lineStart + Math.max(0, minimumIndentation);
+            if (contentStart > text.length()) {
+                contentStart = text.length();
+            }
+            var lineEnd = contentStart;
+            while (lineEnd < text.length() && text.charAt(lineEnd) != '\n') {
+                lineEnd++;
+            }
+            if (contentStart < lineEnd) {
+                buffer.append(text.substring(contentStart, lineEnd));
+            }
+            if (lineEnd >= text.length()) {
+                return;
+            }
+            index = lineEnd + 1;
+        }
     }
 
     /// Writes one expanded opaque at-rule.
