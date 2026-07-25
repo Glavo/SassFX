@@ -617,6 +617,10 @@ public final class SassCalculation implements SassValue {
 
     @Override
     public SassValue plus(SassValue other) {
+        // String concatenation is allowed (dart-sass): {@code calc(...) + ""} yields a quoted string.
+        if (other instanceof SassString) {
+            return SassValue.super.plus(other);
+        }
         throw undefinedCalculationOperation("+", other);
     }
 

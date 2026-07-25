@@ -712,6 +712,20 @@ public final class SassNumber implements SassValue {
         return result.toString();
     }
 
+    /// Returns whether calculation serialization is a multi-token product/quotient
+    /// that may need parentheses under a surrounding {@code /} operator.
+    ///
+    /// @return whether {@link #toCalculationCssString()} embeds {@code *} or {@code /}
+    public boolean isCompoundCalculationOperand() {
+        if (slashNumerator != null) {
+            return false;
+        }
+        if (Double.isFinite(value)) {
+            return false;
+        }
+        return !numeratorUnits.isEmpty() || !denominatorUnits.isEmpty();
+    }
+
     /// Compares magnitudes using Sass fuzzy equality and requires identical units.
     ///
     /// @param other the object to compare

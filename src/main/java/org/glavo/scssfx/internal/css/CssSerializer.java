@@ -120,16 +120,24 @@ public final class CssSerializer {
                 if (requiresSemicolon(previous)) {
                     buffer.append(';');
                 }
-                buffer.append('\n');
-                // Blank lines are driven by explicit group-end markers (between
-                // style rules, etc.). dart-sass does not insert an automatic
-                // blank line between a trailing {@code @import} and the first
-                // following style rule in expanded output.
-                if (previous.isGroupEnd()) {
+                if (isTrailingComment(child, previous)) {
+                    // Same-line trailing comment after a statement (dart-sass).
+                    buffer.append(' ');
+                    writeExpandedComment((CssComment) child, buffer, 0, false);
+                } else {
                     buffer.append('\n');
+                    // Blank lines are driven by explicit group-end markers (between
+                    // style rules, etc.). dart-sass does not insert an automatic
+                    // blank line between a trailing {@code @import} and the first
+                    // following style rule in expanded output.
+                    if (previous.isGroupEnd()) {
+                        buffer.append('\n');
+                    }
+                    writeExpandedNode(child, buffer, 0);
                 }
+            } else {
+                writeExpandedNode(child, buffer, 0);
             }
-            writeExpandedNode(child, buffer, 0);
             previous = child;
         }
         if (previous != null && requiresSemicolon(previous)) {
@@ -160,13 +168,31 @@ public final class CssSerializer {
         } else if (node instanceof CssDeclaration declaration) {
             writeExpandedDeclaration(declaration, buffer, indentation);
         } else if (node instanceof CssComment comment) {
-            if (!isSourceMapComment(comment.text())) {
-                writeIndentation(buffer, indentation);
-                buffer.forSpan(comment.span(), () -> buffer.append(comment.text()));
-            }
+            writeExpandedComment(comment, buffer, indentation, true);
         } else {
             throw new IllegalStateException("unsupported CSS node: " + node.getClass().getName());
         }
+    }
+
+    /// Writes one expanded loud comment.
+    ///
+    /// @param comment     the comment node
+    /// @param buffer      the serialization buffer
+    /// @param indentation indentation depth when {@code writeIndent} is true
+    /// @param writeIndent whether to emit leading indentation
+    private static void writeExpandedComment(
+            CssComment comment,
+            SourceMapBuffer buffer,
+            int indentation,
+            boolean writeIndent
+    ) {
+        if (isSourceMapComment(comment.text())) {
+            return;
+        }
+        if (writeIndent) {
+            writeIndentation(buffer, indentation);
+        }
+        buffer.forSpan(comment.span(), () -> buffer.append(comment.text()));
     }
 
     /// Writes one expanded opaque at-rule.
@@ -309,21 +335,89 @@ public final class CssSerializer {
             return;
         }
         @Nullable CssNode previous = null;
+        @Nullable CssNode prePrevious = null;
         for (var child : visible) {
             if (previous != null && requiresSemicolon(previous)) {
                 buffer.append(';');
             }
-            buffer.append('\n');
-            writeExpandedNode(child, buffer, indentation + 1);
+            if (previous != null && isTrailingComment(child, previous)) {
+                buffer.append(' ');
+                writeExpandedComment((CssComment) child, buffer, indentation + 1, false);
+            } else if (previous == null && isTrailingComment(child, parent)) {
+                // First visible child is a trailing comment of the parent open brace.
+                buffer.append(' ');
+                writeExpandedComment((CssComment) child, buffer, indentation + 1, false);
+            } else {
+                buffer.append('\n');
+                writeExpandedNode(child, buffer, indentation + 1);
+            }
+            prePrevious = previous;
             previous = child;
         }
         if (previous != null) {
             if (requiresSemicolon(previous)) {
                 buffer.append(';');
             }
-            buffer.append('\n');
-            writeIndentation(buffer, indentation);
+            // Sole trailing comment of the parent stays on the opening line
+            // ({@code a { /**/ }}), matching dart-sass.
+            if (prePrevious == null && isTrailingComment(previous, parent)) {
+                buffer.append(' ');
+            } else {
+                buffer.append('\n');
+                writeIndentation(buffer, indentation);
+            }
         }
+    }
+
+    /// Returns whether {@code node} is a trailing comment after {@code previous}.
+    ///
+    /// Matches dart-sass {@code _isTrailingComment}: same-line sibling comments
+    /// are written after the preceding semicolon without a line break.
+    ///
+    /// @param node     the candidate comment
+    /// @param previous the preceding sibling, or the parent when {@code node} is first
+    /// @return whether expanded layout should keep the comment on the same line
+    private static boolean isTrailingComment(CssNode node, CssNode previous) {
+        if (!(node instanceof CssComment)) {
+            return false;
+        }
+        var nodeSpan = node.span();
+        var previousSpan = previous.span();
+        @Nullable var nodeUrl = nodeSpan.url();
+        @Nullable var previousUrl = previousSpan.url();
+        if (!Objects.equals(nodeUrl, previousUrl)) {
+            return false;
+        }
+        if (!spanContains(previousSpan, nodeSpan)) {
+            return nodeSpan.start().line() == previousSpan.end().line();
+        }
+        // Comment nested inside the previous node's source range (common for the
+        // first child after a parent open brace): compare against the line of the
+        // last '{' before the comment.
+        int searchFrom = nodeSpan.start().offset() - previousSpan.start().offset() - 1;
+        if (searchFrom < 0) {
+            return false;
+        }
+        String previousText = previousSpan.text();
+        int endOffset = Math.min(searchFrom, previousText.length() - 1);
+        int brace = previousText.lastIndexOf('{', endOffset);
+        if (brace < 0) {
+            brace = 0;
+        }
+        // Approximate the line of that brace within previousText.
+        int braceLine = previousSpan.start().line();
+        for (var index = 0; index < brace && index < previousText.length(); index++) {
+            if (previousText.charAt(index) == '\n') {
+                braceLine++;
+            }
+        }
+        return nodeSpan.start().line() == braceLine;
+    }
+
+    /// Returns whether {@code outer} fully covers {@code inner} by offset.
+    private static boolean spanContains(org.glavo.scssfx.SourceSpan outer, org.glavo.scssfx.SourceSpan inner) {
+        return outer.start().offset() <= inner.start().offset()
+                && inner.end().offset() <= outer.end().offset();
     }
 
     /// Writes one expanded declaration.

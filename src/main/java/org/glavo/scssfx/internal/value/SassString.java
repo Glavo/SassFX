@@ -105,7 +105,10 @@ public record SassString(String text, boolean hasQuotes) implements SassValue {
     @Override
     public String toCssString(boolean quote) {
         if (!hasQuotes || !quote) {
-            return text;
+            // Unquoted emission only rewrites private-use code points. Escaping
+            // all controls would alter intentional raw CSS fragments built via
+            // interpolation; PUA escapes match dart-sass glyph-font output.
+            return escapePrivateUseOnly(text);
         }
 
         var includesSingleQuote = false;
@@ -126,27 +129,102 @@ public record SassString(String text, boolean hasQuotes) implements SassValue {
         }
 
         var result = new StringBuilder(text.length() + 2).append(quoteChar);
+        result.append(escapeSpecialCodePoints(text, quoteChar));
+        return result.append(quoteChar).toString();
+    }
+
+    /// Escapes private-use code points only (for unquoted CSS emission).
+    private static String escapePrivateUseOnly(String text) {
+        var result = new StringBuilder(text.length());
         for (var index = 0; index < text.length(); index++) {
             var character = text.charAt(index);
-            if (character == '\\' || character == quoteChar) {
+            if (isPrivateUseBmp(character)) {
+                index = appendHexEscape(result, character, text, index);
+                continue;
+            }
+            if (Character.isHighSurrogate(character) && index + 1 < text.length()) {
+                var low = text.charAt(index + 1);
+                if (Character.isLowSurrogate(low)) {
+                    int codePoint = Character.toCodePoint(character, low);
+                    if (isPrivateUseSupplementary(codePoint)) {
+                        index = appendHexEscape(result, codePoint, text, index + 1);
+                        continue;
+                    }
+                }
+            }
+            result.append(character);
+        }
+        return result.toString();
+    }
+
+    /// Escapes controls, DEL, private-use code points, and optionally a quote
+    /// character for CSS emission inside quoted strings.
+    ///
+    /// @param text      the semantic string text
+    /// @param quoteChar the surrounding quote to backslash-escape, or {@code '\0'}
+    /// @return the escaped body text without surrounding quotes
+    private static String escapeSpecialCodePoints(String text, char quoteChar) {
+        var result = new StringBuilder(text.length());
+        for (var index = 0; index < text.length(); index++) {
+            var character = text.charAt(index);
+            if (quoteChar != '\0' && (character == '\\' || character == quoteChar)) {
                 result.append('\\').append(character);
                 continue;
             }
             // Escape ASCII controls (except tab) and DEL the way dart-sass does.
             // Tab remains literal inside quoted strings.
             if (character != '\t' && (character < 0x20 || character == 0x7F)) {
-                result.append('\\').append(Integer.toHexString(character));
-                if (index + 1 < text.length()) {
-                    var next = text.charAt(index + 1);
-                    if (isHexDigit(next) || next == ' ' || next == '\t') {
-                        result.append(' ');
+                index = appendHexEscape(result, character, text, index);
+                continue;
+            }
+            // Expanded mode prints Private Use Area code points as escape
+            // codes so glyph-font code points stay distinguishable (dart-sass).
+            if (isPrivateUseBmp(character)) {
+                index = appendHexEscape(result, character, text, index);
+                continue;
+            }
+            if (Character.isHighSurrogate(character) && index + 1 < text.length()) {
+                var low = text.charAt(index + 1);
+                if (Character.isLowSurrogate(low)) {
+                    int codePoint = Character.toCodePoint(character, low);
+                    if (isPrivateUseSupplementary(codePoint)) {
+                        index = appendHexEscape(result, codePoint, text, index + 1);
+                        continue;
                     }
                 }
-                continue;
             }
             result.append(character);
         }
-        return result.append(quoteChar).toString();
+        return result.toString();
+    }
+
+    /// Appends a CSS hex escape for {@code codePoint} and returns the last source
+    /// index consumed (for surrogate pairs this is the low surrogate index).
+    private static int appendHexEscape(
+            StringBuilder result,
+            int codePoint,
+            String text,
+            int lastIndex
+    ) {
+        result.append('\\').append(Integer.toHexString(codePoint));
+        if (lastIndex + 1 < text.length()) {
+            var next = text.charAt(lastIndex + 1);
+            if (isHexDigit(next) || next == ' ' || next == '\t') {
+                result.append(' ');
+            }
+        }
+        return lastIndex;
+    }
+
+    /// Returns whether {@code character} is a BMP private-use code unit.
+    private static boolean isPrivateUseBmp(char character) {
+        return character >= 0xE000 && character <= 0xF8FF;
+    }
+
+    /// Returns whether {@code codePoint} is in a supplementary private-use plane.
+    private static boolean isPrivateUseSupplementary(int codePoint) {
+        return codePoint >= 0xF0000 && codePoint <= 0xFFFFD
+                || codePoint >= 0x100000 && codePoint <= 0x10FFFD;
     }
 
     /// Returns whether {@code character} is an ASCII hexadecimal digit.

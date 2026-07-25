@@ -85,6 +85,14 @@ public final class CalculationOperation {
                 && (operator == CalculationOperator.MINUS || operator == CalculationOperator.DIVIDED_BY)) {
             return "(" + nested.toCssString() + ")";
         }
+        // Unitful non-finite numbers serialize as {@code infinity * 1px}; that
+        // product must be parenthesized as the right operand of {@code /}.
+        if (!leftSide
+                && operator == CalculationOperator.DIVIDED_BY
+                && operand instanceof SassNumber number
+                && number.isCompoundCalculationOperand()) {
+            return "(" + serializeOperand(operand) + ")";
+        }
         return serializeOperand(operand);
     }
 

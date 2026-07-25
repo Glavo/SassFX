@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
 
@@ -243,6 +244,11 @@ public final class SelectorAlgebra {
     /// transform alternatives introduced by earlier entries, matching Sass's
     /// list-target extension behavior for the represented subset.
     ///
+    /// Document-original complexes (the input list) are never trimmed. Callers
+    /// that apply successive extensions across stylesheet evaluation should use
+    /// [#extend(SelectorList, SelectorList, SelectorList, Set)] with a stable
+    /// original-key set so intermediate extension products remain trimmable.
+    ///
     /// @param selector the selector list to extend
     /// @param extendee the single-compound targets to match
     /// @param extender the selector alternatives to insert
@@ -253,9 +259,30 @@ public final class SelectorAlgebra {
             SelectorList extendee,
             SelectorList extender
     ) {
+        return extend(selector, extendee, extender, originalKeysOf(selector));
+    }
+
+    /// Extends {@code selector} while protecting the given original complex keys
+    /// from subselector trimming (dart-sass first/second laws of extend).
+    ///
+    /// @param selector     the selector list to extend
+    /// @param extendee     the single-compound targets to match
+    /// @param extender     the selector alternatives to insert
+    /// @param originalKeys semantic keys of document-original complexes; mutated
+    ///                     when an original is rewritten in place via nested
+    ///                     pseudo-argument transforms
+    /// @return the original and extended selector alternatives
+    /// @throws SassValueException if an input uses unsupported selector syntax
+    public static SelectorList extend(
+            SelectorList selector,
+            SelectorList extendee,
+            SelectorList extender,
+            Set<String> originalKeys
+    ) {
         assertSupported(selector, "selector");
         assertCompoundTargets(extendee, "extendee");
         assertSupported(extender, "extender");
+        Objects.requireNonNull(originalKeys, "originalKeys");
 
         var current = new ArrayList<>(selector.components());
         for (var target : extendee.components()) {
@@ -264,10 +291,23 @@ public final class SelectorAlgebra {
                     current,
                     targetCompound,
                     extender,
-                    false
+                    false,
+                    originalKeys
             ));
         }
         return new SelectorList(current, selector.span());
+    }
+
+    /// Returns semantic keys for every complex in {@code selector}.
+    ///
+    /// @param selector the selector list
+    /// @return a mutable set of complex keys suitable for [#extend]
+    public static Set<String> originalKeysOf(SelectorList selector) {
+        var keys = new HashSet<String>();
+        for (var complex : selector.components()) {
+            keys.add(complexKey(complex));
+        }
+        return keys;
     }
 
     /// Replaces each supported occurrence of {@code original} in {@code selector}
@@ -291,13 +331,16 @@ public final class SelectorAlgebra {
         assertSupported(replacement, "replacement");
 
         var current = new ArrayList<>(selector.components());
+        // Replacement drops matched originals, so no original-key protection.
+        var originalKeys = Set.<String>of();
         for (var target : original.components()) {
             var targetCompound = target.components().get(0).selector();
             current = new ArrayList<>(transformTarget(
                     current,
                     targetCompound,
                     replacement,
-                    true
+                    true,
+                    originalKeys
             ));
         }
         return new SelectorList(current, selector.span());
@@ -2187,7 +2230,8 @@ public final class SelectorAlgebra {
             List<ComplexSelector> selectors,
             CompoundSelector target,
             SelectorList inserted,
-            boolean replacement
+            boolean replacement,
+            Set<String> originalKeys
     ) {
         var bases = new ArrayList<ComplexSelector>(selectors.size());
         for (var candidate : selectors) {
@@ -2197,7 +2241,18 @@ public final class SelectorAlgebra {
                     inserted,
                     replacement
             );
-            bases.add(nested == null ? candidate : nested);
+            if (nested == null) {
+                bases.add(candidate);
+            } else {
+                // Nested rewrites of a document original remain originals so they
+                // are not trimmed (dart-sass updates {@code _originals} similarly).
+                String beforeKey = complexKey(candidate);
+                String afterKey = complexKey(nested);
+                if (originalKeys.contains(beforeKey) && !beforeKey.equals(afterKey)) {
+                    originalKeys.add(afterKey);
+                }
+                bases.add(nested);
+            }
         }
 
         var result = new ArrayList<ComplexSelector>();
@@ -2209,7 +2264,7 @@ public final class SelectorAlgebra {
                 result.add(basis);
                 result.addAll(replacementAlternatives(basis, target, inserted));
             }
-            return trimSubselectors(deduplicate(result));
+            return trimSubselectors(deduplicate(result), originalKeys);
         }
         for (var basis : bases) {
             var alternatives = replacementAlternatives(basis, target, inserted);
@@ -2225,10 +2280,12 @@ public final class SelectorAlgebra {
     /// Removes non-original complexes that are subselectors of another complex
     /// already present, matching dart-sass extend trimming for matching sets.
     ///
-    /// @param selectors the candidates after extension
-    /// @return selectors with redundant subselectors removed
+    /// @param selectors    the candidates after extension
+    /// @param originalKeys semantic keys of document-original complexes
+    /// @return selectors with redundant extension-produced subselectors removed
     private static @Unmodifiable List<ComplexSelector> trimSubselectors(
-            List<ComplexSelector> selectors
+            List<ComplexSelector> selectors,
+            Set<String> originalKeys
     ) {
         if (selectors.size() <= 1) {
             return selectors;
@@ -2236,10 +2293,11 @@ public final class SelectorAlgebra {
         var result = new ArrayList<ComplexSelector>();
         for (var index = 0; index < selectors.size(); index++) {
             var candidate = selectors.get(index);
-            // The first {@code bases.size()} entries are originals; trimming only
-            // applies to selectors introduced by extension. Because originals are
-            // always listed first and we cannot recover that split here, drop a
-            // candidate only when a different selector is a strict superselector.
+            // Document originals always stay (dart-sass first/second laws of extend).
+            if (originalKeys.contains(complexKey(candidate))) {
+                result.add(candidate);
+                continue;
+            }
             var redundant = false;
             for (var otherIndex = 0; otherIndex < selectors.size(); otherIndex++) {
                 if (otherIndex == index) {
@@ -2342,11 +2400,15 @@ public final class SelectorAlgebra {
         if (originalSelectors == null) {
             return null;
         }
+        var nestedOriginals = replacement
+                ? Set.<String>of()
+                : originalKeysOf(originalSelectors);
         var transformed = transformTarget(
                 originalSelectors.components(),
                 target,
                 inserted,
-                replacement
+                replacement,
+                nestedOriginals
         );
         var transformedList = new SelectorList(transformed, originalSelectors.span());
         if (selectorListSemanticallyEquals(originalSelectors, transformedList)) {
@@ -2470,11 +2532,15 @@ public final class SelectorAlgebra {
         if (originalSelectors == null) {
             return null;
         }
+        var nestedOriginals = replacement
+                ? Set.<String>of()
+                : originalKeysOf(originalSelectors);
         var transformed = transformTarget(
                 originalSelectors.components(),
                 target,
                 inserted,
-                replacement
+                replacement,
+                nestedOriginals
         );
         // Flatten nested same-named union pseudos (e.g. :is(.c, :is(.d, .e)) → :is(.c, .d, .e)).
         // Drop same-named nth-child branches with a different An+B formula so

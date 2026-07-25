@@ -1290,7 +1290,7 @@ public final class SassEvaluator implements
                     child.accept(this);
                 }
             } else {
-                var wrapper = activeStyleRule.copyWithoutChildren();
+                var wrapper = copyStyleRulePreservingOrigin(activeStyleRule);
                 rule.addChild(wrapper);
                 var mediaParent = requireCssParent();
                 cssParent = wrapper;
@@ -1316,6 +1316,30 @@ public final class SassEvaluator implements
         // consecutive root-level {@code @media} blocks are not separated by a
         // blank line in expanded output.
         return StatementResult.CONTINUE;
+    }
+
+    /// Copies a style rule and preserves its defining-module origin metadata.
+    ///
+    /// Media/supports bubbling creates wrapper style rules; without rebinding
+    /// {@link #styleRuleOrigins}, file-backed modules treat those wrappers as
+    /// anonymous and {@code @extend} fails module-visibility checks that pass
+    /// for string-compiled (null-URL) roots.
+    ///
+    /// @param source the style rule to copy
+    /// @return an empty copy with the same origin and import generation
+    private CssStyleRule copyStyleRulePreservingOrigin(CssStyleRule source) {
+        var copy = source.copyWithoutChildren();
+        styleRuleOrigins.put(
+                copy,
+                styleRuleOrigins.containsKey(source)
+                        ? styleRuleOrigins.get(source)
+                        : currentUrl
+        );
+        Integer generation = styleRuleImportGeneration.get(source);
+        if (generation != null) {
+            styleRuleImportGeneration.put(copy, generation);
+        }
+        return copy;
     }
 
     /// Evaluates an {@code @supports} rule while preserving its CSS condition.
@@ -1380,7 +1404,7 @@ public final class SassEvaluator implements
                     child.accept(this);
                 }
             } else {
-                var wrapper = activeStyleRule.copyWithoutChildren();
+                var wrapper = copyStyleRulePreservingOrigin(activeStyleRule);
                 rule.addChild(wrapper);
                 var supportsParent = requireCssParent();
                 cssParent = wrapper;
@@ -1450,7 +1474,7 @@ public final class SassEvaluator implements
                     child.accept(this);
                 }
             } else {
-                var wrapper = activeStyleRule.copyWithoutChildren();
+                var wrapper = copyStyleRulePreservingOrigin(activeStyleRule);
                 rule.addChild(wrapper);
                 var atRuleParent = requireCssParent();
                 cssParent = wrapper;
@@ -1768,7 +1792,10 @@ public final class SassEvaluator implements
         } else {
             root = included.get(included.size() - 1);
             for (var index = included.size() - 2; index >= 0; index--) {
-                var copy = included.get(index).copyWithoutChildren();
+                var source = included.get(index);
+                var copy = source instanceof CssStyleRule style
+                        ? copyStyleRulePreservingOrigin(style)
+                        : source.copyWithoutChildren();
                 root.addChild(copy);
                 root = copy;
             }
@@ -1867,6 +1894,13 @@ public final class SassEvaluator implements
         for (var extra : extensionVisibilityModules) {
             indexModulesByUrl(extra, modulesByUrl, seenVisibility);
         }
+        // Document-original complexes per rule, shared across successive
+        // {@code @extend} applications so intermediate products stay trimmable
+        // (dart-sass ExtensionStore {@code _originals}).
+        var originalKeysByRule = new IdentityHashMap<CssStyleRule, Set<String>>();
+        for (var rule : styleRules) {
+            originalKeysByRule.put(rule, SelectorAlgebra.originalKeysOf(rule.selector().value()));
+        }
         for (var extension : extensions) {
             var found = false;
             for (var rule : styleRules) {
@@ -1874,7 +1908,8 @@ public final class SassEvaluator implements
                         extension,
                         rule,
                         true,
-                        modulesByUrl
+                        modulesByUrl,
+                        originalKeysByRule.get(rule)
                 );
                 found |= result.found();
             }
@@ -1887,7 +1922,8 @@ public final class SassEvaluator implements
                             extension,
                             rule,
                             false,
-                            modulesByUrl
+                            modulesByUrl,
+                            originalKeysByRule.get(rule)
                     );
                     found |= result.found();
                     changed |= result.changed();
@@ -2029,12 +2065,14 @@ public final class SassEvaluator implements
     /// @param rule          the candidate style rule
     /// @param rejectCrossMedia whether a cross-media match should error
     /// @param modulesByUrl  modules keyed by canonical URL for visibility checks
+    /// @param originalKeys  document-original complex keys for this rule
     /// @return whether the target was found and whether the rule selector changed
     private ExtensionApplyResult applyExtensionToRule(
             PendingExtension extension,
             CssStyleRule rule,
             boolean rejectCrossMedia,
-            Map<URI, LoadedModule> modulesByUrl
+            Map<URI, LoadedModule> modulesByUrl,
+            Set<String> originalKeys
     ) {
         int ruleGeneration = styleRuleImportGeneration.getOrDefault(rule, 0);
         // Generation 0 is the module-graph original; import-path copies use >0.
@@ -2063,7 +2101,8 @@ public final class SassEvaluator implements
             after = SelectorAlgebra.extend(
                     before,
                     extension.target(),
-                    extension.extender()
+                    extension.extender(),
+                    originalKeys
             );
         } catch (SassValueException cause) {
             throw new EvaluationException(
@@ -3582,7 +3621,9 @@ public final class SassEvaluator implements
             if (parent.equalsIgnoringChildren(last) && last instanceof CssParentNode lastParent) {
                 parent = lastParent;
             } else {
-                var copy = parent.copyWithoutChildren();
+                var copy = parent instanceof CssStyleRule style
+                        ? copyStyleRulePreservingOrigin(style)
+                        : parent.copyWithoutChildren();
                 grandparent.addChild(copy);
                 parent = copy;
             }
@@ -3636,13 +3677,19 @@ public final class SassEvaluator implements
             return;
         }
 
-        var copiedParent = path.get(copyStart).copyWithoutChildren();
+        var sourceParent = path.get(copyStart);
+        var copiedParent = sourceParent instanceof CssStyleRule style
+                ? copyStyleRulePreservingOrigin(style)
+                : sourceParent.copyWithoutChildren();
         var copies = new IdentityHashMap<CssParentNode, CssParentNode>();
         copies.put(path.get(copyStart), copiedParent);
         path.get(copyStart + 1).addChild(copiedParent);
         CssParentNode copiedLeaf = copiedParent;
         for (var index = copyStart - 1; index >= 0; index--) {
-            var childCopy = path.get(index).copyWithoutChildren();
+            var sourceChild = path.get(index);
+            var childCopy = sourceChild instanceof CssStyleRule style
+                    ? copyStyleRulePreservingOrigin(style)
+                    : sourceChild.copyWithoutChildren();
             copies.put(path.get(index), childCopy);
             copiedLeaf.addChild(childCopy);
             copiedLeaf = childCopy;
@@ -4099,7 +4146,7 @@ public final class SassEvaluator implements
                     injectCssNode(child, reattributeOrigins);
                 }
             } else {
-                var wrapper = activeStyleRule.copyWithoutChildren();
+                var wrapper = copyStyleRulePreservingOrigin(activeStyleRule);
                 injected.addChild(wrapper);
                 var mediaParent = requireCssParent();
                 cssParent = wrapper;
@@ -4145,7 +4192,7 @@ public final class SassEvaluator implements
                     injectCssNode(child, reattributeOrigins);
                 }
             } else {
-                var wrapper = activeStyleRule.copyWithoutChildren();
+                var wrapper = copyStyleRulePreservingOrigin(activeStyleRule);
                 injected.addChild(wrapper);
                 var supportsParent = requireCssParent();
                 cssParent = wrapper;
