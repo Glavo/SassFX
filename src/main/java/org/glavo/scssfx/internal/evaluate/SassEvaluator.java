@@ -4471,13 +4471,17 @@ public final class SassEvaluator implements
     private void injectStyleRule(CssStyleRule rule, boolean reattributeOrigins) {
         @Nullable CssStyleRule effectiveStyleRule =
                 atRootExcludingStyleRule ? null : styleRule;
+        // Mirror visitStyleRule: plain-CSS rules that still carry {@code &} stay
+        // nested under the host rule without resolving the parent (load-css
+        // top_level_parent: {@code a { & { … } }} rather than {@code a b}).
         boolean merge;
         if (effectiveStyleRule == null) {
             merge = true;
         } else if (effectiveStyleRule.fromPlainCss()) {
             merge = false;
         } else {
-            merge = true;
+            merge = !(rule.fromPlainCss()
+                    && rule.selector().value().containsParentSelector());
         }
         @Nullable SelectorList parentSelector =
                 styleRuleForParent == null ? null : styleRuleForParent.selector().value();

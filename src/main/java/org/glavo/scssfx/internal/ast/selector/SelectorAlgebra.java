@@ -94,6 +94,11 @@ public final class SelectorAlgebra {
     /// @param selector the extendee selector list
     /// @throws SassValueException if a target is complex or multi-simple
     public static void assertExtendDirectiveTargets(SelectorList selector) {
+        // Parent selectors are rejected with a dedicated message before the
+        // generic algebra support check (issue_1527: {@code @extend &}).
+        if (selector.containsParentSelector()) {
+            throw new SassValueException("Parent selectors aren't allowed here.");
+        }
         assertSupported(selector, "extendee");
         for (var complex : selector.components()) {
             if (isComplexExtendTarget(complex)) {
@@ -2374,7 +2379,8 @@ public final class SelectorAlgebra {
                 // Skip promotion when the rewrite is a nested {@code :not} product
                 // so fixed-point does not re-expand forever (issue_2399).
                 // Nested non-{:not} rewrites replace in place (module midstream
-                // extend and selector.extend idempotent :is/:matches).
+                // extend and selector.extend idempotent :is/:matches). Keep-both
+                // for into_pseudo conflicts with midstream_extend_within_pseudoselector.
                 String beforeKey = complexKey(candidate);
                 String afterKey = complexKey(nested);
                 if (originalKeys.contains(beforeKey)

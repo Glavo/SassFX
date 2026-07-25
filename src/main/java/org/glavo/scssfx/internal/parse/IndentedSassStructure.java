@@ -1295,11 +1295,15 @@ final class IndentedSassStructure {
         // {@code a, // comment} / {@code a,}), but are valid terminators at EOF
         // ({@code b: c, d,}) so they are optional rather than mandatory.
         // {@code @extend a,} must not swallow a same-indent sibling as another
-        // target (extend/whitespace multiple_selectors/comma). {@code @forward}/
-        // {@code @use} trailing commas still join show/hide members.
+        // target (extend/whitespace multiple_selectors/comma). {@code @each $a
+        // in b,} ends the list (trailing comma) so the next indented line is the
+        // body, not another list item (each/multiline/in_expression). {@code
+        // @forward}/{@code @use} trailing commas still join show/hide members.
+        var strippedForComma = text.strip();
         var trailingComma = lastSignificant >= 0
                 && text.charAt(lastSignificant) == ','
-                && !isExtendAtRule(text.strip());
+                && !isExtendAtRule(strippedForComma)
+                && !isEachAtRule(strippedForComma);
         // Trailing spaced binary operators and {@code and}/{@code or}/{@code not}
         // force a same-indent continuation only for declarations/assignments
         // ({@code b: 3 %} / {@code $a: b +}). Selector lines ending in combinators
@@ -1827,6 +1831,11 @@ final class IndentedSassStructure {
         return atRuleNameEquals(text, "@import");
     }
 
+    /// Returns whether {@code text} is an {@code @each} statement.
+    private static boolean isEachAtRule(String text) {
+        return atRuleNameEquals(text, "@each");
+    }
+
     /// Returns whether the statement begins with the given at-rule name.
     private static boolean atRuleNameEquals(String text, String name) {
         var stripped = text.strip();
@@ -1970,16 +1979,19 @@ final class IndentedSassStructure {
                 return true;
             }
         }
-        // Trailing top-level comma: list/map still open
-        // ({@code @each $a in b,}). Declarations with a trailing comma do not
-        // use more-indented lines as list continuations (dart-sass requires
-        // parentheses for multi-line lists); same-indent selector commas are
-        // handled by forced continuation instead. {@code @extend a,} and a
-        // complete {@code @import …,} do not continue onto indented children.
+        // Trailing top-level comma: list/map still open. Declarations with a
+        // trailing comma do not use more-indented lines as list continuations
+        // (dart-sass requires parentheses for multi-line lists); same-indent
+        // selector commas are handled by forced continuation instead.
+        // {@code @extend a,}, {@code @import …,}, and {@code @each $a in b,}
+        // (trailing-comma one-element list) do not continue onto children —
+        // multi-line {@code @each} lists use parentheses
+        // ({@code @each $a in (b, c)}).
         if (endsWithTopLevelComma(stripped)
                 && !looksLikeDeclarationOrAssignment(stripped)
                 && !isExtendAtRule(stripped)
-                && !isImportAtRule(stripped)) {
+                && !isImportAtRule(stripped)
+                && !isEachAtRule(stripped)) {
             return true;
         }
         // Trailing binary operator leaves a declaration/assignment open
