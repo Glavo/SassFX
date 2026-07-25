@@ -572,7 +572,7 @@ public final class BuiltInCallable implements Callable {
         /// @return the public values keyed by normalized variable name
         /// @throws org.glavo.scssfx.internal.value.SassValueException if no named module exists
         public @Unmodifiable Map<String, SassValue> moduleVariables(String module) {
-            LoadedModule loaded = environment.module(module);
+            LoadedModule loaded = requireNamedModule(module);
             var values = new LinkedHashMap<String, SassValue>(loaded.variables().size());
             for (var entry : loaded.variables().entrySet()) {
                 VariableBinding binding = entry.getValue();
@@ -641,7 +641,7 @@ public final class BuiltInCallable implements Callable {
         /// @return immutable public functions keyed by normalized name
         /// @throws org.glavo.scssfx.internal.value.SassValueException if no named module exists
         public @Unmodifiable Map<String, SassFunction> moduleFunctions(String module) {
-            LoadedModule loaded = environment.module(module);
+            LoadedModule loaded = requireNamedModule(module);
             var functions = new LinkedHashMap<String, SassFunction>(loaded.functions().size());
             for (var entry : loaded.functions().entrySet()) {
                 functions.put(entry.getKey(), new SassFunction(entry.getValue(), compilationContext));
@@ -655,12 +655,27 @@ public final class BuiltInCallable implements Callable {
         /// @return immutable public mixins keyed by normalized name
         /// @throws org.glavo.scssfx.internal.value.SassValueException if no named module exists
         public @Unmodifiable Map<String, SassMixin> moduleMixins(String module) {
-            LoadedModule loaded = environment.module(module);
+            LoadedModule loaded = requireNamedModule(module);
             var mixins = new LinkedHashMap<String, SassMixin>(loaded.mixins().size());
             for (var entry : loaded.mixins().entrySet()) {
                 mixins.put(entry.getKey(), new SassMixin(entry.getValue(), compilationContext));
             }
             return Collections.unmodifiableMap(mixins);
+        }
+
+        /// Loads a named module using meta.module-* diagnostic wording.
+        ///
+        /// @param module the explicit module namespace
+        /// @return the loaded module
+        private LoadedModule requireNamedModule(String module) {
+            try {
+                return environment.module(module);
+            } catch (org.glavo.scssfx.internal.value.SassValueException exception) {
+                // meta.module-functions/mixins/variables omit "the" before namespace.
+                throw new org.glavo.scssfx.internal.value.SassValueException(
+                        "There is no module with namespace \"" + module + "\"."
+                );
+            }
         }
 
         /// Includes a mixin reference with an already-evaluated argument list.

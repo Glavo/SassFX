@@ -357,21 +357,30 @@ public sealed interface SassValue permits
                     "$" + name + ": " + Objects.requireNonNull(exception.getMessage(), "index type")
             );
         }
-        var index = number.assertInt();
+        int index;
+        try {
+            index = number.assertInt();
+        } catch (SassValueException exception) {
+            throw new SassValueException(
+                    "$" + name + ": " + Objects.requireNonNull(exception.getMessage(), "index int")
+            );
+        }
         if (index == 0) {
-            throw new SassValueException("List index may not be 0.");
+            throw new SassValueException("$" + name + ": List index may not be 0.");
         }
         if (index > 0) {
             if (index > length) {
                 throw new SassValueException(
-                        "Invalid index " + index + " for a list with " + length + " elements."
+                        "$" + name + ": Invalid index " + index
+                                + " for a list with " + length + " elements."
                 );
             }
             return index - 1;
         }
         if (index < -length) {
             throw new SassValueException(
-                    "Invalid index " + index + " for a list with " + length + " elements."
+                    "$" + name + ": Invalid index " + index
+                            + " for a list with " + length + " elements."
             );
         }
         return length + index;

@@ -65,6 +65,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /// Parses SCSS stylesheets containing declarations, nested properties, style rules,
@@ -206,6 +207,7 @@ final class ScssParser extends SassExpressionParser {
                     }
                     whitespaceWithoutComments(true);
                 }
+                case '}' -> throw scanner.error("unmatched \"}\".");
                 case ';' -> {
                     scanner.read();
                     whitespaceWithoutComments(true);
@@ -432,7 +434,7 @@ final class ScssParser extends SassExpressionParser {
         whitespaceWithoutComments(true);
         while (true) {
             switch (scanner.peek()) {
-                case CssCharacters.END_OF_INPUT -> throw scanner.error("Expected \"}\".");
+                case CssCharacters.END_OF_INPUT -> throw scanner.error("expected \"}\".");
                 case '/' -> {
                     if (scanner.peek(1) == '/') {
                         rejectPlainCss("Silent comments aren't allowed in plain CSS.");
@@ -456,7 +458,12 @@ final class ScssParser extends SassExpressionParser {
                     rejectPlainCss("Sass variables aren't allowed in plain CSS.");
                     children.add(variableDeclarationWithoutNamespace());
                 }
-                case '@' -> children.add(atRule(context, false));
+                case '@' -> children.add(
+                        context == StatementContext.DECLARATION
+                                || context == StatementContext.FUNCTION
+                                ? restrictedAtRule(context)
+                                : atRule(context, false)
+                );
                 default -> {
                     children.add(blockChild(context));
                     whitespaceWithoutComments(true);
@@ -475,6 +482,65 @@ final class ScssParser extends SassExpressionParser {
             case STYLE_RULE -> declarationOrStyleRule();
             case DECLARATION, FONT_FACE -> declarationChild();
             case FUNCTION -> throw scanner.error("Expected @return rule or variable declaration.");
+        };
+    }
+
+    /// Parses an at-rule allowed only in property declarations or functions.
+    ///
+    /// Matches dart-sass {@code _declarationAtRule} / {@code _functionChild}:
+    /// the name must be a plain identifier (no interpolation), and unknown
+    /// names are rejected with {@code This at-rule is not allowed here.}
+    ///
+    /// @param context {@link StatementContext#DECLARATION} or {@link StatementContext#FUNCTION}
+    /// @return the parsed at-rule
+    private SassStatement restrictedAtRule(StatementContext context) {
+        var start = scanner.state();
+        scanner.expect('@');
+        // Interpolation after {@code @} is not a valid at-rule name here.
+        if (scanner.peek() == '#' && scanner.peek(1) == '{') {
+            throw scanner.error("Expected identifier.");
+        }
+        var name = identifier(false, false);
+        return switch (name) {
+            case "content" -> contentRule(start, context);
+            case "debug" -> debugRule(start);
+            case "each" -> eachRule(start, context);
+            case "else" -> throw scanner.error(
+                    "This at-rule is not allowed here.",
+                    start.position(),
+                    scanner.position() - start.position()
+            );
+            case "error" -> errorRule(start);
+            case "for" -> forRule(start, context);
+            case "if" -> ifRule(start, context);
+            case "include" -> {
+                if (context == StatementContext.FUNCTION) {
+                    throw scanner.error(
+                            "This at-rule is not allowed here.",
+                            start.position(),
+                            scanner.position() - start.position()
+                    );
+                }
+                yield includeRule(start, context);
+            }
+            case "return" -> returnRule(start, context);
+            case "warn" -> warnRule(start);
+            case "while" -> whileRule(start, context);
+            default -> {
+                // Consume the remainder of the rule for a complete span, then reject.
+                whitespace(false);
+                interpolatedDeclarationValue(true, false, () -> scanner.peek() == '{');
+                if (scanner.peek() == '{') {
+                    statementBlock(context);
+                } else {
+                    expectStatementSeparator();
+                }
+                throw scanner.error(
+                        "This at-rule is not allowed here.",
+                        start.position(),
+                        scanner.position() - start.position()
+                );
+            }
         };
     }
 
@@ -518,6 +584,7 @@ final class ScssParser extends SassExpressionParser {
                 case "media" -> mediaRule(start, context);
                 case "supports" -> supportsRule(start, context);
                 case "import" -> importRule(start, context);
+                case "charset" -> charsetRule(start);
                 default -> unknownAtRule(start, nameInterpolation);
             };
         }
@@ -558,8 +625,28 @@ final class ScssParser extends SassExpressionParser {
             );
             case "at-root" -> atRootRule(start);
             case "extend" -> extendRule(start, context);
+            case "charset" -> charsetRule(start);
             default -> unknownAtRule(start, nameInterpolation);
         };
+    }
+
+    /// Parses and discards an {@code @charset} rule.
+    ///
+    /// Sass ignores {@code @charset} for CSS emission; output encoding is
+    /// controlled by the host and optional UTF-8 charset injection for
+    /// non-ASCII expanded CSS.
+    ///
+    /// @param start the scanner state at the leading {@code @}
+    /// @return a silent no-op statement
+    /// @throws ParseException if the charset string is missing or malformed
+    private SilentComment charsetRule(ScannerState start) {
+        whitespace(false);
+        if (scanner.peek() != '\'' && scanner.peek() != '"') {
+            throw scanner.error("Expected string.");
+        }
+        string();
+        expectStatementSeparator();
+        return new SilentComment("", scanner.spanFrom(start));
     }
 
     /// Parses an {@code @at-root} rule.
@@ -606,6 +693,17 @@ final class ScssParser extends SassExpressionParser {
                     buffer.append((char) scanner.read());
                 }
                 case '\'', '"' -> buffer.add(interpolatedStringToken());
+                case '/' -> {
+                    // Comments are transparent inside {@code @at-root} queries
+                    // (dart-sass {@code almostAnyValue}/query scanners).
+                    if (scanner.peek(1) == '*') {
+                        loudComment();
+                    } else if (scanner.peek(1) == '/') {
+                        silentComment();
+                    } else {
+                        buffer.append((char) scanner.read());
+                    }
+                }
                 case '#' -> {
                     if (scanner.peek(1) == '{') {
                         buffer.add(interpolatedIdentifier());
@@ -681,20 +779,26 @@ final class ScssParser extends SassExpressionParser {
     /// @return the opaque rule
     private UnknownAtRule unknownAtRule(ScannerState start, Interpolation name) {
         whitespace(false);
+        // Omit silent comments from the prelude (dart-sass default
+        // silentComments: true) so {@code @a b //} becomes {@code @a b}.
         var value = interpolatedDeclarationValue(
                 true,
-                false,
+                true,
                 () -> scanner.peek() == '{'
         );
         requirePlainCssText(value);
         @Nullable String plainName = name.asPlain();
+        // dart-sass's dedicated @-moz-document parser consumes trailing comments
+        // as whitespace before the block, so they must not appear in the prelude.
+        if (plainName != null && plainName.equalsIgnoreCase("-moz-document")) {
+            value = stripTrailingCommentsAndWhitespace(value);
+        }
         if (scanner.peek() == '{') {
             var wasInPlainCssFunction = inPlainCssFunction;
-            // Plain @function --name and @#{function} --name both enter CSS function mode.
-            // The prelude is already consumed, so inspect its leading plain text for `--`.
-            var preludePlain = value.initialPlain().stripLeading();
-            if ((plainName != null && plainName.equalsIgnoreCase("function"))
-                    || (plainName == null && preludePlain.startsWith("--"))) {
+            // Only a non-interpolated {@code @function} enters CSS-function mode.
+            // {@code @#{function}} keeps SassScript evaluation for {@code result}
+            // (dart-sass: interpolated at-rule names are not CSS custom functions).
+            if (plainName != null && plainName.equalsIgnoreCase("function")) {
                 inPlainCssFunction = true;
             }
             ArrayList<SassStatement> children;
@@ -718,7 +822,10 @@ final class ScssParser extends SassExpressionParser {
     /// @return the font-face rule
     /// @throws ParseException if the rule is nested or its body is malformed
     private FontFaceRule fontFaceRule(ScannerState start, StatementContext context) {
-        if (context != StatementContext.ROOT) {
+        // Nested {@code @font-face} inside style rules is legal and bubbles to
+        // the stylesheet root during evaluation (dart-sass). Other contexts keep
+        // the historical root-only diagnostic.
+        if (context != StatementContext.ROOT && context != StatementContext.STYLE_RULE) {
             throw scanner.error(
                     "This at-rule may only be used at the stylesheet root.",
                     start.position(),
@@ -760,15 +867,211 @@ final class ScssParser extends SassExpressionParser {
         }
 
         whitespace(true);
-        var query = styleRuleSelector();
-        @Nullable String plainQuery = query.asPlain();
-        if (plainQuery != null && plainQuery.isBlank()) {
-            throw scanner.error("Expected media query.");
-        }
+        var query = mediaQueryList();
         var children = statementBlock(context);
         var span = scanner.spanFrom(start);
         whitespaceWithoutComments(false);
         return new MediaRule(query, children, span);
+    }
+
+    /// Consumes a comma-separated list of media queries as one interpolation.
+    ///
+    /// Aligns with dart-sass {@code StylesheetParser._mediaQueryList}: types and
+    /// modifiers stay as identifier text, while media-feature bodies embed
+    /// SassScript expressions so range syntax and variables evaluate correctly.
+    ///
+    /// @return the media-query-list interpolation
+    private Interpolation mediaQueryList() {
+        var start = scanner.state();
+        var buffer = new InterpolationBuffer();
+        while (true) {
+            whitespace(false);
+            mediaQuery(buffer);
+            whitespace(false);
+            if (!scanner.scan(',')) {
+                break;
+            }
+            buffer.append(',');
+            buffer.append(' ');
+        }
+        return buffer.interpolation(scanner.spanFrom(start));
+    }
+
+    /// Consumes one media query into {@code buffer}.
+    ///
+    /// @param buffer the interpolation receiving the query text and expressions
+    private void mediaQuery(InterpolationBuffer buffer) {
+        // Somewhat duplicated in CssMediaQuery.Parser.parseQuery for evaluated
+        // plain CSS after interpolation.
+        if (scanner.peek() == '(') {
+            mediaInParens(buffer);
+            whitespace(false);
+            if (scanIdentifier("and")) {
+                buffer.append(" and ");
+                expectWhitespace(false);
+                mediaLogicSequence(buffer, "and");
+            } else if (scanIdentifier("or")) {
+                buffer.append(" or ");
+                expectWhitespace(false);
+                mediaLogicSequence(buffer, "or");
+            }
+            return;
+        }
+
+        var identifier1 = interpolatedIdentifier();
+        @Nullable String plain1 = identifier1.asPlain();
+        if (plain1 != null && plain1.equalsIgnoreCase("not")) {
+            // For example, "@media not (...) {"
+            expectWhitespace(false);
+            if (!lookingAtInterpolatedIdentifier()) {
+                buffer.append("not ");
+                mediaOrInterp(buffer);
+                return;
+            }
+        }
+
+        whitespace(false);
+        buffer.add(identifier1);
+        if (!lookingAtInterpolatedIdentifier()) {
+            // For example, "@media screen {".
+            return;
+        }
+
+        buffer.append(' ');
+        var identifier2 = interpolatedIdentifier();
+        @Nullable String plain2 = identifier2.asPlain();
+        if (plain2 != null && plain2.equalsIgnoreCase("and")) {
+            expectWhitespace(false);
+            // For example, "@media screen and ..."
+            buffer.append(" and ");
+        } else {
+            whitespace(false);
+            buffer.add(identifier2);
+            if (scanIdentifier("and")) {
+                // For example, "@media only screen and ..."
+                expectWhitespace(false);
+                buffer.append(" and ");
+            } else {
+                // For example, "@media only screen {"
+                return;
+            }
+        }
+
+        // Consumed either IDENTIFIER "and" or IDENTIFIER IDENTIFIER "and".
+        if (scanIdentifier("not")) {
+            // For example, "@media screen and not (...) {"
+            expectWhitespace(false);
+            buffer.append("not ");
+            mediaOrInterp(buffer);
+            return;
+        }
+
+        mediaLogicSequence(buffer, "and");
+    }
+
+    /// Consumes one or more media-in-parens (or interpolations) joined by {@code operator}.
+    ///
+    /// @param buffer   the interpolation receiving the sequence
+    /// @param operator the required {@code and} or {@code or} keyword
+    private void mediaLogicSequence(InterpolationBuffer buffer, String operator) {
+        while (true) {
+            mediaOrInterp(buffer);
+            whitespace(false);
+            if (!scanIdentifier(operator)) {
+                return;
+            }
+            expectWhitespace(false);
+            buffer.append(' ');
+            buffer.append(operator);
+            buffer.append(' ');
+        }
+    }
+
+    /// Consumes a media-in-parens expression or a lone {@code #{…}} interpolation.
+    ///
+    /// @param buffer the interpolation receiving the condition
+    private void mediaOrInterp(InterpolationBuffer buffer) {
+        if (scanner.peek() == '#' && scanner.peek(1) == '{') {
+            singleInterpolation(buffer);
+        } else {
+            mediaInParens(buffer);
+        }
+    }
+
+    /// Consumes a {@code <media-in-parens>} expression, including range syntax.
+    ///
+    /// Feature names and values are parsed as SassScript expressions so media
+    /// range operators {@code <}/{@code >}/{@code =}/{@code <=}/{@code >=} are
+    /// not treated as top-level Sass binary operators. A second range operator
+    /// is allowed only when it matches the first operator's direction.
+    ///
+    /// @param buffer the interpolation receiving the parenthesized condition
+    private void mediaInParens(InterpolationBuffer buffer) {
+        if (!scanner.scan('(')) {
+            throw scanner.error("expected media condition in parentheses.");
+        }
+        buffer.append('(');
+        whitespace(true);
+
+        if (scanner.peek() == '(') {
+            mediaInParens(buffer);
+            whitespace(true);
+            if (scanIdentifier("and")) {
+                buffer.append(" and ");
+                expectWhitespace(true);
+                mediaLogicSequence(buffer, "and");
+            } else if (scanIdentifier("or")) {
+                buffer.append(" or ");
+                expectWhitespace(true);
+                mediaLogicSequence(buffer, "or");
+            }
+        } else if (scanIdentifier("not")) {
+            buffer.append("not ");
+            expectWhitespace(true);
+            mediaOrInterp(buffer);
+        } else {
+            var expressionBefore = expressionUntilComparison();
+            buffer.add(expressionBefore, expressionBefore.span());
+            if (scanner.scan(':')) {
+                whitespace(true);
+                buffer.append(':');
+                buffer.append(' ');
+                var expressionAfter = expression();
+                buffer.add(expressionAfter, expressionAfter.span());
+            } else {
+                var next = scanner.peek();
+                if (next == '<' || next == '>' || next == '=') {
+                    buffer.append(' ');
+                    buffer.append((char) scanner.read());
+                    if ((next == '<' || next == '>') && scanner.scan('=')) {
+                        buffer.append('=');
+                    }
+                    buffer.append(' ');
+
+                    whitespace(true);
+                    var expressionMiddle = expressionUntilComparison();
+                    buffer.add(expressionMiddle, expressionMiddle.span());
+
+                    // Range form: only the same-direction comparison may repeat.
+                    if ((next == '<' || next == '>') && scanner.scan(next)) {
+                        buffer.append(' ');
+                        buffer.append((char) next);
+                        if (scanner.scan('=')) {
+                            buffer.append('=');
+                        }
+                        buffer.append(' ');
+
+                        whitespace(true);
+                        var expressionAfter = expressionUntilComparison();
+                        buffer.add(expressionAfter, expressionAfter.span());
+                    }
+                }
+            }
+        }
+
+        scanner.expect(')');
+        whitespace(false);
+        buffer.append(')');
     }
 
     /// Parses an {@code @supports} rule in a stylesheet or style-rule context.
@@ -852,8 +1155,10 @@ final class ScssParser extends SassExpressionParser {
                 return result;
             }
             if (nextOperator != operator) {
+                // dart-sass reports the expected continuing operator rather than a
+                // generic mixed-operator message (e.g. and then or → Expected "and").
                 throw scanner.error(
-                        "Operators may not be mixed without a grouping parenthesis.",
+                        "Expected \"" + operator.cssText() + "\".",
                         operatorStart.position(),
                         scanner.position() - operatorStart.position()
                 );
@@ -888,14 +1193,23 @@ final class ScssParser extends SassExpressionParser {
                 throw scanner.error("\"not\" is not a valid identifier here.", name.span());
             }
             if (scanner.scan('(')) {
-                var arguments = interpolatedDeclarationValue(true, true);
+                // Function-form supports conditions may contain raw {@code ;}
+                // tokens inside the argument list (see anything/symbols).
+                var arguments = interpolatedDeclarationValue(true, true, true);
                 scanner.expect(')');
                 return new SupportsFunction(name, arguments, scanner.spanFrom(start));
             }
 
             scanner.restore(nameStart);
             if (scanner.peek() == '#' && scanner.peek(1) == '{') {
-                return supportsInterpolationCondition();
+                // Pure interpolation forms such as {@code @supports #{$cond}}
+                // are valid. Trailing identifier text after the interpolation
+                // ({@code @supports #{a}b}) is not a supports condition.
+                var interpolation = supportsInterpolationCondition();
+                if (lookingAtInterpolatedIdentifier()) {
+                    throw scanner.error("Expected @supports condition.");
+                }
+                return interpolation;
             }
             throw scanner.error("Expected @supports condition.");
         }
@@ -954,7 +1268,8 @@ final class ScssParser extends SassExpressionParser {
             var name = expression();
             whitespace(true);
             if (!scanner.scan(':')) {
-                throw scanner.error("Expected \":\".");
+                // dart-sass {@code expectChar(':')} uses a lowercase "expected".
+                throw scanner.error("expected \":\".");
             }
             colonConsumed = true;
 
@@ -964,8 +1279,9 @@ final class ScssParser extends SassExpressionParser {
             if (customProperty) {
                 // Keep post-colon spaces and comments in the raw value so
                 // serialization can emit dart-sass forms such as `--a: b` and
-                // `--a: /**/ b`.
-                var rawValue = interpolatedDeclarationValue(true, true);
+                // `--a: /**/ b`. Reject a completely empty value (`--a:`)
+                // with dart-sass's "Expected token." diagnostic.
+                var rawValue = interpolatedDeclarationValue(false, true);
                 value = new StringExpression(rawValue, false);
             } else {
                 whitespace(true);
@@ -986,7 +1302,9 @@ final class ScssParser extends SassExpressionParser {
             }
             var buffer = new InterpolationBuffer();
             buffer.add(interpolatedIdentifier());
-            buffer.add(interpolatedDeclarationValue(true, true));
+            // Supports "anything" conditions may contain top-level semicolons
+            // (dart-sass {@code (a !&$ZH()&;*{&A}_=-+#/><)}).
+            buffer.add(interpolatedDeclarationValue(true, true, true));
             var contents = buffer.interpolation(scanner.spanFrom(contentsStart));
             var rawText = scanner.substring(contentsStart.position(), scanner.position());
             if (containsTopLevelColon(rawText)) {
@@ -1211,18 +1529,26 @@ final class ScssParser extends SassExpressionParser {
         if (context == StatementContext.FUNCTION || context == StatementContext.DECLARATION) {
             throw scanner.error("Mixins may not be declared here.");
         }
-        if (inMixin || inContentBlock) {
-            throw scanner.error("Mixins may not be declared within a mixin or content block.");
-        }
         whitespace(true);
         var originalName = identifier(false, false);
         if (originalName.startsWith("--")) {
-            throw scanner.error("Mixin names may not begin with --.");
+            throw scanner.error(
+                    "Sass @mixin names beginning with -- are forbidden for "
+                            + "forward-compatibility with plain CSS mixins.\n"
+                            + "\n"
+                            + "For details, see https://sass-lang.com/d/css-function-mixin"
+            );
         }
         whitespace(true);
         var parameters = scanner.peek() == '('
                 ? parameterList()
                 : ParameterList.empty(scanner.source().span(scanner.position(), scanner.position()));
+        if (inMixin || inContentBlock) {
+            throw scanner.error("Mixins may not contain mixin declarations.");
+        }
+        if (controlDirectiveDepth > 0) {
+            throw scanner.error("Mixins may not be declared in control directives.");
+        }
         whitespace(true);
         var previousInMixin = inMixin;
         inMixin = true;
@@ -1248,21 +1574,89 @@ final class ScssParser extends SassExpressionParser {
         if (context == StatementContext.FUNCTION || context == StatementContext.DECLARATION) {
             throw scanner.error("Functions may not be declared here.");
         }
-        if (inMixin || inContentBlock) {
-            throw scanner.error("Functions may not be declared within a mixin or content block.");
-        }
         whitespace(true);
+        var nameStart = scanner.state();
         var originalName = identifier(false, false);
+        var nameSpan = scanner.spanFrom(nameStart);
         if (originalName.startsWith("--")) {
-            throw scanner.error("Function names may not begin with --.");
+            throw scanner.error("Function names may not begin with --.", nameSpan);
         }
+        // Reserved CSS special-function names cannot be user-defined Sass
+        // functions (dart-sass: expression/url/and/or/not/element, and type).
+        // Case-sensitive reject; mixed-case expression/url/element only warn.
+        rejectReservedFunctionName(originalName, nameSpan);
         whitespace(true);
         var parameters = parameterList();
+        if (inMixin || inContentBlock) {
+            // dart-sass wording for functions nested in mixins.
+            throw scanner.error("Mixins may not contain function declarations.");
+        }
+        if (controlDirectiveDepth > 0) {
+            throw scanner.error("Functions may not be declared in control directives.");
+        }
         whitespace(true);
         var children = statementBlock(StatementContext.FUNCTION);
         var span = scanner.spanFrom(start);
         whitespaceWithoutComments(false);
         return new FunctionRule(originalName, parameters, children, span);
+    }
+
+    /// Rejects or deprecates Sass {@code @function} names reserved by CSS.
+    ///
+    /// Exact lowercase {@code expression}/{@code url}/{@code and}/{@code or}/
+    /// {@code not}/element forms are errors. Case variants of expression, url,
+    /// and element emit the {@code function-name} deprecation instead.
+    /// {@code type} is always reserved regardless of case.
+    ///
+    /// @param originalName the declared function name as written
+    /// @param nameSpan     the name's source span
+    private void rejectReservedFunctionName(String originalName, SourceSpan nameSpan) {
+        var lower = originalName.toLowerCase(java.util.Locale.ROOT);
+        if ("type".equals(lower)) {
+            throw scanner.error(
+                    "This name is reserved for the plain-CSS function.",
+                    nameSpan
+            );
+        }
+        // Exact spelling matches are hard errors (case-sensitive for these five).
+        if ("expression".equals(originalName)
+                || "url".equals(originalName)
+                || "and".equals(originalName)
+                || "or".equals(originalName)
+                || "not".equals(originalName)
+                || isVendorElementFunctionName(originalName)) {
+            throw scanner.error("Invalid function name.", nameSpan);
+        }
+        // Mixed-case expression/url/element names are deprecated but still legal.
+        if ("expression".equals(lower)
+                || "url".equals(lower)
+                || isVendorElementFunctionName(lower)) {
+            addParseTimeWarning(new Diagnostic(
+                    DiagnosticSeverity.DEPRECATION,
+                    "Custom functions with this name are deprecated and will be "
+                            + "removed in a future\n"
+                            + "release. Please choose a different name.\n"
+                            + "More info: https://sass-lang.com/d/function-name",
+                    nameSpan,
+                    "function-name"
+            ));
+        }
+    }
+
+    /// Returns whether {@code name} is {@code element} or a vendor-prefixed form.
+    ///
+    /// @param lowerName the lowercased function name
+    /// @return whether the name is reserved as a CSS element() function
+    private static boolean isVendorElementFunctionName(String lowerName) {
+        if ("element".equals(lowerName)) {
+            return true;
+        }
+        // Vendor forms such as {@code -moz-element} or {@code -a-element}.
+        if (lowerName.length() > 9 && lowerName.charAt(0) == '-') {
+            int second = lowerName.indexOf('-', 1);
+            return second > 1 && "element".equals(lowerName.substring(second + 1));
+        }
+        return false;
     }
 
     /// Parses an `@include` rule.
@@ -1282,6 +1676,23 @@ final class ScssParser extends SassExpressionParser {
             namespace = originalName;
             originalName = identifier(false, false);
             whitespace(true);
+        }
+        // Namespaced private includes are a parse-time error (dart-sass).
+        if (namespace != null
+                && (originalName.startsWith("-") || originalName.startsWith("_"))) {
+            throw scanner.error(
+                    "Private members can't be accessed from outside their modules."
+            );
+        }
+        // Reject literal `--` includes even when a mixin was declared as `__…`
+        // (underscore/hyphen normalization would otherwise resolve the call).
+        if (originalName.startsWith("--")) {
+            throw scanner.error(
+                    "Sass @mixin names beginning with -- are forbidden for "
+                            + "forward-compatibility with plain CSS mixins.\n"
+                            + "\n"
+                            + "For details, see https://sass-lang.com/d/css-function-mixin"
+            );
         }
         ArgumentList arguments;
         if (scanner.peek() == '(') {
@@ -1354,6 +1765,9 @@ final class ScssParser extends SassExpressionParser {
                     scanner.source().span(scanner.position(), scanner.position())
             );
         }
+        // Trailing loud/silent comments after {@code @content()} are allowed
+        // (dart-sass); skip them before requiring a statement separator.
+        whitespace(true);
         expectStatementSeparator();
         var span = scanner.spanFrom(start);
         whitespaceWithoutComments(false);
@@ -1367,7 +1781,8 @@ final class ScssParser extends SassExpressionParser {
     /// @return the return rule
     private ReturnRule returnRule(ScannerState start, StatementContext context) {
         if (context != StatementContext.FUNCTION) {
-            throw scanner.error("@return is only allowed within function declarations.");
+            // dart-sass uses the generic at-rule rejection outside functions.
+            throw scanner.error("This at-rule is not allowed here.");
         }
         whitespace(true);
         var expression = expression();
@@ -1480,7 +1895,12 @@ final class ScssParser extends SassExpressionParser {
                 throw scanner.error("Expected string or url().");
             }
             whitespace(true);
-        } while (!plainCss && scanner.scan(','));
+            // Plain CSS forbids multi-argument {@code @import "a", "b"} lists;
+            // dart-sass reports expected ";" at the comma.
+            if (plainCss && scanner.peek() == ',') {
+                throw scanner.error("expected \";\".");
+            }
+        } while (scanner.scan(','));
 
         expectStatementSeparator();
         var span = scanner.spanFrom(start);
@@ -1526,42 +1946,163 @@ final class ScssParser extends SassExpressionParser {
     /// @return the complete static import
     private StaticImport staticImport(Interpolation url, ScannerState start) {
         whitespace(true);
-        @Nullable Interpolation beforeSupports = null;
-        if (!atImportArgumentEnd() && !lookingAtImportSupportsModifier()) {
-            beforeSupports = interpolatedDeclarationValue(
-                    false,
-                    true,
-                    this::lookingAtImportSupportsModifier
-            );
-            whitespace(true);
-        }
-
-        @Nullable SupportsCondition supports = null;
-        if (lookingAtImportSupportsModifier()) {
-            supports = importSupportsModifier();
-            whitespace(true);
-        }
-
-        @Nullable Interpolation afterSupports = null;
-        if (!atImportArgumentEnd()) {
-            afterSupports = interpolatedDeclarationValue(
-                    false,
-                    true,
-                    this::lookingAtImportSupportsModifier
-            );
-            whitespace(true);
-            if (lookingAtImportSupportsModifier()) {
-                throw scanner.error("Only one supports() modifier is allowed per import.");
-            }
-        }
-
+        @Nullable Interpolation modifiers = tryImportModifiers();
+        // Store the complete modifier text in modifiersBeforeSupports. Supports
+        // conditions with SassScript are embedded as expression interpolation
+        // parts and evaluated through performInterpolation.
         return new StaticImport(
                 url,
-                beforeSupports,
-                supports,
-                afterSupports,
+                modifiers,
+                null,
+                null,
                 scanner.spanFrom(start)
         );
+    }
+
+    /// Consumes optional import modifiers after a static import URL.
+    ///
+    /// Matches dart-sass {@code tryImportModifiers}: bare identifiers become
+    /// media types; {@code supports(...)} and other functions are preserved;
+    /// a comma after a bare identifier continues a media-query list (not a new
+    /// import argument); a comma after a function leaves the comma for the
+    /// multi-import loop.
+    ///
+    /// @return the modifiers interpolation, or {@code null} when none are present
+    private @Nullable Interpolation tryImportModifiers() {
+        if (!lookingAtInterpolatedIdentifier() && scanner.peek() != '(') {
+            return null;
+        }
+
+        var start = scanner.state();
+        var buffer = new InterpolationBuffer();
+        while (true) {
+            if (lookingAtInterpolatedIdentifier()) {
+                if (!buffer.isEmpty()) {
+                    buffer.append(' ');
+                }
+                var identifier = interpolatedIdentifier();
+                buffer.add(identifier);
+                @Nullable String name = identifier.asPlain() == null
+                        ? null
+                        : identifier.asPlain().toLowerCase(Locale.ROOT);
+                if (name != null && !name.equals("and") && scanner.scan('(')) {
+                    if (name.equals("supports")) {
+                        whitespace(true);
+                        var query = importSupportsCondition();
+                        if (!(query instanceof SupportsDeclaration)) {
+                            buffer.append('(');
+                        }
+                        appendImportSupportsQuery(buffer, query);
+                        if (!(query instanceof SupportsDeclaration)) {
+                            buffer.append(')');
+                        }
+                    } else {
+                        buffer.append('(');
+                        buffer.add(interpolatedDeclarationValue(true, true, true));
+                        buffer.append(')');
+                    }
+                    scanner.expect(')');
+                    whitespace(false);
+                } else {
+                    whitespace(false);
+                    if (scanner.scan(',')) {
+                        buffer.append(", ");
+                        buffer.add(mediaQueryList());
+                        return buffer.interpolation(scanner.spanFrom(start));
+                    }
+                }
+            } else if (scanner.peek() == '(') {
+                if (!buffer.isEmpty()) {
+                    buffer.append(' ');
+                }
+                buffer.add(mediaQueryList());
+                return buffer.interpolation(scanner.spanFrom(start));
+            } else {
+                return buffer.isEmpty()
+                        ? null
+                        : buffer.interpolation(scanner.spanFrom(start));
+            }
+        }
+    }
+
+    /// Appends one import {@code supports()} condition for later evaluation.
+    ///
+    /// Declaration conditions are written without surrounding parentheses so
+    /// the emitted CSS matches {@code supports(name: value)}. Other conditions
+    /// are written as their parenthesized CSS form via nested expression parts.
+    ///
+    /// @param buffer the modifier buffer
+    /// @param query  the parsed supports condition
+    private void appendImportSupportsQuery(
+            InterpolationBuffer buffer,
+            SupportsCondition query
+    ) {
+        if (query instanceof SupportsDeclaration declaration) {
+            // Declaration conditions include their own parentheses so the buffer
+            // text is {@code supports(name: value)} without an extra wrapper.
+            buffer.append('(');
+            buffer.add(declaration.name(), declaration.name().span());
+            if (declaration.customProperty()) {
+                buffer.append(':');
+                if (declaration.value() instanceof StringExpression string
+                        && string.text().isPlain()) {
+                    buffer.add(string.text());
+                } else {
+                    buffer.add(declaration.value(), declaration.value().span());
+                }
+            } else {
+                buffer.append(": ");
+                buffer.add(declaration.value(), declaration.value().span());
+            }
+            buffer.append(')');
+            return;
+        }
+        appendSupportsConditionParts(buffer, query);
+    }
+
+    /// Appends a nested supports condition tree as interpolatable parts.
+    ///
+    /// @param buffer the destination buffer
+    /// @param query  the condition to serialize
+    private void appendSupportsConditionParts(
+            InterpolationBuffer buffer,
+            SupportsCondition query
+    ) {
+        if (query instanceof SupportsDeclaration) {
+            appendImportSupportsQuery(buffer, query);
+            return;
+        }
+        if (query instanceof SupportsNegation negation) {
+            buffer.append("not ");
+            appendSupportsConditionParts(buffer, negation.condition());
+            return;
+        }
+        if (query instanceof SupportsOperation operation) {
+            appendSupportsConditionParts(buffer, operation.left());
+            buffer.append(' ');
+            buffer.append(operation.operator().cssText());
+            buffer.append(' ');
+            appendSupportsConditionParts(buffer, operation.right());
+            return;
+        }
+        if (query instanceof SupportsFunction function) {
+            buffer.add(function.name());
+            buffer.append('(');
+            buffer.add(function.arguments());
+            buffer.append(')');
+            return;
+        }
+        if (query instanceof SupportsAnything anything) {
+            buffer.append('(');
+            buffer.add(anything.contents());
+            buffer.append(')');
+            return;
+        }
+        if (query instanceof SupportsInterpolation interpolation) {
+            buffer.add(interpolation.expression(), interpolation.span());
+            return;
+        }
+        throw scanner.error("Expected @supports condition.");
     }
 
     /// Parses one static-import `supports()` modifier.
@@ -1602,7 +2143,9 @@ final class ScssParser extends SassExpressionParser {
             SassExpression value;
             if (customProperty) {
                 // Preserve post-colon whitespace/comments for import supports().
-                var rawValue = interpolatedDeclarationValue(true, true);
+                // dart-sass rejects a completely empty custom-property value
+                // ({@code supports(--a:)}) with "Expected token."
+                var rawValue = interpolatedDeclarationValue(false, true);
                 value = new StringExpression(rawValue, false);
             } else {
                 whitespace(true);
@@ -1669,7 +2212,9 @@ final class ScssParser extends SassExpressionParser {
             boolean atStylesheetRoot
     ) {
         if (context != StatementContext.ROOT || !atStylesheetRoot) {
-            throw scanner.error("@use rules must be at the root of the stylesheet.");
+            // Nested / non-root contexts use the generic at-rule rejection text
+            // (dart-sass stylesheet parser), not the root-only module message.
+            throw scanner.error("This at-rule is not allowed here.");
         }
         if (!moduleDirectivesAllowed) {
             throw scanner.error("@use rules must be written before any other rules.");
@@ -1713,7 +2258,7 @@ final class ScssParser extends SassExpressionParser {
             boolean atStylesheetRoot
     ) {
         if (context != StatementContext.ROOT || !atStylesheetRoot) {
-            throw scanner.error("@forward rules must be at the root of the stylesheet.");
+            throw scanner.error("This at-rule is not allowed here.");
         }
         if (!moduleDirectivesAllowed) {
             throw scanner.error("@forward rules must be written before any other rules.");
@@ -1847,6 +2392,10 @@ final class ScssParser extends SassExpressionParser {
             if (scanner.peek() == ')') {
                 break;
             }
+            // ($a: b,,) — empty entry after a comma is "expected )" (dart-sass).
+            if (scanner.peek() != '$') {
+                throw scanner.error("expected \")\".");
+            }
         }
         scanner.expect(')');
         return variables;
@@ -1870,16 +2419,32 @@ final class ScssParser extends SassExpressionParser {
 
     /// Derives the default namespace from an unresolved module URL.
     ///
+    /// Scheme-based URLs such as {@code scheme:bar} use the scheme-specific
+    /// part basename ({@code bar}), matching dart-sass {@code namespaceForPath}
+    /// so unknown schemes fail later at load time rather than at parse time.
+    ///
     /// @param url the module URL string
     /// @return the default namespace
     private String defaultNamespace(String url) {
         var path = url;
+        if (path.startsWith("sass:")) {
+            path = path.substring("sass:".length());
+        } else {
+            var colon = path.indexOf(':');
+            var slash = Math.max(path.indexOf('/'), path.indexOf('\\'));
+            // Opaque or hierarchical URL with a non-sass scheme: take the part
+            // after the scheme for basename extraction ({@code scheme:bar} →
+            // {@code bar}, {@code pkg:foo/bar} → {@code foo/bar}).
+            if (colon > 0 && (slash < 0 || colon < slash)) {
+                path = path.substring(colon + 1);
+                if (path.startsWith("//")) {
+                    path = path.substring(2);
+                }
+            }
+        }
         var slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
         if (slash >= 0) {
             path = path.substring(slash + 1);
-        }
-        if (path.startsWith("sass:")) {
-            path = path.substring("sass:".length());
         }
         if (path.startsWith("_")) {
             path = path.substring(1);
@@ -2324,6 +2889,45 @@ final class ScssParser extends SassExpressionParser {
         }
     }
 
+    /// Removes trailing whitespace and CSS comments from a plain interpolation.
+    ///
+    /// Used for {@code @-moz-document}, whose dart-sass parser treats comments
+    /// after the last function argument as inter-token whitespace rather than
+    /// prelude text.
+    ///
+    /// @param value the at-rule prelude
+    /// @return the prelude without trailing comments or spaces
+    private static Interpolation stripTrailingCommentsAndWhitespace(Interpolation value) {
+        @Nullable String plain = value.asPlain();
+        if (plain == null || plain.isEmpty()) {
+            return value;
+        }
+        var end = plain.length();
+        while (end > 0) {
+            var character = plain.charAt(end - 1);
+            if (character == ' ' || character == '\t' || character == '\n'
+                    || character == '\r' || character == '\f') {
+                end--;
+                continue;
+            }
+            if (end >= 2
+                    && plain.charAt(end - 2) == '*'
+                    && plain.charAt(end - 1) == '/') {
+                var open = plain.lastIndexOf("/*", end - 2);
+                if (open < 0) {
+                    break;
+                }
+                end = open;
+                continue;
+            }
+            break;
+        }
+        if (end == plain.length()) {
+            return value;
+        }
+        return Interpolation.plain(plain.substring(0, end), value.span());
+    }
+
     /// Rejects Sass variables and interpolation tokens before parsing plain CSS.
     ///
     /// Quoted strings may contain dollar signs, while loud comments are ignored.
@@ -2538,7 +3142,9 @@ final class ScssParser extends SassExpressionParser {
         while (true) {
             var next = scanner.peek();
             switch (next) {
-                case CssCharacters.END_OF_INPUT -> throw scanner.error("Unexpected end of input.");
+                // Match dart-sass string_scanner EOF wording for unterminated
+                // multi-line comments.
+                case CssCharacters.END_OF_INPUT -> throw scanner.error("expected more input.");
                 case '#' -> {
                     if (scanner.peek(1) == '{') {
                         singleInterpolation(text);

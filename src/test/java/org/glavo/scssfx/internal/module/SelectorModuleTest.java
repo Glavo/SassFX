@@ -14,6 +14,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Verifies the first pure AST-backed {@code sass:selector} module functions.
 @NotNullByDefault
@@ -79,7 +80,7 @@ final class SelectorModuleTest {
                 """
                         .example {
                           matched: :is(.menu, .toolbar, .fallback);
-                          nth: :nth-child(2n + 1 of .menu);
+                          nth: :nth-child(2n+1 of .menu);
                         }""",
                 result.output()
         );
@@ -164,6 +165,32 @@ final class SelectorModuleTest {
         assertEquals(Set.of(), result.loadedUrls());
     }
 
+    /// Reports nested and trailing-comma list shapes with dart-sass inspect text.
+    @Test
+    void reportsInvalidSelectorListInspect() {
+        var tooNested = failure(
+                """
+                        @use "sass:list";
+                        @use "sass:selector";
+                        a {b: selector.parse((list.append((), list.append((), c)),))}
+                        """
+        );
+        assertTrue(
+                tooNested.contains("$selector: (c,) is not a valid selector"),
+                tooNested
+        );
+        var innerComma = failure(
+                """
+                        @use "sass:selector";
+                        a {b: selector.parse(((c,),))}
+                        """
+        );
+        assertTrue(
+                innerComma.contains("$selector: ((c,),) is not a valid selector"),
+                innerComma
+        );
+    }
+
     /// Rejects selector values that require unsupported or invalid selector semantics.
     @Test
     void rejectsInvalidSelectorModuleArguments() {
@@ -184,13 +211,13 @@ final class SelectorModuleTest {
                 )
         );
         assertEquals(
-                "$selectors: Parent selectors in non-selector pseudo arguments aren't supported.",
+                "Parent selectors in non-selector pseudo arguments aren't supported.",
                 failure(
                         "@use \"sass:selector\"; .a { value: selector.nest(\".a\", \":lang(&)\"); }"
                 )
         );
         assertEquals(
-                "expected \"]\".",
+                "$selector: expected more input.",
                 failure(
                         "@use \"sass:selector\"; .a { value: selector.parse(\"[data=value\"); }"
                 )

@@ -76,24 +76,26 @@ public record InterpolationMethod(
         if (parts.size() == 1) {
             return of(space);
         }
+        // dart-sass always validates the second component as a hue method name
+        // before requiring the trailing {@code hue} keyword (or reporting arity).
+        var hueMethod = hueName(parts.get(1), argumentName);
+        if (parts.size() == 2) {
+            // Parenthesize multi-element lists in diagnostics to match dart-sass.
+            String shown = value instanceof SassList list && list.asList().size() > 1
+                    && !list.hasBrackets()
+                    ? "(" + value + ")"
+                    : value.toString();
+            throw new SassValueException(
+                    "$" + argumentName + ": Expected unquoted string \"hue\" after "
+                            + shown + "."
+            );
+        }
         if (parts.size() != 3) {
-            if (parts.size() == 2) {
-                // Parenthesize multi-element lists in diagnostics to match dart-sass.
-                String shown = value instanceof SassList list && list.asList().size() > 1
-                        && !list.hasBrackets()
-                        ? "(" + value + ")"
-                        : value.toString();
-                throw new SassValueException(
-                        "$" + argumentName + ": Expected unquoted string \"hue\" after "
-                                + shown + "."
-                );
-            }
             throw new SassValueException(
                     "$" + argumentName + ": Expected nothing after \"hue\" in " + value + "."
             );
         }
 
-        var hueMethod = hueName(parts.get(1), argumentName);
         var hueKeyword = parts.get(2);
         if (!(hueKeyword instanceof SassString hueString)
                 || hueString.hasQuotes()
@@ -142,12 +144,13 @@ public record InterpolationMethod(
     private static HueInterpolationMethod hueName(SassValue value, String argumentName) {
         if (!(value instanceof SassString string)) {
             throw new SassValueException(
-                    "$" + argumentName + ": " + value + " is not a string."
+                    "$" + argumentName + ": " + diagnosticValue(value) + " is not a string."
             );
         }
         if (string.hasQuotes()) {
             throw new SassValueException(
-                    "$" + argumentName + ": Expected " + value + " to be an unquoted string."
+                    "$" + argumentName + ": Expected " + value
+                            + " to be an unquoted string."
             );
         }
         try {
@@ -158,6 +161,19 @@ public record InterpolationMethod(
                             + string.text() + "."
             );
         }
+    }
+
+    /// Formats a value for dart-sass-style method diagnostics.
+    ///
+    /// Unbracketed multi-element lists are parenthesized so messages match
+    /// {@code (decreasing hue) is not a string}.
+    private static String diagnosticValue(SassValue value) {
+        if (value instanceof SassList list
+                && !list.hasBrackets()
+                && list.asList().size() > 1) {
+            return "(" + value + ")";
+        }
+        return value.toString();
     }
 
     /// Returns the CSS-like inspect form of this method.

@@ -121,6 +121,24 @@ public final class ModuleConfiguration {
         return new ModuleConfiguration(new Object(), true, values);
     }
 
+    /// Creates an implicit configuration from visible environment variables.
+    ///
+    /// Used when an {@code @import}-ed stylesheet contains {@code @forward}
+    /// rules so importer variables configure downstream {@code !default}
+    /// declarations, matching dart-sass {@code toImplicitConfiguration}.
+    ///
+    /// @param values values in source order; may be empty
+    /// @return an implicit configuration, or the shared empty instance
+    public static ModuleConfiguration implicit(
+            Map<String, ConfiguredValue> values
+    ) {
+        Objects.requireNonNull(values, "values");
+        if (values.isEmpty()) {
+            return EMPTY;
+        }
+        return new ModuleConfiguration(new Object(), false, values);
+    }
+
     /// Copies visible values for a forward rule that owns configuration.
     ///
     /// The returned configuration has an independent backing map and a fresh

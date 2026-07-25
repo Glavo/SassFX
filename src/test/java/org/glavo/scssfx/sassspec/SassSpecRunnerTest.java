@@ -185,7 +185,10 @@ final class SassSpecRunnerTest {
 
         try {
             Path suiteRoot = suiteRootFor(resolved);
-            String mountPrefix = archiveMountPrefix(resolved.archiveResource());
+            String mountPrefix = archiveMountPrefix(
+                    resolved.archiveResource(),
+                    resolved.archive()
+            );
             Path caseRoot = suiteRoot.resolve(mountPrefix)
                     .resolve(resolved.fixture().directory())
                     .normalize();
@@ -217,7 +220,10 @@ final class SassSpecRunnerTest {
         Path suiteRoot = Files.createDirectories(
                 temporaryDirectory.resolve("suite-" + materializedArchives.size())
         );
-        String mountPrefix = archiveMountPrefix(resolved.archiveResource());
+        String mountPrefix = archiveMountPrefix(
+                resolved.archiveResource(),
+                resolved.archive()
+        );
         for (Map.Entry<String, String> entry : resolved.archive().files().entrySet()) {
             String archivePath = entry.getKey();
             if (isExpectationArchivePath(archivePath)) {
@@ -283,7 +289,12 @@ final class SassSpecRunnerTest {
     ///
     /// @param archiveResource the classpath-relative archive path
     /// @return the slash-separated mount prefix, possibly empty
-    private static String archiveMountPrefix(String archiveResource) {
+    /// Mounts an HRX at its parent when case paths already include the stem.
+    ///
+    /// @param archiveResource the archive resource path
+    /// @param archive         the parsed archive
+    /// @return the suite-relative mount prefix
+    private static String archiveMountPrefix(String archiveResource, HrxArchive archive) {
         String path = archiveResource;
         if (path.startsWith("upstream/")) {
             path = path.substring("upstream/".length());
@@ -293,6 +304,22 @@ final class SassSpecRunnerTest {
         }
         if (path.equals("curated")) {
             return "";
+        }
+        int slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        String stem = slash >= 0 ? path.substring(slash + 1) : path;
+        String prefix = stem + "/";
+        boolean allPrefixed = !archive.files().isEmpty();
+        for (String archivePath : archive.files().keySet()) {
+            if (isExpectationArchivePath(archivePath)) {
+                continue;
+            }
+            if (!archivePath.equals(stem) && !archivePath.startsWith(prefix)) {
+                allPrefixed = false;
+                break;
+            }
+        }
+        if (allPrefixed && slash >= 0) {
+            return path.substring(0, slash);
         }
         return path;
     }
@@ -543,7 +570,17 @@ final class SassSpecRunnerTest {
                 || line.startsWith("    ,-->")) {
             return true;
         }
-        return line.startsWith("  ,") || line.startsWith("    ,");
+        // Span dumps use a comma leader whose indent grows with the line-number
+        // column width: two spaces for single-digit lines ("  ,"), three for
+        // double-digit lines ("   ,"), four for deeper multi-span layouts.
+        int index = 0;
+        while (index < line.length() && line.charAt(index) == ' ') {
+            index++;
+        }
+        return index >= 2
+                && index <= 4
+                && index < line.length()
+                && line.charAt(index) == ',';
     }
 
     /// Normalizes transport-level line endings and trailing blank lines.

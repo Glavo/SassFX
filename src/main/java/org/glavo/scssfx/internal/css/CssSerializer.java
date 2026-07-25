@@ -160,8 +160,10 @@ public final class CssSerializer {
         } else if (node instanceof CssDeclaration declaration) {
             writeExpandedDeclaration(declaration, buffer, indentation);
         } else if (node instanceof CssComment comment) {
-            writeIndentation(buffer, indentation);
-            buffer.forSpan(comment.span(), () -> buffer.append(comment.text()));
+            if (!isSourceMapComment(comment.text())) {
+                writeIndentation(buffer, indentation);
+                buffer.forSpan(comment.span(), () -> buffer.append(comment.text()));
+            }
         } else {
             throw new IllegalStateException("unsupported CSS node: " + node.getClass().getName());
         }
@@ -184,8 +186,22 @@ public final class CssSerializer {
             return;
         }
         buffer.append(" {");
-        writeExpandedChildren(rule, buffer, indentation);
+        // Empty bubbled {@code @keyframes {/**/}} matches dart-sass compact form.
+        boolean compactCommentOnly = isKeyframesAtRuleName(rule.name());
+        writeExpandedChildren(rule, buffer, indentation, compactCommentOnly);
         buffer.append('}');
+    }
+
+    /// Returns whether {@code name} is a keyframes at-rule, ignoring vendor prefixes.
+    private static boolean isKeyframesAtRuleName(String name) {
+        if ("keyframes".equals(name)) {
+            return true;
+        }
+        if (!name.startsWith("-")) {
+            return false;
+        }
+        int secondDash = name.indexOf('-', 1);
+        return secondDash > 1 && "keyframes".equals(name.substring(secondDash + 1));
     }
 
     /// Writes one expanded style rule.
@@ -242,7 +258,9 @@ public final class CssSerializer {
     ) {
         writeIndentation(buffer, indentation);
         buffer.forSpan(fontFace.span(), () -> buffer.append("@font-face {"));
-        writeExpandedChildren(fontFace, buffer, indentation);
+        // Bubbled empty font-face with only a comment uses compact spacing
+        // ({@code @font-face { /**/ }}), matching dart-sass.
+        writeExpandedChildren(fontFace, buffer, indentation, true);
         buffer.append('}');
     }
 
@@ -252,11 +270,43 @@ public final class CssSerializer {
             SourceMapBuffer buffer,
             int indentation
     ) {
-        @Nullable CssNode previous = null;
+        writeExpandedChildren(parent, buffer, indentation, false);
+    }
+
+    /// Writes the braced children of a parent node using expanded layout.
+    ///
+    /// When {@code compactCommentOnly} is true and the only visible children are
+    /// comments (for example a bubbled {@code @font-face {/**/}} or empty
+    /// {@code @keyframes {/**/}}), dart-sass emits a compact single-line form
+    /// with spaces around the comment rather than indented multi-line layout.
+    private static void writeExpandedChildren(
+            CssParentNode parent,
+            SourceMapBuffer buffer,
+            int indentation,
+            boolean compactCommentOnly
+    ) {
+        var visible = new java.util.ArrayList<CssNode>();
         for (var child : parent.children()) {
-            if (child.isInvisible()) {
-                continue;
+            if (!child.isInvisible()) {
+                visible.add(child);
             }
+        }
+        if (compactCommentOnly
+                && !visible.isEmpty()
+                && visible.stream().allMatch(CssComment.class::isInstance)) {
+            buffer.append(' ');
+            for (var index = 0; index < visible.size(); index++) {
+                if (index > 0) {
+                    buffer.append(' ');
+                }
+                var comment = (CssComment) visible.get(index);
+                buffer.forSpan(comment.span(), () -> buffer.append(comment.text()));
+            }
+            buffer.append(' ');
+            return;
+        }
+        @Nullable CssNode previous = null;
+        for (var child : visible) {
             if (previous != null && requiresSemicolon(previous)) {
                 buffer.append(';');
             }
@@ -356,7 +406,7 @@ public final class CssSerializer {
         } else if (node instanceof CssDeclaration declaration) {
             writeCompressedDeclaration(declaration, buffer);
         } else if (node instanceof CssComment comment) {
-            if (comment.isPreserved()) {
+            if (comment.isPreserved() && !isSourceMapComment(comment.text())) {
                 buffer.forSpan(comment.span(), () -> buffer.append(comment.text()));
             }
         } else {
@@ -408,10 +458,22 @@ public final class CssSerializer {
         appendDeclarationValue(declaration, buffer);
     }
 
+    /// Returns whether a CSS comment is a source-map or source-URL directive.
+    ///
+    /// Matches dart-sass serialization: {@code /*# sourceMappingURL=} and
+    /// {@code /*# sourceURL=} comments are never emitted.
+    ///
+    /// @param text the complete comment text including delimiters
+    /// @return whether the comment should be dropped from CSS output
+    private static boolean isSourceMapComment(String text) {
+        return text.startsWith("/*# sourceMappingURL=")
+                || text.startsWith("/*# sourceURL=");
+    }
+
     /// Returns whether a node contributes to compressed output.
     private static boolean isCompressedVisible(CssNode node) {
         if (node instanceof CssComment comment) {
-            return comment.isPreserved();
+            return comment.isPreserved() && !isSourceMapComment(comment.text());
         }
         if (node instanceof CssUnknownAtRule) {
             return true;

@@ -104,12 +104,20 @@ class Parser {
     protected void loudComment() {
         scanner.expect("/*");
         while (true) {
+            // Match dart-sass string_scanner EOF wording for unterminated
+            // multi-line comments.
+            if (scanner.isDone()) {
+                throw scanner.error("expected more input.");
+            }
             var next = scanner.read();
             if (next != '*') {
                 continue;
             }
 
             do {
+                if (scanner.isDone()) {
+                    throw scanner.error("expected more input.");
+                }
                 next = scanner.read();
             } while (next == '*');
             if (next == '/') {

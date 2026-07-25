@@ -47,6 +47,7 @@ import org.glavo.scssfx.internal.ast.SelectorExpression;
 import org.glavo.scssfx.internal.ast.UseRule;
 import org.glavo.scssfx.internal.ast.SassExpression;
 import org.glavo.scssfx.internal.module.ConfiguredValue;
+import org.glavo.scssfx.internal.module.ForwardedModuleView;
 import org.glavo.scssfx.internal.module.LoadedModule;
 import org.glavo.scssfx.internal.module.ModuleCss;
 import org.glavo.scssfx.internal.module.ModuleConfiguration;
@@ -225,6 +226,7 @@ public final class SassEvaluator implements
 
     /// Records whether a stylesheet execution is active.
     private boolean stylesheetActive;
+
 
     /// Records whether evaluation is producing a {@code @supports} condition value.
     ///
@@ -427,14 +429,29 @@ public final class SassEvaluator implements
         var previousStylesheet = stylesheet;
         var previousUrl = currentUrl;
         var previousConfiguration = currentConfiguration;
+        // Nested {@code @use} members stay local to the imported file: CSS is still
+        // emitted, but namespaces and {@code as *} exports are restored afterward
+        // so transitive members do not leak through {@code @import}.
+        var moduleSnapshot = environment.snapshotModuleTables();
         stylesheet = imported;
         currentUrl = url;
-        // Keep the active import configuration so @forward in imported files can
-        // apply configured !default values the way dart-sass does for
-        // import-to-forward chains.
-        currentConfiguration = previousConfiguration == null
-                ? ModuleConfiguration.empty()
-                : previousConfiguration;
+        // When the imported stylesheet forwards other files, snapshot visible
+        // variables as an implicit configuration (dart-sass toImplicitConfiguration)
+        // so importer $vars configure downstream !default through @forward.
+        boolean hasForwards = false;
+        for (var child : imported.children()) {
+            if (child instanceof ForwardRule) {
+                hasForwards = true;
+                break;
+            }
+        }
+        if (hasForwards) {
+            currentConfiguration = environment.toImplicitConfiguration();
+        } else {
+            currentConfiguration = previousConfiguration == null
+                    ? ModuleConfiguration.empty()
+                    : previousConfiguration;
+        }
         diagnostics.addAll(imported.parseTimeWarnings());
         try {
             for (var child : imported.children()) {
@@ -467,19 +484,22 @@ public final class SassEvaluator implements
                 }
             }
         } finally {
+            environment.restoreModuleTables(moduleSnapshot);
             stylesheet = previousStylesheet;
             currentUrl = previousUrl;
             currentConfiguration = previousConfiguration;
         }
     }
 
-    /// Loads a {@code @forward} target as a legacy import into the current
-    /// environment.
+    /// Loads a {@code @forward} target as an isolated module and surfaces it to
+    /// the current legacy-import environment.
     ///
-    /// Used when the containing stylesheet itself was loaded by {@code @import}.
-    /// Members of the forwarded file become visible to the importer without a
-    /// module namespace, matching dart-sass import-to-forward chains for the
-    /// unprefixed plain-forward form used by most sass-spec fixtures.
+    /// Resolution uses module candidates (not {@code *.import.scss}). Evaluation
+    /// runs in a separate module environment under the outer configuration
+    /// projected through the forward rule (implicit importer snapshot and any
+    /// {@code with} clause). Members are installed as live bindings with the
+    /// forward's prefix and show/hide filters applied, so importer assignments
+    /// stay shared with the module. CSS is re-emitted on every import occurrence.
     ///
     /// @param forward the forward rule
     private void executeForwardAsLegacyImport(ForwardRule forward) {
@@ -489,14 +509,98 @@ public final class SassEvaluator implements
                     forward.span()
             );
         }
-        // Prefix / show / hide filters are not applied in this import path yet;
-        // plain {@code @forward "url"} is the form required by residual specs.
-        moduleRegistry.loadImport(
-                forward.url(),
-                currentUrl,
-                forward.span(),
-                this
-        );
+        try {
+            var adjusted = currentConfiguration.throughForward(forward);
+            LoadedModule module;
+            if (forward.configuration().isEmpty()) {
+                module = moduleRegistry.load(
+                        forward.url(),
+                        currentUrl,
+                        forward.span(),
+                        this,
+                        adjusted,
+                        false
+                );
+            } else {
+                var configuration = evaluateForwardConfiguration(
+                        forward,
+                        adjusted
+                );
+                module = moduleRegistry.load(
+                        forward.url(),
+                        currentUrl,
+                        forward.span(),
+                        this,
+                        configuration,
+                        true
+                );
+                var configuredNames = new LinkedHashSet<String>();
+                var hardNames = new LinkedHashSet<String>();
+                for (var variable : forward.configuration()) {
+                    configuredNames.add(variable.name());
+                    if (!variable.guarded()) {
+                        hardNames.add(variable.name());
+                    }
+                }
+                for (var name : adjusted.names()) {
+                    if (!hardNames.contains(name)
+                            && !configuration.contains(name)) {
+                        adjusted.consume(name);
+                    }
+                }
+                configuration.retainOnly(configuredNames);
+                assertConfigurationConsumed(configuration);
+            }
+            importForwardedMembers(ForwardedModuleView.create(module, forward));
+            if (module.transitivelyContainsCss()) {
+                injectModuleCss(ModuleCss.combine(module));
+            }
+        } catch (SassValueException cause) {
+            throw new EvaluationException(
+                    Objects.requireNonNull(cause.getMessage(), "module failure message"),
+                    forward.span(),
+                    List.of(),
+                    cause
+            );
+        }
+    }
+
+    /// Installs a module's public members into the current environment without a
+    /// namespace (legacy {@code @import} visibility).
+    ///
+    /// Variables are shared as live {@link VariableBinding}s. Callables from a
+    /// later import replace earlier ones with the same name.
+    ///
+    /// @param module the module whose members become local
+    private void importModuleMembers(LoadedModule module) {
+        for (var entry : module.variables().entrySet()) {
+            environment.importVariableBinding(entry.getKey(), entry.getValue());
+        }
+        for (var entry : module.functions().entrySet()) {
+            environment.setFunction(entry.getValue());
+        }
+        for (var entry : module.mixins().entrySet()) {
+            environment.setMixin(entry.getValue());
+        }
+    }
+
+    /// Installs a forward view's public members into the current environment
+    /// without a namespace (legacy {@code @import} of a forwarding stylesheet).
+    ///
+    /// Prefix and show/hide filters from the forward rule are already applied by
+    /// the view. Variables remain live bindings shared with the original module.
+    ///
+    /// @param view the transformed export view
+    private void importForwardedMembers(ForwardedModuleView view) {
+        for (var entry : view.variables().entrySet()) {
+            environment.importVariableBinding(entry.getKey(), entry.getValue());
+        }
+        for (var entry : view.functions().entrySet()) {
+            environment.setFunction(entry.getValue());
+        }
+        for (var entry : view.mixins().entrySet()) {
+            environment.setMixin(entry.getValue());
+        }
     }
 
     /// Executes one stylesheet body, optionally retaining the resulting state.
@@ -736,21 +840,35 @@ public final class SassEvaluator implements
         return configuration;
     }
 
-    /// Fails when an explicit use configuration contains an unused value.
+    /// Fails when an explicit configuration contains an unused value.
     ///
     /// @param configuration the configuration to inspect
+    /// @param nameInError   whether diagnostics include the {@code $name} prefix
+    ///                      ({@code true} for {@code meta.load-css()}, {@code false}
+    ///                      for {@code @use}/{@code @forward} matching dart-sass)
     /// @throws EvaluationException if an explicit value remains unconsumed
     private static void assertConfigurationConsumed(
-            ModuleConfiguration configuration
+            ModuleConfiguration configuration,
+            boolean nameInError
     ) {
         @Nullable var unused = configuration.firstUnusedEntry();
         if (unused != null && configuration.isExplicit()) {
+            String message = nameInError
+                    ? "$" + unused.getKey()
+                    + " was not declared with !default in the @used module."
+                    : "This variable was not declared with !default in the @used module.";
             throw new EvaluationException(
-                    "$" + unused.getKey()
-                            + " was not declared with !default in the @used module.",
+                    message,
                     unused.getValue().configurationSpan()
             );
         }
+    }
+
+    /// Fails when an explicit {@code @use}/{@code @forward} configuration is unused.
+    ///
+    /// @param configuration the configuration to inspect
+    private static void assertConfigurationConsumed(ModuleConfiguration configuration) {
+        assertConfigurationConsumed(configuration, false);
     }
 
     /// Executes each legacy Sass or static CSS import argument in source order.
@@ -767,6 +885,10 @@ public final class SassEvaluator implements
                             dynamic.span()
                     );
                 }
+                // Install imported members into the current lexical frame.
+                // Nested style rules already open their own frames, so members
+                // remain usable after the import within the rule and do not
+                // leak once that frame closes (dart-sass nested @import).
                 moduleRegistry.loadImport(
                         dynamic.url(),
                         currentUrl,
@@ -881,6 +1003,7 @@ public final class SassEvaluator implements
                 .addAll(comments);
     }
 
+
     /// Loads and re-exports another module without adding a local namespace.
     ///
     /// @param statement the forward rule
@@ -951,21 +1074,26 @@ public final class SassEvaluator implements
         return StatementResult.CONTINUE;
     }
 
-    /// Evaluates a top-level font-face rule and executes its descriptor body.
+    /// Evaluates a font-face rule and executes its descriptor body.
+    ///
+    /// Nested {@code @font-face} rules bubble through enclosing style rules to
+    /// the stylesheet root, matching dart-sass. Nesting under other at-rules
+    /// remains rejected.
     ///
     /// @param statement the font-face rule
     /// @return the continue result, [StatementResult#CONTINUE]
     @Override
     public StatementResult visitFontFaceRule(FontFaceRule statement) {
-        if (!(requireCssParent() instanceof CssStylesheet)) {
+        var rule = new CssFontFace(statement.span());
+        // Bubble through style rules so nested font-face lands beside the
+        // outermost style rule rather than remaining nested.
+        addCssChild(rule, true);
+        if (!(rule.parent() instanceof CssStylesheet)) {
             throw new EvaluationException(
                     "@font-face rules may only be used at the stylesheet root.",
                     statement.span()
             );
         }
-
-        var rule = new CssFontFace(statement.span());
-        addCssChild(rule, false);
         var previousParent = requireCssParent();
         var previousFontFace = fontFace;
         cssParent = rule;
@@ -987,6 +1115,8 @@ public final class SassEvaluator implements
             }
         }
 
+        // Resume outer style-rule declarations after the bubbled font-face.
+        copyParentAfterSibling();
         if (!previousParent.children().isEmpty()) {
             previousParent.children().get(previousParent.children().size() - 1).setGroupEnd(true);
         }
@@ -1034,7 +1164,10 @@ public final class SassEvaluator implements
             );
         }
 
-        if (hasCssNesting()) {
+        // Native CSS nesting and {@code @keyframes} blocks keep {@code @media}
+        // in place. Bubbling out of a keyframe selector (e.g. {@code to}) would
+        // wrap the keyframe step in media, which dart-sass does not do.
+        if (hasCssNesting() || inKeyframes) {
             var nestedRule = new CssMediaRule(queries, statement.span());
             addCssChild(nestedRule, false);
             var previousParent = requireCssParent();
@@ -1113,9 +1246,9 @@ public final class SassEvaluator implements
             }
         }
 
-        if (activeStyleRule == null && !previousParent.children().isEmpty()) {
-            previousParent.children().get(previousParent.children().size() - 1).setGroupEnd(true);
-        }
+        // dart-sass visitMediaRule does not mark media rules as group ends, so
+        // consecutive root-level {@code @media} blocks are not separated by a
+        // blank line in expanded output.
         return StatementResult.CONTINUE;
     }
 
@@ -1201,9 +1334,7 @@ public final class SassEvaluator implements
             }
         }
 
-        if (activeStyleRule == null && !previousParent.children().isEmpty()) {
-            previousParent.children().get(previousParent.children().size() - 1).setGroupEnd(true);
-        }
+        // dart-sass visitSupportsRule does not mark supports rules as group ends.
         return StatementResult.CONTINUE;
     }
 
@@ -1319,12 +1450,21 @@ public final class SassEvaluator implements
         }
 
         var selectorText = performInterpolation(statement.selector());
+        // Empty interpolation such as {@code #{&}} outside a style rule yields
+        // an empty selector, which dart-sass reports as "expected selector."
+        if (selectorText.isBlank()) {
+            throw new EvaluationException(
+                    "expected selector.",
+                    statement.selector().span()
+            );
+        }
         SelectorList parsed;
         try {
             parsed = SelectorList.parse(
                     selectorText,
                     statement.selector().span(),
-                    isPlainCss()
+                    isPlainCss(),
+                    inKeyframes
             );
         } catch (SassValueException cause) {
             throw new EvaluationException(
@@ -1346,11 +1486,15 @@ public final class SassEvaluator implements
                     statement.selector().span()
             );
         }
-        // Top-level leading combinators are legal relative selectors in Sass
-        // (with deprecation) but forbidden when the source is plain CSS.
+        // Leading combinators are legal relative selectors in Sass (with
+        // deprecation) and under native plain-CSS nesting. They are forbidden
+        // as root statements of a plain CSS stylesheet — including when that
+        // file is nested under a Sass style rule via {@code @import}.
         if (isPlainCss()
-                && (styleRuleForParent == null || atRootExcludingStyleRule)
-                && hasLeadingCombinator(parsed)) {
+                && hasLeadingCombinator(parsed)
+                && (styleRuleForParent == null
+                        || atRootExcludingStyleRule
+                        || !styleRuleForParent.fromPlainCss())) {
             throw new EvaluationException(
                     "Top-level leading combinators aren't allowed in plain CSS.",
                     statement.selector().span()
@@ -1358,6 +1502,16 @@ public final class SassEvaluator implements
         }
 
         if (inKeyframes) {
+            // Nested style rules inside an existing keyframe selector ({@code from}/
+            // {@code to}/percent) are invalid. Keyframe selectors themselves are
+            // still allowed when the current parent is the {@code @keyframes} rule
+            // (even if an outer style rule is still on the evaluation stack).
+            if (styleRule != null && requireCssParent() == styleRule) {
+                throw new EvaluationException(
+                        "Style rules may not be used within keyframe blocks.",
+                        statement.span()
+                );
+            }
             var keyframeRule = new CssStyleRule(
                     new CssValue<>(parsed, statement.selector().span()),
                     statement.span()
@@ -1368,10 +1522,9 @@ public final class SassEvaluator implements
             cssParent = keyframeRule;
             styleRule = keyframeRule;
             styleRuleDepth++;
-            var scope = environment.scope(
-                    ScopeSemantics.LEXICAL,
-                    hasDirectDeclarations(statement.children())
-            );
+            // Style rules always open a lexical frame so nested @import members
+            // and local declarations stay confined to the rule body.
+            var scope = environment.scope(ScopeSemantics.LEXICAL, true);
             try {
                 for (var child : statement.children()) {
                     child.accept(this);
@@ -1439,10 +1592,9 @@ public final class SassEvaluator implements
         styleRuleForParent = rule;
         atRootExcludingStyleRule = false;
         styleRuleDepth++;
-        var scope = environment.scope(
-                ScopeSemantics.LEXICAL,
-                hasDirectDeclarations(statement.children())
-        );
+        // Always open a frame: nested @import injects members that must not
+        // leak after the rule ends (even when the body has no local decls).
+        var scope = environment.scope(ScopeSemantics.LEXICAL, true);
         try {
             for (var child : statement.children()) {
                 child.accept(this);
@@ -1481,7 +1633,7 @@ public final class SassEvaluator implements
         SelectorList target;
         try {
             target = SelectorList.parse(selectorText, statement.selector().span());
-            SelectorAlgebra.assertCompoundTargets(target, "extendee");
+            SelectorAlgebra.assertExtendDirectiveTargets(target);
         } catch (SassValueException cause) {
             throw new EvaluationException(
                     Objects.requireNonNull(cause.getMessage(), "selector failure message"),
@@ -2444,23 +2596,19 @@ public final class SassEvaluator implements
 
     /// Evaluates a parent-selector expression as the current style-rule selector.
     ///
-    /// The returned value uses the same nested list form as
-    /// {@code selector.parse()}, so comparisons such as {@code & == $sel}
-    /// work with selector-function results.
+    /// Outside a style rule, {@code &} evaluates to Sass {@code null} so
+    /// constructs such as {@code @if &} are false and {@code #{&}} expands to
+    /// empty text (which then fails selector parsing with
+    /// {@code expected selector.}). Inside a style rule, the returned value
+    /// uses the same nested list form as {@code selector.parse()}.
     ///
     /// @param expression the parent-selector expression
-    /// @return a comma-separated list of space-separated complex selectors
-    /// @throws EvaluationException when {@code &} is used outside a style rule
+    /// @return the parent selector list, or Sass null outside a style rule
     @Override
     public SassValue visitSelectorExpression(SelectorExpression expression) {
         Objects.requireNonNull(expression, "expression");
         if (styleRuleForParent == null) {
-            // dart-sass: parent selectors aren't available outside style rules
-            // when evaluating {@code &} as a value.
-            throw new EvaluationException(
-                    "Parent selectors aren't allowed here.",
-                    expression.span()
-            );
+            return SassNull.NULL;
         }
         return selectorListAsSassValue(styleRuleForParent.selector().value());
     }
@@ -2659,16 +2807,25 @@ public final class SassEvaluator implements
         }
 
         // Local/user-defined functions shadow calculation and built-in names.
-        @Nullable Callable callable;
-        try {
-            callable = environment.getFunction(expression.name(), expression.namespace());
-        } catch (SassValueException cause) {
-            throw new EvaluationException(
-                    Objects.requireNonNull(cause.getMessage(), "value failure message"),
-                    expression.span(),
-                    List.of(),
-                    cause
-            );
+        // Call sites whose original name begins with {@code --} are always plain
+        // CSS (dart-sass), even when a Sass function was registered under the
+        // underscore-normalized form ({@code @function __a} does not capture
+        // {@code --a()}).
+        @Nullable Callable callable = null;
+        boolean forcePlainCss = expression.originalName().startsWith("--");
+        if (!forcePlainCss) {
+            try {
+                callable = environment.getFunction(expression.name(), expression.namespace());
+            } catch (SassValueException cause) {
+                throw new EvaluationException(
+                        Objects.requireNonNull(cause.getMessage(), "value failure message"),
+                        expression.span(),
+                        List.of(),
+                        cause
+                );
+            }
+        } else if (expression.namespace() != null) {
+            throw new EvaluationException("Undefined function.", expression.span());
         }
         if (callable == null && expression.namespace() == null) {
             var lowerName = expression.name().toLowerCase(java.util.Locale.ROOT);
@@ -2684,7 +2841,9 @@ public final class SassEvaluator implements
                 // inside operate() for deprecation compatibility with dart-sass.
                 return visitCalculation(expression, lowerName);
             }
-            callable = BUILT_IN_FUNCTIONS.get(expression.name());
+            if (!forcePlainCss) {
+                callable = BUILT_IN_FUNCTIONS.get(expression.name());
+            }
         }
         if (callable == null && expression.namespace() == null) {
             callable = new PlainCssCallable(expression.originalName());
@@ -2713,24 +2872,204 @@ public final class SassEvaluator implements
 
     /// Evaluates the short-circuiting legacy `if()` expression.
     ///
+    /// Argument binding matches the pseudo-declaration
+    /// {@code @function if($condition, $if-true, $if-false)}. Only the selected
+    /// branch is evaluated.
+    ///
     /// @param expression the if expression
     /// @return the selected branch value
     @Override
     public SassValue visitLegacyIfExpression(LegacyIfExpression expression) {
+        reportDeprecation(
+                "The Sass if() syntax is deprecated in favor of the modern CSS syntax.\n\n"
+                        + "More info: https://sass-lang.com/d/if-function",
+                "if-function",
+                expression.span()
+        );
         var arguments = expression.arguments();
-        if (!arguments.named().isEmpty()
-                || arguments.rest() != null
-                || arguments.positional().size() != 3) {
+        if (arguments.keywordRest() != null) {
             throw new EvaluationException(
                     "Only 3 positional arguments are allowed in if().",
                     expression.span()
             );
         }
-        var condition = evaluate(arguments.positional().get(0));
-        var selected = condition.isTruthy()
-                ? arguments.positional().get(1)
-                : arguments.positional().get(2);
-        return evaluate(selected);
+        // Rest arguments must be expanded before binding. Evaluating the rest
+        // eagerly matches dart-sass (short-circuit still applies to named /
+        // pure-positional branches without a rest splat).
+        if (arguments.rest() != null) {
+            return evaluateLegacyIfWithRest(expression);
+        }
+        var positional = arguments.positional();
+        var named = new LinkedHashMap<>(arguments.named());
+        // Bind required parameters first so missing-argument diagnostics win over
+        // excess-argument checks for partial invocations such as if().
+        var conditionExpr = bindLegacyIfArgument(
+                positional,
+                named,
+                0,
+                "condition",
+                expression.span()
+        );
+        var ifTrueExpr = bindLegacyIfArgument(
+                positional,
+                named,
+                1,
+                "if-true",
+                expression.span()
+        );
+        var ifFalseExpr = bindLegacyIfArgument(
+                positional,
+                named,
+                2,
+                "if-false",
+                expression.span()
+        );
+        if (positional.size() > 3) {
+            throw new EvaluationException(
+                    "Only 3 arguments allowed, but " + positional.size()
+                            + (positional.size() == 1 ? " was" : " were")
+                            + " passed.",
+                    expression.span()
+            );
+        }
+        if (!named.isEmpty()) {
+            throw unknownNamed(named.keySet(), expression.span());
+        }
+        var condition = evaluate(conditionExpr);
+        var selected = condition.isTruthy() ? ifTrueExpr : ifFalseExpr;
+        return evaluate(selected).withoutSlash();
+    }
+
+    /// Evaluates a legacy {@code if()} call that uses a rest argument.
+    ///
+    /// Positional expressions and the rest splat are evaluated into a flat
+    /// value list, then bound to {@code $condition}, {@code $if-true}, and
+    /// {@code $if-false}. Named arguments fill missing slots after rest
+    /// expansion.
+    ///
+    /// @param expression the if expression
+    /// @return the selected branch value without slash metadata
+    private SassValue evaluateLegacyIfWithRest(LegacyIfExpression expression) {
+        var arguments = expression.arguments();
+        var values = new ArrayList<SassValue>();
+        for (var argument : arguments.positional()) {
+            values.add(evaluate(argument).withoutSlash());
+        }
+        var rest = evaluate(Objects.requireNonNull(arguments.rest(), "rest"))
+                .withoutSlash();
+        if (rest instanceof SassMap) {
+            throw new EvaluationException(
+                    "Only 3 positional arguments are allowed in if().",
+                    expression.span()
+            );
+        } else if (rest instanceof SassList list) {
+            for (var element : list.contents()) {
+                values.add(element.withoutSlash());
+            }
+        } else {
+            values.add(rest);
+        }
+        var named = new LinkedHashMap<String, SassValue>();
+        for (var entry : arguments.named().entrySet()) {
+            named.put(entry.getKey(), evaluate(entry.getValue()).withoutSlash());
+        }
+        var condition = takeLegacyIfValue(
+                values,
+                named,
+                0,
+                "condition",
+                expression.span()
+        );
+        var ifTrue = takeLegacyIfValue(
+                values,
+                named,
+                1,
+                "if-true",
+                expression.span()
+        );
+        var ifFalse = takeLegacyIfValue(
+                values,
+                named,
+                2,
+                "if-false",
+                expression.span()
+        );
+        if (!values.isEmpty()) {
+            throw new EvaluationException(
+                    "Only 3 arguments allowed, but "
+                            + (arguments.positional().size()
+                            + (rest instanceof SassList list
+                            ? list.contents().size()
+                            : 1)
+                            + arguments.named().size())
+                            + " were passed.",
+                    expression.span()
+            );
+        }
+        if (!named.isEmpty()) {
+            throw unknownNamed(named.keySet(), expression.span());
+        }
+        return (condition.isTruthy() ? ifTrue : ifFalse).withoutSlash();
+    }
+
+    /// Takes one bound legacy {@code if()} value from positional slots or named
+    /// leftovers.
+    ///
+    /// @param values remaining positional values (consumed from the front)
+    /// @param named  remaining named values (consumed on use)
+    /// @param index  the parameter index (for error text only)
+    /// @param name   the parameter name without {@code $}
+    /// @param span   the complete {@code if()} span
+    /// @return the bound value
+    private static SassValue takeLegacyIfValue(
+            ArrayList<SassValue> values,
+            LinkedHashMap<String, SassValue> named,
+            int index,
+            String name,
+            SourceSpan span
+    ) {
+        if (!values.isEmpty()) {
+            return values.remove(0);
+        }
+        @Nullable SassValue namedValue = named.remove(name);
+        if (namedValue != null) {
+            return namedValue;
+        }
+        throw new EvaluationException(
+                "Missing argument $" + name + ".",
+                span
+        );
+    }
+
+    /// Binds one legacy {@code if()} parameter from positional or named arguments.
+    ///
+    /// @param positional the positional argument expressions
+    /// @param named      remaining named arguments (consumed on use)
+    /// @param index      the positional index of this parameter
+    /// @param name       the parameter name without {@code $}
+    /// @param span       the complete {@code if()} span for diagnostics
+    /// @return the bound argument expression
+    private SassExpression bindLegacyIfArgument(
+            List<SassExpression> positional,
+            Map<String, SassExpression> named,
+            int index,
+            String name,
+            SourceSpan span
+    ) {
+        if (index < positional.size()) {
+            if (named.containsKey(name)) {
+                throw new EvaluationException(
+                        "Argument $" + name + " was passed both by position and by name.",
+                        span
+                );
+            }
+            return positional.get(index);
+        }
+        @Nullable SassExpression namedValue = named.remove(name);
+        if (namedValue != null) {
+            return namedValue;
+        }
+        throw new EvaluationException("Missing argument $" + name + ".", span);
     }
 
     /// Evaluates a modern CSS-style {@code if()} expression.
@@ -2972,11 +3311,18 @@ public final class SassEvaluator implements
             @Nullable SupportsBooleanOperator parentOperator
     ) {
         if (condition instanceof SupportsDeclaration declaration) {
-            var name = evaluateSupportsValue(declaration.name());
-            var value = evaluateSupportsValue(declaration.value());
+            // Names unquote so {@code ("--theme": …)} becomes {@code (--theme: …)}.
+            // Values keep quotes so {@code (a: "b")} remains quoted.
+            var name = evaluateSupportsValue(declaration.name(), false);
+            var value = evaluateSupportsValue(declaration.value(), true);
             // Custom-property values already include post-colon whitespace/comments
             // captured by the parser, so only a bare colon is emitted. Ordinary
-            // declarations use the canonical ": " separator.
+            // declarations use the canonical ": " separator. Newlines left after
+            // omitted silent comments collapse to a single space so
+            // {@code --a: //\n  b} matches dart-sass {@code --a:  b}.
+            if (declaration.customProperty()) {
+                value = collapseSupportsCustomPropertyNewlines(value);
+            }
             return "(" + name
                     + (declaration.customProperty() ? ":" : ": ")
                     + value + ")";
@@ -2989,7 +3335,9 @@ public final class SassEvaluator implements
             return "(" + performInterpolation(anything.contents()) + ")";
         }
         if (condition instanceof SupportsInterpolation interpolation) {
-            return evaluateSupportsValue(interpolation.expression());
+            // Interpolation forms such as {@code @supports #{$cond}} unquote so an
+            // empty string still yields an empty condition (must-fail diagnostic).
+            return evaluateSupportsValue(interpolation.expression(), false);
         }
         if (condition instanceof SupportsNegation negation) {
             return "not " + parenthesizeSupportsCondition(negation.condition(), null);
@@ -3022,20 +3370,62 @@ public final class SassEvaluator implements
 
     /// Evaluates a SassScript value for supports condition serialization.
     ///
+    /// Calculations are left unsimplified so CSS sees the original tree
+    /// ({@code calc(1 + 2)}).
+    ///
     /// @param expression the expression producing the value
-    /// @return the unquoted CSS representation
-    private String evaluateSupportsValue(SassExpression expression) {
+    /// @param quote      whether quoted strings retain surrounding quotes
+    /// @return the CSS representation for the supports condition
+    private String evaluateSupportsValue(SassExpression expression, boolean quote) {
         var previous = inSupportsDeclaration;
         inSupportsDeclaration = true;
         try {
             var value = evaluate(expression);
-            return valueOperation(expression.span(), () -> value.toCssString(false));
+            return valueOperation(expression.span(), () -> value.toCssString(quote));
         } finally {
             inSupportsDeclaration = previous;
         }
     }
 
+    /// Collapses newline-led indentation in custom-property supports values.
+    ///
+    /// Silent comments omit their text but leave the following newline and
+    /// indent in the raw residual. Dart Sass folds those into a single space
+    /// when emitting custom-property supports queries.
+    ///
+    /// @param value the raw custom-property value text
+    /// @return the value with newline runs folded to one space
+    private static String collapseSupportsCustomPropertyNewlines(String value) {
+        var result = new StringBuilder(value.length());
+        for (var index = 0; index < value.length(); index++) {
+            var character = value.charAt(index);
+            // Fold only line breaks. Leave form feed so {@code \f} escapes stay.
+            if (character == '\n' || character == '\r') {
+                if (character == '\r'
+                        && index + 1 < value.length()
+                        && value.charAt(index + 1) == '\n') {
+                    index++;
+                }
+                while (index + 1 < value.length()) {
+                    var next = value.charAt(index + 1);
+                    if (next == ' ' || next == '\t') {
+                        index++;
+                        continue;
+                    }
+                    break;
+                }
+                result.append(' ');
+                continue;
+            }
+            result.append(character);
+        }
+        return result.toString();
+    }
+
     /// Evaluates interpolation parts to their unquoted textual representation.
+    ///
+    /// Nested calculations inside {@code #{…}} fully simplify even when the
+    /// surrounding supports declaration leaves bare {@code calc()} unsimplified.
     ///
     /// @param interpolation the interpolation to evaluate
     /// @return the concatenated text
@@ -3047,7 +3437,14 @@ public final class SassEvaluator implements
                 continue;
             }
             var expression = ((ExpressionInterpolationPart) part).expression();
-            var value = evaluate(expression);
+            var previousSupports = inSupportsDeclaration;
+            inSupportsDeclaration = false;
+            SassValue value;
+            try {
+                value = evaluate(expression);
+            } finally {
+                inSupportsDeclaration = previousSupports;
+            }
             if (value instanceof SassString string) {
                 result.append(string.text());
             } else {
@@ -3196,6 +3593,10 @@ public final class SassEvaluator implements
 
     /// Evaluates arguments and invokes a callable.
     ///
+    /// Plain CSS callables keep slash-number presentation so forms such as
+    /// {@code rgb(1 2 3 / 50%)} serialize with a slash alpha. Sass callables
+    /// strip slash metadata so division values become ordinary numbers.
+    ///
     /// @param callable  the callable to invoke
     /// @param arguments the unevaluated argument list
     /// @param span      the invocation span
@@ -3205,7 +3606,12 @@ public final class SassEvaluator implements
             ArgumentList arguments,
             SourceSpan span
     ) {
-        return runCallable(callable, evaluateArguments(arguments, span), span);
+        boolean stripSlash = !(callable instanceof PlainCssCallable);
+        return runCallable(
+                callable,
+                evaluateArguments(arguments, span, stripSlash),
+                span
+        );
     }
 
     /// Invokes a callable with arguments that have already been evaluated.
@@ -3237,7 +3643,11 @@ public final class SassEvaluator implements
                         bound.values()
                 );
                 checkUnusedKeywords(bound.rest(), span);
-                return result;
+                // Bare slash-numbers returned by builtins (e.g. list.nth of
+                // {@code 1/2}) lose slash presentation so CSS emits the
+                // quotient. Lists keep nested slash metadata so forms such as
+                // {@code 1 2/3 4} still serialize with slashes.
+                return result instanceof SassNumber ? result.withoutSlash() : result;
             });
         }
         if (callable instanceof PlainCssCallable plainCss) {
@@ -3345,9 +3755,10 @@ public final class SassEvaluator implements
                     span,
                     this,
                     configuration,
-                    configured
+                    configured,
+                    true
             );
-            assertConfigurationConsumed(configuration);
+            assertConfigurationConsumed(configuration, true);
             var loadedExtensions = new ArrayList<PendingExtension>();
             collectExtensions(module, loadedExtensions, new IdentityHashMap<>());
             pendingExtensions.addAll(loadedExtensions);
@@ -3631,16 +4042,16 @@ public final class SassEvaluator implements
         injected.setGroupEnd(true);
     }
 
-    /// Injects one font-face rule at the stylesheet root.
+    /// Injects one font-face rule, bubbling through style rules to the root.
     private void injectFontFace(CssFontFace fontFace) {
-        if (!(requireCssParent() instanceof CssStylesheet)) {
+        var injected = new CssFontFace(fontFace.span());
+        addCssChild(injected, true);
+        if (!(injected.parent() instanceof CssStylesheet)) {
             throw new EvaluationException(
                     "@font-face rules may only be used at the stylesheet root.",
                     fontFace.span()
             );
         }
-        var injected = new CssFontFace(fontFace.span());
-        addCssChild(injected, false);
         var previousParent = requireCssParent();
         var previousFontFace = this.fontFace;
         cssParent = injected;
@@ -3653,6 +4064,7 @@ public final class SassEvaluator implements
             this.fontFace = previousFontFace;
             cssParent = previousParent;
         }
+        copyParentAfterSibling();
     }
 
     /// Executes a user-defined function body and returns its `@return` value.
@@ -3824,23 +4236,22 @@ public final class SassEvaluator implements
             EvaluatedArguments evaluated,
             SourceSpan span
     ) {
+        // Content blocks run in the include site's environment without the
+        // mixin flag, so meta.content-exists() fails inside {@code @content}.
         withEnvironment(content.environment().closure(), () -> {
-            environment.withMixin(() -> {
-                var scope = environment.scope(ScopeSemantics.LEXICAL, true);
-                try {
-                    @Nullable SassArgumentList rest = bindParameters(
-                            content.parameters(),
-                            evaluated,
-                            span
-                    );
-                    executeChildren(content.children());
-                    checkUnusedKeywords(rest, span);
-                    return null;
-                } finally {
-                    scope.close();
-                }
-            });
-            return null;
+            var scope = environment.scope(ScopeSemantics.LEXICAL, true);
+            try {
+                @Nullable SassArgumentList rest = bindParameters(
+                        content.parameters(),
+                        evaluated,
+                        span
+                );
+                executeChildren(content.children());
+                checkUnusedKeywords(rest, span);
+                return null;
+            } finally {
+                scope.close();
+            }
         });
     }
 
@@ -3848,55 +4259,107 @@ public final class SassEvaluator implements
     ///
     /// @param arguments the unevaluated arguments
     /// @param span      the invocation span
-    /// @return the evaluated arguments
+    /// @return the evaluated arguments with slash metadata stripped
     private EvaluatedArguments evaluateArguments(ArgumentList arguments, SourceSpan span) {
+        return evaluateArguments(arguments, span, true);
+    }
+
+    /// Evaluates an argument invocation into positional and named values.
+    ///
+    /// @param arguments  the unevaluated arguments
+    /// @param span       the invocation span
+    /// @param stripSlash whether to strip slash-division presentation metadata
+    /// @return the evaluated arguments
+    private EvaluatedArguments evaluateArguments(
+            ArgumentList arguments,
+            SourceSpan span,
+            boolean stripSlash
+    ) {
         var positional = new ArrayList<SassValue>();
         for (var argument : arguments.positional()) {
-            positional.add(evaluate(argument).withoutSlash());
+            var value = evaluate(argument);
+            positional.add(stripSlash ? value.withoutSlash() : value);
         }
         var named = new LinkedHashMap<String, SassValue>();
         for (var entry : arguments.named().entrySet()) {
-            named.put(entry.getKey(), evaluate(entry.getValue()).withoutSlash());
+            var value = evaluate(entry.getValue());
+            named.put(entry.getKey(), stripSlash ? value.withoutSlash() : value);
         }
         var separator = ListSeparator.UNDECIDED;
         if (arguments.rest() != null) {
-            var rest = evaluate(arguments.rest()).withoutSlash();
+            // Expand rest first, then strip slash on each element. Avoid calling
+            // SassList.withoutSlash on the whole rest (that rewrites a trailing
+            // slash-number as a nested slash list for color channels).
+            var rest = evaluate(arguments.rest());
             if (rest instanceof SassMap map) {
-                addRestMap(named, map, span);
+                addRestMap(named, map, span, stripSlash);
             } else if (rest instanceof SassArgumentList argumentList) {
-                positional.addAll(argumentList.asList());
+                for (var element : argumentList.asList()) {
+                    positional.add(stripSlash ? element.withoutSlash() : element);
+                }
                 separator = argumentList.separator();
-                named.putAll(argumentList.keywords());
+                for (var entry : argumentList.keywords().entrySet()) {
+                    named.put(
+                            entry.getKey(),
+                            stripSlash ? entry.getValue().withoutSlash() : entry.getValue()
+                    );
+                }
             } else if (rest instanceof SassList list) {
-                positional.addAll(list.contents());
+                for (var element : list.contents()) {
+                    positional.add(stripSlash ? element.withoutSlash() : element);
+                }
                 separator = list.separator();
             } else {
-                positional.add(rest);
+                positional.add(stripSlash ? rest.withoutSlash() : rest);
             }
         }
         if (arguments.keywordRest() != null) {
-            var keywordRest = evaluate(arguments.keywordRest()).withoutSlash();
+            var keywordRest = evaluate(arguments.keywordRest());
+            if (stripSlash) {
+                keywordRest = keywordRest.withoutSlash();
+            }
             if (!(keywordRest instanceof SassMap map)) {
                 throw new EvaluationException(
                         "Variable keyword arguments must be a map (was " + keywordRest + ").",
                         span
                 );
             }
-            addRestMap(named, map, span);
+            addRestMap(named, map, span, stripSlash);
         }
         return new EvaluatedArguments(List.copyOf(positional), named, separator);
     }
 
     /// Merges a rest map into the named-argument table.
+    ///
+    /// Keys must be Sass strings (quoted or unquoted). Values keep their
+    /// evaluated form after any outer {@code withoutSlash} rewrite.
     private void addRestMap(
             LinkedHashMap<String, SassValue> named,
             SassMap map,
             SourceSpan span
     ) {
+        addRestMap(named, map, span, true);
+    }
+
+    /// Merges a rest map into the named-argument table.
+    ///
+    /// @param named      the named-argument table to extend
+    /// @param map        the rest map
+    /// @param span       the invocation span for diagnostics
+    /// @param stripSlash whether to strip slash presentation on values
+    private void addRestMap(
+            LinkedHashMap<String, SassValue> named,
+            SassMap map,
+            SourceSpan span,
+            boolean stripSlash
+    ) {
         for (var entry : map.contents().entrySet()) {
-            if (!(entry.getKey() instanceof SassString key) || key.hasQuotes()) {
+            if (!(entry.getKey() instanceof SassString key)) {
+                var keyText = entry.getKey().toCssString();
                 throw new EvaluationException(
-                        "Variable keyword argument map must have string keys.",
+                        "Variable keyword argument map must have string keys. "
+                                + keyText + " is not a string in ("
+                                + keyText + ": " + entry.getValue().toCssString() + ").",
                         span
                 );
             }
@@ -3907,7 +4370,10 @@ public final class SassEvaluator implements
                         span
                 );
             }
-            named.put(name, entry.getValue());
+            named.put(
+                    name,
+                    stripSlash ? entry.getValue().withoutSlash() : entry.getValue()
+            );
         }
     }
 
@@ -4029,9 +4495,13 @@ public final class SassEvaluator implements
 
         if (builtIn.restParameter() == null) {
             if (positional.size() > params.size()) {
+                // Named excess uses "positional arguments" so the message
+                // distinguishes arity from unknown-named diagnostics.
+                var argumentWord = !named.isEmpty()
+                        ? (params.size() == 1 ? "positional argument" : "positional arguments")
+                        : (params.size() == 1 ? "argument" : "arguments");
                 throw new EvaluationException(
-                        "Only " + params.size() + " "
-                                + (params.size() == 1 ? "argument" : "arguments")
+                        "Only " + params.size() + " " + argumentWord
                                 + " allowed, but " + positional.size() + " "
                                 + (positional.size() == 1 ? "was" : "were")
                                 + " passed.",
@@ -4246,10 +4716,18 @@ public final class SassEvaluator implements
                 assertCalculationSumWhitespace(binary);
             }
             try {
+                Object left = visitCalculationExpression(binary.left(), inLegacySassFunction);
+                Object right = visitCalculationExpression(binary.right(), inLegacySassFunction);
+                // @supports keeps the original calc tree so CSS sees calc(1 + 2)
+                // rather than a simplified calc(3). Interpolation still simplifies
+                // because it evaluates outside this calculation visitor.
+                if (inSupportsDeclaration) {
+                    return new CalculationOperation(operator, left, right);
+                }
                 return SassCalculation.operate(
                         operator,
-                        visitCalculationExpression(binary.left(), inLegacySassFunction),
-                        visitCalculationExpression(binary.right(), inLegacySassFunction),
+                        left,
+                        right,
                         inLegacySassFunction,
                         message -> reportDeprecation(message, "global-builtin", binary.span())
                 );

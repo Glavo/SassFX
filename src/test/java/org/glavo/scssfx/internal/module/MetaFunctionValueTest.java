@@ -105,6 +105,30 @@ final class MetaFunctionValueTest {
                                 + "a { value: meta.get-function(\"sum-value\"); }"
                 )
         );
+        // meta.call evaluates every argument before invoking if, unlike direct if().
+        assertEquals(
+                "Undefined variable.",
+                failure(
+                        "@use \"sass:meta\"; a { b: meta.call(meta.get-function(\"if\"), true, \"\", $undefined); }"
+                )
+        );
+    }
+
+    /// Resolves the eager global {@code if} through a first-class function reference.
+    @Test
+    void callsGlobalIfThroughGetFunction() throws Exception {
+        assertEquals(
+                """
+                        a {
+                          b: 1;
+                        }""",
+                compile(
+                        """
+                                @use "sass:meta";
+                                a { b: meta.call(meta.get-function("if"), true, 1, 2); }
+                                """
+                ).output()
+        );
     }
 
     /// Compiles one SCSS string source with the expanded CSS target.

@@ -51,9 +51,26 @@ final class SelectorExprProbeTest {
     }
 
     @Test
-    void parentOutsideStyleRuleFails() {
-        assertThrows(SassCompilationException.class, () ->
-                css("$x: &;")
+    void parentOutsideStyleRuleIsNull() throws Exception {
+        var out = css("""
+                @if & {
+                  .x { a: b; }
+                }
+                .y { c: d; }
+                """);
+        assertTrue(out.contains(".y"), out);
+        assertTrue(!out.contains(".x"), out);
+    }
+
+    @Test
+    void parentInterpolationAtRootFailsSelector() {
+        var ex = assertThrows(SassCompilationException.class, () ->
+                css("#{&} { a: b; }")
+        );
+        assertTrue(
+                ex.primaryDiagnostic().message().toLowerCase().contains("selector")
+                        || ex.primaryDiagnostic().message().contains("expected"),
+                ex.primaryDiagnostic().message()
         );
     }
 }

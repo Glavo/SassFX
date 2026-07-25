@@ -507,7 +507,7 @@ final class SassExpressionParserTest {
         assertFailure("#12345", "");
         var modernIf = assertInstanceOf(
                 IfExpression.class,
-                parse("if(true: red; else: blue)")
+                parse("if(sass(true): red; else: blue)")
         );
         assertEquals(2, modernIf.branches().size());
         assertFailure("red.$value", "$");
@@ -549,10 +549,16 @@ final class SassExpressionParserTest {
         assertFailure("$", "");
     }
 
-    /// Verifies unicode-range remains deferred and parent selectors parse as values.
+    /// Verifies unicode-range tokens parse as unquoted strings and {@code &} is a selector value.
     @Test
-    void rejectsDeferredExpressionForms() {
-        assertFailure("u+123", "u+");
+    void parsesUnicodeRangeAndParentSelector() {
+        var range = assertInstanceOf(StringExpression.class, parse("u+123"));
+        assertEquals("u+123", range.text().asPlain());
+        assertFalse(range.hasQuotes());
+        var upper = assertInstanceOf(StringExpression.class, parse("U+1A2B-CDEF"));
+        assertEquals("U+1A2B-CDEF", upper.text().asPlain());
+        var empty = assertThrows(ParseException.class, () -> parse("U+"));
+        assertEquals("Expected hex digit or \"?\".", empty.getMessage());
         assertInstanceOf(SelectorExpression.class, parse("&"));
     }
 

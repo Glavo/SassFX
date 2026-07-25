@@ -113,7 +113,7 @@ final class SassCompilerTest {
                         :not(.parent) {
                           color: red;
                         }
-                        :nth-child(2n + 1 of .parent) {
+                        :nth-child(2n+1 of .parent) {
                           color: blue;
                         }
                         :has(> .parent) {
@@ -341,6 +341,24 @@ final class SassCompilerTest {
                         }""",
                 result.output()
         );
+    }
+
+    /// Treats spaced {@code + a} as a next-sibling combinator, not an include.
+    @Test
+    void treatsSpacedPlusAsSelectorCombinatorInIndentedSass() throws Exception {
+        var result = new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                @mixin a
+                                  b: c
+                                d
+                                  + a
+                                """,
+                        Syntax.SASS
+                ),
+                CssTarget.DEFAULT
+        );
+        assertEquals("", result.output().strip());
     }
 
     /// Compiles indented control flow, content blocks, and valued nested properties.
@@ -587,7 +605,6 @@ final class SassCompilerTest {
                             -fx-opacity: 1;
                           }
                         }
-
                         @media (hover) {
                           Pane {
                             -fx-opacity: 0.5;
@@ -635,7 +652,6 @@ final class SassCompilerTest {
                             -fx-opacity: 1;
                           }
                         }
-
                         @supports not (display: block) {
                           Pane {
                             -fx-opacity: 0.5;
@@ -712,7 +728,6 @@ final class SassCompilerTest {
                             -fx-opacity: 1;
                           }
                         }
-
                         @supports (--theme: dark) {
                           Pane {
                             -fx-opacity: 0.5;
@@ -756,7 +771,7 @@ final class SassCompilerTest {
                 "@supports (display: grid) and (color: red) or (width: 1px) {}"
         );
         assertEquals(
-                "Operators may not be mixed without a grouping parenthesis.",
+                "Expected \"and\".",
                 mixed.getMessage()
         );
 
@@ -919,13 +934,24 @@ final class SassCompilerTest {
 
     /// Rejects unsupported at-rules and conditional contexts with unsafe CSS semantics.
     @Test
-    void rejectsUnsupportedAtRulesAndUnsafeConditionalNesting() {
+    void rejectsUnsupportedAtRulesAndUnsafeConditionalNesting() throws Exception {
+        // Nested @font-face in style rules bubbles to the stylesheet root (dart-sass).
         assertEquals(
-                "This at-rule may only be used at the stylesheet root.",
-                assertCompilationFailure("Pane { @font-face { src: local(Example); } }").getMessage()
+                """
+                        Pane {
+                          -fx-opacity: 1;
+                        }
+                        @font-face {
+                          src: local(Example);
+                        }
+                        """.strip(),
+                compile("Pane { -fx-opacity: 1; @font-face { src: local(Example); } }")
+                        .output()
+                        .replace("\r\n", "\n")
+                        .strip()
         );
         assertEquals(
-                "Supports rules may not be used within nested declarations.",
+                "This at-rule is not allowed here.",
                 assertCompilationFailure(
                         "Pane { font: { @supports (display: grid) {} } }"
                 ).getMessage()

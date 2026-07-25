@@ -84,6 +84,29 @@ public final class ModuleRegistry {
             ModuleConfiguration configuration,
             boolean hasOwnConfiguration
     ) {
+        return load(url, baseUrl, loadSpan, evaluator, configuration, hasOwnConfiguration, false);
+    }
+
+    /// Loads a module URL with optional load-css diagnostic wording.
+    ///
+    /// @param url                 the unresolved module URL
+    /// @param baseUrl             the containing stylesheet URL, or {@code null}
+    /// @param loadSpan            the module directive span
+    /// @param evaluator           the evaluator used to execute newly loaded modules
+    /// @param configuration       values available to root {@code !default} declarations
+    /// @param hasOwnConfiguration whether the loading directive itself has a {@code with} clause
+    /// @param fromLoadCss         whether the load is from {@code meta.load-css()}
+    /// @return the loaded module
+    /// @throws EvaluationException if loading or evaluation fails
+    public LoadedModule load(
+            String url,
+            @Nullable URI baseUrl,
+            SourceSpan loadSpan,
+            SassEvaluator evaluator,
+            ModuleConfiguration configuration,
+            boolean hasOwnConfiguration,
+            boolean fromLoadCss
+    ) {
         Objects.requireNonNull(url, "url");
         Objects.requireNonNull(loadSpan, "loadSpan");
         Objects.requireNonNull(evaluator, "evaluator");
@@ -92,11 +115,15 @@ public final class ModuleRegistry {
         @Nullable LoadedModule builtIn = builtInModules.find(url);
         if (builtIn != null) {
             if (hasOwnConfiguration) {
-                // Prefer the sass: name when present so diagnostics match dart-sass
-                // ({@code Built-in module sass:color can't be configured.}).
-                String name = url.startsWith("sass:") ? url : "sass:" + url;
+                // load-css includes the module URL; @use/@forward use the generic form.
+                if (fromLoadCss && url.startsWith("sass:")) {
+                    throw new EvaluationException(
+                            "Built-in module " + url + " can't be configured.",
+                            loadSpan
+                    );
+                }
                 throw new EvaluationException(
-                        "Built-in module " + name + " can't be configured.",
+                        "Built-in modules can't be configured.",
                         loadSpan
                 );
             }
@@ -129,19 +156,28 @@ public final class ModuleRegistry {
             if (configuration.isExplicit()
                     && !originalConfiguration.sameOriginal(configuration)
                     && existing.couldHaveBeenConfigured(configuration.names())) {
+                // load-css names the stylesheet (names aren't obvious from the
+                // include span). @use/@forward and nested loads use the generic
+                // form, matching dart-sass namesInErrors.
                 throw new EvaluationException(
-                        displayUrl(canonical)
+                        fromLoadCss
+                                ? displayUrl(canonical)
                                 + " was already loaded, so it can't be configured using "
-                                + "\"with\".",
+                                + "\"with\"."
+                                : "This module was already loaded, so it can't be configured "
+                                + "using \"with\".",
                         loadSpan
                 );
             }
             return existing;
         }
         if (active.containsKey(canonical)) {
+            // load-css names the stylesheet; @use/@forward use the generic form.
             throw new EvaluationException(
-                    "Module loop: " + displayUrl(canonical)
-                            + " is already being loaded.",
+                    fromLoadCss
+                            ? "Module loop: " + displayUrl(canonical)
+                            + " is already being loaded."
+                            : "Module loop: this module is already being loaded.",
                     loadSpan
             );
         }
@@ -183,9 +219,52 @@ public final class ModuleRegistry {
         Objects.requireNonNull(loadSpan, "loadSpan");
         Objects.requireNonNull(evaluator, "evaluator");
 
+        loadImport(url, baseUrl, loadSpan, evaluator, true);
+    }
+
+    /// Loads a stylesheet as a legacy import without preferring import-only files.
+    ///
+    /// Used when {@code @forward} appears inside an {@code @import}-ed file so
+    /// {@code other.import.scss} can forward {@code other.scss} without recursion.
+    ///
+    /// @param url       the unresolved import URL
+    /// @param baseUrl   the containing stylesheet URL, or {@code null}
+    /// @param loadSpan  the dynamic import or forward span
+    /// @param evaluator the evaluator receiving imported statements
+    /// @throws EvaluationException if resolution, parsing, or evaluation fails
+    public void loadImportAsModuleCandidate(
+            String url,
+            @Nullable URI baseUrl,
+            SourceSpan loadSpan,
+            SassEvaluator evaluator
+    ) {
+        loadImport(url, baseUrl, loadSpan, evaluator, false);
+    }
+
+    /// Loads and executes a legacy Sass import.
+    ///
+    /// @param url       the unresolved import URL
+    /// @param baseUrl   the containing stylesheet URL, or {@code null}
+    /// @param loadSpan  the load span
+    /// @param evaluator the evaluator receiving imported statements
+    /// @param forImport whether import-only candidates ({@code *.import.scss}) win
+    /// @throws EvaluationException if resolution, parsing, or evaluation fails
+    private void loadImport(
+            String url,
+            @Nullable URI baseUrl,
+            SourceSpan loadSpan,
+            SassEvaluator evaluator,
+            boolean forImport
+    ) {
+        Objects.requireNonNull(url, "url");
+        Objects.requireNonNull(loadSpan, "loadSpan");
+        Objects.requireNonNull(evaluator, "evaluator");
+
         ImportResult imported;
         try {
-            imported = importer.canonicalizeAndLoadImport(url, baseUrl);
+            imported = forImport
+                    ? importer.canonicalizeAndLoadImport(url, baseUrl)
+                    : importer.canonicalizeAndLoad(url, baseUrl);
         } catch (IOException | IllegalStateException failure) {
             throw new EvaluationException(
                     Objects.requireNonNullElse(

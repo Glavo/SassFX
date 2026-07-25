@@ -284,6 +284,21 @@ public final class Environment {
         );
     }
 
+    /// Installs a live variable binding in the current frame (legacy import).
+    ///
+    /// The same binding instance is shared with the exporting module so later
+    /// assignments through either the importer or a module member stay in sync.
+    /// An existing binding for {@code name} in the current frame is replaced
+    /// (later {@code @import}s override earlier ones).
+    ///
+    /// @param name    the normalized variable name without a dollar sign
+    /// @param binding the live binding from the imported module
+    public void importVariableBinding(String name, VariableBinding binding) {
+        validateName(name);
+        Objects.requireNonNull(binding, "binding");
+        variableFrames.get(variableFrames.size() - 1).put(name, binding);
+    }
+
     /// Registers a function in the current frame.
     ///
     /// @param callable the function callable
@@ -429,6 +444,58 @@ public final class Environment {
         return List.copyOf(forwardedModules);
     }
 
+    /// Snapshots every currently visible variable as an implicit module configuration.
+    ///
+    /// Lexical frames are walked from global to innermost so inner bindings
+    /// shadow outer ones. Module-exported variables from {@code as *} loads and
+    /// forwarded modules are included when not shadowed by a local binding.
+    ///
+    /// @return an implicit configuration of visible variables
+    public org.glavo.scssfx.internal.module.ModuleConfiguration
+            toImplicitConfiguration() {
+        var values = new LinkedHashMap<
+                String,
+                org.glavo.scssfx.internal.module.ConfiguredValue
+                >();
+        for (var module : globalModules) {
+            for (var entry : module.variables().entrySet()) {
+                values.putIfAbsent(
+                        entry.getKey(),
+                        new org.glavo.scssfx.internal.module.ConfiguredValue(
+                                entry.getValue().value(),
+                                entry.getValue().originSpan(),
+                                entry.getValue().originSpan()
+                        )
+                );
+            }
+        }
+        for (var module : forwardedModules) {
+            for (var entry : module.variables().entrySet()) {
+                values.putIfAbsent(
+                        entry.getKey(),
+                        new org.glavo.scssfx.internal.module.ConfiguredValue(
+                                entry.getValue().value(),
+                                entry.getValue().originSpan(),
+                                entry.getValue().originSpan()
+                        )
+                );
+            }
+        }
+        for (var frame : variableFrames) {
+            for (var entry : frame.entrySet()) {
+                values.put(
+                        entry.getKey(),
+                        new org.glavo.scssfx.internal.module.ConfiguredValue(
+                                entry.getValue().value(),
+                                entry.getValue().originSpan(),
+                                entry.getValue().originSpan()
+                        )
+                );
+            }
+        }
+        return org.glavo.scssfx.internal.module.ModuleConfiguration.implicit(values);
+    }
+
     /// Returns public global variables for module export.
     ///
     /// @return the public global variable bindings
@@ -534,6 +601,52 @@ public final class Environment {
     /// @throws SassValueException if no explicitly named module has this namespace
     public LoadedModule module(String namespace) {
         return requireModule(namespace);
+    }
+
+    /// Captures member-visible module tables so a legacy import can drop nested
+    /// {@code @use} member visibility after evaluation.
+    ///
+    /// {@link #allModules} is intentionally not snapshotted: modules loaded by
+    /// {@code @use} inside an import still contribute CSS and upstream edges.
+    ///
+    /// @return a restore token for [#restoreModuleTables]
+    public ModuleTableSnapshot snapshotModuleTables() {
+        return new ModuleTableSnapshot(
+                new LinkedHashMap<>(modules),
+                new ArrayList<>(globalModules)
+        );
+    }
+
+    /// Restores namespaced and {@code as *} member visibility to a prior snapshot.
+    ///
+    /// Variable, function, and mixin frames are left unchanged so definitions
+    /// introduced by the imported stylesheet remain visible to the importer.
+    /// {@link #allModules} is left unchanged so nested {@code @use} CSS remains.
+    ///
+    /// @param snapshot the token from [#snapshotModuleTables]
+    public void restoreModuleTables(ModuleTableSnapshot snapshot) {
+        Objects.requireNonNull(snapshot, "snapshot");
+        modules.clear();
+        modules.putAll(snapshot.modules());
+        globalModules.clear();
+        globalModules.addAll(snapshot.globalModules());
+    }
+
+    /// Immutable member-visibility module tables for nested legacy-import evaluation.
+    ///
+    /// @param modules       namespaced modules
+    /// @param globalModules {@code as *} modules
+    public record ModuleTableSnapshot(
+            @Unmodifiable Map<String, LoadedModule> modules,
+            @Unmodifiable List<LoadedModule> globalModules
+    ) {
+        /// Creates a validated snapshot.
+        public ModuleTableSnapshot {
+            Objects.requireNonNull(modules, "modules");
+            Objects.requireNonNull(globalModules, "globalModules");
+            modules = Map.copyOf(modules);
+            globalModules = List.copyOf(globalModules);
+        }
     }
 
     /// Returns a namespaced module or fails.
@@ -702,6 +815,8 @@ public final class Environment {
     /// @param namespace the missing namespace
     /// @return the span-free value-layer failure
     private static SassValueException missingModule(String namespace) {
+        // Member access and most meta helpers include "the"; module-functions /
+        // module-mixins / module-variables override to omit it (dart-sass).
         return new SassValueException(
                 "There is no module with the namespace \"" + namespace + "\"."
         );

@@ -106,7 +106,10 @@ final class ForwardModuleTest {
                         a { @include facade.-secret-mixin; }
                         """
         );
-        assertPrivateFailure(mixinEntry, "Undefined mixin.");
+        assertPrivateFailure(
+                mixinEntry,
+                "Private members can't be accessed from outside their modules."
+        );
     }
 
     /// Does not make forwarded members visible while evaluating the forwarding module.
@@ -500,7 +503,7 @@ final class ForwardModuleTest {
                         """
         );
         assertEquals(
-                "$p-color was not declared with !default in the @used module.",
+                "This variable was not declared with !default in the @used module.",
                 assertThrows(
                         SassCompilationException.class,
                         () -> compile(showEntry)
@@ -542,7 +545,7 @@ final class ForwardModuleTest {
                         """
         );
         assertEquals(
-                "$p-color was not declared with !default in the @used module.",
+                "This variable was not declared with !default in the @used module.",
                 assertThrows(
                         SassCompilationException.class,
                         () -> compile(showCacheEntry)
@@ -557,8 +560,7 @@ final class ForwardModuleTest {
                         """
         );
         assertEquals(
-                """
-                        This module was already loaded, so it can't be configured using "with".""",
+                "This module was already loaded, so it can't be configured using \"with\".",
                 assertThrows(
                         SassCompilationException.class,
                         () -> compile(prefixCacheEntry)
@@ -610,7 +612,7 @@ final class ForwardModuleTest {
                         """
         );
         assertEquals(
-                "$value was not declared with !default in the @used module.",
+                "This variable was not declared with !default in the @used module.",
                 assertThrows(
                         SassCompilationException.class,
                         () -> compile(hardOuterEntry)
@@ -712,7 +714,7 @@ final class ForwardModuleTest {
                         """
         );
         assertEquals(
-                "$value was not declared with !default in the @used module.",
+                "This variable was not declared with !default in the @used module.",
                 assertThrows(
                         SassCompilationException.class,
                         () -> compile(fixedEntry)
@@ -729,7 +731,7 @@ final class ForwardModuleTest {
                 "@use \"loop-a\";"
         );
         assertEquals(
-                "Module loop: loop-a.scss is already being loaded.",
+                "Module loop: this module is already being loaded.",
                 assertThrows(
                         SassCompilationException.class,
                         () -> compile(loopEntry)

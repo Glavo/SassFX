@@ -13,6 +13,7 @@ import org.glavo.scssfx.internal.ast.selector.CompoundSelector;
 import org.glavo.scssfx.internal.ast.selector.CssIdentifier;
 import org.glavo.scssfx.internal.ast.selector.IdSelector;
 import org.glavo.scssfx.internal.ast.selector.NthPseudoArgument;
+import org.glavo.scssfx.internal.ast.selector.OtherSimpleSelector;
 import org.glavo.scssfx.internal.ast.selector.ParentSelector;
 import org.glavo.scssfx.internal.ast.selector.PlaceholderSelector;
 import org.glavo.scssfx.internal.ast.selector.PseudoArgument;
@@ -51,15 +52,25 @@ public final class SelectorParser {
     /// Whether plain-CSS selector restrictions are active.
     private final boolean plainCss;
 
+    /// Whether percentage keyframe selectors such as {@code 10%} are accepted.
+    private final boolean keyframeSelectors;
+
     /// Creates a parser for one selector string.
     ///
-    /// @param text     the selector source
-    /// @param baseSpan the span covering that source
-    /// @param plainCss whether plain CSS selector restrictions apply
-    private SelectorParser(String text, SourceSpan baseSpan, boolean plainCss) {
+    /// @param text              the selector source
+    /// @param baseSpan          the span covering that source
+    /// @param plainCss          whether plain CSS selector restrictions apply
+    /// @param keyframeSelectors whether percentage keyframe selectors are accepted
+    private SelectorParser(
+            String text,
+            SourceSpan baseSpan,
+            boolean plainCss,
+            boolean keyframeSelectors
+    ) {
         this.text = Objects.requireNonNull(text, "text");
         this.baseSpan = Objects.requireNonNull(baseSpan, "baseSpan");
         this.plainCss = plainCss;
+        this.keyframeSelectors = keyframeSelectors;
     }
 
     /// Parses a selector list.
@@ -69,7 +80,7 @@ public final class SelectorParser {
     /// @return the parsed selector list
     /// @throws SassValueException if the selector is invalid
     public static SelectorList parse(String text, SourceSpan span) {
-        return parse(text, span, false);
+        return parse(text, span, false, false);
     }
 
     /// Parses a selector list with optional plain-CSS restrictions.
@@ -80,7 +91,25 @@ public final class SelectorParser {
     /// @return the parsed selector list
     /// @throws SassValueException if the selector is invalid
     public static SelectorList parse(String text, SourceSpan span, boolean plainCss) {
-        return new SelectorParser(text, span, plainCss).parseList();
+        return parse(text, span, plainCss, false);
+    }
+
+    /// Parses a selector list with optional plain-CSS and keyframe modes.
+    ///
+    /// @param text              the selector source after interpolation
+    /// @param span              the span covering that text
+    /// @param plainCss          whether plain CSS selector restrictions apply
+    /// @param keyframeSelectors whether percentage selectors such as {@code 10%}
+    ///                          and scientific forms such as {@code 1e2%} are accepted
+    /// @return the parsed selector list
+    /// @throws SassValueException if the selector is invalid
+    public static SelectorList parse(
+            String text,
+            SourceSpan span,
+            boolean plainCss,
+            boolean keyframeSelectors
+    ) {
+        return new SelectorParser(text, span, plainCss, keyframeSelectors).parseList();
     }
 
     /// Parses the complete selector list.
@@ -96,7 +125,9 @@ public final class SelectorParser {
         }
         whitespace();
         if (!isDone()) {
-            throw error("expected end of selector.");
+            // Matches dart-sass selector-parse leftovers such as {@code c {}
+            // which surface as "expected selector." rather than end-of-input text.
+            throw error("expected selector.");
         }
         return new SelectorList(components, baseSpan);
     }
@@ -132,7 +163,7 @@ public final class SelectorParser {
             // outside plain CSS (where mid-compound parent is allowed).
             if (!plainCss && peek() == '&') {
                 throw error(
-                        "Parent selector must be the first selector in a compound."
+                        "\"&\" may only used at the beginning of a compound selector."
                 );
             }
             var trailing = new ArrayList<Combinator>();
@@ -190,8 +221,12 @@ public final class SelectorParser {
             var simple = parseSimple();
             // Sass forbids {@code &} after the first simple; plain CSS nesting
             // permits parent references mid-compound ({@code a&}, {@code a&b}).
+            // Message matches dart-sass / libsass spelling (including the
+            // historical "may only used" wording).
             if (simple instanceof ParentSelector && !plainCss) {
-                throw error("Parent selector must be the first selector in a compound.");
+                throw error(
+                        "\"&\" may only used at the beginning of a compound selector."
+                );
             }
             simples.add(simple);
         }
@@ -217,14 +252,22 @@ public final class SelectorParser {
     /// @return the parsed simple selector
     private SimpleSelector parseSimple() {
         var start = position;
+        if (keyframeSelectors && lookingAtKeyframePercentage()) {
+            return readKeyframePercentage(start);
+        }
         return switch (peek()) {
             case '&' -> readParentSelector(start);
             case '.' -> {
+                // Class selectors begin with an identifier, not a digit. A bare
+                // {@code .3%} form is a keyframe percentage when that mode is on.
+                if (keyframeSelectors && lookingAtKeyframePercentage()) {
+                    yield readKeyframePercentage(start);
+                }
                 read();
                 yield new ClassSelector(readIdentifier(), spanFrom(start));
             }
             case '#' -> {
-            read();
+                read();
                 yield new IdSelector(readIdentifier(), spanFrom(start));
             }
             case '[' -> readAttributeSelector(start);
@@ -238,6 +281,98 @@ public final class SelectorParser {
                 yield readTypeOrUniversal(start);
             }
         };
+    }
+
+    /// Returns whether a keyframe percentage selector begins at the current position.
+    ///
+    /// Accepts decimal and scientific forms ending in {@code %}, matching
+    /// dart-sass keyframe selector parsing ({@code 10%}, {@code 10.3%},
+    /// {@code 1e2%}, {@code 13E+1%}).
+    ///
+    /// @return whether a keyframe percentage can be read here
+    private boolean lookingAtKeyframePercentage() {
+        if (!keyframeSelectors) {
+            return false;
+        }
+        var index = position;
+        if (index >= text.length()) {
+            return false;
+        }
+        // Optional leading sign is not used by the sass-spec keyframe forms.
+        if (text.charAt(index) == '.') {
+            index++;
+            if (index >= text.length() || !CssCharacters.isDigit(text.charAt(index))) {
+                return false;
+            }
+        } else if (CssCharacters.isDigit(text.charAt(index))) {
+            while (index < text.length() && CssCharacters.isDigit(text.charAt(index))) {
+                index++;
+            }
+            if (index < text.length() && text.charAt(index) == '.') {
+                index++;
+                while (index < text.length() && CssCharacters.isDigit(text.charAt(index))) {
+                    index++;
+                }
+            }
+        } else {
+            return false;
+        }
+        if (index < text.length()
+                && (text.charAt(index) == 'e' || text.charAt(index) == 'E')) {
+            var exp = index + 1;
+            if (exp < text.length()
+                    && (text.charAt(exp) == '+' || text.charAt(exp) == '-')) {
+                exp++;
+            }
+            if (exp >= text.length() || !CssCharacters.isDigit(text.charAt(exp))) {
+                return false;
+            }
+            index = exp + 1;
+            while (index < text.length() && CssCharacters.isDigit(text.charAt(index))) {
+                index++;
+            }
+        }
+        return index < text.length() && text.charAt(index) == '%';
+    }
+
+    /// Reads one keyframe percentage selector and lowercases the scientific
+    /// exponent marker when present ({@code 13E+1%} → {@code 13e+1%}).
+    ///
+    /// @param start the start offset
+    /// @return the percentage as an opaque simple selector
+    private SimpleSelector readKeyframePercentage(int start) {
+        var buffer = new StringBuilder();
+        if (peek() == '.') {
+            buffer.append((char) read());
+            while (CssCharacters.isDigit(peek())) {
+                buffer.append((char) read());
+            }
+        } else {
+            while (CssCharacters.isDigit(peek())) {
+                buffer.append((char) read());
+            }
+            if (peek() == '.') {
+                buffer.append((char) read());
+                while (CssCharacters.isDigit(peek())) {
+                    buffer.append((char) read());
+                }
+            }
+        }
+        if (peek() == 'e' || peek() == 'E') {
+            buffer.append('e');
+            read();
+            if (peek() == '+' || peek() == '-') {
+                buffer.append((char) read());
+            }
+            while (CssCharacters.isDigit(peek())) {
+                buffer.append((char) read());
+            }
+        }
+        if (peek() != '%') {
+            throw error("expected selector.");
+        }
+        buffer.append((char) read());
+        return new OtherSimpleSelector(buffer.toString(), spanFrom(start));
     }
 
     /// Parses a parent selector and its optional suffix.
@@ -316,6 +451,11 @@ public final class SelectorParser {
             throw expectedClosingBracket();
         }
         if (peek() != ']') {
+            // A bare identifier after the name (no matcher) is an invalid
+            // modifier placement; dart-sass reports Expected "]".
+            if (isAsciiAlphabetic(peek()) || peek() == '_' || peek() == '-') {
+                throw error("Expected \"]\".");
+            }
             matcher = readAttributeMatcher();
             whitespace();
             if (isDone()) {
@@ -491,6 +631,9 @@ public final class SelectorParser {
 
     /// Parses the formula and optional {@code of} selector list of an nth pseudo selector.
     ///
+    /// The An+B microsyntax is normalized like dart-sass: internal whitespace around
+    /// the {@code n} sign and constant is dropped ({@code 2n + 1} becomes {@code 2n+1}).
+    ///
     /// @param argument      the raw text between parentheses
     /// @param argumentStart the relative start offset of {@code argument}
     /// @param argumentEnd   the exclusive relative end offset of {@code argument}
@@ -500,30 +643,152 @@ public final class SelectorParser {
             int argumentStart,
             int argumentEnd
     ) {
-        var ofOffset = findNthOfSeparator(argument);
-        if (ofOffset < 0) {
-            var formula = argument.strip();
-            return formula.isEmpty() ? new RawPseudoArgument(argument)
-                    : new NthPseudoArgument(formula, null);
+        var index = 0;
+        while (index < argument.length() && isWhitespace(argument.charAt(index))) {
+            index++;
+        }
+        // Empty {@code :nth-child()} has no An+B production; dart-sass reports
+        // Expected "n" at the closing parenthesis position.
+        if (index >= argument.length()) {
+            throw error("Expected \"n\".");
         }
 
-        var formula = argument.substring(0, ofOffset).strip();
-        var selectorStart = ofOffset + 2;
-        while (selectorStart < argument.length()
-                && isWhitespace(argument.charAt(selectorStart))) {
-            selectorStart++;
+        var parsed = parseAnPlusB(argument, index);
+        index = parsed.nextIndex();
+        var afterFormula = index;
+        while (index < argument.length() && isWhitespace(argument.charAt(index))) {
+            index++;
         }
-        var selectorText = argument.substring(selectorStart);
-        if (formula.isEmpty() || selectorText.isBlank()) {
+        if (index >= argument.length()) {
+            return new NthPseudoArgument(parsed.formula(), null);
+        }
+        // dart-sass requires whitespace between An+B and {@code of}.
+        if (afterFormula == index
+                || !regionMatchesIgnoreCase(argument, index, "of")
+                || index + 2 < argument.length()
+                && isIdentContinuation(argument.charAt(index + 2))) {
+            return new RawPseudoArgument(argument);
+        }
+        index += 2;
+        while (index < argument.length() && isWhitespace(argument.charAt(index))) {
+            index++;
+        }
+        var selectorText = argument.substring(index);
+        if (selectorText.isBlank()) {
             return new RawPseudoArgument(argument);
         }
         return new NthPseudoArgument(
-                formula,
+                parsed.formula(),
                 SelectorList.parse(
                         selectorText,
-                        spanFrom(argumentStart + selectorStart, argumentEnd)
+                        spanFrom(argumentStart + index, argumentEnd)
                 )
         );
+    }
+
+    /// Result of one An+B parse: normalized formula text and the next source index.
+    ///
+    /// @param formula   the compact An+B text ({@code even}, {@code odd}, or {@code 2n+1})
+    /// @param nextIndex the index after the last formula code unit
+    private record AnPlusBParse(String formula, int nextIndex) {
+    }
+
+    /// Parses one An+B production from {@code text} starting at {@code start}.
+    ///
+    /// @param text  the raw pseudo argument text
+    /// @param start the index of the first non-whitespace formula character
+    /// @return the normalized formula and the index after it
+    /// @throws SassValueException if the production is incomplete or invalid
+    private AnPlusBParse parseAnPlusB(String text, int start) {
+        var index = start;
+        var first = text.charAt(index);
+        if (first == 'e' || first == 'E') {
+            if (!regionMatchesIgnoreCase(text, index, "even")
+                    || index + 4 < text.length()
+                    && isIdentContinuation(text.charAt(index + 4))) {
+                throw error("Expected \"even\".");
+            }
+            return new AnPlusBParse("even", index + 4);
+        }
+        if (first == 'o' || first == 'O') {
+            if (!regionMatchesIgnoreCase(text, index, "odd")
+                    || index + 3 < text.length()
+                    && isIdentContinuation(text.charAt(index + 3))) {
+                throw error("Expected \"odd\".");
+            }
+            return new AnPlusBParse("odd", index + 3);
+        }
+
+        var buffer = new StringBuilder();
+        if (first == '+' || first == '-') {
+            buffer.append(first);
+            index++;
+        }
+
+        if (index < text.length() && CssCharacters.isDigit(text.charAt(index))) {
+            do {
+                buffer.append(text.charAt(index++));
+            } while (index < text.length() && CssCharacters.isDigit(text.charAt(index)));
+            while (index < text.length() && isWhitespace(text.charAt(index))) {
+                index++;
+            }
+            if (index >= text.length() || !isAsciiN(text.charAt(index))) {
+                return new AnPlusBParse(buffer.toString(), index);
+            }
+        } else if (index >= text.length() || !isAsciiN(text.charAt(index))) {
+            throw error("Expected \"n\".");
+        }
+        // Always emit lowercase {@code n}, matching dart-sass.
+        buffer.append('n');
+        index++;
+        while (index < text.length() && isWhitespace(text.charAt(index))) {
+            index++;
+        }
+        if (index >= text.length()) {
+            return new AnPlusBParse(buffer.toString(), index);
+        }
+        var sign = text.charAt(index);
+        if (sign != '+' && sign != '-') {
+            return new AnPlusBParse(buffer.toString(), index);
+        }
+        buffer.append(sign);
+        index++;
+        while (index < text.length() && isWhitespace(text.charAt(index))) {
+            index++;
+        }
+        if (index >= text.length() || !CssCharacters.isDigit(text.charAt(index))) {
+            throw error("Expected a number.");
+        }
+        do {
+            buffer.append(text.charAt(index++));
+        } while (index < text.length() && CssCharacters.isDigit(text.charAt(index)));
+        return new AnPlusBParse(buffer.toString(), index);
+    }
+
+    /// Returns whether {@code character} is ASCII {@code n} or {@code N}.
+    ///
+    /// @param character the code unit to inspect
+    /// @return whether the character is {@code n}/{@code N}
+    private static boolean isAsciiN(int character) {
+        return character == 'n' || character == 'N';
+    }
+
+    /// Returns whether {@code character} may continue a CSS identifier body.
+    ///
+    /// @param character the code unit to inspect
+    /// @return whether the character is a name code unit or backslash
+    private static boolean isIdentContinuation(int character) {
+        return CssCharacters.isName(character) || character == '\\';
+    }
+
+    /// Returns whether {@code text} at {@code offset} matches {@code expected} ignoring ASCII case.
+    ///
+    /// @param text     the haystack
+    /// @param offset   the start index
+    /// @param expected the expected ASCII text
+    /// @return whether the region matches
+    private static boolean regionMatchesIgnoreCase(String text, int offset, String expected) {
+        return text.regionMatches(true, offset, expected, 0, expected.length());
     }
 
     /// Returns whether a pseudo selector accepts a selector-list argument.
@@ -702,7 +967,8 @@ public final class SelectorParser {
         var next = peek();
         return next == '&' || next == '.' || next == '#' || next == '*'
                 || next == '|' || next == ':' || next == '[' || next == '%'
-                || lookingAtIdentifier();
+                || lookingAtIdentifier()
+                || lookingAtKeyframePercentage();
     }
 
     /// Reads a CSS identifier and returns its decoded structural representation.
@@ -816,10 +1082,38 @@ public final class SelectorParser {
         throw error("Expected closing quote.");
     }
 
-    /// Consumes whitespace.
+    /// Consumes whitespace and comments that are transparent to selector structure.
+    ///
+    /// Comments may appear between selector tokens after stylesheet parsing retains
+    /// their source spelling in the interpolated selector text.
     private void whitespace() {
-        while (isWhitespace(peek())) {
-            read();
+        while (true) {
+            if (isWhitespace(peek())) {
+                read();
+                continue;
+            }
+            if (peek() == '/' && peek(1) == '/') {
+                read();
+                read();
+                while (!isDone() && peek() != '\n' && peek() != '\r' && peek() != '\f') {
+                    read();
+                }
+                continue;
+            }
+            if (peek() == '/' && peek(1) == '*') {
+                read();
+                read();
+                while (!isDone()) {
+                    if (peek() == '*' && peek(1) == '/') {
+                        read();
+                        read();
+                        break;
+                    }
+                    read();
+                }
+                continue;
+            }
+            break;
         }
     }
 
@@ -936,7 +1230,8 @@ public final class SelectorParser {
     ///
     /// @return the exception to throw
     private SassValueException expectedClosingBracket() {
-        return error("expected \"]\".");
+        // dart-sass string_scanner reports EOF as "expected more input."
+        return isDone() ? error("expected more input.") : error("expected \"]\".");
     }
 
     /// Returns whether text at the current position starts a CSS identifier.

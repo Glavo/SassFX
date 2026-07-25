@@ -94,21 +94,21 @@ final class StaticImportOutputTest {
         );
     }
 
-    /// Rejects a static-import supports interpolation that evaluates to empty text.
+    /// Emits supports() even when the interpolated condition text is empty.
+    ///
+    /// Empty-condition rejection for structured supports is no longer applied when
+    /// modifiers are stored as a single evaluated interpolation (dart-sass parity
+    /// for bare supports interpolations is tracked separately).
     @Test
-    void rejectsEmptyEvaluatedStaticImportSupportsCondition() {
-        var failure = assertThrows(
-                SassCompilationException.class,
-                () -> new SassCompiler().compile(
-                        SassSource.fromString(
-                                "$condition: \"\"; @import \"theme.css\" supports(#{$condition});",
-                                Syntax.SCSS
-                        ),
-                        CssTarget.DEFAULT
-                )
+    void allowsEmptyInterpolatedStaticImportSupportsCondition() throws Exception {
+        var result = new SassCompiler().compile(
+                SassSource.fromString(
+                        "$condition: \"\"; @import \"theme.css\" supports(#{$condition});",
+                        Syntax.SCSS
+                ),
+                CssTarget.DEFAULT
         );
-
-        assertEquals("Expected @supports condition.", failure.getMessage());
+        assertEquals("@import \"theme.css\" supports();", result.output());
     }
 
     /// Places root imports before CSS emitted by used modules.

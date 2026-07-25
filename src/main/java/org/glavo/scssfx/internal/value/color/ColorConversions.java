@@ -129,6 +129,34 @@ public final class ColorConversions {
             -0.00419607613867551, -0.70341861793593630, 1.70761469407461200
     };
 
+    /// Direct linear Display-P3 → linear sRGB (dart-sass precomputed matrix).
+    private static final double[] LINEAR_DISPLAY_P3_TO_LINEAR_SRGB = {
+            1.22494017628055980, -0.22494017628055996, 0.00000000000000000,
+            -0.04205695470968816, 1.04205695470968800, 0.00000000000000000,
+            -0.01963755459033443, -0.07863604555063188, 1.09827360014096630
+    };
+
+    /// Direct linear a98-RGB → linear sRGB (dart-sass precomputed matrix).
+    private static final double[] LINEAR_A98_RGB_TO_LINEAR_SRGB = {
+            1.39835574396077830, -0.39835574396077830, 0.00000000000000000,
+            0.00000000000000000, 1.00000000000000000, 0.00000000000000000,
+            0.00000000000000000, -0.04292898929447326, 1.04292898929447330
+    };
+
+    /// Direct linear ProPhoto → linear sRGB (dart-sass precomputed matrix).
+    private static final double[] LINEAR_PROPHOTO_RGB_TO_LINEAR_SRGB = {
+            2.03438084951699600, -0.72763578993413420, -0.30674505958286180,
+            -0.22882573163305037, 1.23174254119010480, -0.00291680955705449,
+            -0.00855882878391742, -0.15326670213803720, 1.16182553092195470
+    };
+
+    /// Direct linear Rec.2020 → linear sRGB (dart-sass precomputed matrix).
+    private static final double[] LINEAR_REC2020_TO_LINEAR_SRGB = {
+            1.66049100210843450, -0.58764113878854950, -0.07284986331988487,
+            -0.12455047452159074, 1.13289989712596030, -0.00834942260436947,
+            -0.01815076335490530, -0.10057889800800737, 1.11872966136291270
+    };
+
     private static final double REC2020_ALPHA = 1.09929682680944;
     private static final double REC2020_BETA = 0.018053968510807;
 
@@ -227,6 +255,20 @@ public final class ColorConversions {
             @Nullable Double channel2,
             @Nullable Double alpha
     ) {
+        // Prefer dart-sass direct linear→linear sRGB matrices for sRGB-family
+        // destinations so pure whites (a98/display-p3/srgb-linear 1 1 1) stay
+        // exactly achromatic instead of picking up XYZ hub residual noise.
+        @Nullable ConvertedChannels direct = convertLinearToSrgbFamily(
+                source,
+                dest,
+                channel0,
+                channel1,
+                channel2,
+                alpha
+        );
+        if (direct != null) {
+            return direct;
+        }
         var missing0 = channel0 == null;
         var missing1 = channel1 == null;
         var missing2 = channel2 == null;
@@ -234,6 +276,103 @@ public final class ColorConversions {
                 channel1 != null ? channel1 : 0.0,
                 channel2 != null ? channel2 : 0.0);
         return fromXyzD65(dest, xyz[0], xyz[1], xyz[2], alpha, missing0, missing1, missing2);
+    }
+
+    /// Converts a linear RGB-like space into an sRGB-family destination when a
+    /// direct matrix is available.
+    ///
+    /// @return the converted channels, or {@code null} when no direct path applies
+    private static @Nullable ConvertedChannels convertLinearToSrgbFamily(
+            ColorSpace source,
+            ColorSpace dest,
+            @Nullable Double channel0,
+            @Nullable Double channel1,
+            @Nullable Double channel2,
+            @Nullable Double alpha
+    ) {
+        // sRGB-family destinations (including polar HSL/HWB) use dart-sass direct
+        // linear matrices. Missing source channels stay missing on positional
+        // RGB destinations; polar destinations fill missing with zero for the
+        // conversion arithmetic (matching the XYZ hub).
+        if (dest != ColorSpace.HSL
+                && dest != ColorSpace.HWB
+                && dest != ColorSpace.SRGB
+                && dest != ColorSpace.SRGB_LINEAR
+                && dest != ColorSpace.RGB) {
+            return null;
+        }
+        var missing0 = channel0 == null;
+        var missing1 = channel1 == null;
+        var missing2 = channel2 == null;
+        double c0 = channel0 != null ? channel0 : 0.0;
+        double c1 = channel1 != null ? channel1 : 0.0;
+        double c2 = channel2 != null ? channel2 : 0.0;
+        double[] linearSrgb = switch (source) {
+            case SRGB_LINEAR -> new double[] {c0, c1, c2};
+            case SRGB -> new double[] {srgbToLinear(c0), srgbToLinear(c1), srgbToLinear(c2)};
+            case RGB -> new double[] {
+                    srgbToLinear(c0 / 255.0),
+                    srgbToLinear(c1 / 255.0),
+                    srgbToLinear(c2 / 255.0)
+            };
+            case DISPLAY_P3 -> multiply(
+                    LINEAR_DISPLAY_P3_TO_LINEAR_SRGB,
+                    srgbToLinear(c0),
+                    srgbToLinear(c1),
+                    srgbToLinear(c2)
+            );
+            case DISPLAY_P3_LINEAR -> multiply(LINEAR_DISPLAY_P3_TO_LINEAR_SRGB, c0, c1, c2);
+            case A98_RGB -> multiply(
+                    LINEAR_A98_RGB_TO_LINEAR_SRGB,
+                    a98ToLinear(c0),
+                    a98ToLinear(c1),
+                    a98ToLinear(c2)
+            );
+            case PROPHOTO_RGB -> multiply(
+                    LINEAR_PROPHOTO_RGB_TO_LINEAR_SRGB,
+                    prophotoToLinear(c0),
+                    prophotoToLinear(c1),
+                    prophotoToLinear(c2)
+            );
+            case REC2020 -> multiply(
+                    LINEAR_REC2020_TO_LINEAR_SRGB,
+                    rec2020ToLinear(c0),
+                    rec2020ToLinear(c1),
+                    rec2020ToLinear(c2)
+            );
+            default -> null;
+        };
+        if (linearSrgb == null) {
+            return null;
+        }
+        return switch (dest) {
+            case SRGB_LINEAR -> new ConvertedChannels(
+                    missing0 ? null : linearSrgb[0],
+                    missing1 ? null : linearSrgb[1],
+                    missing2 ? null : linearSrgb[2],
+                    alpha
+            );
+            case SRGB -> new ConvertedChannels(
+                    missing0 ? null : srgbFromLinear(linearSrgb[0]),
+                    missing1 ? null : srgbFromLinear(linearSrgb[1]),
+                    missing2 ? null : srgbFromLinear(linearSrgb[2]),
+                    alpha
+            );
+            case RGB -> new ConvertedChannels(
+                    missing0 ? null : srgbFromLinear(linearSrgb[0]) * 255.0,
+                    missing1 ? null : srgbFromLinear(linearSrgb[1]) * 255.0,
+                    missing2 ? null : srgbFromLinear(linearSrgb[2]) * 255.0,
+                    alpha
+            );
+            case HSL, HWB -> srgbToPolar(
+                    dest,
+                    srgbFromLinear(linearSrgb[0]),
+                    srgbFromLinear(linearSrgb[1]),
+                    srgbFromLinear(linearSrgb[2]),
+                    alpha
+            );
+            default -> null;
+        };
     }
 
     /// Converts channels from HSL into {@code dest}.
@@ -1140,35 +1279,31 @@ public final class ColorConversions {
         var max = Math.max(Math.max(red, green), blue);
         var min = Math.min(Math.min(red, green), blue);
         var delta = max - min;
+        // Match dart-sass {@code SrgbColorSpace.convert} (css-color-4 rgb-to-hsl):
+        // use identity comparisons, not fuzzy equality. OKLab white is slightly
+        // outside pure sRGB white so {@code max != min} and {@code L != 1}, which
+        // preserves residual hue/saturation; pure whites stay achromatic.
         double hue;
-        if (SassFuzzy.equals(delta, 0.0)) {
+        if (max == min) {
             hue = 0.0;
-        } else if (max == red || SassFuzzy.equals(max, red)) {
-            hue = 60.0 * (((green - blue) / delta) % 6.0);
-        } else if (max == green || SassFuzzy.equals(max, green)) {
-            hue = 60.0 * ((blue - red) / delta + 2.0);
+        } else if (max == red) {
+            hue = 60.0 * ((green - blue) / delta) + 360.0;
+        } else if (max == green) {
+            hue = 60.0 * ((blue - red) / delta) + 120.0;
         } else {
-            hue = 60.0 * ((red - green) / delta + 4.0);
-        }
-        if (hue < 0.0) {
-            hue += 360.0;
-        }
-        if (SassFuzzy.equals(hue, 360.0) || SassFuzzy.equals(hue, 0.0)) {
-            hue = 0.0;
+            hue = 60.0 * ((red - green) / delta) + 240.0;
         }
 
         if (dest == ColorSpace.HSL) {
             var lightness = (min + max) / 2.0;
-            // Fuzzy endpoints keep pure white/black from floating conversion noise
-            // at sat=0 (most sRGB-family whites). Exact == alone yields spurious
-            // high saturation when max/min straddle 1.0 by epsilon.
-            var saturation = SassFuzzy.equals(lightness, 0.0) || SassFuzzy.equals(lightness, 1.0)
+            double saturation = lightness == 0.0 || lightness == 1.0
                     ? 0.0
                     : 100.0 * (max - lightness) / Math.min(lightness, 1.0 - lightness);
             if (saturation < 0.0) {
-                hue = (hue + 180.0) % 360.0;
+                hue += 180.0;
                 saturation = Math.abs(saturation);
             }
+            hue = hue % 360.0;
             // Zero saturation makes hue powerless; convert it to a missing channel
             // like dart-sass so later adjustments can reject modifying it.
             @Nullable Double resolvedHue = SassFuzzy.equals(Math.abs(saturation), 0.0)
@@ -1181,9 +1316,12 @@ public final class ColorConversions {
                     alpha
             );
         }
-
         var whiteness = min * 100.0;
         var blackness = 100.0 - max * 100.0;
+        hue = hue % 360.0;
+        if (hue < 0.0) {
+            hue += 360.0;
+        }
         @Nullable Double missingHue = SassFuzzy.greaterThanOrEquals(whiteness + blackness, 100.0)
                 ? null
                 : hue;

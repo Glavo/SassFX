@@ -40,6 +40,19 @@ final class SelectorAlgebraTest {
         assertEquals(".button:hover:focus", unify(".button:hover", ".button:focus"));
         assertEquals(".button:lang(en)", unify(":lang(en)", ".button"));
         assertEquals("%token.button", unify("%token", ".button"));
+        // Pseudo-classes that trail a pseudo-element in one input stay after it.
+        assertEquals("::foo:bar:baz", unify("::foo:bar", "::foo:baz"));
+        assertEquals(
+                ".x.y::scrollbar:horizontal",
+                unify(".x", ".y::scrollbar:horizontal")
+        );
+        assertEquals(":foo::bar:baz", unify(":foo", "::bar:baz"));
+        assertEquals(":foo::bar:baz", unify("::bar:baz", ":foo"));
+        // :host selects the shadow host, not light-DOM universals or classes.
+        assertNull(SelectorAlgebra.unify(parse(":host"), parse("*")));
+        assertNull(SelectorAlgebra.unify(parse("*"), parse(":host")));
+        assertNull(SelectorAlgebra.unify(parse(":host"), parse(":host.c")));
+        assertNull(SelectorAlgebra.unify(parse(":host.c"), parse(":host")));
         assertNull(SelectorAlgebra.unify(parse("a"), parse("b")));
         assertNull(SelectorAlgebra.unify(parse("#one"), parse("#two")));
     }
@@ -100,6 +113,10 @@ final class SelectorAlgebraTest {
         assertFalse(isSuperselector("[*|href]", "[svg|href]"));
         assertTrue(isSuperselector(":hover", ".button:hover"));
         assertFalse(isSuperselector(".button:hover", ":hover"));
+        // Opaque raw arguments may contain a literal {@code &} without being
+        // structural parent selectors.
+        assertFalse(isSuperselector(":c(@#$)", ":c(*&^)"));
+        assertFalse(isSuperselector("*", ":host"));
         assertTrue(isSuperselector(":lang(en)", ".button:lang(en)"));
         assertFalse(isSuperselector(":lang(en)", ":lang(fr)"));
         assertTrue(isSuperselector("%token", ".button%token"));
@@ -166,6 +183,34 @@ final class SelectorAlgebraTest {
         assertEquals(
                 ".button.selected",
                 replace(".button:is(.a)", ":is(.a)", ".selected")
+        );
+        // Non-idempotent relationship pseudos keep nested same-named branches.
+        assertEquals(":has(.c, .d)", extend(":has(.c)", ".c", ".d"));
+        assertEquals(":has(.c, .d, .e)", extend(":has(.c)", ".c", ".d, .e"));
+        assertEquals(":has(.c, :has(.d))", extend(":has(.c)", ".c", ":has(.d)"));
+        assertEquals(":host(.c, .d)", extend(":host(.c)", ".c", ".d"));
+        assertEquals(":host(.c, :host(.d))", extend(":host(.c)", ".c", ":host(.d)"));
+        // Different An+B formulas do not nest inside of-lists (sass/sass#2828).
+        assertEquals(
+                ":nth-child(2n+1 of .c)",
+                extend(
+                        ":nth-child(2n+1 of .c)",
+                        ".c",
+                        ":nth-child(2n+2 of .d, .e)"
+                )
+        );
+        assertEquals(
+                ":nth-child(2n+1 of .c, .d)",
+                extend(":nth-child(2n+1 of .c)", ".c", ".d")
+        );
+        // Same vendor-prefixed union flattens; different prefixes do not nest.
+        assertEquals(
+                ":-ms-matches(.c, .d, .e)",
+                extend(":-ms-matches(.c)", ".c", ":-ms-matches(.d, .e)")
+        );
+        assertEquals(
+                ":-ms-matches(.c)",
+                extend(":-ms-matches(.c)", ".c", ":-moz-matches(.d, .e)")
         );
     }
 
@@ -277,6 +322,27 @@ final class SelectorAlgebraTest {
                 () -> SelectorAlgebra.extend(parse(".a"), parse(".a .b"), parse(".c"))
         );
         assertEquals("Can't extend complex selector .a .b.", complexTarget.getMessage());
+
+        var directiveComplex = assertThrows(
+                SassValueException.class,
+                () -> SelectorAlgebra.assertExtendDirectiveTargets(parse("a b"))
+        );
+        assertEquals("complex selectors may not be extended.", directiveComplex.getMessage());
+
+        var directiveCompound = assertThrows(
+                SassValueException.class,
+                () -> SelectorAlgebra.assertExtendDirectiveTargets(parse("a:hover"))
+        );
+        assertTrue(
+                directiveCompound.getMessage().startsWith(
+                        "compound selectors may no longer be extended."
+                ),
+                directiveCompound.getMessage()
+        );
+        assertTrue(
+                directiveCompound.getMessage().contains("Consider `@extend a, :hover` instead."),
+                directiveCompound.getMessage()
+        );
     }
 
     /// Returns the CSS spelling of a selector unification.

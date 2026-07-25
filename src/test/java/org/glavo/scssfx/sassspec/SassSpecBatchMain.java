@@ -83,7 +83,10 @@ public final class SassSpecBatchMain {
                     continue;
                 }
                 try {
-                    String mountPrefix = archiveMountPrefix(resolved.archiveResource());
+                    String mountPrefix = archiveMountPrefix(
+                            resolved.archiveResource(),
+                            resolved.archive()
+                    );
                     Path caseRoot = suiteRoot.resolve(mountPrefix)
                             .resolve(fixture.directory())
                             .normalize();
@@ -282,7 +285,10 @@ public final class SassSpecBatchMain {
             if (seenArchives.put(resolved.archiveResource(), Boolean.TRUE) != null) {
                 continue;
             }
-            String mountPrefix = archiveMountPrefix(resolved.archiveResource());
+            String mountPrefix = archiveMountPrefix(
+                    resolved.archiveResource(),
+                    resolved.archive()
+            );
             for (Map.Entry<String, String> entry : resolved.archive().files().entrySet()) {
                 String archivePath = entry.getKey();
                 if (isExpectationArchivePath(archivePath)) {
@@ -348,7 +354,17 @@ public final class SassSpecBatchMain {
         Files.writeString(target, content, StandardCharsets.UTF_8);
     }
 
-    private static String archiveMountPrefix(String archiveResource) {
+    /// Computes the suite-root mount prefix for one HRX archive.
+    ///
+    /// When every case path inside the archive is already prefixed with the
+    /// archive stem (for example {@code reds.hrx} containing {@code reds/input.scss}),
+    /// the mount is the parent directory so relative {@code @use} paths such as
+    /// {@code ../test-hue} resolve next to sibling support files.
+    ///
+    /// @param archiveResource the archive resource path
+    /// @param archive         the parsed archive contents
+    /// @return the mount prefix relative to the suite root
+    private static String archiveMountPrefix(String archiveResource, HrxArchive archive) {
         String path = archiveResource;
         if (path.startsWith("upstream/")) {
             path = path.substring("upstream/".length());
@@ -358,6 +374,22 @@ public final class SassSpecBatchMain {
         }
         if (path.equals("curated")) {
             return "";
+        }
+        int slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        String stem = slash >= 0 ? path.substring(slash + 1) : path;
+        String prefix = stem + "/";
+        boolean allPrefixed = !archive.files().isEmpty();
+        for (String archivePath : archive.files().keySet()) {
+            if (isExpectationArchivePath(archivePath)) {
+                continue;
+            }
+            if (!archivePath.equals(stem) && !archivePath.startsWith(prefix)) {
+                allPrefixed = false;
+                break;
+            }
+        }
+        if (allPrefixed && slash >= 0) {
+            return path.substring(0, slash);
         }
         return path;
     }
@@ -448,8 +480,14 @@ public final class SassSpecBatchMain {
                 || line.startsWith("    ,-->")) {
             return true;
         }
-        // "  ," or "    ," optionally followed by spaces then a digit or end.
-        if (line.startsWith("  ,") || line.startsWith("    ,")) {
+        // Span dumps use a comma leader whose indent grows with the line-number
+        // column width: two spaces for single-digit lines ("  ,"), three for
+        // double-digit lines ("   ,"), four for deeper multi-span layouts.
+        int index = 0;
+        while (index < line.length() && line.charAt(index) == ' ') {
+            index++;
+        }
+        if (index >= 2 && index <= 4 && index < line.length() && line.charAt(index) == ',') {
             return true;
         }
         return false;

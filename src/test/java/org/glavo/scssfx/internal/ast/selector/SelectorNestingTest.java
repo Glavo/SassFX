@@ -47,7 +47,7 @@ final class SelectorNestingTest {
                 nest(".parent", ":has(> &)")
         );
         assertEquals(
-                ":nth-child(2n + 1 of .parent)",
+                ":nth-child(2n+1 of .parent)",
                 nest(".parent", ":nth-child(2n + 1 of &)")
         );
     }

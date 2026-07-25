@@ -67,18 +67,62 @@ public final class SelectorAlgebra {
 
     /// Verifies that every selector is a single compound target for extension.
     ///
+    /// Used by {@code selector.extend} / {@code selector.replace}, which still
+    /// accept multi-simple compounds but reject combinators.
+    ///
     /// @param selector the extendee or original selector list
     /// @param name     the Sass argument name used in diagnostics
     /// @throws SassValueException if a target contains a combinator
     public static void assertCompoundTargets(SelectorList selector, String name) {
         assertSupported(selector, name);
         for (var complex : selector.components()) {
-            if (complex.components().size() != 1
-                    || !complex.components().get(0).combinators().isEmpty()) {
+            if (isComplexExtendTarget(complex)) {
                 throw new SassValueException("Can't extend complex selector "
                         + complex.toCssString() + ".");
             }
         }
+    }
+
+    /// Verifies that every selector is a single simple-selector target for the
+    /// stylesheet {@code @extend} directive.
+    ///
+    /// Dart Sass rejects both complex selectors and multi-simple compounds as
+    /// {@code @extend} targets, with directive-specific diagnostic wording.
+    ///
+    /// @param selector the extendee selector list
+    /// @throws SassValueException if a target is complex or multi-simple
+    public static void assertExtendDirectiveTargets(SelectorList selector) {
+        assertSupported(selector, "extendee");
+        for (var complex : selector.components()) {
+            if (isComplexExtendTarget(complex)) {
+                throw new SassValueException("complex selectors may not be extended.");
+            }
+            var compound = complex.components().get(0).selector();
+            if (compound.components().size() > 1) {
+                var suggestion = new StringBuilder();
+                for (var index = 0; index < compound.components().size(); index++) {
+                    if (index > 0) {
+                        suggestion.append(", ");
+                    }
+                    suggestion.append(compound.components().get(index).toCssString());
+                }
+                throw new SassValueException(
+                        "compound selectors may no longer be extended.\n"
+                                + "Consider `@extend " + suggestion + "` instead.\n"
+                                + "See https://sass-lang.com/d/extend-compound for details."
+                );
+            }
+        }
+    }
+
+    /// Returns whether {@code complex} uses combinators or multiple compounds.
+    ///
+    /// @param complex the complex selector to inspect
+    /// @return whether the selector is not a single compound without combinators
+    private static boolean isComplexExtendTarget(ComplexSelector complex) {
+        return complex.components().size() != 1
+                || !complex.leadingCombinators().isEmpty()
+                || !complex.components().get(0).combinators().isEmpty();
     }
 
     /// Returns selectors that match elements selected by both inputs.
@@ -363,11 +407,15 @@ public final class SelectorAlgebra {
     /// Returns whether a compound needs parent context for superselector checks.
     ///
     /// @param compound the compound selector to inspect
-    /// @return whether pseudo elements or selector-taking pseudos are present
+    /// @return whether pseudo elements, hostish, or selector-taking pseudos are present
     private static boolean hasComplicatedSuperselectorSemantics(CompoundSelector compound) {
         for (var simple : compound.components()) {
+            // :host/:host-context skip the early superselector short-circuit so
+            // unify goes through host-compatibility checks (dart-sass).
             if (simple instanceof PseudoSelector pseudo
-                    && (isPseudoElement(pseudo) || selectorArgument(pseudo) != null)) {
+                    && (isPseudoElement(pseudo)
+                    || isHostishPseudo(pseudo)
+                    || selectorArgument(pseudo) != null)) {
                 return true;
             }
         }
@@ -1185,6 +1233,11 @@ public final class SelectorAlgebra {
 
     /// Unifies two compounds in the structurally modeled selector subset.
     ///
+    /// Matches dart-sass {@code unifyCompound}: once {@code second} contributes a
+    /// pseudo-element, later pseudo-classes from {@code second} are collected
+    /// separately and appended after that element so forms such as
+    /// {@code ::scrollbar:horizontal} keep their original trailing order.
+    ///
     /// @param first  the first compound selector
     /// @param second the second compound selector
     /// @return the merged compound, or {@code null} for incompatible types or IDs
@@ -1193,11 +1246,24 @@ public final class SelectorAlgebra {
             CompoundSelector second
     ) {
         var result = new ArrayList<>(first.components());
+        var afterPseudoElement = new ArrayList<SimpleSelector>();
+        var pseudoElementFound = false;
         for (var simple : second.components()) {
+            // Pseudos after a pseudo-element in {@code second} stay after it.
+            if (pseudoElementFound && simple instanceof PseudoSelector) {
+                if (!mergeSimple(afterPseudoElement, simple)) {
+                    return null;
+                }
+                continue;
+            }
+            if (simple instanceof PseudoSelector pseudo && isPseudoElement(pseudo)) {
+                pseudoElementFound = true;
+            }
             if (!mergeSimple(result, simple)) {
                 return null;
             }
         }
+        result.addAll(afterPseudoElement);
         return new CompoundSelector(result, first.span());
     }
 
@@ -1262,6 +1328,19 @@ public final class SelectorAlgebra {
             return false;
         }
         return isHostishPseudo(pseudo) || selectorArgument(pseudo) != null;
+    }
+
+    /// Returns whether every simple in {@code compound} may appear with {@code :host}.
+    ///
+    /// @param compound the compound components
+    /// @return whether the compound is host-compatible
+    private static boolean compoundIsHostCompatible(ArrayList<SimpleSelector> compound) {
+        for (var existing : compound) {
+            if (!isHostCompatibleSimple(existing)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// Returns whether a pseudo is {@code :host} or {@code :host-context}.
@@ -1498,6 +1577,12 @@ public final class SelectorAlgebra {
             PseudoSelector pseudo
     ) {
         if (containsSemantically(result, pseudo)) {
+            // A second {@code :host} still fails when the compound already
+            // contains host-incompatible simples such as classes
+            // (dart-sass: {@code unify(":host.c", ":host")} → null).
+            if (isHostishPseudo(pseudo) && !compoundIsHostCompatible(result)) {
+                return false;
+            }
             return true;
         }
         // dart-sass: non-host simple.unify([host]) redirects to host.unify([simple]),
@@ -1514,10 +1599,8 @@ public final class SelectorAlgebra {
             return true;
         }
         if (isHostishPseudo(pseudo)) {
-            for (var existing : result) {
-                if (!isHostCompatibleSimple(existing)) {
-                    return false;
-                }
+            if (!compoundIsHostCompatible(result)) {
+                return false;
             }
         }
         if (isPseudoElement(pseudo)) {
@@ -2052,6 +2135,12 @@ public final class SelectorAlgebra {
             UniversalSelector superselector,
             SimpleSelector subselector
     ) {
+        // {@code :host}/{@code :host-context} select the shadow host rather than
+        // ordinary elements, so a light-DOM universal is never a superselector
+        // of them (dart-sass).
+        if (subselector instanceof PseudoSelector pseudo && isHostishPseudo(pseudo)) {
+            return false;
+        }
         var namespace = superselector.namespace();
         if (namespace.kind() == SelectorNamespaceKind.ANY) {
             return true;
@@ -2388,8 +2477,16 @@ public final class SelectorAlgebra {
                 replacement
         );
         // Flatten nested same-named union pseudos (e.g. :is(.c, :is(.d, .e)) → :is(.c, .d, .e)).
+        // Drop same-named nth-child branches with a different An+B formula so
+        // extend does not nest incompatible formulas (sass/sass#2828).
+        // Drop same-normalized union pseudos with a different vendor prefix so
+        // :-ms-matches is not extended by :-moz-matches (and vice versa).
         var expanded = new ArrayList<ComplexSelector>();
         for (var complex : transformed) {
+            if (isIncompatibleNthChildBranch(complex, pseudo)
+                    || isIncompatiblePrefixedUnionPseudoBranch(complex, pseudo)) {
+                continue;
+            }
             expanded.addAll(expandSameNameUnionPseudo(complex, pseudo));
         }
         var transformedSelectors = new SelectorList(expanded, originalSelectors.span());
@@ -2414,6 +2511,71 @@ public final class SelectorAlgebra {
         );
     }
 
+    /// Returns whether {@code complex} is a same-named nth-child/nth-last-child
+    /// with a different An+B formula than {@code outer}.
+    ///
+    /// Such branches must not be retained inside the outer {@code of} list.
+    private static boolean isIncompatibleNthChildBranch(
+            ComplexSelector complex,
+            PseudoSelector outer
+    ) {
+        if (!(outer.argument() instanceof NthPseudoArgument outerNth)) {
+            return false;
+        }
+        @Nullable PseudoSelector inner = singleCompoundPseudo(complex);
+        if (inner == null
+                || inner.element() != outer.element()
+                || !inner.name().hasSameValue(outer.name())) {
+            return false;
+        }
+        if (!(inner.argument() instanceof NthPseudoArgument innerNth)) {
+            return false;
+        }
+        return !outerNth.formula().equals(innerNth.formula());
+    }
+
+    /// Returns whether {@code complex} is a union pseudo with the same normalized
+    /// name as {@code outer} but a different vendor-prefixed spelling.
+    ///
+    /// Vendor-prefixed {@code :matches}/{@code :is}/{@code :any}/{@code :where}
+    /// only unify with the same exact prefix; a differently prefixed sibling must
+    /// not be nested into the outer argument list.
+    private static boolean isIncompatiblePrefixedUnionPseudoBranch(
+            ComplexSelector complex,
+            PseudoSelector outer
+    ) {
+        @Nullable PseudoSelector inner = singleCompoundPseudo(complex);
+        if (inner == null || inner.element() != outer.element()) {
+            return false;
+        }
+        if (inner.name().hasSameValue(outer.name())) {
+            return false;
+        }
+        var outerNormalized = normalizedPseudoName(outer.name().value());
+        return switch (outerNormalized) {
+            case "is", "matches", "where", "any", "current" ->
+                    normalizedPseudoName(inner.name().value()).equals(outerNormalized);
+            default -> false;
+        };
+    }
+
+    /// Returns the sole simple pseudo of a single-compound complex selector.
+    ///
+    /// @param complex the complex selector to inspect
+    /// @return the pseudo, or {@code null} when the shape is not a bare pseudo
+    private static @Nullable PseudoSelector singleCompoundPseudo(ComplexSelector complex) {
+        if (complex.components().size() != 1
+                || !complex.leadingCombinators().isEmpty()
+                || !complex.components().get(0).combinators().isEmpty()) {
+            return null;
+        }
+        var simples = complex.components().get(0).selector().components();
+        if (simples.size() != 1 || !(simples.get(0) instanceof PseudoSelector inner)) {
+            return null;
+        }
+        return inner;
+    }
+
     /// Expands a complex selector that is only a same-named union pseudo into its
     /// argument complexes, matching dart-sass {@code _extendPseudo} flattening.
     private static List<ComplexSelector> expandSameNameUnionPseudo(
@@ -2433,6 +2595,8 @@ public final class SelectorAlgebra {
             return List.of(complex);
         }
         var normalized = normalizedPseudoName(outer.name().value());
+        // Flatten only idempotent union pseudos. Non-idempotent forms such as
+        // :has/:host keep nested same-named branches (e.g. :has(.c, :has(.d))).
         return switch (normalized) {
             case "is", "matches", "where", "any", "current" -> {
                 @Nullable SelectorList args = selectorArgument(inner);
@@ -2453,9 +2617,9 @@ public final class SelectorAlgebra {
 
     /// Returns whether one pseudo selector may recursively transform its selector argument.
     ///
-    /// Non-monotonic selector pseudos such as {@code :not()} and nested
-    /// relationship pseudos such as {@code :has()} retain exact structural
-    /// support, but are deliberately not rewritten through this local path.
+    /// Includes non-idempotent relationship pseudos such as {@code :has()} and
+    /// {@code :host()} so extender selectors are added to their argument lists
+    /// (dart-sass non-idempotent extend fixtures).
     ///
     /// @param pseudo the pseudo selector to inspect
     /// @return whether its nested selector list may be transformed locally
@@ -2465,7 +2629,7 @@ public final class SelectorAlgebra {
         }
         return switch (normalizedPseudoName(pseudo.name().value())) {
             case "is", "matches", "where", "any", "current", "slotted", "nth-child",
-                    "nth-last-child" -> true;
+                    "nth-last-child", "has", "host", "host-context" -> true;
             default -> false;
         };
     }

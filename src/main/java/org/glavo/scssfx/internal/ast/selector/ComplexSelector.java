@@ -170,21 +170,75 @@ public record ComplexSelector(
 
     /// Returns whether non-inspect CSS emission drops this complex selector.
     ///
-    /// Top-level leading combinators such as {@code > a} still serialize (with a
-    /// deprecation). Relative selector arguments are omitted only inside
-    /// selector-taking pseudos that reject them ({@code :is}, {@code :where},
-    /// {@code :not}, {@code :matches}, {@code :any}). {@code :has()} keeps
-    /// relative arguments.
+    /// A complex is bogus when it has consecutive combinators, a trailing
+    /// combinator after the last compound, relative selector arguments inside
+    /// pseudos that reject them ({@code :is}, {@code :where}, {@code :not},
+    /// {@code :matches}, {@code :any}), or any selector-taking pseudo whose
+    /// argument complexes are themselves bogus. A single leading combinator
+    /// such as {@code > a} is still serialized (with a deprecation).
+    /// {@code :has()} keeps a single leading combinator in its argument.
     ///
     /// @return whether non-inspect CSS emission drops this complex selector
     public boolean isBogus() {
+        if (hasBogusCombinatorStructure()) {
+            return true;
+        }
         for (var component : components) {
             for (var simple : component.selector().components()) {
-                if (simple instanceof PseudoSelector pseudo
-                        && rejectsRelativeSelectorArguments(pseudo)
+                if (!(simple instanceof PseudoSelector pseudo)) {
+                    continue;
+                }
+                if (rejectsRelativeSelectorArguments(pseudo)
                         && selectorArgumentHasRelativeComplex(pseudo)) {
                     return true;
                 }
+                if (selectorArgumentHasBogusComplex(pseudo)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /// Returns whether this complex has consecutive or trailing combinators.
+    ///
+    /// Multiple leading combinators ({@code + ~ a}), multiple combinators
+    /// between compounds ({@code a > + b}), or a trailing combinator with no
+    /// following compound ({@code a >}) are invalid CSS and omitted.
+    ///
+    /// @return whether combinator structure alone makes this complex unemittable
+    private boolean hasBogusCombinatorStructure() {
+        // A relative selector with only leading combinators and no compound
+        // ({@code +} alone, including after {@code + {@extend a}}) is not valid CSS.
+        if (!leadingCombinators.isEmpty() && components.isEmpty()) {
+            return true;
+        }
+        if (leadingCombinators.size() > 1) {
+            return true;
+        }
+        for (var index = 0; index < components.size(); index++) {
+            var combinators = components.get(index).combinators();
+            if (combinators.size() > 1) {
+                return true;
+            }
+            if (index == components.size() - 1 && !combinators.isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Returns whether a selector-taking pseudo has any fully bogus argument.
+    ///
+    /// @param pseudo the pseudo selector
+    /// @return whether an argument complex is {@link #isBogus()}
+    private static boolean selectorArgumentHasBogusComplex(PseudoSelector pseudo) {
+        if (!(pseudo.argument() instanceof SelectorPseudoArgument selectorArgument)) {
+            return false;
+        }
+        for (var complex : selectorArgument.selectors().components()) {
+            if (complex.isBogus()) {
+                return true;
             }
         }
         return false;

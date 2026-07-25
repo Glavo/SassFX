@@ -95,6 +95,18 @@ public record MixinRule(
                 if (containsContent(styleRule.children())) {
                     return true;
                 }
+            } else if (statement instanceof AtRootRule atRootRule) {
+                if (containsContent(atRootRule.children())) {
+                    return true;
+                }
+            } else if (statement instanceof MediaRule mediaRule) {
+                if (containsContent(mediaRule.children())) {
+                    return true;
+                }
+            } else if (statement instanceof SupportsRule supportsRule) {
+                if (containsContent(supportsRule.children())) {
+                    return true;
+                }
             } else if (statement instanceof Declaration declaration
                     && declaration.children() != null) {
                 if (containsContent(declaration.children())) {

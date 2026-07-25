@@ -55,7 +55,8 @@ final class ParserTest {
 
         var failure = assertThrows(ParseException.class, parser::loudComment);
         assertEquals("", failure.span().text());
-        assertEquals("Unexpected end of input.", failure.getMessage());
+        // Match dart-sass string_scanner EOF wording for unterminated comments.
+        assertEquals("expected more input.", failure.getMessage());
     }
 
     /// Verifies plain strings, escaped characters, and hexadecimal escapes.

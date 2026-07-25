@@ -1159,19 +1159,13 @@ final class ScssParserTest {
                 ParseException.class,
                 () -> parse("@if true { @use \"a\"; }")
         );
-        assertEquals(
-                "@use rules must be at the root of the stylesheet.",
-                nestedUse.getMessage()
-        );
+        assertEquals("This at-rule is not allowed here.", nestedUse.getMessage());
 
         var nestedForward = assertThrows(
                 ParseException.class,
                 () -> parse("@if true { @forward \"a\"; }")
         );
-        assertEquals(
-                "@forward rules must be at the root of the stylesheet.",
-                nestedForward.getMessage()
-        );
+        assertEquals("This at-rule is not allowed here.", nestedForward.getMessage());
     }
 
     /// Verifies forward prefixes, member filters, and guarded configuration.

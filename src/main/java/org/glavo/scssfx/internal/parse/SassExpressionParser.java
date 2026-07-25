@@ -9,6 +9,7 @@ import org.glavo.scssfx.internal.ast.BinaryOperationExpression;
 import org.glavo.scssfx.internal.ast.BinaryOperator;
 import org.glavo.scssfx.internal.ast.BooleanExpression;
 import org.glavo.scssfx.internal.ast.ColorExpression;
+import org.glavo.scssfx.internal.ast.ExpressionInterpolationPart;
 import org.glavo.scssfx.internal.ast.FunctionExpression;
 import org.glavo.scssfx.internal.ast.Interpolation;
 import org.glavo.scssfx.internal.ast.InterpolationBuffer;
@@ -47,9 +48,8 @@ import java.util.Objects;
 /// Parses the syntax-only SassScript expression subset shared by SCSS constructs.
 ///
 /// This parser preserves literal, operator, list, parenthesis, variable,
-/// function, map, color, and interpolation structure. Evaluation and selector
-/// and Unicode-range expressions are intentionally handled by later
-/// implementation stages.
+/// function, map, color, interpolation, and CSS unicode-range structure.
+/// Evaluation is handled by later implementation stages.
 @ApiStatus.Internal
 @NotNullByDefault
 class SassExpressionParser extends Parser {
@@ -153,8 +153,11 @@ class SassExpressionParser extends Parser {
 
     /// Parses an expression that stops when {@code until} reports a terminator.
     ///
-    /// @param until a predicate that consumes a terminator and returns
-    /// {@code true}, or {@code null} when no terminator is used
+    /// The terminator is checked after whitespace and before binary operators or
+    /// additional space-list elements, matching dart-sass {@code _expression}.
+    ///
+    /// @param until a predicate that returns {@code true} without consuming the
+    /// terminator, or {@code null} when no terminator is used
     /// @return the parsed expression
     /// @throws ParseException if no expression begins here or it is malformed
     protected final SassExpression expression(
@@ -172,6 +175,23 @@ class SassExpressionParser extends Parser {
         } finally {
             expressionDepth--;
         }
+    }
+
+    /// Parses an expression until a top-level media-range comparison operator.
+    ///
+    /// Stops before {@code <}, {@code >}, or a lone {@code =} that is not part
+    /// of {@code ==}, so media feature range syntax can claim those operators.
+    ///
+    /// @return the parsed expression
+    /// @throws ParseException if no expression begins here or it is malformed
+    protected final SassExpression expressionUntilComparison() {
+        return expression(() -> {
+            var next = scanner.peek();
+            if (next == '=') {
+                return scanner.peek(1) != '=';
+            }
+            return next == '<' || next == '>';
+        });
     }
 
     /// Parses a comma-separated expression or a single lower-level expression.
@@ -245,7 +265,7 @@ class SassExpressionParser extends Parser {
             boolean singleEquals,
             @Nullable java.util.function.BooleanSupplier until
     ) {
-        var first = slashAwareBinaryExpression(singleEquals);
+        var first = slashAwareBinaryExpression(singleEquals, until);
         @Nullable ArrayList<SassExpression> contents = null;
 
         while (true) {
@@ -260,7 +280,7 @@ class SassExpressionParser extends Parser {
                 contents = new ArrayList<>();
                 contents.add(first);
             }
-            contents.add(slashAwareBinaryExpression(singleEquals));
+            contents.add(slashAwareBinaryExpression(singleEquals, until));
         }
 
         if (contents == null) {
@@ -281,9 +301,13 @@ class SassExpressionParser extends Parser {
     /// Parses one precedence-ordered binary expression and applies slash metadata.
     ///
     /// @param singleEquals whether a lone equals sign is accepted
+    /// @param until        a terminator predicate, or {@code null}
     /// @return the parsed expression
-    private SassExpression slashAwareBinaryExpression(boolean singleEquals) {
-        var result = binaryExpression(0, singleEquals);
+    private SassExpression slashAwareBinaryExpression(
+            boolean singleEquals,
+            @Nullable java.util.function.BooleanSupplier until
+    ) {
+        var result = binaryExpression(0, singleEquals, until);
         return !inParentheses && isSlashTree(result)
                 ? markSlashTree(result)
                 : result;
@@ -294,16 +318,29 @@ class SassExpressionParser extends Parser {
     /// @param minimumPrecedence the lowest accepted binary precedence
     /// @param singleEquals      whether the Microsoft-style single-equals operator
     /// may occur at this expression level
+    /// @param until             a terminator checked before each operator, or {@code null}
     /// @return the parsed expression
     private SassExpression binaryExpression(
             int minimumPrecedence,
-            boolean singleEquals
+            boolean singleEquals,
+            @Nullable java.util.function.BooleanSupplier until
     ) {
         var left = singleExpression();
 
         while (true) {
             var beforeTrivia = scanner.state();
             whitespace(true);
+            // Stop before binary operators when {@code until} reports a
+            // terminator. The predicate may consume tokens (for example
+            // {@code @for … through}); restore so only spaceExpression's check
+            // keeps a consuming match, matching dart-sass's single-loop break.
+            if (until != null) {
+                var beforeUntil = scanner.state();
+                if (until.getAsBoolean()) {
+                    scanner.restore(beforeUntil);
+                    return left;
+                }
+            }
             var operatorStart = scanner.state();
             var preceding = operatorStart.position() == 0
                     ? CssCharacters.END_OF_INPUT
@@ -333,6 +370,14 @@ class SassExpressionParser extends Parser {
             var operatorEnd = scanner.state();
             whitespace(true);
             if (!lookingAtExpression()) {
+                // Only trailing modulo may fall back so {@code c %} becomes a
+                // space list of {@code c} and a percent string. Other incomplete
+                // binaries keep the historical {@code Expected expression.} error
+                // (including calc trailing-operator diagnostics).
+                if (operator == BinaryOperator.MODULO) {
+                    scanner.restore(beforeTrivia);
+                    return left;
+                }
                 throw scanner.error(
                         "Expected expression.",
                         operatorStart.position(),
@@ -340,7 +385,7 @@ class SassExpressionParser extends Parser {
                 );
             }
 
-            var right = binaryExpression(operator.precedence() + 1, singleEquals);
+            var right = binaryExpression(operator.precedence() + 1, singleEquals, until);
             var operation = new BinaryOperationExpression(
                     operator,
                     left,
@@ -493,17 +538,25 @@ class SassExpressionParser extends Parser {
     }
 
     /// Returns whether an expression consists solely of slash operations over
-    /// numbers or plain function calls.
+    /// numbers, plain function calls, or (in plain CSS) unquoted identifiers.
     ///
-    /// Unquoted identifiers such as {@code none} are intentionally excluded:
-    /// they become slash-joined strings via the default division fallback, which
-    /// color channel parsers re-split (for example {@code 50%/none}).
+    /// Outside plain CSS, unquoted identifiers such as {@code none} are
+    /// intentionally excluded so they become slash-joined strings via the
+    /// default division fallback, which color channel parsers re-split (for
+    /// example {@code 50%/none}). In plain CSS, chains such as
+    /// {@code 1/2/foo/bar} must retain slash presentation rather than evaluating
+    /// the leading numeric pair as division.
     ///
     /// @param expression the expression to inspect
     /// @return whether the tree may represent a slash-separated value
     private boolean isSlashTree(SassExpression expression) {
         if (expression instanceof NumberExpression
                 || expression instanceof FunctionExpression) {
+            return true;
+        }
+        if (isPlainCssSource()
+                && expression instanceof StringExpression string
+                && !string.hasQuotes()) {
             return true;
         }
         return expression instanceof BinaryOperationExpression binary
@@ -539,11 +592,7 @@ class SassExpressionParser extends Parser {
             throw scanner.error("Expected expression.");
         }
         if ((next == 'u' || next == 'U') && scanner.peek(1) == '+') {
-            throw scanner.error(
-                    "Unicode range expressions are not available.",
-                    scanner.position(),
-                    2
-            );
+            return unicodeRangeExpression();
         }
 
         return switch (next) {
@@ -619,6 +668,11 @@ class SassExpressionParser extends Parser {
             whitespace(true);
             var inside = scanner.state();
             if (!lookingAtExpression()) {
+                // Plain CSS rejects empty {@code ()} at parse time with
+                // "Expected expression." rather than later CSS-value validation.
+                if (isPlainCssSource()) {
+                    throw scanner.error("Expected expression.");
+                }
                 scanner.expect(')');
                 return new ListExpression(
                         List.of(),
@@ -631,6 +685,11 @@ class SassExpressionParser extends Parser {
             var warningCheckpoint = parseTimeWarningCheckpoint();
             var first = expressionUntilCommaWithSlashReparse();
             if (scanner.scan(':')) {
+                // Plain CSS has no Sass map literals; a colon after the first
+                // parenthesized token is a syntax error (dart-sass expected ")").
+                if (isPlainCssSource()) {
+                    throw scanner.error("expected \")\".");
+                }
                 whitespace(true);
                 return mapExpression(first, start);
             }
@@ -879,7 +938,7 @@ class SassExpressionParser extends Parser {
             ScannerState start
     ) {
         var name = variableName();
-        if (namespace != null && name.startsWith("-")) {
+        if (namespace != null && (name.startsWith("-") || name.startsWith("_"))) {
             throw scanner.error(
                     "Private members can't be accessed from outside their modules.",
                     start.position(),
@@ -1260,13 +1319,55 @@ class SassExpressionParser extends Parser {
             }
         }
 
-        buffer.add(interpolatedDeclarationValue(true, true));
+        // Special-function residual folds silent-comment newlines into a single
+        // space ({@code element(//\n  c)} → {@code element( c)}), matching
+        // dart-sass property emission for these raw-string forms.
+        var residual = foldSpecialFunctionSilentNewlines(
+                interpolatedDeclarationValue(true, true)
+        );
+        buffer.add(residual);
         scanner.expect(')');
         buffer.append(')');
         return new StringExpression(
                 buffer.interpolation(scanner.spanFrom(start)),
                 false
         );
+    }
+
+    /// Folds line breaks left by omitted silent comments in special-function args.
+    ///
+    /// @param residual the raw argument interpolation
+    /// @return an interpolation with newline-led indents collapsed to one space
+    private static Interpolation foldSpecialFunctionSilentNewlines(
+            Interpolation residual
+    ) {
+        @Nullable String plain = residual.asPlain();
+        if (plain == null || plain.indexOf('\n') < 0 && plain.indexOf('\r') < 0) {
+            return residual;
+        }
+        var folded = new StringBuilder(plain.length());
+        for (var index = 0; index < plain.length(); index++) {
+            var character = plain.charAt(index);
+            if (character == '\n' || character == '\r') {
+                if (character == '\r'
+                        && index + 1 < plain.length()
+                        && plain.charAt(index + 1) == '\n') {
+                    index++;
+                }
+                while (index + 1 < plain.length()) {
+                    var next = plain.charAt(index + 1);
+                    if (next == ' ' || next == '\t') {
+                        index++;
+                        continue;
+                    }
+                    break;
+                }
+                folded.append(' ');
+                continue;
+            }
+            folded.append(character);
+        }
+        return Interpolation.plain(folded.toString(), residual.span());
     }
 
     /// Removes one CSS vendor prefix from a lowercase identifier.
@@ -1361,6 +1462,19 @@ class SassExpressionParser extends Parser {
                 }
                 whitespace(true);
 
+                // Plain CSS treats empty middle/invalid tokens after a comma as
+                // "Expected expression." (not as an empty fallback). SCSS keeps
+                // the historical expected ")" diagnostic for the same inputs.
+                if (isPlainCssSource()
+                        && allowEmptySecondArgument
+                        && positional.size() == 1
+                        && named.isEmpty()
+                        && rest == null
+                        && scanner.peek() != ')'
+                        && !lookingAtExpression()) {
+                    throw scanner.error("Expected expression.");
+                }
+
                 if (allowEmptySecondArgument
                         && positional.size() == 1
                         && named.isEmpty()
@@ -1441,7 +1555,21 @@ class SassExpressionParser extends Parser {
             boolean allowEmpty,
             boolean silentComments
     ) {
-        return interpolatedDeclarationValue(allowEmpty, silentComments, null);
+        return interpolatedDeclarationValue(allowEmpty, silentComments, false, null);
+    }
+
+    /// Parses a raw declaration value, optionally retaining top-level semicolons.
+    ///
+    /// @param allowEmpty whether an empty raw value is accepted
+    /// @param silentComments whether silent comments are omitted
+    /// @param allowSemicolon whether a top-level {@code ;} is part of the value
+    /// @return the raw value interpolation
+    protected final Interpolation interpolatedDeclarationValue(
+            boolean allowEmpty,
+            boolean silentComments,
+            boolean allowSemicolon
+    ) {
+        return interpolatedDeclarationValue(allowEmpty, silentComments, allowSemicolon, null);
     }
 
     /// Parses a raw declaration value with an optional top-level terminator.
@@ -1457,6 +1585,23 @@ class SassExpressionParser extends Parser {
     protected final Interpolation interpolatedDeclarationValue(
             boolean allowEmpty,
             boolean silentComments,
+            @Nullable java.util.function.BooleanSupplier atEnd
+    ) {
+        return interpolatedDeclarationValue(allowEmpty, silentComments, false, atEnd);
+    }
+
+    /// Parses a raw declaration value with optional semicolon retention and terminator.
+    ///
+    /// @param allowEmpty whether an empty raw value is accepted
+    /// @param silentComments whether silent comments are omitted
+    /// @param allowSemicolon whether a top-level {@code ;} is part of the value
+    /// @param atEnd the optional top-level terminator predicate
+    /// @return the raw value interpolation
+    /// @throws ParseException if a required token is absent or nested syntax is malformed
+    protected final Interpolation interpolatedDeclarationValue(
+            boolean allowEmpty,
+            boolean silentComments,
+            boolean allowSemicolon,
             @Nullable java.util.function.BooleanSupplier atEnd
     ) {
         var start = scanner.state();
@@ -1482,12 +1627,21 @@ class SassExpressionParser extends Parser {
                 case '/' -> {
                     if (scanner.peek(1) == '*') {
                         buffer.append(rawText(this::loudComment));
+                        wroteNewline = false;
                     } else if (scanner.peek(1) == '/' && silentComments) {
+                        // Match dart-sass: omit the silent comment without
+                        // inserting a replacement space. The trailing newline
+                        // (if any) remains for the normal newline branch so
+                        // residual text such as {@code @supports a(//\n  b)}
+                        // keeps the line break and indentation.
+                        // Special functions later fold that residual (see
+                        // {@link #trySpecialFunction}).
                         silentComment();
+                        wroteNewline = false;
                     } else {
                         buffer.append((char) scanner.read());
+                        wroteNewline = false;
                     }
-                    wroteNewline = false;
                 }
                 case '#' -> {
                     if (scanner.peek(1) == '{') {
@@ -1530,7 +1684,7 @@ class SassExpressionParser extends Parser {
                     wroteNewline = false;
                 }
                 case ';' -> {
-                    if (brackets.isEmpty()) {
+                    if (!allowSemicolon && brackets.isEmpty()) {
                         break value;
                     }
                     buffer.append((char) scanner.read());
@@ -1638,8 +1792,9 @@ class SassExpressionParser extends Parser {
                 groups.add(ifGroup());
             } else if (operator != IfConditionExpression.BooleanOperator.AND
                     && scanIdentifier("or")) {
+                // dart-sass uses the "and" wording for this branch as well.
                 if (scanner.peek() == '(') {
-                    throw scanner.error("Whitespace is required between \"or\" and \"(\"");
+                    throw scanner.error("Whitespace is required between \"and\" and \"(\"");
                 }
                 whitespace(true);
                 if (operator == null) {
@@ -1821,6 +1976,13 @@ class SassExpressionParser extends Parser {
         }
         var identifier = interpolatedIdentifier();
         @Nullable String plain = identifier.asPlain();
+        // Pure #{…} interpolations may stand alone as a condition group.
+        if (plain == null
+                && identifier.parts().size() == 1
+                && identifier.parts().get(0) instanceof ExpressionInterpolationPart
+                && scanner.peek() != '(') {
+            return new IfConditionExpression.Raw(identifier);
+        }
         if (plain != null
                 && ("and".equalsIgnoreCase(plain)
                 || "or".equalsIgnoreCase(plain)
@@ -1830,12 +1992,11 @@ class SassExpressionParser extends Parser {
                     "Whitespace is required between \"" + plain + "\" and \"(\""
             );
         }
-        if (scanner.peek() != '(') {
-            return new IfConditionExpression.Raw(identifier);
-        }
+        // Plain identifiers must begin a function group: bare {@code not}/{@code else}
+        // after another operator is rejected with expected "(".
         scanner.expect('(');
         whitespace(true);
-        var arguments = interpolatedDeclarationValue(true, true);
+        var arguments = interpolatedDeclarationValue(true, true, true);
         whitespace(true);
         scanner.expect(')');
         return new IfConditionExpression.Function(
@@ -1886,7 +2047,7 @@ class SassExpressionParser extends Parser {
             return null;
         }
         whitespace(true);
-        var arguments = interpolatedDeclarationValue(true, true);
+        var arguments = interpolatedDeclarationValue(true, true, true);
         whitespace(true);
         scanner.expect(')');
         return new IfConditionExpression.Function(
@@ -2024,6 +2185,73 @@ class SassExpressionParser extends Parser {
         buffer.add(contents, scanner.spanFrom(start));
     }
 
+    /// Consumes a CSS unicode-range token as an unquoted string expression.
+    ///
+    /// Matches dart-sass: {@code U+} or {@code u+} followed by hex digits and optional
+    /// {@code ?} wildcards or a hyphenated second hex range. The original source text
+    /// (including letter case) is preserved in the string value.
+    ///
+    /// @return an unquoted plain string expression covering the full range token
+    /// @throws ParseException if the range is incomplete or exceeds six digits
+    private StringExpression unicodeRangeExpression() {
+        var start = scanner.state();
+        if (!scanIdentChar('u', false)) {
+            throw scanner.error("Expected \"u\".");
+        }
+        scanner.expect('+');
+
+        var firstRangeLength = 0;
+        while (scanCharIf(CssCharacters::isHex)) {
+            firstRangeLength++;
+        }
+        var hasQuestionMark = false;
+        while (scanner.scan('?')) {
+            hasQuestionMark = true;
+            firstRangeLength++;
+        }
+
+        if (firstRangeLength == 0) {
+            throw scanner.error("Expected hex digit or \"?\".");
+        }
+        if (firstRangeLength > 6) {
+            throw scanner.error(
+                    "Expected at most 6 digits.",
+                    scanner.spanFrom(start)
+            );
+        }
+        if (hasQuestionMark) {
+            return StringExpression.plain(
+                    scanner.substring(start.position()),
+                    scanner.spanFrom(start)
+            );
+        }
+
+        if (scanner.scan('-')) {
+            var secondRangeStart = scanner.state();
+            var secondRangeLength = 0;
+            while (scanCharIf(CssCharacters::isHex)) {
+                secondRangeLength++;
+            }
+            if (secondRangeLength == 0) {
+                throw scanner.error("Expected hex digit.");
+            }
+            if (secondRangeLength > 6) {
+                throw scanner.error(
+                        "Expected at most 6 digits.",
+                        scanner.spanFrom(secondRangeStart)
+                );
+            }
+        }
+
+        if (lookingAtInterpolatedIdentifierBody()) {
+            throw scanner.error("Expected end of identifier.");
+        }
+        return StringExpression.plain(
+                scanner.substring(start.position()),
+                scanner.spanFrom(start)
+        );
+    }
+
     /// Returns whether an identifier, including interpolation, begins here.
     ///
     /// @return whether an interpolated identifier begins at the scanner position
@@ -2033,6 +2261,15 @@ class SassExpressionParser extends Parser {
                 || scanner.peek() == '-'
                 && scanner.peek(1) == '#'
                 && scanner.peek(2) == '{';
+    }
+
+    /// Returns whether an identifier body, including interpolation, begins here.
+    ///
+    /// @return whether more identifier or interpolation text begins at the scanner
+    private boolean lookingAtInterpolatedIdentifierBody() {
+        var next = scanner.peek();
+        return next != CssCharacters.END_OF_INPUT
+                && (CssCharacters.isName(next) || next == '\\' || next == '#');
     }
 
     /// Returns whether any supported single expression begins here.

@@ -32,6 +32,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /// Implements the pure selector functions exported by {@code sass:selector}.
 ///
@@ -152,10 +153,10 @@ public final class SelectorFunctions {
         if (values.isEmpty()) {
             throw new SassValueException("$selectors: At least one selector must be passed.");
         }
-        var result = parseSelector(values.get(0), "selectors", true);
+        var result = parseSelector(values.get(0), null, true);
         rejectTopLevelParentSuffix(result);
         for (var index = 1; index < values.size(); index++) {
-            result = parseSelector(values.get(index), "selectors", true).nestWithin(result);
+            result = parseSelector(values.get(index), null, true).nestWithin(result);
         }
         return asSassList(result);
     }
@@ -169,9 +170,9 @@ public final class SelectorFunctions {
         if (values.isEmpty()) {
             throw new SassValueException("$selectors: At least one selector must be passed.");
         }
-        var result = parseSelector(values.get(0), "selectors", false);
+        var result = parseSelector(values.get(0), null, false);
         for (var index = 1; index < values.size(); index++) {
-            result = appendSelector(result, parseSelector(values.get(index), "selectors", false));
+            result = appendSelector(result, parseSelector(values.get(index), null, false));
         }
         return asSassList(result);
     }
@@ -237,27 +238,62 @@ public final class SelectorFunctions {
     /// Parses a Sass value as a selector list.
     ///
     /// @param value the Sass selector value
-    /// @param name the argument name for diagnostics
+    /// @param name the argument name for diagnostics, or {@code null} to omit
+    ///             {@code $name:} prefixes (as {@code selector.append}/{@code nest} do)
     /// @param allowParent whether parent selectors are permitted
     /// @return the parsed selector list
     private static SelectorList parseSelector(
             SassValue value,
-            String name,
+            @Nullable String name,
             boolean allowParent
     ) {
         var text = selectorText(value, name);
 
-        var selector = SelectorList.parse(text, syntheticSpan(text));
-        if (selector.hasUnresolvedParentReference()) {
-            throw new SassValueException(
-                    "$" + name
-                            + ": Parent selectors in non-selector pseudo arguments aren't supported."
-            );
+        SelectorList selector;
+        try {
+            selector = SelectorList.parse(text, syntheticSpan(text));
+        } catch (SassValueException exception) {
+            throw prefixSelectorError(name, exception);
         }
+        // Opaque raw pseudo arguments may contain a literal {@code &} character
+        // that is not a parent-selector AST node (e.g. {@code :c(*&^)}). Reject
+        // only structural parent selectors ({@code &} compounds). Nesting still
+        // fails later via {@link SelectorList#replaceParentSelectors} when an
+        // opaque argument truly holds an unresolved parent marker.
         if (!allowParent && selector.parentSelectorCount() != 0) {
-            throw new SassValueException("$" + name + ": Parent selectors aren't allowed here.");
+            throw prefixSelectorMessage(name, "Parent selectors aren't allowed here.");
         }
         return selector;
+    }
+
+    /// Prefixes a selector-function diagnostic when a parameter name is present.
+    ///
+    /// @param name      the parameter name without a dollar sign, or {@code null}
+    /// @param exception the underlying parse failure
+    /// @return a possibly parameter-scoped exception
+    private static SassValueException prefixSelectorError(
+            @Nullable String name,
+            SassValueException exception
+    ) {
+        var message = Objects.requireNonNull(exception.getMessage(), "selector failure");
+        if (name == null || message.startsWith("$")) {
+            return exception;
+        }
+        return new SassValueException("$" + name + ": " + message);
+    }
+
+    /// Creates a selector-function diagnostic with optional parameter scoping.
+    ///
+    /// @param name    the parameter name without a dollar sign, or {@code null}
+    /// @param message the diagnostic body
+    /// @return the value exception to throw
+    private static SassValueException prefixSelectorMessage(
+            @Nullable String name,
+            String message
+    ) {
+        return name == null
+                ? new SassValueException(message)
+                : new SassValueException("$" + name + ": " + message);
     }
 
     /// Rejects top-level parent selectors that carry an unresolved suffix.
@@ -277,12 +313,14 @@ public final class SelectorFunctions {
     /// @param name the argument name for diagnostics
     /// @return the selector source text
     /// @throws SassValueException if the value is not a selector string or list structure
-    private static String selectorText(SassValue value, String name) {
+    private static String selectorText(SassValue value, @Nullable String name) {
         if (value instanceof SassString string) {
             return string.text();
         }
         if (value instanceof SassList list) {
-            return selectorText(list, name);
+            // Diagnostics always cite the original top-level value so nested
+            // failures report the caller-visible inspect form (e.g. {@code (c,)}).
+            return selectorText(list, name, value);
         }
         throw invalidSelector(value, name);
     }
@@ -290,11 +328,16 @@ public final class SelectorFunctions {
     /// Converts a selector-list Sass list to source text.
     ///
     /// @param list the Sass list representation
-    /// @param name the argument name for diagnostics
+    /// @param name the argument name for diagnostics, or {@code null}
+    /// @param root the original top-level selector value for error messages
     /// @return the selector source text
-    private static String selectorText(SassList list, String name) {
+    private static String selectorText(
+            SassList list,
+            @Nullable String name,
+            SassValue root
+    ) {
         if (list.contents().isEmpty() || list.separator() == ListSeparator.SLASH) {
-            throw invalidSelector(list, name);
+            throw invalidSelector(root, name);
         }
         if (list.separator() == ListSeparator.COMMA) {
             var complexes = new ArrayList<String>();
@@ -303,9 +346,9 @@ public final class SelectorFunctions {
                     complexes.add(string.text());
                 } else if (complex instanceof SassList nested
                         && nested.separator() == ListSeparator.SPACE) {
-                    complexes.add(selectorText(nested, name));
+                    complexes.add(selectorText(nested, name, root));
                 } else {
-                    throw invalidSelector(list, name);
+                    throw invalidSelector(root, name);
                 }
             }
             return String.join(", ", complexes);
@@ -314,7 +357,7 @@ public final class SelectorFunctions {
         var compounds = new ArrayList<String>();
         for (var compound : list.contents()) {
             if (!(compound instanceof SassString string)) {
-                throw invalidSelector(list, name);
+                throw invalidSelector(root, name);
             }
             compounds.add(string.text());
         }
@@ -324,13 +367,22 @@ public final class SelectorFunctions {
     /// Creates an invalid-selector diagnostic.
     ///
     /// @param value the rejected Sass value
-    /// @param name the argument name for diagnostics
+    /// @param name  the argument name for diagnostics, or {@code null}
     /// @return the value exception to throw
-    private static SassValueException invalidSelector(SassValue value, String name) {
-        return new SassValueException(
-                "$" + name + ": " + value + " is not a valid selector: it must be a string,\n"
-                        + "a list of strings, or a list of lists of strings."
-        );
+    private static SassValueException invalidSelector(SassValue value, @Nullable String name) {
+        // Match dart-sass inspect: singleton comma/slash lists already include
+        // parentheses, while other unbracketed lists need an outer pair.
+        var rendered = value.toString();
+        if (value instanceof SassList list
+                && !list.hasBrackets()
+                && !(rendered.startsWith("(") && rendered.endsWith(")"))) {
+            rendered = "(" + rendered + ")";
+        }
+        var body = rendered + " is not a valid selector: it must be a string,\n"
+                + "a list of strings, or a list of lists of strings.";
+        return name == null
+                ? new SassValueException(body)
+                : new SassValueException("$" + name + ": " + body);
     }
 
     /// Creates a non-compound-selector diagnostic.

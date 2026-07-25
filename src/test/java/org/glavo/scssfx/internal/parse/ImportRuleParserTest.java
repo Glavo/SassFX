@@ -65,7 +65,7 @@ final class ImportRuleParserTest {
         assertEquals(0, stylesheet.parseTimeWarnings().size());
     }
 
-    /// Separates a structured supports modifier from surrounding CSS modifiers.
+    /// Keeps supports and surrounding CSS modifiers in one modifier interpolation.
     @Test
     void parsesStructuredStaticImportSupportsModifier() {
         var stylesheet = parse(
@@ -74,20 +74,27 @@ final class ImportRuleParserTest {
         var rule = assertInstanceOf(ImportRule.class, stylesheet.children().get(0));
         var importRule = assertInstanceOf(StaticImport.class, rule.imports().get(0));
 
-        assertEquals("layer(theme)", importRule.modifiersBeforeSupports().asPlain().strip());
-        var declaration = assertInstanceOf(SupportsDeclaration.class, importRule.supports());
-        assertEquals("display", declaration.name().toString());
-        assertEquals("$display", declaration.value().toString());
-        assertEquals("screen", importRule.modifiersAfterSupports().asPlain());
+        assertNull(importRule.supports());
+        assertNull(importRule.modifiersAfterSupports());
+        var modifiers = importRule.modifiersBeforeSupports().toString();
+        assertEquals(true, modifiers.contains("layer(theme)"));
+        assertEquals(true, modifiers.contains("supports("));
+        assertEquals(true, modifiers.contains("$display"));
+        assertEquals(true, modifiers.contains("screen"));
     }
 
-    /// Rejects repeated top-level supports modifiers in one import argument.
+    /// Accepts repeated top-level supports modifiers as successive function modifiers.
     @Test
-    void rejectsRepeatedStaticImportSupportsModifiers() {
-        assertThrows(
-                ParseException.class,
-                () -> parse("@import \"theme.css\" supports(display: grid) supports(color: red);")
+    void parsesRepeatedStaticImportSupportsModifiers() {
+        var stylesheet = parse(
+                "@import \"theme.css\" supports(display: grid) supports(color: red);"
         );
+        var rule = assertInstanceOf(ImportRule.class, stylesheet.children().get(0));
+        var importRule = assertInstanceOf(StaticImport.class, rule.imports().get(0));
+        var modifiers = importRule.modifiersBeforeSupports().toString();
+        assertEquals(true, modifiers.contains("supports("));
+        assertEquals(true, modifiers.contains("display"));
+        assertEquals(true, modifiers.contains("color"));
     }
 
     /// Rejects malformed conditions within static-import supports modifiers.

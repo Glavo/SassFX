@@ -337,8 +337,9 @@ public final class SassCalculation implements SassValue {
             if (!(result instanceof SassNumber remainder)) {
                 return result;
             }
-            double leftSign = Math.signum(left.value() == 0.0 ? 1.0 : left.value());
-            double rightSign = Math.signum(right.value() == 0.0 ? 1.0 : right.value());
+            // Preserve IEEE signed zeros so rem(-0, infinity) keeps −0.
+            double leftSign = signedSignum(left.value());
+            double rightSign = signedSignum(right.value());
             if (leftSign != rightSign) {
                 if (Double.isInfinite(right.value())) {
                     return left;
@@ -389,9 +390,22 @@ public final class SassCalculation implements SassValue {
         Object first = simplify(strategyOrNumber);
         @Nullable Object second = numberOrStep == null ? null : simplify(numberOrStep);
         @Nullable Object third = step == null ? null : simplify(step);
+        // Three-argument form requires a rounding strategy as the first argument.
+        // Forms such as {@code round(10px + 2px, 8px, 9px)} simplify the sum first
+        // and then fail with dart-sass's strategy diagnostic.
+        if (first instanceof SassNumber number && second != null && third != null) {
+            throw new SassValueException(
+                    number + " must be either nearest, up, down or to-zero."
+            );
+        }
         if (second == null && third == null && first instanceof SassNumber number) {
             if (number.isUnitless()) {
-                return SassNumber.of(Math.rint(number.value()), null);
+                // Global Sass {@code round()} (legacy) uses half-away-from-zero;
+                // pure CSS calculation {@code round()} uses banker's {@code rint}.
+                double rounded = inLegacySassFunction != null
+                        ? roundHalfAwayFromZero(number.value())
+                        : Math.rint(number.value());
+                return SassNumber.of(rounded, null);
             }
             if (inLegacySassFunction != null) {
                 if (warn != null) {
@@ -404,7 +418,7 @@ public final class SassCalculation implements SassValue {
                                     + "See https://sass-lang.com/d/import"
                     );
                 }
-                return matchUnits(Math.rint(number.value()), number);
+                return matchUnits(roundHalfAwayFromZero(number.value()), number);
             }
             // With units, CSS round requires an explicit step; preserve calculation.
             return new SassCalculation("round", List.of(first));
@@ -816,22 +830,29 @@ public final class SassCalculation implements SassValue {
         }
         double stepValue = step.valueInUnitsOf(number);
         if (Double.isInfinite(step.value())) {
+            // CSS Values: infinite step maps finite numbers to 0 or infinity
+            // while preserving the signed-zero of a zero input for down/up.
+            boolean negative = isNegativeIncludingNegativeZero(number.value());
             return switch (strategy) {
-                case "nearest", "to-zero" -> number.value() > 0
-                        ? matchUnits(0.0, number)
-                        : matchUnits(number.value() == 0 ? 0.0 : -0.0, number);
+                case "nearest", "to-zero" -> matchUnits(
+                        negative ? -0.0 : 0.0,
+                        number
+                );
+                // up: positive → +∞; +0 → +0; negative or −0 → −0
                 case "up" -> number.value() > 0
                         ? matchUnits(Double.POSITIVE_INFINITY, number)
-                        : matchUnits(-0.0, number);
+                        : matchUnits(negative ? -0.0 : 0.0, number);
+                // down: negative → −∞; −0 → −0; non-negative → +0
                 case "down" -> number.value() < 0
                         ? matchUnits(Double.NEGATIVE_INFINITY, number)
-                        : matchUnits(0.0, number);
+                        : matchUnits(negative ? -0.0 : 0.0, number);
                 default -> matchUnits(Double.NaN, number);
             };
         }
         double ratio = number.value() / stepValue;
         double rounded = switch (strategy) {
-            case "nearest" -> Math.rint(ratio) * stepValue;
+            // CSS nearest: at a midpoint choose the integer with larger |value|.
+            case "nearest" -> nearestAwayFromZero(ratio) * stepValue;
             case "up" -> (step.value() < 0 ? Math.floor(ratio) : Math.ceil(ratio)) * stepValue;
             case "down" -> (step.value() < 0 ? Math.ceil(ratio) : Math.floor(ratio)) * stepValue;
             case "to-zero" -> (number.value() < 0 ? Math.ceil(ratio) : Math.floor(ratio)) * stepValue;
@@ -840,7 +861,62 @@ public final class SassCalculation implements SassValue {
         return matchUnits(rounded, number);
     }
 
+    /// Returns whether {@code value} is negative or a negative zero.
+    ///
+    /// @param value the IEEE-754 value
+    /// @return whether the sign bit is set or the value is less than zero
+    private static boolean isNegativeIncludingNegativeZero(double value) {
+        return value < 0.0 || value == 0.0 && Double.doubleToRawLongBits(value) < 0L;
+    }
+
+    /// Returns {@code -1.0}, {@code 0.0}, or {@code 1.0}, treating signed zeros
+    /// as signed (unlike {@link Math#signum(double)} which maps both zeros to
+    /// {@code +0.0}).
+    ///
+    /// @param value the IEEE-754 value
+    /// @return the signed unit direction of {@code value}
+    private static double signedSignum(double value) {
+        if (value > 0.0) {
+            return 1.0;
+        }
+        if (value < 0.0) {
+            return -1.0;
+        }
+        return Double.doubleToRawLongBits(value) < 0L ? -1.0 : 1.0;
+    }
+
+    /// Rounds {@code ratio} to the nearest integer; midpoints choose the integer
+    /// with the larger absolute value (CSS {@code nearest} strategy).
+    ///
+    /// @param ratio the value divided by the step
+    /// @return the chosen integer ratio
+    private static double nearestAwayFromZero(double ratio) {
+        double floor = Math.floor(ratio);
+        double ceil = Math.ceil(ratio);
+        if (floor == ceil) {
+            return floor;
+        }
+        double toFloor = Math.abs(ratio - floor);
+        double toCeil = Math.abs(ceil - ratio);
+        if (toFloor < toCeil) {
+            return floor;
+        }
+        if (toCeil < toFloor) {
+            return ceil;
+        }
+        return Math.abs(ceil) >= Math.abs(floor) ? ceil : floor;
+    }
+
     private static SassNumber matchUnits(double value, SassNumber number) {
         return SassNumber.withUnits(value, number.numeratorUnits(), number.denominatorUnits());
+    }
+
+    /// Rounds midpoints away from zero, matching Sass {@code math.round()}.
+    ///
+    /// @param value the value to round
+    /// @return the rounded magnitude
+    private static double roundHalfAwayFromZero(double value) {
+        var rounded = Math.floor(Math.abs(value) + 0.5);
+        return rounded == 0.0 ? 0.0 : Math.copySign(rounded, value);
     }
 }

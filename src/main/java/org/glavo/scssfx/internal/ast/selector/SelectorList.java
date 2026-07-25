@@ -52,7 +52,24 @@ public record SelectorList(
     /// @return the parsed selector list
     /// @throws SassValueException if the selector is invalid
     public static SelectorList parse(String text, SourceSpan span, boolean plainCss) {
-        return SelectorParser.parse(text, span, plainCss);
+        return SelectorParser.parse(text, span, plainCss, false);
+    }
+
+    /// Parses a selector list with optional plain-CSS and keyframe modes.
+    ///
+    /// @param text              the selector source after interpolation
+    /// @param span              the span covering that text
+    /// @param plainCss          whether plain CSS selector restrictions apply
+    /// @param keyframeSelectors whether percentage keyframe selectors are accepted
+    /// @return the parsed selector list
+    /// @throws SassValueException if the selector is invalid
+    public static SelectorList parse(
+            String text,
+            SourceSpan span,
+            boolean plainCss,
+            boolean keyframeSelectors
+    ) {
+        return SelectorParser.parse(text, span, plainCss, keyframeSelectors);
     }
 
     /// Returns whether this list contains a parent-selector reference.
@@ -161,7 +178,14 @@ public record SelectorList(
         }
         if (parent == null) {
             if (containsParentSelector()) {
-                throw new SassValueException("Top-level parent selectors aren't allowed.");
+                // dart-sass rejects only suffixed top-level parent forms such as
+                // {@code &b}. Bare {@code &} is retained for native CSS nesting
+                // (including inside unknown at-rules and at the stylesheet root).
+                if (hasParentSelectorSuffix()) {
+                    throw new SassValueException(
+                            "A top-level selector may not contain a parent selector with a suffix."
+                    );
+                }
             }
             return this;
         }
@@ -406,8 +430,8 @@ public record SelectorList(
             var last = parentComplex.components().get(parentComplex.components().size() - 1);
             if (!last.combinators().isEmpty()) {
                 throw new SassValueException(
-                        "Parent \"" + parentComplex.toCssString()
-                                + "\" is incompatible with this selector."
+                        "Selector \"" + parentComplex.toCssString()
+                                + "\" can't be used as a parent in a compound selector."
                 );
             }
 

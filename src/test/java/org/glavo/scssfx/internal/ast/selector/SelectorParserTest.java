@@ -133,7 +133,7 @@ final class SelectorParserTest {
         );
 
         assertEquals(
-                ":is(.a, .b)::slotted(.icon):nth-child(2n + 1 of .a, .b)%token",
+                ":is(.a, .b)::slotted(.icon):nth-child(2n+1 of .a, .b)%token",
                 selector.toCssString()
         );
         var components = selector.components().get(0).components().get(0).selector().components();
@@ -150,7 +150,7 @@ final class SelectorParserTest {
 
         var nthChild = assertInstanceOf(PseudoSelector.class, components.get(2));
         var nthArgument = assertInstanceOf(NthPseudoArgument.class, nthChild.argument());
-        assertEquals("2n + 1", nthArgument.formula());
+        assertEquals("2n+1", nthArgument.formula());
         assertEquals(
                 ".a, .b",
                 java.util.Objects.requireNonNull(nthArgument.selectors()).toCssString()
@@ -193,9 +193,9 @@ final class SelectorParserTest {
     @Test
     void rejectsMalformedStructuredSelectors() {
         assertEquals("Expected escape sequence.", failure(".\\"));
-        assertEquals("expected \"]\".", failure("[data=value"));
+        assertEquals("expected more input.", failure("[data=value"));
         assertEquals(
-                "Parent selector must be the first selector in a compound.",
+                "\"&\" may only used at the beginning of a compound selector.",
                 failure(".item&")
         );
     }

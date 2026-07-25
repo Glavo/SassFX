@@ -436,7 +436,7 @@ $value: dark;
 }
 <===> at-rules/supports-and-import/output.css
 @import "theme.css" layer(theme) supports(display: grid) screen;
-@supports ((display: grid) and selector(.button)) or (not (--theme:dark)) {
+@supports ((display: grid) and selector(.button)) or (not (--theme: dark)) {
   .supported {
     color: green;
   }
@@ -511,7 +511,7 @@ $foo-bar: 1;
 @use "ignored.css";
 @layer components {
   .layered {
-    width: min(10px, 20px);
+    width: 10px;
   }
 }
 

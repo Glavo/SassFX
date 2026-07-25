@@ -167,6 +167,13 @@ public final class BuiltInFunctions {
         ));
         register(functions, BuiltInCallable.of("type-of", List.of("value"), BuiltInFunctions::typeOf));
         register(functions, BuiltInCallable.of("inspect", List.of("value"), BuiltInFunctions::inspect));
+        // Eager ternary used by get-function("if") / meta.call. Direct if() calls
+        // remain LegacyIfExpression/IfExpression so unused branches stay unevaluated.
+        register(functions, BuiltInCallable.of(
+                "if",
+                List.of("condition", "if-true", "if-false"),
+                BuiltInFunctions::legacyIf
+        ));
         register(functions, BuiltInCallable.of(
                 "feature-exists",
                 List.of("feature"),
@@ -177,6 +184,12 @@ public final class BuiltInFunctions {
                 "comparable",
                 List.of("number1", "number2"),
                 BuiltInFunctions::comparable
+        ));
+        // Global alias of math.is-unitless (deprecated in favor of the module form).
+        register(functions, BuiltInCallable.of(
+                "unitless",
+                List.of("number"),
+                BuiltInFunctions::isUnitless
         ));
         register(functions, BuiltInCallable.of(
                 "percentage",
@@ -218,6 +231,13 @@ public final class BuiltInFunctions {
                 "map-has-key",
                 List.of("map", "key"),
                 BuiltInFunctions::mapHasKey
+        ));
+        // Global map-remove accepts rest keys like map.remove (deprecated global form).
+        register(functions, BuiltInCallable.withRest(
+                "map-remove",
+                List.of("map"),
+                "keys",
+                BuiltInFunctions::mapRemove
         ));
 
         // Legacy global selector algebra names mirror sass:selector.
@@ -377,14 +397,14 @@ public final class BuiltInFunctions {
                 List.of("color", "amount"),
                 BuiltInFunctions::darken
         ));
-        register(functions, BuiltInCallable.of(
+        // Global saturate() overloads CSS filter saturate($amount) and the
+        // legacy color adjuster saturate($color, $amount). Rest dispatch keeps
+        // both signatures' missing-argument diagnostics aligned with dart-sass.
+        register(functions, BuiltInCallable.withRest(
                 "saturate",
-                List.of(
-                        Param.required("color"),
-                        Param.optional("amount", SassNull.NULL)
-                ),
-                1,
-                BuiltInFunctions::saturate
+                List.of(),
+                "args",
+                BuiltInFunctions::saturateRest
         ));
         register(functions, BuiltInCallable.of(
                 "desaturate",
@@ -433,6 +453,79 @@ public final class BuiltInFunctions {
                 "ie-hex-str",
                 List.of("color"),
                 BuiltInFunctions::ieHexStr
+        ));
+
+        // Meta introspection functions that also exist as globals (dart-sass
+        // registers them on _builtInFunctions with a meta deprecation warning).
+        register(functions, BuiltInCallable.of(
+                "keywords",
+                List.of("args"),
+                BuiltInFunctions::keywords
+        ));
+        register(functions, BuiltInCallable.contextual(
+                "content-exists",
+                List.of(),
+                0,
+                BuiltInFunctions::metaContentExists
+        ));
+        register(functions, BuiltInCallable.contextual(
+                "variable-exists",
+                List.of(Param.required("name")),
+                1,
+                BuiltInFunctions::metaVariableExists
+        ));
+        register(functions, BuiltInCallable.contextual(
+                "global-variable-exists",
+                List.of(
+                        Param.required("name"),
+                        Param.optional("module", SassNull.NULL)
+                ),
+                1,
+                BuiltInFunctions::metaGlobalVariableExists
+        ));
+        register(functions, BuiltInCallable.contextual(
+                "function-exists",
+                List.of(
+                        Param.required("name"),
+                        Param.optional("module", SassNull.NULL)
+                ),
+                1,
+                BuiltInFunctions::metaFunctionExists
+        ));
+        register(functions, BuiltInCallable.contextual(
+                "mixin-exists",
+                List.of(
+                        Param.required("name"),
+                        Param.optional("module", SassNull.NULL)
+                ),
+                1,
+                BuiltInFunctions::metaMixinExists
+        ));
+        register(functions, BuiltInCallable.contextual(
+                "get-function",
+                List.of(
+                        Param.required("name"),
+                        Param.optional("css", SassBoolean.FALSE),
+                        Param.optional("module", SassNull.NULL)
+                ),
+                1,
+                BuiltInFunctions::metaGetFunction
+        ));
+        register(functions, BuiltInCallable.contextual(
+                "get-mixin",
+                List.of(
+                        Param.required("name"),
+                        Param.optional("module", SassNull.NULL)
+                ),
+                1,
+                BuiltInFunctions::metaGetMixin
+        ));
+        register(functions, BuiltInCallable.contextualWithRest(
+                "call",
+                List.of(Param.required("function")),
+                "args",
+                1,
+                BuiltInFunctions::metaCall
         ));
         return freeze(functions);
     }
@@ -1219,7 +1312,21 @@ public final class BuiltInFunctions {
             return CssColorChannels.functionString(name, List.of(colorOrSpecial, alphaValue));
         }
         if (alphaValue.isSpecialNumber()) {
-            // Keep the original color spelling when it was a special number/string.
+            // Known colors expand to channel numbers so forms such as
+            // {@code rgb(blue, calc(0.4))} become {@code rgb(0, 0, 255, calc(0.4))}.
+            // Special color operands keep their original spelling.
+            if (colorOrSpecial instanceof SassColor color) {
+                var rgb = color.toSpace(ColorSpace.RGB, false);
+                return CssColorChannels.functionString(
+                        name,
+                        List.of(
+                                SassNumber.of(rgb.channel0(), null),
+                                SassNumber.of(rgb.channel1(), null),
+                                SassNumber.of(rgb.channel2(), null),
+                                alphaValue
+                        )
+                );
+            }
             return CssColorChannels.functionString(name, List.of(colorOrSpecial, alphaValue));
         }
         var color = colorArgument(colorOrSpecial, "color");
@@ -1587,12 +1694,12 @@ public final class BuiltInFunctions {
     }
 
     private static SassValue quote(List<SassValue> args) {
-        var string = args.get(0).assertString();
+        var string = stringArgument(args.get(0), "string");
         return new SassString(string.text(), true);
     }
 
     private static SassValue unquote(List<SassValue> args) {
-        var string = args.get(0).assertString();
+        var string = stringArgument(args.get(0), "string");
         return new SassString(string.text(), false);
     }
 
@@ -1677,7 +1784,12 @@ public final class BuiltInFunctions {
             SassValue left,
             SassValue right
     ) {
-        var text = value.assertString().text();
+        String text;
+        try {
+            text = value.assertString().text();
+        } catch (SassValueException exception) {
+            throw prefixParameterException("separator", exception);
+        }
         return switch (text) {
             case "space" -> ListSeparator.SPACE;
             case "comma" -> ListSeparator.COMMA;
@@ -1750,6 +1862,17 @@ public final class BuiltInFunctions {
     /// @return an unquoted string containing the value representation
     private static SassValue inspect(List<SassValue> args) {
         return new SassString(args.get(0).toString(), false);
+    }
+
+    /// Implements the eager global {@code if($condition, $if-true, $if-false)}.
+    ///
+    /// Used when {@code if} is invoked through a first-class function reference.
+    /// Direct {@code if()} expressions keep short-circuit evaluation in the AST.
+    ///
+    /// @param args the condition and both branch values
+    /// @return {@code $if-true} when the condition is truthy, otherwise {@code $if-false}
+    private static SassValue legacyIf(List<SassValue> args) {
+        return args.get(0).isTruthy() ? args.get(1) : args.get(2);
     }
 
     /// Returns whether the current mixin invocation received a content block.
@@ -2155,19 +2278,26 @@ public final class BuiltInFunctions {
     }
 
     private static SassValue percentage(List<SassValue> args) {
-        return SassNumber.of(
-                numberArgument(args.get(0), "number").assertNoUnits().value() * 100.0,
-                "%"
-        );
+        var number = numberArgument(args.get(0), "number");
+        try {
+            number = number.assertNoUnits();
+        } catch (SassValueException exception) {
+            throw prefixParameterException("number", exception);
+        }
+        return SassNumber.of(number.value() * 100.0, "%");
     }
 
-    /// Divides two numbers for the {@code sass:math} module.
+    /// Divides two values for the {@code sass:math} module.
     ///
-    /// @param args the bound number arguments
-    /// @return the unit-aware quotient
+    /// Non-number operands currently produce a slash-separated unquoted string
+    /// (matching dart-sass until a future release restricts {@code math.div} to
+    /// numbers only). Callers should migrate non-numeric cases to
+    /// {@code list.slash()}.
+    ///
+    /// @param args the bound dividend and divisor arguments
+    /// @return the unit-aware quotient, or a slash-separated CSS string
     private static SassValue div(List<SassValue> args) {
-        return numberArgument(args.get(0), "number1")
-                .dividedBy(numberArgument(args.get(1), "number2"));
+        return args.get(0).dividedBy(args.get(1));
     }
 
     /// Reports whether one number has no numerator or denominator units.
@@ -2398,7 +2528,12 @@ public final class BuiltInFunctions {
             return SassNumber.of(RANDOM.nextDouble(), null);
         }
         var limit = numberArgument(args.get(0), "limit");
-        var limitScalar = limit.assertInt();
+        int limitScalar;
+        try {
+            limitScalar = limit.assertInt();
+        } catch (SassValueException exception) {
+            throw prefixParameterException("limit", exception);
+        }
         if (limitScalar < 1) {
             throw new SassValueException(
                     "$limit: Must be greater than 0, was " + limit + "."
@@ -2409,10 +2544,24 @@ public final class BuiltInFunctions {
 
     /// Coerces an angle to radians for trigonometric functions.
     ///
+    /// Unitless values are treated as radians. Angle units
+    /// ({@code deg}, {@code grad}, {@code rad}, {@code turn}) are coerced.
+    /// Other units are rejected with dart-sass's {@code $number} angle message.
+    ///
     /// @param number the angle, unitless or angle-unitful
     /// @return the magnitude in radians
     private static double radians(SassNumber number) {
-        return number.coerce(RADIANS, List.of()).value();
+        if (number.isUnitless()) {
+            return number.value();
+        }
+        try {
+            return number.coerce(RADIANS, List.of()).value();
+        } catch (SassValueException exception) {
+            throw new SassValueException(
+                    "$number: Expected " + number
+                            + " to have an angle unit (deg, grad, rad, turn)."
+            );
+        }
     }
 
     /// Returns one degree-valued angle from a radian magnitude.
@@ -2478,7 +2627,7 @@ public final class BuiltInFunctions {
 
     private static SassValue extreme(List<SassValue> args, boolean minimum) {
         if (args.isEmpty()) {
-            throw new SassValueException("At least one argument required.");
+            throw new SassValueException("At least one argument must be passed.");
         }
         var best = args.get(0).assertNumber();
         for (var index = 1; index < args.size(); index++) {
@@ -2891,13 +3040,13 @@ public final class BuiltInFunctions {
     }
 
     private static SassValue strLength(List<SassValue> args) {
-        var text = args.get(0).assertString().text();
+        var text = stringArgument(args.get(0), "string").text();
         return SassNumber.of(text.codePointCount(0, text.length()), null);
     }
 
     private static SassValue strIndex(List<SassValue> args) {
-        var text = args.get(0).assertString().text();
-        var substring = args.get(1).assertString().text();
+        var text = stringArgument(args.get(0), "string").text();
+        var substring = stringArgument(args.get(1), "substring").text();
         var index = text.indexOf(substring);
         return index < 0
                 ? SassNull.NULL
@@ -2912,11 +3061,16 @@ public final class BuiltInFunctions {
     /// @param args the string, inserted string, and unitless integer index
     /// @return the combined string with the original quote state
     private static SassValue strInsert(List<SassValue> args) {
-        var string = args.get(0).assertString();
-        var inserted = args.get(1).assertString();
+        var string = stringArgument(args.get(0), "string");
+        var inserted = stringArgument(args.get(1), "insert");
         var text = string.text();
         var length = text.codePointCount(0, text.length());
-        var index = numberArgument(args.get(2), "index").assertNoUnits().assertInt();
+        int index;
+        try {
+            index = numberArgument(args.get(2), "index").assertNoUnits().assertInt();
+        } catch (SassValueException exception) {
+            throw prefixParameterException("index", exception);
+        }
         var codePointIndex = index < 0
                 ? Math.max(length + index + 1, 0)
                 : index == 0 ? 0 : Math.min(index - 1, length);
@@ -2932,8 +3086,8 @@ public final class BuiltInFunctions {
     /// @param args the string, separator string, and optional split limit
     /// @return a bracketed list that retains the source string quote state
     private static SassValue strSplit(List<SassValue> args) {
-        var string = args.get(0).assertString();
-        var separator = args.get(1).assertString();
+        var string = stringArgument(args.get(0), "string");
+        var separator = stringArgument(args.get(1), "separator");
         @Nullable Integer limit = splitLimit(args.get(2));
         var text = string.text();
         if (text.isEmpty()) {
@@ -2976,8 +3130,14 @@ public final class BuiltInFunctions {
         if (value instanceof SassNull) {
             return null;
         }
-        var number = numberArgument(value, "limit").assertNoUnits();
-        var limit = number.assertInt();
+        SassNumber number;
+        int limit;
+        try {
+            number = numberArgument(value, "limit").assertNoUnits();
+            limit = number.assertInt();
+        } catch (SassValueException exception) {
+            throw prefixParameterException("limit", exception);
+        }
         if (limit < 1) {
             throw new SassValueException(
                     "$limit: Must be 1 or greater, was " + number + "."
@@ -2991,19 +3151,30 @@ public final class BuiltInFunctions {
     /// @param args the string, start index, and optional inclusive end index
     /// @return a string retaining the source quote state
     private static SassValue strSlice(List<SassValue> args) {
-        var string = args.get(0).assertString();
+        var string = stringArgument(args.get(0), "string");
         var text = string.text();
         var length = text.codePointCount(0, text.length());
-        var start = stringCodePointIndex(
-                numberArgument(args.get(1), "start-at").assertNoUnits().assertInt(),
-                length,
-                false
-        );
-        var endArgument = numberArgument(args.get(2), "end-at").assertNoUnits().assertInt();
-        if (endArgument == 0) {
+        // dart-sass prefixes unit failures with $start-at/$end-at, but leaves
+        // bare "is not an int" for non-integer slice indexes.
+        SassNumber startNumber;
+        SassNumber endNumber;
+        try {
+            startNumber = numberArgument(args.get(1), "start-at").assertNoUnits();
+        } catch (SassValueException exception) {
+            throw prefixParameterException("start-at", exception);
+        }
+        try {
+            endNumber = numberArgument(args.get(2), "end-at").assertNoUnits();
+        } catch (SassValueException exception) {
+            throw prefixParameterException("end-at", exception);
+        }
+        var startAt = startNumber.assertInt();
+        var endAt = endNumber.assertInt();
+        var start = stringCodePointIndex(startAt, length, false);
+        if (endAt == 0) {
             return new SassString("", string.hasQuotes());
         }
-        var end = stringCodePointIndex(endArgument, length, true);
+        var end = stringCodePointIndex(endAt, length, true);
         if (end == length) {
             end--;
         }
@@ -3033,13 +3204,30 @@ public final class BuiltInFunctions {
     }
 
     private static SassValue toUpperCase(List<SassValue> args) {
-        var string = args.get(0).assertString();
+        var string = stringArgument(args.get(0), "string");
         return new SassString(asciiCase(string.text(), true), string.hasQuotes());
     }
 
     private static SassValue toLowerCase(List<SassValue> args) {
-        var string = args.get(0).assertString();
+        var string = stringArgument(args.get(0), "string");
         return new SassString(asciiCase(string.text(), false), string.hasQuotes());
+    }
+
+    /// Returns a string argument while identifying its Sass parameter in failures.
+    ///
+    /// @param value the supplied argument
+    /// @param name  the parameter name without a dollar sign
+    /// @return the string value
+    /// @throws SassValueException if {@code value} is not a string
+    private static SassString stringArgument(SassValue value, String name) {
+        if (value instanceof SassString string) {
+            return string;
+        }
+        // Parenthesize bare lists so diagnostics match dart-sass inspect form.
+        var rendered = value instanceof SassList list && !list.hasBrackets()
+                ? "(" + value + ")"
+                : value.toString();
+        throw new SassValueException("$" + name + ": " + rendered + " is not a string.");
     }
 
     private static String asciiCase(String text, boolean upper) {
@@ -3457,20 +3645,85 @@ public final class BuiltInFunctions {
         return color.changeHsl(null, null, clampLikeCss(color.lightness() - amount, 0, 100), null);
     }
 
-    /// Implements global {@code saturate()} as either a CSS filter or HSL adjustment.
-    private static SassValue saturate(List<SassValue> args) {
-        if (args.get(1) instanceof SassNull) {
-            if (args.get(0) instanceof SassNumber number) {
-                return new SassString("saturate(" + number.toCssString() + ")", false);
-            }
-            if (args.get(0).isSpecialNumber()) {
-                return CssColorChannels.functionString("saturate", List.of(args.get(0)));
-            }
-            throw new SassValueException("$amount: " + args.get(0) + " is not a number.");
+    /// Dispatches global {@code saturate()} CSS-filter and color-adjuster overloads.
+    ///
+    /// The filter form {@code saturate($amount)} is preferred for zero-or-one
+    /// positional arguments without a {@code $color} keyword. The adjuster form
+    /// {@code saturate($color, $amount)} is used when {@code $color} is named, two
+    /// positionals are supplied, or one positional is paired with {@code $amount}.
+    ///
+    /// @param args the rest-bound argument list from [#withRest]
+    /// @return a CSS filter string or adjusted color
+    private static SassValue saturateRest(List<SassValue> args) {
+        var rest = restArgumentList(args);
+        var positional = new ArrayList<>(rest.asList());
+        var named = new LinkedHashMap<>(rest.keywords());
+
+        if (positional.isEmpty() && named.isEmpty()) {
+            throw new SassValueException("Missing argument $amount.");
         }
-        var color = colorArgument(args.get(0), "color");
+
+        boolean useColorForm = named.containsKey("color")
+                || positional.size() >= 2
+                || (positional.size() == 1 && named.containsKey("amount"));
+
+        if (!useColorForm) {
+            @Nullable SassValue amount = takeNamedOrPositional(positional, named, "amount");
+            if (!named.isEmpty()) {
+                throw new SassValueException(
+                        "No argument named $" + named.keySet().iterator().next() + "."
+                );
+            }
+            if (!positional.isEmpty()) {
+                throw new SassValueException(
+                        "Only 1 argument allowed, but "
+                                + (1 + positional.size()) + " were passed."
+                );
+            }
+            if (amount == null) {
+                throw new SassValueException("Missing argument $amount.");
+            }
+            return saturateCssFilter(amount);
+        }
+
+        @Nullable SassValue color = takeNamedOrPositional(positional, named, "color");
+        @Nullable SassValue amount = takeNamedOrPositional(positional, named, "amount");
+        if (!named.isEmpty()) {
+            throw new SassValueException(
+                    "No argument named $" + named.keySet().iterator().next() + "."
+            );
+        }
+        if (!positional.isEmpty()) {
+            throw new SassValueException(
+                    "Only 2 arguments allowed, but "
+                            + (2 + positional.size()) + " were passed."
+            );
+        }
+        if (color == null) {
+            throw new SassValueException("Missing argument $color.");
+        }
+        if (amount == null) {
+            throw new SassValueException("Missing argument $amount.");
+        }
+        return saturateColor(color, amount);
+    }
+
+    /// Implements the one-argument CSS {@code saturate()} filter form.
+    private static SassValue saturateCssFilter(SassValue amount) {
+        if (amount instanceof SassNumber number) {
+            return new SassString("saturate(" + number.toCssString() + ")", false);
+        }
+        if (amount.isSpecialNumber()) {
+            return CssColorChannels.functionString("saturate", List.of(amount));
+        }
+        throw new SassValueException("$amount: " + amount + " is not a number.");
+    }
+
+    /// Implements the two-argument legacy color {@code saturate()} form.
+    private static SassValue saturateColor(SassValue colorValue, SassValue amountValue) {
+        var color = colorArgument(colorValue, "color");
         requireLegacyColorFunction(color, "saturate");
-        double amount = numberArgument(args.get(1), "amount").valueInRange(0, 100, "amount");
+        double amount = numberArgument(amountValue, "amount").valueInRange(0, 100, "amount");
         return color.changeHsl(null, clampLikeCss(color.saturation() + amount, 0, 100), null, null);
     }
 
@@ -3750,16 +4003,22 @@ public final class BuiltInFunctions {
                             + "$method: local-minde"
             );
         }
-        if (!(args.get(2) instanceof SassString methodString) || methodString.hasQuotes()) {
+        if (!(args.get(2) instanceof SassString methodString)) {
             throw new SassValueException(
-                    "$method: " + args.get(2) + " is not an unquoted string."
+                    "$method: " + args.get(2) + " is not a string."
+            );
+        }
+        if (methodString.hasQuotes()) {
+            throw new SassValueException(
+                    "$method: Expected " + methodString + " to be an unquoted string."
             );
         }
         GamutMapMethod method;
         try {
             method = GamutMapMethod.fromName(methodString.text());
         } catch (IllegalArgumentException exception) {
-            throw new SassValueException("$method: " + exception.getMessage());
+            // dart-sass does not prefix this diagnostic with $method.
+            throw new SassValueException(exception.getMessage());
         }
         if (!space.isBounded()) {
             return color;
@@ -3954,14 +4213,23 @@ public final class BuiltInFunctions {
     }
 
     /// Converts a color into XYZ D65 with missing channels replaced by zero.
+    ///
+    /// Missing channels must be filled before conversion. Filling after
+    /// conversion is wrong because the conversion hub preserves missingness by
+    /// discarding the computed destination component for a missing source
+    /// channel. {@code color.same()} needs the fully computed XYZ triple.
     private static SassColor toXyzNoMissing(SassColor color) {
-        if (color.space() == ColorSpace.XYZ_D65 && !color.hasMissingChannel()) {
-            return color;
+        var filled = SassColor.forSpace(
+                color.space(),
+                color.channel0(),
+                color.channel1(),
+                color.channel2(),
+                color.alpha()
+        );
+        if (filled.space() == ColorSpace.XYZ_D65) {
+            return filled;
         }
-        if (color.space() == ColorSpace.XYZ_D65) {
-            return SassColor.xyzD65(color.channel0(), color.channel1(), color.channel2(), color.alpha());
-        }
-        return color.toSpace(ColorSpace.XYZ_D65, false);
+        return filled.toSpace(ColorSpace.XYZ_D65, false);
     }
 
     /// Converts {@code color} into {@code spaceArgument} when present.
@@ -4072,6 +4340,8 @@ public final class BuiltInFunctions {
 
         SassColor color;
         if (spaceKeyword == null && originalColor.isLegacy() && !keywords.isEmpty()) {
+            // Sniffed legacy spaces use legacyMissing=false so powerless channels
+            // (e.g. black's hue) become 0 and multi-channel adjust still works.
             @Nullable ColorSpace sniffed = sniffLegacyColorSpace(keywords.keySet());
             color = sniffed == null
                     ? originalColor
@@ -4079,7 +4349,9 @@ public final class BuiltInFunctions {
         } else if (spaceKeyword == null) {
             color = originalColor;
         } else {
-            color = originalColor.toSpace(spaceArgument(spaceKeyword, "space"), false);
+            // Explicit $space keeps missing/powerless channels so adjusting them
+            // fails with the "modifying missing channels" diagnostic.
+            color = originalColor.toSpace(spaceArgument(spaceKeyword, "space"), true);
         }
 
         // Even with no channel keywords, converting through $space (or the
@@ -4552,7 +4824,13 @@ public final class BuiltInFunctions {
     private static SassValue keywords(List<SassValue> args) {
         var value = args.get(0);
         if (!(value instanceof SassArgumentList argumentList)) {
-            throw new SassValueException("$args: " + value + " is not an argument list.");
+            // dart-sass parenthesizes space lists in this diagnostic.
+            var rendered = value instanceof org.glavo.scssfx.internal.value.SassList list
+                    && list.separator() == ListSeparator.SPACE
+                    && !list.hasBrackets()
+                    ? "(" + value + ")"
+                    : value.toString();
+            throw new SassValueException("$args: " + rendered + " is not an argument list.");
         }
         var contents = new LinkedHashMap<SassValue, SassValue>();
         for (var entry : argumentList.keywords().entrySet()) {

@@ -285,14 +285,14 @@ final class BuiltInModuleTest {
     @Test
     void rejectsDirectBuiltInConfigurations() {
         assertEquals(
-                "Built-in module sass:math can't be configured.",
+                "Built-in modules can't be configured.",
                 assertThrows(
                         SassCompilationException.class,
                         () -> compile("@use \"sass:math\" with ($pi: 4);")
                 ).getMessage()
         );
         assertEquals(
-                "Built-in module sass:math can't be configured.",
+                "Built-in modules can't be configured.",
                 assertThrows(
                         SassCompilationException.class,
                         () -> compile("@forward \"sass:math\" with ($pi: 4);")
@@ -328,7 +328,7 @@ final class BuiltInModuleTest {
                 )
         );
         assertEquals(
-                "$pi was not declared with !default in the @used module.",
+                "This variable was not declared with !default in the @used module.",
                 failure.getMessage()
         );
     }

@@ -46,9 +46,10 @@ final class PlainCssModuleTest {
                 SassSource.fromString(source, Syntax.CSS),
                 CssTarget.DEFAULT
         ).output();
+        // Sass discards @charset for emission (sass-spec css/charset); encoding is
+        // host-controlled and optional UTF-8 injection only for non-ASCII CSS.
         assertEquals(
                 """
-                        @charset "UTF-8";
                         @page {
                           margin: 1cm;
                         }
@@ -178,7 +179,7 @@ final class PlainCssModuleTest {
                 )
         );
         assertEquals(
-                "$color was not declared with !default in the @used module.",
+                "This variable was not declared with !default in the @used module.",
                 failure.getMessage()
         );
     }
@@ -194,7 +195,6 @@ final class PlainCssModuleTest {
                 "@mixin theme {}",
                 "@function theme() {}",
                 ".item { color: unit(1px); }",
-                "@import \"a.css\", \"b.css\";",
                 ".item { font: { size: 1rem; } }",
                 "%placeholder { color: red; }"
         }) {

@@ -504,6 +504,20 @@ public final class SassColor implements SassValue {
         return format;
     }
 
+    /// Returns this color without a retained source spelling.
+    ///
+    /// Generated transparent colors then serialize as {@code rgba(...)} rather
+    /// than the CSS keyword {@code transparent}. Non-source formats and colors
+    /// without a format are returned unchanged.
+    ///
+    /// @return this color, or an equivalent color without {@link SpanColorFormat}
+    public SassColor withoutSourceSpelling() {
+        if (!(format instanceof SpanColorFormat)) {
+            return this;
+        }
+        return raw(space, channel0, channel1, channel2, alpha, null);
+    }
+
     /// Returns this color's HSL hue in degrees.
     ///
     /// @return the normalized hue between zero inclusive and 360 exclusive
@@ -587,15 +601,18 @@ public final class SassColor implements SassValue {
                 converted.channel2(),
                 converted.alpha()
         );
+        // When legacyMissing is false (sniffed legacy adjust/scale/change), fill
+        // missing channels with zero so multi-channel adjustments on blacks/greys
+        // still succeed, matching dart-sass.
         if (!legacyMissing
                 && result.isLegacy()
                 && result.hasMissingChannel()) {
             return forSpace(
                     dest,
-                    result.channel0(),
-                    result.channel1(),
-                    result.channel2(),
-                    result.alpha()
+                    result.channel0OrNull() == null ? 0.0 : result.channel0OrNull(),
+                    result.channel1OrNull() == null ? 0.0 : result.channel1OrNull(),
+                    result.channel2OrNull() == null ? 0.0 : result.channel2OrNull(),
+                    result.alphaOrNull()
             );
         }
         return result;
@@ -841,12 +858,14 @@ public final class SassColor implements SassValue {
         if (!(firstWeight >= 0.0 && firstWeight <= 1.0)) {
             throw new IllegalArgumentException("firstWeight must be between 0 and 1");
         }
-        // Preserve the original space when the mix degenerates to one input.
+        // Degenerate weights return one input, but drop source spellings so named
+        // {@code transparent} becomes generated {@code rgba(0, 0, 0, 0)} while
+        // inverted HSL/HWB colors keep their destination space serialization.
         if (SassFuzzy.equals(firstWeight, 1.0)) {
-            return this;
+            return withoutSourceSpelling();
         }
         if (SassFuzzy.equals(firstWeight, 0.0)) {
-            return other;
+            return other.withoutSourceSpelling();
         }
 
         var left = toSpace(ColorSpace.RGB, false);
@@ -984,6 +1003,82 @@ public final class SassColor implements SassValue {
                 hsl.channel2OrNull(),
                 hsl.alphaOrNull()
         ).toSpace(space, false);
+    }
+
+    /// Concatenates only with strings; color arithmetic is undefined in modern Sass.
+    ///
+    /// @param other the right operand
+    /// @return the concatenated string when {@code other} is a string
+    /// @throws SassValueException when the operand is not a string
+    @Override
+    public SassValue plus(SassValue other) {
+        if (other instanceof SassString) {
+            return SassValue.super.plus(other);
+        }
+        throw undefinedColorOperation("+", other);
+    }
+
+    /// Rejects color−color and color−number arithmetic.
+    ///
+    /// Other operands keep the default hyphen-joined string form used by
+    /// legacy slash/list-style pair fixtures.
+    ///
+    /// @param other the right operand
+    /// @return the difference string for non-numeric operands
+    /// @throws SassValueException when subtracting a color or number
+    @Override
+    public SassValue minus(SassValue other) {
+        if (other instanceof SassColor || other instanceof SassNumber) {
+            throw undefinedColorOperation("-", other);
+        }
+        return SassValue.super.minus(other);
+    }
+
+    /// Rejects color multiplication.
+    ///
+    /// @param other the right operand
+    /// @return never
+    /// @throws SassValueException always
+    @Override
+    public SassValue times(SassValue other) {
+        throw undefinedColorOperation("*", other);
+    }
+
+    /// Rejects color÷color and color÷number; other operands keep slash-join form.
+    ///
+    /// Mixed-pair parser fixtures still expect {@code #AAA/itpl}-style slash
+    /// strings when the right-hand side is not a color or number.
+    ///
+    /// @param other the right operand
+    /// @return the slash-joined string for non-numeric operands
+    /// @throws SassValueException when dividing by a color or number
+    @Override
+    public SassValue dividedBy(SassValue other) {
+        if (other instanceof SassColor || other instanceof SassNumber) {
+            throw undefinedColorOperation("/", other);
+        }
+        return SassValue.super.dividedBy(other);
+    }
+
+    /// Rejects color modulo.
+    ///
+    /// @param other the right operand
+    /// @return never
+    /// @throws SassValueException always
+    @Override
+    public SassValue modulo(SassValue other) {
+        throw undefinedColorOperation("%", other);
+    }
+
+    /// Builds the dart-sass undefined-operation message for this color.
+    ///
+    /// @param operator the operator spelling
+    /// @param other    the right operand
+    /// @return the operation failure
+    private SassValueException undefinedColorOperation(String operator, SassValue other) {
+        return new SassValueException(
+                "Undefined operation \"" + this + " " + operator + " " + other + "\"."
+        );
     }
 
     /// Returns a legacy channel after converting this color into {@code targetSpace}.

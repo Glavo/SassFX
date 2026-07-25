@@ -304,25 +304,29 @@ public final class SassNumber implements SassValue {
 
     /// Returns the unit string used by Sass math functions.
     ///
+    /// Matches dart-sass {@code _unitString}: single denominators use
+    /// {@code unit^-1}, multiple denominators use {@code (a*b)^-1}, and mixed
+    /// units use {@code n1*n2/(d1*d2)} when more than one denominator is present.
+    ///
     /// @return the unit text, or the empty string when unitless
     public String unitString() {
         if (isUnitless()) {
             return "";
         }
-        if (numeratorUnits.size() == 1 && denominatorUnits.isEmpty()) {
-            return numeratorUnits.get(0);
-        }
-        var result = new StringBuilder();
-        for (var index = 0; index < numeratorUnits.size(); index++) {
-            if (index > 0) {
-                result.append('*');
+        if (numeratorUnits.isEmpty()) {
+            if (denominatorUnits.size() == 1) {
+                return denominatorUnits.get(0) + "^-1";
             }
-            result.append(numeratorUnits.get(index));
+            return "(" + String.join("*", denominatorUnits) + ")^-1";
         }
-        for (var unit : denominatorUnits) {
-            result.append('/').append(unit);
+        var numerators = String.join("*", numeratorUnits);
+        if (denominatorUnits.isEmpty()) {
+            return numerators;
         }
-        return result.toString();
+        if (denominatorUnits.size() == 1) {
+            return numerators + "/" + denominatorUnits.get(0);
+        }
+        return numerators + "/(" + String.join("*", denominatorUnits) + ")";
     }
 
     /// Returns whether this number is unit-compatible with another number.
@@ -454,10 +458,19 @@ public final class SassNumber implements SassValue {
                     targetDenominators
             );
         } catch (IllegalArgumentException ignored) {
+            // Match dart-sass SassNumber.coerce: report the missing target unit
+            // rather than a generic pairwise incompatibility message.
+            if (targetNumerators.isEmpty() && targetDenominators.isEmpty()) {
+                throw new SassValueException("Expected " + this + " to have no units.");
+            }
+            if (targetNumerators.size() == 1 && targetDenominators.isEmpty()) {
+                throw new SassValueException(
+                        "Expected " + this + " to have unit " + targetNumerators.get(0) + "."
+                );
+            }
             throw new SassValueException(
-                    this + " and "
-                            + withUnits(0, targetNumerators, targetDenominators)
-                            + " have incompatible units."
+                    "Expected " + this + " to have units "
+                            + withUnits(0, targetNumerators, targetDenominators) + "."
             );
         }
     }
@@ -609,8 +622,11 @@ public final class SassNumber implements SassValue {
     /// @throws SassValueException if a fallback operand cannot be represented in CSS
     @Override
     public SassValue dividedBy(SassValue other) {
-        if (other instanceof SassCalculation) {
-            throw undefinedOperation("/", other);
+        // Calculations and other special numbers join as slash-separated CSS
+        // text so color channel alpha forms such as {@code 0.3 / calc(1px + 1%)}
+        // reach constructors as unquoted strings instead of hard errors.
+        if (other.isSpecialNumber()) {
+            return SassValue.super.dividedBy(other);
         }
         if (!(other instanceof SassNumber number)) {
             return SassValue.super.dividedBy(other);

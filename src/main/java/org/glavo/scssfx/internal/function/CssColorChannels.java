@@ -310,14 +310,19 @@ final class CssColorChannels {
                     );
                 }
                 if (last instanceof SassString string
-                        && !string.hasQuotes()
-                        && string.text().contains("/")) {
-                    var parts = string.text().split("/", -1);
-                    if (parts.length == 2) {
-                        elements.set(elements.size() - 1, parseNumberOrString(parts[0]));
+                        && !string.hasQuotes()) {
+                    // Split only at the first slash so nested forms such as
+                    // {@code 3/calc(var(--a) / 2)} keep the calc body intact.
+                    var text = string.text();
+                    var slash = text.indexOf('/');
+                    if (slash > 0 && slash < text.length() - 1) {
+                        elements.set(
+                                elements.size() - 1,
+                                parseNumberOrString(text.substring(0, slash))
+                        );
                         return new SlashChannels(
                                 new SassList(elements, ListSeparator.SPACE, false),
-                                parseNumberOrString(parts[1])
+                                parseNumberOrString(text.substring(slash + 1))
                         );
                     }
                 }
@@ -537,6 +542,14 @@ final class CssColorChannels {
         );
     }
 
+    /// Converts a polar hue number to degrees.
+    ///
+    /// Unitless values are accepted as degrees. Angle units
+    /// ({@code deg}, {@code grad}, {@code rad}, {@code turn}) are coerced.
+    /// Other units (including {@code %}) are rejected to match dart-sass.
+    ///
+    /// @param number the hue channel value
+    /// @return the hue in degrees
     private static double hueDegrees(SassNumber number) {
         if (number.isUnitless()) {
             return number.value();
@@ -544,8 +557,10 @@ final class CssColorChannels {
         try {
             return number.coerce(List.of("deg"), List.of()).value();
         } catch (SassValueException exception) {
-            // Fall back to raw value for exotic angle units already normalized by Sass.
-            return number.value();
+            throw new SassValueException(
+                    "$hue: Expected " + number
+                            + " to have an angle unit (deg, grad, rad, turn)."
+            );
         }
     }
 

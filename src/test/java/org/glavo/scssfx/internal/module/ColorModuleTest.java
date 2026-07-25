@@ -222,6 +222,115 @@ final class ColorModuleTest {
         );
     }
 
+    /// Resolves global {@code saturate()} CSS-filter and two-argument color overloads.
+    @Test
+    void evaluatesGlobalSaturateOverloads() throws Exception {
+        assertEquals(
+                """
+                        a {
+                          filter: saturate(50%);
+                          color: plum;
+                        }""",
+                compile(
+                        """
+                                a {
+                                  filter: saturate($amount: 50%);
+                                  color: saturate(plum, 0%);
+                                }
+                                """
+                ).output()
+        );
+        assertEquals("Missing argument $amount.", failure("a { b: saturate(); }"));
+    }
+
+    /// Keeps slash-alpha with calculation operands as unquoted special color text.
+    @Test
+    void preservesCalculationSlashAlphaInColorConstructors() throws Exception {
+        assertEquals(
+                """
+                        a {
+                          modern: color(srgb 0.1 0.2 0.3/calc(1px + 1%));
+                          hsl: hsl(1, 2%, 3%, calc(1px + 1%));
+                        }""",
+                compile(
+                        """
+                                a {
+                                  modern: color(srgb 0.1 0.2 0.3 / calc(1px + 1%));
+                                  hsl: hsl(1 2% 3% / calc(1px + 1%));
+                                }
+                                """
+                ).output()
+        );
+    }
+
+    /// Expands known colors in two-argument {@code rgb()} when alpha is special.
+    @Test
+    void expandsRgbTwoArgColorWithSpecialAlpha() throws Exception {
+        assertEquals(
+                """
+                        a {
+                          b: rgb(0, 0, 255, var(--foo));
+                        }""",
+                compile("a { b: rgb(blue, var(--foo)); }").output()
+        );
+    }
+
+    /// Emits generated transparent for {@code color.mix} weighted fully toward transparent.
+    @Test
+    void mixesTransparentWeightAsGeneratedRgba() throws Exception {
+        assertEquals(
+                """
+                        a {
+                          b: rgba(0, 0, 0, 0);
+                        }""",
+                compile(
+                        """
+                                @use "sass:color";
+                                a { b: color.mix(transparent, #0144bf, 100%); }
+                                """
+                ).output()
+        );
+    }
+
+    /// Treats missing channels as zero before XYZ conversion for {@code color.same}.
+    @Test
+    void comparesSameAcrossSpacesWithMissingChannels() throws Exception {
+        assertEquals(
+                """
+                        a {
+                          b: true;
+                        }""",
+                compile(
+                        """
+                                @use "sass:color";
+                                a {
+                                  b: color.same(
+                                    color(rec2020 0.5 none 0.2),
+                                    oklab(44.66886691637825% 0.2366736512579 0.01872833430856)
+                                  );
+                                }
+                                """
+                ).output()
+        );
+    }
+
+    /// Validates hue-method diagnostics for incomplete or mistyped {@code $method} values.
+    @Test
+    void reportsMixInterpolationMethodDiagnostics() {
+        assertEquals(
+                "$method: 1 is not a string.",
+                failure("a { b: mix(red, blue, $method: hsl 1); }")
+        );
+        assertEquals(
+                "$method: Unknown hue interpolation method longerhue.",
+                failure("a { b: mix(red, blue, $method: lch longerhue); }")
+        );
+        assertEquals(
+                "$method: (decreasing hue) is not a string.",
+                failure("a { b: mix(red, blue, $method: lch (decreasing hue)); }")
+        );
+    }
+
     /// Compiles one SCSS string source with the expanded CSS target.
     ///
     /// @param source the source text to compile

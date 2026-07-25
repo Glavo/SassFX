@@ -84,6 +84,11 @@ public final class FilesystemImporter {
             boolean forImport
     ) throws IOException {
         Objects.requireNonNull(url, "url");
+        // Non-file schemes such as {@code scheme:bar} are not filesystem loads;
+        // treat them as unresolved so callers report "Can't find stylesheet".
+        if (hasNonFileScheme(url)) {
+            return null;
+        }
         if (baseUrl != null && "file".equalsIgnoreCase(baseUrl.getScheme())) {
             var basePath = Path.of(baseUrl).getParent();
             if (basePath != null) {
@@ -100,6 +105,24 @@ public final class FilesystemImporter {
             }
         }
         return null;
+    }
+
+    /// Returns whether {@code url} names a non-filesystem scheme that cannot be
+    /// resolved as a relative path stem.
+    ///
+    /// @param url the unresolved import or use URL
+    /// @return whether the URL has a non-file scheme with a colon
+    private static boolean hasNonFileScheme(String url) {
+        var colon = url.indexOf(':');
+        if (colon <= 0) {
+            return false;
+        }
+        var slash = Math.max(url.indexOf('/'), url.indexOf('\\'));
+        if (slash >= 0 && slash < colon) {
+            return false;
+        }
+        var scheme = url.substring(0, colon);
+        return !"file".equalsIgnoreCase(scheme) && !"sass".equalsIgnoreCase(scheme);
     }
 
     /// Resolves one path stem without consulting any lower-priority search location.
@@ -120,6 +143,12 @@ public final class FilesystemImporter {
         if (!candidates.isEmpty()) {
             return exactlyOne(candidates);
         }
+        // Explicit stylesheet extensions never fall back to directory-index
+        // resolution. A load of {@code "dir.scss"} must not open
+        // {@code dir.scss/index.scss} when that path is a directory.
+        if (hasStylesheetExtension(path)) {
+            return null;
+        }
         if (forImport) {
             addImportOnlyIndexCandidates(candidates, path);
             if (!candidates.isEmpty()) {
@@ -131,6 +160,21 @@ public final class FilesystemImporter {
             return exactlyOne(candidates);
         }
         return null;
+    }
+
+    /// Returns whether the path's final segment already names a stylesheet file.
+    ///
+    /// @param path the path stem being resolved
+    /// @return whether the file name ends with a recognized stylesheet extension
+    private static boolean hasStylesheetExtension(Path path) {
+        var fileName = path.getFileName();
+        if (fileName == null) {
+            return false;
+        }
+        var lower = fileName.toString().toLowerCase(Locale.ROOT);
+        return lower.endsWith(".scss")
+                || lower.endsWith(".sass")
+                || lower.endsWith(".css");
     }
 
     /// Loads a resolved stylesheet and derives its canonical URL from the real path.

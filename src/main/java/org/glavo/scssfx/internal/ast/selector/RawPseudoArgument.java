@@ -23,12 +23,45 @@ public record RawPseudoArgument(String css) implements PseudoArgument {
 
     @Override
     public String toCssString() {
-        return css;
+        // Collapse outer whitespace so indented-syntax continuations such as
+        // {@code a:b(\n  c)} and {@code a:b(c\n  )} emit {@code a:b(c)}.
+        return stripOuterWhitespace(css);
     }
 
+    /// Removes leading and trailing CSS whitespace, including newlines.
+    ///
+    /// @param text the raw argument text
+    /// @return the text without outer whitespace
+    private static String stripOuterWhitespace(String text) {
+        var start = 0;
+        var end = text.length();
+        while (start < end && isCssWhitespace(text.charAt(start))) {
+            start++;
+        }
+        while (end > start && isCssWhitespace(text.charAt(end - 1))) {
+            end--;
+        }
+        return start == 0 && end == text.length() ? text : text.substring(start, end);
+    }
+
+    /// Returns whether {@code character} is CSS whitespace.
+    private static boolean isCssWhitespace(char character) {
+        return character == ' '
+                || character == '\t'
+                || character == '\n'
+                || character == '\r'
+                || character == '\f';
+    }
+
+    /// Opaque arguments never carry structural parent-selector AST nodes.
+    ///
+    /// A literal {@code &} character may still appear in the raw text; that is
+    /// tracked only by [#hasUnresolvedParentReference()] so nesting can reject
+    /// {@code :lang(&)} without treating {@code :c(*&^)} as a parent selector
+    /// for selector algebra.
     @Override
     public boolean containsParentSelector() {
-        return containsParentMarker(css);
+        return false;
     }
 
     @Override

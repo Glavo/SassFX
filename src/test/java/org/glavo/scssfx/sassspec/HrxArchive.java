@@ -174,8 +174,10 @@ final class HrxArchive {
     /// Adds a file while rejecting file-directory path conflicts.
     ///
     /// When the same path is declared more than once, the later body replaces
-    /// the earlier one. A few upstream sass-spec archives contain empty
-    /// accidental re-declarations that rely on last-write-wins behavior.
+    /// the earlier one unless the later body is blank and a non-blank body is
+    /// already present. A few upstream sass-spec archives end cases with an
+    /// empty re-declaration of {@code error} that would otherwise wipe the
+    /// real diagnostic text (for example {@code color/is_in_gamut} too-few-args).
     ///
     /// @param files the destination file map
     /// @param path the validated path to add
@@ -192,6 +194,12 @@ final class HrxArchive {
                 if (existing.startsWith(path + "/") || path.startsWith(existing + "/")) {
                     throw malformed(sourceName, "HRX paths must not be both files and directories: " + path);
                 }
+            }
+        } else if (content.isBlank()) {
+            @Nullable String existing = files.get(path);
+            if (existing != null && !existing.isBlank()) {
+                // Keep the earlier non-blank body; ignore accidental empty re-declarations.
+                return;
             }
         }
         files.put(path, content);
