@@ -29,6 +29,6 @@ final class PreprocessDumpTest {
     }
 
     private static String transform(String source) {
-        return IndentedSassPreprocessor.transform(new SourceFile(source, null)).content();
+        return IndentedSassStructure.project(new SourceFile(source, null)).content();
     }
 }

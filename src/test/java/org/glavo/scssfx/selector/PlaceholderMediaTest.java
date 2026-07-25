@@ -1,8 +1,10 @@
-package org.glavo.scssfx;
+package org.glavo.scssfx.selector;
+
+import org.glavo.scssfx.*;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 @org.jetbrains.annotations.NotNullByDefault
-final class Batch63PlaceholderMediaTest {
+final class PlaceholderMediaTest {
   @Test
   void placeholderWithNestedMediaExtendsFromOutside() throws Exception {
     var css = new SassCompiler().compile(

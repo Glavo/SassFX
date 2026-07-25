@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-package org.glavo.scssfx;
+package org.glavo.scssfx.language;
+
+import org.glavo.scssfx.*;
 
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
@@ -14,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Verifies batch48 must-fail diagnostics and color white residual conversion.
 @NotNullByDefault
-final class Batch48LanguageTest {
+final class LanguageBatch48Test {
     @Test
     void rejectsIncludeNamesBeginningWithDoubleHyphen() {
         var failure = assertThrows(

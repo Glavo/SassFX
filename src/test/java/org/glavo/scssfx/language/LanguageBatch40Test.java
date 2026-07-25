@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-package org.glavo.scssfx;
+package org.glavo.scssfx.language;
+
+import org.glavo.scssfx.*;
 
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
@@ -11,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /// Verifies batch40 color-arithmetic rejection, font-face bubbling, and at-root
 /// comment handling.
 @NotNullByDefault
-final class Batch40LanguageTest {
+final class LanguageBatch40Test {
     @Test
     void rejectsColorArithmetic() {
         var failure = assertThrows(

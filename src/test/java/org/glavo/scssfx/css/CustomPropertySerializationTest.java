@@ -1,4 +1,6 @@
-package org.glavo.scssfx;
+package org.glavo.scssfx.css;
+
+import org.glavo.scssfx.*;
 
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
@@ -7,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /// Verifies custom-property value whitespace matches dart-sass.
 @NotNullByDefault
-final class Batch65CustomPropertyTest {
+final class CustomPropertySerializationTest {
     /// Trailing newline before semicolon becomes a space.
     @Test
     void trailingNewlineBecomesSpaceBeforeSemicolon() throws Exception {

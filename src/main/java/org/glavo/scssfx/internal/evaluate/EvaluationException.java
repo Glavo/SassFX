@@ -55,7 +55,11 @@ public final class EvaluationException extends RuntimeException {
             @Nullable Throwable cause
     ) {
         this(
-                new Diagnostic(DiagnosticSeverity.ERROR, message, span, null),
+                org.glavo.scssfx.DiagnosticMessages.error(
+                        org.glavo.scssfx.DiagnosticCode.EVALUATION_ERROR,
+                        span,
+                        message
+                ),
                 relatedSpans,
                 List.of(new SassStackFrame("root stylesheet", span)),
                 cause

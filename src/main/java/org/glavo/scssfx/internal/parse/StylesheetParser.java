@@ -23,8 +23,9 @@ public final class StylesheetParser {
 
     /// Parses a stylesheet according to the selected syntax.
     ///
-    /// SCSS and indentation-based Sass are implemented. Plain CSS remains
-    /// unavailable with a structured parse error spanning the complete source.
+    /// SCSS uses [ScssParser]. Indented Sass uses [IndentedSassParser] (lexer
+    /// plus structural projection). Plain CSS uses the SCSS parser in
+    /// plain-CSS mode.
     ///
     /// @param source the indexed source text
     /// @param syntax the syntax used to parse the source
@@ -35,7 +36,7 @@ public final class StylesheetParser {
         Objects.requireNonNull(syntax, "syntax");
         return switch (syntax) {
             case SCSS -> new ScssParser(source).parse();
-            case SASS -> new ScssParser(IndentedSassPreprocessor.transform(source)).parse();
+            case SASS -> IndentedSassParser.parse(source);
             case CSS -> new ScssParser(source, true).parse();
         };
     }

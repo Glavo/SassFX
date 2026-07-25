@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-package org.glavo.scssfx;
+package org.glavo.scssfx.language;
+
+import org.glavo.scssfx.*;
 
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
@@ -13,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Verifies batch51 module import isolation, diagnostics, and calculation errors.
 @NotNullByDefault
-final class Batch51LanguageTest {
+final class LanguageBatch51Test {
     @Test
     void rejectsAdjustingPowerlessLegacyHue() {
         var failure = assertThrows(

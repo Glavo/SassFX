@@ -18,24 +18,24 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 
-/// Converts indentation-based Sass statements to the braced form consumed by
-/// the shared SCSS parser.
+/// Projects indented Sass structure into the braced form consumed by the
+/// shared SCSS statement grammar.
 ///
-/// The conversion is structural rather than textual indentation replacement:
-/// it tracks sibling and child indentation, recognizes nested-property blocks,
+/// This is a private implementation detail of [IndentedSassParser], not a
+/// public Sass→SCSS preprocessing API. The projection is structural: it
+/// tracks sibling and child indentation, recognizes nested-property blocks,
 /// translates legacy indented mixin syntax, and retains original source spans
-/// for preprocessing failures. The generated source uses the same canonical
-/// URL as the input source.
+/// for indent diagnostics.
 @ApiStatus.Internal
 @NotNullByDefault
-final class IndentedSassPreprocessor {
+final class IndentedSassStructure {
     /// Marks an interpolation frame in the delimiter stack.
     private static final char INTERPOLATION = '\u0001';
     /// Prevents instantiation.
-    private IndentedSassPreprocessor() {
+    private IndentedSassStructure() {
     }
 
-    /// Converts an indented Sass source into SCSS-compatible source text.
+    /// Projects an indented Sass source into SCSS-compatible source text.
     ///
     /// Blank lines are omitted from the generated syntax. Comments are
     /// retained, while statement separators and structural braces are derived
@@ -45,7 +45,7 @@ final class IndentedSassPreprocessor {
     /// @return a new source file containing equivalent braced syntax
     /// @throws ParseException if indentation introduces an impossible child,
     /// a block header is missing, or a statement form is malformed
-    static SourceFile transform(SourceFile source) {
+    static SourceFile project(SourceFile source) {
         Objects.requireNonNull(source, "source");
         var lines = logicalLines(source);
         var output = new MappedSourceBuilder(source);
@@ -74,8 +74,8 @@ final class IndentedSassPreprocessor {
                         source,
                         line,
                         lastWasLoudComment
-                                ? "Unexpected text after end of comment"
-                                : "Indented Sass statements must be nested below a block header."
+                                ? org.glavo.scssfx.DiagnosticCode.INDENTED_TEXT_AFTER_COMMENT
+                                : org.glavo.scssfx.DiagnosticCode.INDENTED_NESTING_WITHOUT_HEADER
                 );
             }
             lastWasLoudComment = false;
@@ -325,7 +325,11 @@ final class IndentedSassPreprocessor {
     ///
     /// @param source the source to inspect
     /// @return logical lines in source order
-    private static ArrayList<LogicalLine> logicalLines(SourceFile source) {
+    /// Lexes the indented source into logical statement lines.
+    ///
+    /// @param source the indented Sass source
+    /// @return logical lines in source order
+    static ArrayList<LogicalLine> logicalLines(SourceFile source) {
         var result = new ArrayList<LogicalLine>();
         var line = 0;
         while (line < source.lineCount()) {
@@ -2184,6 +2188,21 @@ final class IndentedSassPreprocessor {
     ) {
         SourceSpan span = source.span(line.startOffset(), line.endOffset());
         return new ParseException(message, span);
+    }
+
+    /// Creates a preprocessing failure with a structured diagnostic code.
+    ///
+    /// @param source the original source
+    /// @param line   the offending line
+    /// @param code   the stable diagnostic code
+    /// @return the parse failure
+    private static ParseException error(
+            SourceFile source,
+            LogicalLine line,
+            org.glavo.scssfx.DiagnosticCode code
+    ) {
+        SourceSpan span = source.span(line.startOffset(), line.endOffset());
+        return new ParseException(code, span);
     }
 
     /// Creates a preprocessing failure associated with a source range.

@@ -114,12 +114,15 @@ public final class SassCompiler {
                     evaluator.diagnostics()
             );
         } catch (ParseException failure) {
+            var code = failure.code() == null
+                    ? null
+                    : failure.code().name();
             throw new SassCompilationException(
                     List.of(new Diagnostic(
                             DiagnosticSeverity.ERROR,
                             Objects.requireNonNull(failure.getMessage(), "parse failure message"),
                             failure.span(),
-                            null
+                            code
                     )),
                     failure
             );

@@ -1,8 +1,8 @@
-package org.glavo.scssfx;
+package org.glavo.scssfx.parser;
 import org.glavo.scssfx.*;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
-class Batch35SilentTest {
+class SilentCommentTest {
   @Test void silentCommentsMatchDartSass() throws Exception {
     assertTrue(compile("@supports a(//\n  b) {c {d: e}}").contains("a(\n  b)"));
     assertTrue(compile("@supports (a //\n  b) {c {d: e}}").contains("(a \n  b)"));

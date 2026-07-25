@@ -193,10 +193,23 @@ final class SassSpecRunnerTest {
                     .resolve(resolved.fixture().directory())
                     .normalize();
             Path input = selectInput(caseRoot, resolved.displayName());
+            boolean upstream = resolved.archiveResource().startsWith("upstream/");
+            boolean outputAssertion = resolved.archive().content(
+                    resolved.fixture().directory() + "/output.css"
+            ) != null;
             assertFixture(resolved, suiteRoot, caseRoot, input);
-            currentSummary.recordPassed();
+            currentSummary.recordPassed(upstream, outputAssertion);
         } catch (Throwable failure) {
-            currentSummary.recordFailed();
+            boolean upstream = resolved.archiveResource().startsWith("upstream/");
+            boolean outputAssertion = resolved.archive().content(
+                    resolved.fixture().directory() + "/output.css"
+            ) != null;
+            // Failures during output assertion report as output failures when the
+            // fixture declares output.css; otherwise as diagnostic failures.
+            boolean outputFailure = outputAssertion
+                    && !(failure.getMessage() != null
+                    && failure.getMessage().startsWith("Error mismatch"));
+            currentSummary.recordFailed(upstream, outputFailure);
             throw failure;
         }
     }
@@ -364,13 +377,12 @@ final class SassSpecRunnerTest {
         int separator = archivePath.lastIndexOf('/');
         String name = separator < 0 ? archivePath : archivePath.substring(separator + 1);
         return name.equals("options.yml") ||
-                name.equals("scssfx-expect.json") ||
                 name.equals("error") ||
                 name.startsWith("error-") ||
                 name.equals("warning") ||
                 name.startsWith("warning-") ||
                 name.equals("output.css") ||
-                (name.startsWith("output-") && name.endsWith(".css"));
+                (name.startsWith("output-") && name.endsWith(".css") && !name.contains("scssfx"));
     }
 
     /// Compares an executable fixture against either its CSS output or primary error expectation.
@@ -387,8 +399,10 @@ final class SassSpecRunnerTest {
             Path caseRoot,
             Path input
     ) throws IOException, SassCompilationException {
-        @Nullable String expectedOutput = preferredContent(resolved, "output-scssfx.css", "output.css");
-        @Nullable String expectedError = preferredContent(resolved, "error-scssfx", "error");
+        assertNoScssfxOverrides(resolved);
+        String prefix = resolved.fixture().directory() + "/";
+        @Nullable String expectedOutput = resolved.archive().content(prefix + "output.css");
+        @Nullable String expectedError = resolved.archive().content(prefix + "error");
         if ((expectedOutput == null) == (expectedError == null)) {
             throw new IllegalArgumentException(
                     "Executable sass-spec fixtures must define exactly one output or error expectation: " +
@@ -433,23 +447,21 @@ final class SassSpecRunnerTest {
         assertEquals(expectedMessage, failure.primaryDiagnostic().message());
     }
 
-    /// Returns the project-specific expectation when available, otherwise the generic expectation.
-    ///
-    /// @param resolved the parsed archive and selected fixture
-    /// @param preferredName the project-specific expectation file name
-    /// @param fallbackName the generic expectation file name
-    /// @return the selected contents, or {@code null} when neither file exists
-    private static @Nullable String preferredContent(
-            ResolvedFixture resolved,
-            String preferredName,
-            String fallbackName
-    ) {
+    /// Fails when a fixture carries a project-local expectation override.
+    private static void assertNoScssfxOverrides(ResolvedFixture resolved) {
         String prefix = resolved.fixture().directory() + "/";
-        @Nullable String preferred = resolved.archive().content(prefix + preferredName);
-        if (preferred != null) {
-            return preferred;
+        for (String name : List.of(
+                "output-scssfx.css",
+                "error-scssfx",
+                "scssfx-expect.json"
+        )) {
+            if (resolved.archive().content(prefix + name) != null) {
+                throw new IllegalStateException(
+                        "scssfx expectation overrides are forbidden: "
+                                + resolved.displayName() + "/" + name
+                );
+            }
         }
-        return resolved.archive().content(prefix + fallbackName);
     }
 
     /// Verifies structured diagnostics when the manifest declares expectations.

@@ -1,4 +1,6 @@
-package org.glavo.scssfx;
+package org.glavo.scssfx.selector;
+
+import org.glavo.scssfx.*;
 
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
@@ -7,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /// Verifies multi-line selector lists preserve line breaks after commas.
 @NotNullByDefault
-final class Batch64SelectorLineBreakTest {
+final class SelectorLineBreakTest {
     /// Compiles a multi-line selector list nested under {@code @media}.
     @Test
     void mediaMultilineSelectorPreservesLineBreak() throws Exception {

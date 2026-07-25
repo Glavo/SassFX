@@ -61,6 +61,16 @@ public final class SassSpecBatchMain {
         int passed = 0;
         int failed = 0;
         int skipped = 0;
+        int upstreamTotal = 0;
+        int upstreamPassed = 0;
+        int upstreamFailed = 0;
+        int ownedTotal = 0;
+        int ownedPassed = 0;
+        int ownedFailed = 0;
+        int outputPassed = 0;
+        int outputFailed = 0;
+        int diagnosticPassed = 0;
+        int diagnosticFailed = 0;
         var failures = new ArrayList<String>();
         var byCategory = new LinkedHashMap<String, int[]>();
 
@@ -77,11 +87,20 @@ public final class SassSpecBatchMain {
                 var resolved = fixtures.get(index);
                 var fixture = resolved.fixture();
                 byCategory.computeIfAbsent(fixture.category(), key -> new int[3]);
+                boolean upstream = isUpstreamArchive(resolved.archiveResource());
                 if (fixture.action() == SassSpecManifest.Action.SKIP) {
                     skipped++;
                     byCategory.get(fixture.category())[2]++;
                     continue;
                 }
+                if (upstream) {
+                    upstreamTotal++;
+                } else {
+                    ownedTotal++;
+                }
+                boolean expectsOutput = resolved.archive().content(
+                        fixture.directory() + "/output.css"
+                ) != null;
                 try {
                     String mountPrefix = archiveMountPrefix(
                             resolved.archiveResource(),
@@ -119,9 +138,31 @@ public final class SassSpecBatchMain {
                     }
                     passed++;
                     byCategory.get(fixture.category())[0]++;
+                    if (upstream) {
+                        upstreamPassed++;
+                    } else {
+                        ownedPassed++;
+                    }
+                    if (expectsOutput) {
+                        outputPassed++;
+                    } else {
+                        diagnosticPassed++;
+                    }
                 } catch (Throwable failure) {
                     failed++;
                     byCategory.get(fixture.category())[1]++;
+                    if (upstream) {
+                        upstreamFailed++;
+                    } else {
+                        ownedFailed++;
+                    }
+                    Throwable root = unwrap(failure);
+                    if (root instanceof OutputMismatch
+                            || (expectsOutput && !(root instanceof DiagnosticMismatch))) {
+                        outputFailed++;
+                    } else {
+                        diagnosticFailed++;
+                    }
                     String message = failure.getMessage() == null
                             ? failure.getClass().getSimpleName()
                             : failure.getMessage();
@@ -147,6 +188,18 @@ public final class SassSpecBatchMain {
         int total = fixtures.size();
         int enabled = total - skipped;
         double compatibility = enabled == 0 ? 1.0 : (double) passed / enabled;
+        double upstreamCompat = (upstreamPassed + upstreamFailed) == 0
+                ? 0.0
+                : (double) upstreamPassed / (upstreamPassed + upstreamFailed);
+        double ownedCompat = (ownedPassed + ownedFailed) == 0
+                ? 0.0
+                : (double) ownedPassed / (ownedPassed + ownedFailed);
+        double outputCompat = (outputPassed + outputFailed) == 0
+                ? 0.0
+                : (double) outputPassed / (outputPassed + outputFailed);
+        double diagnosticCompat = (diagnosticPassed + diagnosticFailed) == 0
+                ? 0.0
+                : (double) diagnosticPassed / (diagnosticPassed + diagnosticFailed);
         var summary = new StringBuilder();
         summary.append('{')
                 .append("\"total\":").append(total).append(',')
@@ -156,6 +209,28 @@ public final class SassSpecBatchMain {
                 .append("\"skipped\":").append(skipped).append(',')
                 .append("\"compatibility\":").append(compatibility).append(',')
                 .append("\"coverage\":").append(compatibility).append(',')
+                .append("\"upstream\":{")
+                .append("\"total\":").append(upstreamTotal).append(',')
+                .append("\"passed\":").append(upstreamPassed).append(',')
+                .append("\"failed\":").append(upstreamFailed).append(',')
+                .append("\"compatibility\":").append(upstreamCompat)
+                .append("},")
+                .append("\"owned\":{")
+                .append("\"total\":").append(ownedTotal).append(',')
+                .append("\"passed\":").append(ownedPassed).append(',')
+                .append("\"failed\":").append(ownedFailed).append(',')
+                .append("\"compatibility\":").append(ownedCompat)
+                .append("},")
+                .append("\"output\":{")
+                .append("\"passed\":").append(outputPassed).append(',')
+                .append("\"failed\":").append(outputFailed).append(',')
+                .append("\"compatibility\":").append(outputCompat)
+                .append("},")
+                .append("\"diagnostic\":{")
+                .append("\"passed\":").append(diagnosticPassed).append(',')
+                .append("\"failed\":").append(diagnosticFailed).append(',')
+                .append("\"compatibility\":").append(diagnosticCompat)
+                .append("},")
                 .append("\"skippedByCategory\":{");
         boolean first = true;
         for (var entry : byCategory.entrySet()) {
@@ -176,6 +251,10 @@ public final class SassSpecBatchMain {
                         + " passed=" + passed
                         + " failed=" + failed
                         + " skipped=" + skipped
+                        + " upstreamCompat=" + String.format(java.util.Locale.ROOT, "%.4f", upstreamCompat)
+                        + " ownedCompat=" + String.format(java.util.Locale.ROOT, "%.4f", ownedCompat)
+                        + " outputCompat=" + String.format(java.util.Locale.ROOT, "%.4f", outputCompat)
+                        + " diagnosticCompat=" + String.format(java.util.Locale.ROOT, "%.4f", diagnosticCompat)
         );
         if (failed != 0) {
             System.exit(1);
@@ -188,12 +267,15 @@ public final class SassSpecBatchMain {
             Path caseRoot,
             Path input
     ) throws Exception {
-        @Nullable String expectedOutput = preferredContent(resolved, "output-scssfx.css", "output.css");
-        @Nullable String expectedError = preferredContent(resolved, "error-scssfx", "error");
+        assertNoScssfxOverrides(resolved);
+        String prefix = resolved.fixture().directory() + "/";
+        @Nullable String expectedOutput = resolved.archive().content(prefix + "output.css");
+        @Nullable String expectedError = resolved.archive().content(prefix + "error");
         if ((expectedOutput == null) == (expectedError == null)) {
             throw new IllegalArgumentException("Fixture must define exactly one of output/error");
         }
         var options = new CompileOptions(false, List.of(suiteRoot));
+        boolean upstream = isUpstreamArchive(resolved.archiveResource());
         if (expectedOutput != null) {
             CompileResult<String> result = new SassCompiler().compile(
                     SassSource.fromFile(input),
@@ -203,26 +285,99 @@ public final class SassSpecBatchMain {
             String expected = normalizeCss(expectedOutput);
             String actual = normalizeCss(result.output());
             if (!expected.equals(actual)) {
-                throw new AssertionError(
-                        "CSS mismatch expected=<<<" + expected + ">>> actual=<<<" + actual + ">>>"
-                );
+                throw new OutputMismatch(upstream,
+                        "CSS mismatch expected=<<<" + expected + ">>> actual=<<<" + actual + ">>>");
             }
             return;
         }
         String expectedMessage = extractErrorMessage(Objects.requireNonNull(expectedError));
         try {
             new SassCompiler().compile(SassSource.fromFile(input), CssTarget.DEFAULT, options);
-            throw new AssertionError("Expected compilation failure");
+            throw new DiagnosticMismatch(upstream, "Expected compilation failure");
         } catch (SassCompilationException failure) {
             if (failure.primaryDiagnostic().severity() != DiagnosticSeverity.ERROR) {
-                throw new AssertionError("Primary diagnostic was not ERROR");
+                throw new DiagnosticMismatch(upstream, "Primary diagnostic was not ERROR");
             }
             String actual = failure.primaryDiagnostic().message();
             if (!expectedMessage.equals(actual)) {
-                throw new AssertionError(
-                        "Error mismatch expected=<<<" + expectedMessage + ">>> actual=<<<" + actual + ">>>"
+                throw new DiagnosticMismatch(upstream,
+                        "Error mismatch expected=<<<" + expectedMessage + ">>> actual=<<<" + actual + ">>>");
+            }
+        }
+    }
+
+    /// Rejects project-local expectation overrides in imported fixtures.
+    private static void assertNoScssfxOverrides(ResolvedFixture resolved) {
+        String prefix = resolved.fixture().directory() + "/";
+        for (String name : List.of(
+                "output-scssfx.css",
+                "error-scssfx",
+                "scssfx-expect.json"
+        )) {
+            if (resolved.archive().content(prefix + name) != null) {
+                throw new IllegalStateException(
+                        "scssfx expectation overrides are forbidden: "
+                                + resolved.displayName() + "/" + name
                 );
             }
+        }
+        for (String path : resolved.archive().paths()) {
+            if (!path.startsWith(prefix)) {
+                continue;
+            }
+            String base = path.substring(path.lastIndexOf('/') + 1);
+            if (base.startsWith("output-scssfx")
+                    || base.startsWith("error-scssfx")
+                    || base.equals("scssfx-expect.json")) {
+                throw new IllegalStateException(
+                        "scssfx expectation overrides are forbidden: " + path
+                );
+            }
+        }
+    }
+
+    /// Returns whether an archive path is the upstream sass-spec pin corpus.
+    private static boolean isUpstreamArchive(String archiveResource) {
+        return archiveResource.startsWith("upstream/");
+    }
+
+    /// Unwraps executor wrappers to the assertion root.
+    private static Throwable unwrap(Throwable failure) {
+        Throwable root = failure;
+        while (root.getCause() != null
+                && !(root instanceof OutputMismatch)
+                && !(root instanceof DiagnosticMismatch)
+                && (root instanceof RuntimeException || root instanceof java.util.concurrent.ExecutionException)) {
+            root = root.getCause();
+        }
+        return root;
+    }
+
+    /// Marks an output-CSS assertion failure with corpus ownership.
+    private static final class OutputMismatch extends AssertionError {
+        private final boolean upstream;
+
+        private OutputMismatch(boolean upstream, String message) {
+            super(message);
+            this.upstream = upstream;
+        }
+
+        private boolean upstream() {
+            return upstream;
+        }
+    }
+
+    /// Marks a diagnostic assertion failure with corpus ownership.
+    private static final class DiagnosticMismatch extends AssertionError {
+        private final boolean upstream;
+
+        private DiagnosticMismatch(boolean upstream, String message) {
+            super(message);
+            this.upstream = upstream;
+        }
+
+        private boolean upstream() {
+            return upstream;
         }
     }
 
@@ -421,24 +576,15 @@ public final class SassSpecBatchMain {
     private static boolean isExpectationArchivePath(String archivePath) {
         int separator = archivePath.lastIndexOf('/');
         String name = separator < 0 ? archivePath : archivePath.substring(separator + 1);
+        // Project-local scssfx overrides are forbidden; only upstream expectation
+        // names are recognized so accidental override files cannot shadow output.css.
         return name.equals("options.yml")
-                || name.equals("scssfx-expect.json")
                 || name.equals("error")
                 || name.startsWith("error-")
                 || name.equals("warning")
                 || name.startsWith("warning-")
                 || name.equals("output.css")
-                || (name.startsWith("output-") && name.endsWith(".css"));
-    }
-
-    private static @Nullable String preferredContent(
-            ResolvedFixture resolved,
-            String preferredName,
-            String fallbackName
-    ) {
-        String prefix = resolved.fixture().directory() + "/";
-        @Nullable String preferred = resolved.archive().content(prefix + preferredName);
-        return preferred != null ? preferred : resolved.archive().content(prefix + fallbackName);
+                || (name.startsWith("output-") && name.endsWith(".css") && !name.contains("scssfx"));
     }
 
     /// Extracts the primary diagnostic text from a sass-spec {@code error} file.

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-package org.glavo.scssfx;
+package org.glavo.scssfx.language;
+
+import org.glavo.scssfx.*;
 
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
@@ -10,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Language-gap probes for the batch57 wave.
 @NotNullByDefault
-final class Batch57LanguageTest {
+final class LanguageBatch57Test {
 
     private static String compile(String source, Syntax syntax) throws Exception {
         return new SassCompiler()

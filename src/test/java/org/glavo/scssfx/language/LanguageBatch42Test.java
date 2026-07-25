@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-package org.glavo.scssfx;
+package org.glavo.scssfx.language;
+
+import org.glavo.scssfx.*;
 
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
@@ -11,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /// Verifies batch42 percent tokens, trailing-operator continuations, and list
 /// trailing-comma handling.
 @NotNullByDefault
-final class Batch42LanguageTest {
+final class LanguageBatch42Test {
     @Test
     void treatsTrailingPercentAsStringInSpaceList() throws Exception {
         assertEquals(

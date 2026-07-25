@@ -21,6 +21,10 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /// Collects stable execution and coverage statistics for one fixture manifest.
+///
+/// Counts are split by corpus ownership (upstream pin vs owned curated) and by
+/// assertion kind (CSS output vs diagnostic) so a single compatibility ratio
+/// cannot hide structural risk.
 @NotNullByDefault
 final class SassSpecSummary {
     /// Creates JSON reports for completed fixture runs.
@@ -47,6 +51,36 @@ final class SassSpecSummary {
     /// Aggregates actual aborted fixtures by category without relying on dynamic-test order.
     private final ConcurrentMap<String, AtomicInteger> skippedByCategory = new ConcurrentHashMap<>();
 
+    /// Counts upstream executable fixtures.
+    private final AtomicInteger upstreamTotal = new AtomicInteger();
+
+    /// Counts passed upstream executable fixtures.
+    private final AtomicInteger upstreamPassed = new AtomicInteger();
+
+    /// Counts failed upstream executable fixtures.
+    private final AtomicInteger upstreamFailed = new AtomicInteger();
+
+    /// Counts owned (non-upstream) executable fixtures.
+    private final AtomicInteger ownedTotal = new AtomicInteger();
+
+    /// Counts passed owned executable fixtures.
+    private final AtomicInteger ownedPassed = new AtomicInteger();
+
+    /// Counts failed owned executable fixtures.
+    private final AtomicInteger ownedFailed = new AtomicInteger();
+
+    /// Counts output-CSS assertion passes.
+    private final AtomicInteger outputPassed = new AtomicInteger();
+
+    /// Counts output-CSS assertion failures.
+    private final AtomicInteger outputFailed = new AtomicInteger();
+
+    /// Counts diagnostic assertion passes.
+    private final AtomicInteger diagnosticPassed = new AtomicInteger();
+
+    /// Counts diagnostic assertion failures.
+    private final AtomicInteger diagnosticFailed = new AtomicInteger();
+
     /// Creates a summary with a fixed planned fixture population.
     ///
     /// @param fixtures the manifest-selected fixture cases
@@ -69,13 +103,53 @@ final class SassSpecSummary {
     }
 
     /// Records one successfully completed executable fixture.
-    void recordPassed() {
+    ///
+    /// @param upstream       whether the fixture is from the upstream pin corpus
+    /// @param outputAssertion whether the fixture asserted CSS output (vs diagnostic)
+    void recordPassed(boolean upstream, boolean outputAssertion) {
         passed.incrementAndGet();
+        if (upstream) {
+            upstreamTotal.incrementAndGet();
+            upstreamPassed.incrementAndGet();
+        } else {
+            ownedTotal.incrementAndGet();
+            ownedPassed.incrementAndGet();
+        }
+        if (outputAssertion) {
+            outputPassed.incrementAndGet();
+        } else {
+            diagnosticPassed.incrementAndGet();
+        }
+    }
+
+    /// Records one successfully completed executable fixture without corpus detail.
+    void recordPassed() {
+        recordPassed(true, true);
     }
 
     /// Records one failed executable fixture.
-    void recordFailed() {
+    ///
+    /// @param upstream       whether the fixture is from the upstream pin corpus
+    /// @param outputAssertion whether the failure was an output mismatch
+    void recordFailed(boolean upstream, boolean outputAssertion) {
         failed.incrementAndGet();
+        if (upstream) {
+            upstreamTotal.incrementAndGet();
+            upstreamFailed.incrementAndGet();
+        } else {
+            ownedTotal.incrementAndGet();
+            ownedFailed.incrementAndGet();
+        }
+        if (outputAssertion) {
+            outputFailed.incrementAndGet();
+        } else {
+            diagnosticFailed.incrementAndGet();
+        }
+    }
+
+    /// Records one failed executable fixture without corpus detail.
+    void recordFailed() {
+        recordFailed(true, true);
     }
 
     /// Records one explicitly skipped fixture and its compatibility category.
@@ -110,6 +184,13 @@ final class SassSpecSummary {
                 " failed=" + failedCount +
                 " skipped=" + skipped.get() +
                 " compatibility=" + percentage(passedCount, passedCount + failedCount) +
+                " upstreamCompat=" + percentage(upstreamPassed.get(), upstreamPassed.get() + upstreamFailed.get()) +
+                " ownedCompat=" + percentage(ownedPassed.get(), ownedPassed.get() + ownedFailed.get()) +
+                " outputCompat=" + percentage(outputPassed.get(), outputPassed.get() + outputFailed.get()) +
+                " diagnosticCompat=" + percentage(
+                        diagnosticPassed.get(),
+                        diagnosticPassed.get() + diagnosticFailed.get()
+                ) +
                 " coverage=" + percentage(enabled, total) +
                 " skippedByCategory=" + actualSkippedByCategory();
     }
@@ -139,6 +220,10 @@ final class SassSpecSummary {
             generator.writeNumberField("skipped", skipped.get());
             generator.writeNumberField("compatibility", ratio(passedCount, passedCount + failedCount));
             generator.writeNumberField("coverage", ratio(enabled, total));
+            writeCorpus(generator, "upstream", upstreamTotal.get(), upstreamPassed.get(), upstreamFailed.get());
+            writeCorpus(generator, "owned", ownedTotal.get(), ownedPassed.get(), ownedFailed.get());
+            writeKind(generator, "output", outputPassed.get(), outputFailed.get());
+            writeKind(generator, "diagnostic", diagnosticPassed.get(), diagnosticFailed.get());
             generator.writeObjectFieldStart("skippedByCategory");
             for (Map.Entry<String, Integer> entry : actualSkippedByCategory().entrySet()) {
                 generator.writeNumberField(entry.getKey(), entry.getValue());
@@ -146,6 +231,36 @@ final class SassSpecSummary {
             generator.writeEndObject();
             generator.writeEndObject();
         }
+    }
+
+    /// Writes one corpus ownership block.
+    private static void writeCorpus(
+            JsonGenerator generator,
+            String name,
+            int totalCount,
+            int passedCount,
+            int failedCount
+    ) throws IOException {
+        generator.writeObjectFieldStart(name);
+        generator.writeNumberField("total", totalCount);
+        generator.writeNumberField("passed", passedCount);
+        generator.writeNumberField("failed", failedCount);
+        generator.writeNumberField("compatibility", ratio(passedCount, passedCount + failedCount));
+        generator.writeEndObject();
+    }
+
+    /// Writes one assertion-kind block.
+    private static void writeKind(
+            JsonGenerator generator,
+            String name,
+            int passedCount,
+            int failedCount
+    ) throws IOException {
+        generator.writeObjectFieldStart(name);
+        generator.writeNumberField("passed", passedCount);
+        generator.writeNumberField("failed", failedCount);
+        generator.writeNumberField("compatibility", ratio(passedCount, passedCount + failedCount));
+        generator.writeEndObject();
     }
 
     /// Returns actual skip counts in deterministic category order.

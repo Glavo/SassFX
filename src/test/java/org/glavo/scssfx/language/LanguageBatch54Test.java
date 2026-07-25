@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-package org.glavo.scssfx;
+package org.glavo.scssfx.language;
+
+import org.glavo.scssfx.*;
 
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
@@ -14,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Verifies batch54 plain-CSS, selector, supports, and mixin content fixes.
 @NotNullByDefault
-final class Batch54LanguageTest {
+final class LanguageBatch54Test {
     @Test
     void plainCssRejectsMapLiterals() {
         var failure = assertThrows(
