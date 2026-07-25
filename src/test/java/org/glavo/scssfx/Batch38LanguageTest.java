@@ -62,7 +62,7 @@ final class Batch38LanguageTest {
     @Test
     void continuesSelectorAfterCommaAndSilentComment() throws Exception {
         assertEquals(
-                "a, b {\n  x: y;\n}".strip(),
+                "a,\nb {\n  x: y;\n}".strip(),
                 compile(
                         """
                                 a, // comment
@@ -77,7 +77,7 @@ final class Batch38LanguageTest {
     @Test
     void continuesSelectorAfterCommaAndLoudComment() throws Exception {
         assertEquals(
-                "a, b {\n  x: y;\n}".strip(),
+                "a,\nb {\n  x: y;\n}".strip(),
                 compile(
                         """
                                 a, /* comment */
@@ -88,7 +88,7 @@ final class Batch38LanguageTest {
                 ).strip()
         );
         assertEquals(
-                "a, b {\n  x: y;\n}".strip(),
+                "a,\nb {\n  x: y;\n}".strip(),
                 compile(
                         """
                                 a /* comment */,

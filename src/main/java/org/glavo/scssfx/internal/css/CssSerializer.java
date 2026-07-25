@@ -211,8 +211,11 @@ public final class CssSerializer {
             int indentation
     ) {
         writeIndentation(buffer, indentation);
+        // Preserve source line breaks between selector complexes; indent the
+        // continuation at the same depth as the first complex (dart-sass).
+        int indentSpaces = indentation * 2;
         buffer.forSpan(rule.selector().span(), () ->
-                buffer.append(rule.selector().value().toCssString(false)));
+                buffer.append(rule.selector().value().toCssString(false, indentSpaces)));
         buffer.append(" {");
         writeExpandedChildren(rule, buffer, indentation);
         buffer.append('}');
@@ -336,7 +339,7 @@ public final class CssSerializer {
         if (declaration.parsedAsSassScript()) {
             buffer.append(' ');
         }
-        appendDeclarationValue(declaration, buffer);
+        appendDeclarationValue(declaration, buffer, indentation, false);
     }
 
     /// Writes all visible top-level nodes using compressed layout.
@@ -455,7 +458,7 @@ public final class CssSerializer {
         buffer.forSpan(declaration.name().span(), () ->
                 buffer.append(declaration.name().value()));
         buffer.append(':');
-        appendDeclarationValue(declaration, buffer);
+        appendDeclarationValue(declaration, buffer, 0, true);
     }
 
     /// Returns whether a CSS comment is a source-map or source-URL directive.
@@ -490,13 +493,23 @@ public final class CssSerializer {
     }
 
     /// Appends a declaration value without adding layout whitespace.
+    ///
+    /// @param declaration the declaration
+    /// @param buffer      the serialization buffer
+    /// @param indentation expanded indentation depth of the declaration
+    /// @param compressed  whether compressed layout is active
     private static void appendDeclarationValue(
             CssDeclaration declaration,
-            SourceMapBuffer buffer
+            SourceMapBuffer buffer,
+            int indentation,
+            boolean compressed
     ) {
         if (!declaration.parsedAsSassScript()) {
+            // Raw CSS custom-property / declaration values keep author whitespace;
+            // expanded mode reindents multi-line values, and values that end only
+            // in newlines become a single trailing space (dart-sass).
             buffer.forSpan(declaration.value().span(), () ->
-                    buffer.append(rawValueText(declaration)));
+                    writeRawDeclarationValue(declaration, buffer, indentation, compressed));
             return;
         }
         try {
@@ -509,6 +522,252 @@ public final class CssSerializer {
                     cause
             );
         }
+    }
+
+    /// Appends a raw (non-SassScript) declaration value.
+    ///
+    /// @param declaration the declaration whose value is raw text
+    /// @param buffer      the serialization buffer
+    /// @param indentation expanded indentation depth of the declaration
+    /// @param compressed  whether compressed folding should be used
+    private static void writeRawDeclarationValue(
+            CssDeclaration declaration,
+            SourceMapBuffer buffer,
+            int indentation,
+            boolean compressed
+    ) {
+        String value = rawValueText(declaration);
+        if (compressed) {
+            writeFoldedValue(value, buffer);
+            return;
+        }
+        writeReindentedValue(value, declaration, buffer, indentation);
+    }
+
+    /// Writes a raw value with newlines folded to spaces (compressed CSS).
+    private static void writeFoldedValue(String value, SourceMapBuffer buffer) {
+        for (var index = 0; index < value.length(); index++) {
+            char ch = value.charAt(index);
+            if (ch == '\n') {
+                buffer.append(' ');
+                while (index + 1 < value.length()
+                        && isAsciiWhitespace(value.charAt(index + 1))) {
+                    index++;
+                }
+            } else if (ch != '\r') {
+                buffer.append(ch);
+            }
+        }
+    }
+
+    /// Writes a raw value with multi-line indentation normalized for expanded CSS.
+    private static void writeReindentedValue(
+            String value,
+            CssDeclaration declaration,
+            SourceMapBuffer buffer,
+            int indentation
+    ) {
+        @Nullable Integer minimum = minimumIndentation(value);
+        if (minimum == null) {
+            buffer.append(value);
+            return;
+        }
+        if (minimum < 0) {
+            // Newlines with no following indented content: collapse to one space.
+            buffer.append(trimAsciiRightPreserveEscaped(value));
+            buffer.append(' ');
+            return;
+        }
+        int nameColumn = declaration.name().span().start().column();
+        int effectiveMinimum = nameColumn > 0
+                ? Math.min(minimum, nameColumn)
+                : minimum;
+        writeWithIndent(value, effectiveMinimum, buffer, indentation);
+    }
+
+    /// Returns the indentation of the least-indented non-empty line after the first.
+    ///
+    /// @param text the raw declaration value
+    /// @return {@code null} when there is no newline; {@code -1} when there are
+    /// newlines but no indented non-empty line; otherwise the column count
+    private static @Nullable Integer minimumIndentation(String text) {
+        int index = 0;
+        while (index < text.length() && text.charAt(index) != '\n') {
+            index++;
+        }
+        if (index >= text.length()) {
+            return null;
+        }
+        // Ends on a newline with nothing after the first line.
+        if (index == text.length() - 1 || onlyTrailingNewlines(text, index)) {
+            return -1;
+        }
+        index++; // past first \n
+        @Nullable Integer min = null;
+        while (index < text.length()) {
+            int column = 0;
+            while (index < text.length()) {
+                char ch = text.charAt(index);
+                if (ch != ' ' && ch != '\t') {
+                    break;
+                }
+                column++;
+                index++;
+            }
+            if (index >= text.length()) {
+                break;
+            }
+            if (text.charAt(index) == '\n') {
+                index++;
+                continue;
+            }
+            min = min == null ? column : Math.min(min, column);
+            while (index < text.length() && text.charAt(index) != '\n') {
+                index++;
+            }
+            if (index < text.length()) {
+                index++;
+            }
+        }
+        return min == null ? -1 : min;
+    }
+
+    /// Returns whether {@code text} from {@code fromNewline} is only newlines.
+    private static boolean onlyTrailingNewlines(String text, int fromNewline) {
+        for (var index = fromNewline; index < text.length(); index++) {
+            char ch = text.charAt(index);
+            if (ch != '\n' && ch != '\r') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// Writes multi-line text, replacing the minimum source indent with serializer indent.
+    ///
+    /// Matches dart-sass {@code _writeWithIndent}: the first line is written as-is;
+    /// later non-empty lines are reindented to {@code currentIndentation}, and
+    /// trailing whitespace-only tails become a single space.
+    private static void writeWithIndent(
+            String text,
+            int minimumIndentation,
+            SourceMapBuffer buffer,
+            int currentIndentation
+    ) {
+        int index = 0;
+        // First line as-is until newline.
+        while (index < text.length()) {
+            char ch = text.charAt(index++);
+            if (ch == '\n') {
+                break;
+            }
+            if (ch != '\r') {
+                buffer.append(ch);
+            }
+        }
+        while (true) {
+            // After a newline (or at end). Scan for the next non-empty line.
+            int lineStart = index;
+            int newlines = 1;
+            while (true) {
+                if (index >= text.length()) {
+                    buffer.append(' ');
+                    return;
+                }
+                char ch = text.charAt(index);
+                if (ch == ' ' || ch == '\t') {
+                    index++;
+                    continue;
+                }
+                if (ch == '\n') {
+                    index++;
+                    lineStart = index;
+                    newlines++;
+                    continue;
+                }
+                if (ch == '\r') {
+                    index++;
+                    if (index < text.length() && text.charAt(index) == '\n') {
+                        index++;
+                    }
+                    lineStart = index;
+                    newlines++;
+                    continue;
+                }
+                break;
+            }
+            for (var n = 0; n < newlines; n++) {
+                buffer.append('\n');
+            }
+            // Same depth as the declaration name line (dart-sass _writeIndentation).
+            writeIndentation(buffer, currentIndentation);
+            // Keep relative indent beyond the shared minimum (dart-sass
+            // substring(lineStart + minimumIndentation)). Only clamp when a line
+            // is less indented than the recorded minimum.
+            int contentStart = lineStart + minimumIndentation;
+            if (contentStart > text.length()) {
+                contentStart = text.length();
+            }
+            if (contentStart > index) {
+                // Line was less indented than the minimum; start at non-whitespace.
+                contentStart = index;
+            }
+            index = contentStart;
+            boolean endedWithNewline = false;
+            while (index < text.length()) {
+                char ch = text.charAt(index);
+                if (ch == '\n') {
+                    index++;
+                    endedWithNewline = true;
+                    break;
+                }
+                if (ch == '\r') {
+                    index++;
+                    if (index < text.length() && text.charAt(index) == '\n') {
+                        index++;
+                    }
+                    endedWithNewline = true;
+                    break;
+                }
+                buffer.append(ch);
+                index++;
+            }
+            // Content line ended without a newline: done (no trailing space).
+            // Content line ended with a newline: continue so a trailing-only
+            // newline collapses to a single space (dart-sass _writeWithIndent).
+            if (!endedWithNewline) {
+                return;
+            }
+        }
+    }
+
+    /// Trims trailing ASCII whitespace while keeping a trailing backslash escape.
+    private static String trimAsciiRightPreserveEscaped(String value) {
+        int end = value.length();
+        while (end > 0) {
+            char ch = value.charAt(end - 1);
+            if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f') {
+                // Keep a space that is escaped by a preceding odd number of backslashes.
+                if (ch == ' ' || ch == '\t') {
+                    int backslashes = 0;
+                    for (var i = end - 2; i >= 0 && value.charAt(i) == '\\'; i--) {
+                        backslashes++;
+                    }
+                    if ((backslashes & 1) == 1) {
+                        break;
+                    }
+                }
+                end--;
+                continue;
+            }
+            break;
+        }
+        return value.substring(0, end);
+    }
+
+    /// Returns whether a character is ASCII whitespace.
+    private static boolean isAsciiWhitespace(char ch) {
+        return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f';
     }
 
     /// Returns the raw unquoted CSS text for a non-SassScript declaration.

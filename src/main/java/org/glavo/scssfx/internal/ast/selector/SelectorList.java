@@ -260,6 +260,19 @@ public record SelectorList(
     /// @param inspect whether placeholder selectors and full structure are retained
     /// @return the comma-separated CSS selectors
     public String toCssString(boolean inspect) {
+        return toCssString(inspect, 0);
+    }
+
+    /// Returns the CSS text of this selector list with optional indentation.
+    ///
+    /// Complexes that were separated by a line break in source are written with
+    /// a newline and {@code indentSpaces} spaces after the comma, matching
+    /// dart-sass expanded serialization of multi-line selector lists.
+    ///
+    /// @param inspect      whether placeholder selectors and full structure are retained
+    /// @param indentSpaces spaces to write after a line-breaking comma
+    /// @return the comma-separated CSS selectors
+    public String toCssString(boolean inspect, int indentSpaces) {
         var result = new StringBuilder();
         var first = true;
         for (var complex : components) {
@@ -267,7 +280,13 @@ public record SelectorList(
                 continue;
             }
             if (!first) {
-                result.append(", ");
+                result.append(',');
+                if (complex.lineBreak()) {
+                    result.append('\n');
+                    result.append(" ".repeat(Math.max(0, indentSpaces)));
+                } else {
+                    result.append(' ');
+                }
             }
             first = false;
             result.append(complex.toCssString(inspect));
@@ -338,7 +357,8 @@ public record SelectorList(
         return changed ? new ComplexSelector(
                 child.leadingCombinators(),
                 nextComponents,
-                child.span()
+                child.span(),
+                child.lineBreak()
         ) : child;
     }
 
@@ -360,7 +380,8 @@ public record SelectorList(
                     current = List.of(new ComplexSelector(
                             child.leadingCombinators(),
                             List.of(component),
-                            child.span()
+                            child.span(),
+                            child.lineBreak()
                     ));
                 } else if (child.leadingCombinators().isEmpty()) {
                     current = resolved;
@@ -372,7 +393,8 @@ public record SelectorList(
                         current.add(new ComplexSelector(
                                 leading,
                                 complex.components(),
-                                complex.span()
+                                complex.span(),
+                                complex.lineBreak() || child.lineBreak()
                         ));
                     }
                 }
@@ -462,7 +484,8 @@ public record SelectorList(
             result.add(new ComplexSelector(
                     parentComplex.leadingCombinators(),
                     nextComponents,
-                    component.span()
+                    component.span(),
+                    parentComplex.lineBreak()
             ));
         }
         return result;
@@ -479,7 +502,12 @@ public record SelectorList(
     ) {
         var next = new ArrayList<>(complex.components());
         next.add(component);
-        return new ComplexSelector(complex.leadingCombinators(), next, complex.span());
+        return new ComplexSelector(
+                complex.leadingCombinators(),
+                next,
+                complex.span(),
+                complex.lineBreak()
+        );
     }
 
     /// Creates the diagnostic for a parent marker in opaque pseudo content.

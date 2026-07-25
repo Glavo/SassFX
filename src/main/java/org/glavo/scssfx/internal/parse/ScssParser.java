@@ -481,7 +481,11 @@ final class ScssParser extends SassExpressionParser {
             case ROOT -> variableDeclarationOrStyleRule();
             case STYLE_RULE -> declarationOrStyleRule();
             case DECLARATION, FONT_FACE -> declarationChild();
-            case FUNCTION -> throw scanner.error("Expected @return rule or variable declaration.");
+            // dart-sass: property-like children in @function are rejected as
+            // declarations rather than with the generic return/variable message.
+            case FUNCTION -> throw scanner.error(
+                    "@function rules may not contain declarations."
+            );
         };
     }
 
@@ -1735,7 +1739,9 @@ final class ScssParser extends SassExpressionParser {
             );
         } else {
             if (contentParameters != null) {
-                throw scanner.error("Expected a content block after using().");
+                // dart-sass reports the missing brace rather than a using()-specific
+                // content-block message (sass-spec missing_block).
+                throw scanner.error("expected \"{\".");
             }
             expectStatementSeparator();
         }

@@ -88,10 +88,11 @@ final class IndentedSassPreprocessor {
                 var parentIndent = blocks.peek().indent();
                 var expectedIndent = childIndents.putIfAbsent(parentIndent, line.indent());
                 if (expectedIndent != null && expectedIndent != line.indent()) {
+                    // dart-sass reports "spaces" even though tabs count as two columns.
                     throw error(
                             source,
                             line,
-                            "Inconsistent indentation; expected " + expectedIndent + " columns."
+                            "Inconsistent indentation, expected " + expectedIndent + " spaces."
                     );
                 }
             }
@@ -830,14 +831,27 @@ final class IndentedSassPreprocessor {
             } else if (character == ')'
                     || character == ']'
                     || character == '}') {
-                if (stack.isEmpty()
-                        || (character == '}'
-                        ? stack.peek() != INTERPOLATION && stack.peek() != '{'
-                        : stack.peek() != matchingOpening(character))) {
+                if (stack.isEmpty()) {
+                    // dart-sass reports Unexpected ")" / "]" for surplus closers.
                     return new ContinuationState(
                             false,
                             false,
-                            "Mismatched closing delimiter."
+                            "Unexpected \"" + (char) character + "\"."
+                    );
+                }
+                var open = stack.peek();
+                boolean matches = character == '}'
+                        ? open == INTERPOLATION || open == '{'
+                        : open == matchingOpening(character);
+                if (!matches) {
+                    // Wrong closer for the open delimiter → expected the matching one.
+                    char expectedCloser = open == INTERPOLATION || open == '{'
+                            ? '}'
+                            : open == '(' ? ')' : ']';
+                    return new ContinuationState(
+                            false,
+                            false,
+                            "expected \"" + expectedCloser + "\"."
                     );
                 }
                 stack.pop();
@@ -852,7 +866,8 @@ final class IndentedSassPreprocessor {
             if (hasUnescapedTrailingBackslash(text)) {
                 return new ContinuationState(true, true, null);
             }
-            return new ContinuationState(false, true, "Expected closing quote.");
+            // dart-sass string_scanner: Expected '.  / Expected ".
+            return new ContinuationState(false, true, "Expected " + top + ".");
         }
         // Trailing commas force a join when a next line exists (selectors like
         // {@code a, // comment} / {@code a,}), but are valid terminators at EOF

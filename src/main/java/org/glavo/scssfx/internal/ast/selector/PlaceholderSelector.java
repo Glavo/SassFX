@@ -42,9 +42,16 @@ public record PlaceholderSelector(CssIdentifier name, SourceSpan span) implement
         return true;
     }
 
+    /// Appends an identifier suffix to this placeholder name.
+    ///
+    /// Nested forms such as {@code %foo { &bar { … } }} become {@code %foobar},
+    /// matching dart-sass {@code PlaceholderSelector.addSuffix}.
+    ///
+    /// @param suffix the identifier suffix after a parent selector
+    /// @return a placeholder with the concatenated name
     @Override
     public SimpleSelector addSuffix(CssIdentifier suffix) {
         Objects.requireNonNull(suffix, "suffix");
-        throw new SassValueException("Placeholder selector can't have a suffix.");
+        return new PlaceholderSelector(name.append(suffix), span);
     }
 }

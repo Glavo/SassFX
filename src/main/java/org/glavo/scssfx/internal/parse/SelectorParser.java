@@ -118,10 +118,23 @@ public final class SelectorParser {
     private SelectorList parseList() {
         whitespace();
         var components = new ArrayList<ComplexSelector>();
-        components.add(parseComplex());
+        // Track source line so comma-separated complexes can preserve line breaks.
+        int previousLine = lineAt(position);
+        components.add(parseComplex(false));
         while (scan(',')) {
             whitespace();
-            components.add(parseComplex());
+            if (!isDone() && peek() == ',') {
+                continue;
+            }
+            if (isDone()) {
+                break;
+            }
+            int line = lineAt(position);
+            boolean lineBreak = line != previousLine;
+            if (lineBreak) {
+                previousLine = line;
+            }
+            components.add(parseComplex(lineBreak));
         }
         whitespace();
         if (!isDone()) {
@@ -136,6 +149,14 @@ public final class SelectorParser {
     ///
     /// @return the parsed complex selector
     private ComplexSelector parseComplex() {
+        return parseComplex(false);
+    }
+
+    /// Parses one complex selector, recording whether a line break preceded it.
+    ///
+    /// @param lineBreak whether a newline appeared after the preceding comma
+    /// @return the parsed complex selector
+    private ComplexSelector parseComplex(boolean lineBreak) {
         var start = position;
         var leading = new ArrayList<Combinator>();
         whitespace();
@@ -153,7 +174,7 @@ public final class SelectorParser {
             if (leading.isEmpty()) {
                 throw error("expected selector.");
             }
-            return new ComplexSelector(leading, List.of(), spanFrom(start));
+            return new ComplexSelector(leading, List.of(), spanFrom(start), lineBreak);
         }
 
         while (lookingAtSimple()) {
@@ -196,7 +217,31 @@ public final class SelectorParser {
             // Leading-only forms such as {@code > a} are parsed with compounds;
             // a bare trailing combinator already failed lookingAtSimple above.
         }
-        return new ComplexSelector(leading, components, spanFrom(start));
+        return new ComplexSelector(leading, components, spanFrom(start), lineBreak);
+    }
+
+    /// Returns a line counter for {@code offset} within the selector text.
+    ///
+    /// Only relative comparisons matter (whether a newline appears between
+    /// commas); the absolute origin is zero at the start of the selector text.
+    ///
+    /// @param offset the relative UTF-16 offset into {@link #text}
+    /// @return the zero-based line number within the selector text
+    private int lineAt(int offset) {
+        int line = 0;
+        int end = Math.min(offset, text.length());
+        for (var index = 0; index < end; index++) {
+            char ch = text.charAt(index);
+            if (ch == '\n') {
+                line++;
+            } else if (ch == '\r') {
+                line++;
+                if (index + 1 < end && text.charAt(index + 1) == '\n') {
+                    index++;
+                }
+            }
+        }
+        return line;
     }
 
     /// Parses one compound selector.

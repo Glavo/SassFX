@@ -17,13 +17,30 @@ import java.util.Objects;
 /// @param leadingCombinators combinators before the first compound
 /// @param components         the ordered compounds and their trailing combinators
 /// @param span               the complex selector span
+/// @param lineBreak          whether a line break preceded this complex after a
+///                           comma in the source selector list (dart-sass
+///                           {@code ComplexSelector.lineBreak})
 @ApiStatus.Internal
 @NotNullByDefault
 public record ComplexSelector(
         @Unmodifiable List<Combinator> leadingCombinators,
         @Unmodifiable List<ComplexSelectorComponent> components,
-        SourceSpan span
+        SourceSpan span,
+        boolean lineBreak
 ) {
+    /// Creates a complex selector without a preceding line break.
+    ///
+    /// @param leadingCombinators combinators before the first compound
+    /// @param components         the ordered compounds and their trailing combinators
+    /// @param span               the complex selector span
+    public ComplexSelector(
+            List<Combinator> leadingCombinators,
+            List<ComplexSelectorComponent> components,
+            SourceSpan span
+    ) {
+        this(leadingCombinators, components, span, false);
+    }
+
     /// Creates a complex selector.
     ///
     /// @throws IllegalArgumentException if both lists are empty
@@ -34,6 +51,16 @@ public record ComplexSelector(
             throw new IllegalArgumentException("complex selector must not be empty");
         }
         Objects.requireNonNull(span, "span");
+    }
+
+    /// Returns this complex with an explicit preceding-line-break flag.
+    ///
+    /// @param lineBreak whether a line break precedes this complex after a comma
+    /// @return this complex, or a copy with the updated flag
+    public ComplexSelector withLineBreak(boolean lineBreak) {
+        return this.lineBreak == lineBreak
+                ? this
+                : new ComplexSelector(leadingCombinators, components, span, lineBreak);
     }
 
     /// Returns whether this complex selector contains a parent selector.
@@ -111,16 +138,17 @@ public record ComplexSelector(
     /// @return the concatenated complex selector
     public ComplexSelector concatenate(ComplexSelector child) {
         Objects.requireNonNull(child, "child");
+        boolean nextLineBreak = lineBreak || child.lineBreak;
         if (components.isEmpty()) {
             var leading = new ArrayList<>(leadingCombinators);
             leading.addAll(child.leadingCombinators);
-            return new ComplexSelector(leading, child.components, span);
+            return new ComplexSelector(leading, child.components, span, nextLineBreak);
         }
         if (child.components.isEmpty()) {
             var last = components.get(components.size() - 1);
             var nextComponents = new ArrayList<>(components.subList(0, components.size() - 1));
             nextComponents.add(last.withAdditionalCombinators(child.leadingCombinators));
-            return new ComplexSelector(leadingCombinators, nextComponents, span);
+            return new ComplexSelector(leadingCombinators, nextComponents, span, nextLineBreak);
         }
 
         var nextComponents = new ArrayList<>(components.subList(0, components.size() - 1));
@@ -132,7 +160,7 @@ public record ComplexSelector(
             nextComponents.add(last);
             nextComponents.addAll(child.components);
         }
-        return new ComplexSelector(leadingCombinators, nextComponents, span);
+        return new ComplexSelector(leadingCombinators, nextComponents, span, nextLineBreak);
     }
 
     /// Returns this complex selector with additional trailing combinators on its last component.
@@ -146,11 +174,11 @@ public record ComplexSelector(
         if (components.isEmpty()) {
             var leading = new ArrayList<>(leadingCombinators);
             leading.addAll(combinators);
-            return new ComplexSelector(leading, components, span);
+            return new ComplexSelector(leading, components, span, lineBreak);
         }
         var next = new ArrayList<>(components.subList(0, components.size() - 1));
         next.add(components.get(components.size() - 1).withAdditionalCombinators(combinators));
-        return new ComplexSelector(leadingCombinators, next, span);
+        return new ComplexSelector(leadingCombinators, next, span, lineBreak);
     }
 
     /// Returns whether this complex selector is omitted from emitted CSS.

@@ -1575,7 +1575,9 @@ public final class SassEvaluator implements
         var rule = new CssStyleRule(
                 new CssValue<>(nestedSelector, statement.selector().span()),
                 statement.span(),
-                isPlainCss()
+                isPlainCss(),
+                // Snapshot media active at definition time (not after bubbling).
+                mediaQueries
         );
         styleRuleOrigins.put(rule, currentUrl);
         addCssChild(rule, merge);
@@ -2006,19 +2008,16 @@ public final class SassEvaluator implements
         return new ExtensionApplyResult(true, true);
     }
 
-    /// Returns the innermost media-query list enclosing a style rule.
+    /// Returns the media context used for {@code @extend} compatibility checks.
+    ///
+    /// Uses the media queries active when the style rule was defined, not the
+    /// CSS parent after nested {@code @media} bubbling. That preserves forms
+    /// such as {@code %foo { @media … { … } }} extended from outside media.
     ///
     /// @param rule the style rule
-    /// @return the enclosing media queries, or {@code null}
+    /// @return the defining media queries, or {@code null}
     private static @Nullable List<CssMediaQuery> mediaContextOf(CssStyleRule rule) {
-        @Nullable CssParentNode current = rule.parent();
-        while (current != null) {
-            if (current instanceof CssMediaRule mediaRule) {
-                return mediaRule.queries();
-            }
-            current = current.parent();
-        }
-        return null;
+        return rule.definingMediaContext();
     }
 
     /// Returns whether two media contexts may exchange extensions.
@@ -2063,6 +2062,12 @@ public final class SassEvaluator implements
             }
         }
         if (kept.size() == selectors.components().size()) {
+            return selectors;
+        }
+        // Pure-placeholder complexes (e.g. {@code %foobar} from {@code %foo { &bar }})
+        // may leave nothing visible; keep the original invisible list so the CSS
+        // rule is omitted rather than building an empty selector list.
+        if (kept.isEmpty()) {
             return selectors;
         }
         return new SelectorList(kept, selectors.span());
@@ -3868,7 +3873,8 @@ public final class SassEvaluator implements
         var injected = new CssStyleRule(
                 new CssValue<>(nestedSelector, rule.selector().span()),
                 rule.span(),
-                rule.fromPlainCss()
+                rule.fromPlainCss(),
+                rule.definingMediaContext()
         );
         // load-css injects foreign CSS into the caller's stylesheet, so for
         // @extend visibility the cloned rules belong to the caller.
@@ -4355,11 +4361,16 @@ public final class SassEvaluator implements
     ) {
         for (var entry : map.contents().entrySet()) {
             if (!(entry.getKey() instanceof SassString key)) {
-                var keyText = entry.getKey().toCssString();
+                // dart-sass uses inspect form and a multi-line diagnostic:
+                // "(a #b) is not a string in (a #b: c)." — parenthesize the
+                // stand-alone key but not the key again inside the map pair.
+                var bareKey = entry.getKey().toString();
+                var displayKey = keywordMapKeyDisplay(entry.getKey(), bareKey);
+                var valueText = entry.getValue().toString();
                 throw new EvaluationException(
-                        "Variable keyword argument map must have string keys. "
-                                + keyText + " is not a string in ("
-                                + keyText + ": " + entry.getValue().toCssString() + ").",
+                        "Variable keyword argument map must have string keys.\n"
+                                + displayKey + " is not a string in ("
+                                + bareKey + ": " + valueText + ").",
                         span
                 );
             }
@@ -4375,6 +4386,25 @@ public final class SassEvaluator implements
                     stripSlash ? entry.getValue().withoutSlash() : entry.getValue()
             );
         }
+    }
+
+    /// Returns the parenthesized stand-alone key form for keyword-map diagnostics.
+    ///
+    /// Multi-element unbracketed lists are parenthesized so {@code a#b} surfaces
+    /// as {@code (a #b)} when named alone, while the map pair still uses the bare
+    /// inspect text ({@code a #b: c}).
+    ///
+    /// @param key  the invalid map key
+    /// @param bare the key's inspect spelling
+    /// @return the display text for the stand-alone key clause
+    private static String keywordMapKeyDisplay(SassValue key, String bare) {
+        if (key instanceof SassList list
+                && !list.hasBrackets()
+                && list.asList().size() > 1
+                && !bare.startsWith("(")) {
+            return "(" + bare + ")";
+        }
+        return bare;
     }
 
     /// Binds evaluated arguments into the current local frame.

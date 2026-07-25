@@ -28,7 +28,8 @@ final class StructuredSelectorRuleTest {
 
         assertEquals(
                 """
-                        svg|a.\\31 foo[data-kind|=primary i]:not(.blocked), *|button[|title=save]::before {
+                        svg|a.\\31 foo[data-kind|=primary i]:not(.blocked),
+                        *|button[|title=save]::before {
                           color: red;
                         }""",
                 result.output()

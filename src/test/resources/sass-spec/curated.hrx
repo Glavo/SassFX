@@ -347,7 +347,8 @@ $spacing: (
   )
   margin: map-get($spacing, small)
 <===> syntax/indented-multiline/output.css
-.item, .other {
+.item,
+.other {
   padding: 1px 2px;
   margin: 4px;
 }

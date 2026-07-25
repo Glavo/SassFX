@@ -425,7 +425,8 @@ final class SassCompilerTest {
 
         assertEquals(
                 """
-                        .item, .other {
+                        .item,
+                        .other {
                           padding: 1px 2px;
                           margin: 4px;
                         }""",
@@ -528,7 +529,7 @@ final class SassCompilerTest {
                         CssTarget.DEFAULT
                 )
         );
-        assertEquals("Expected closing quote.", quoteFailure.getMessage());
+        assertEquals("Expected \".", quoteFailure.getMessage());
         assertEquals(
                 "  content: \\\"unterminated",
                 Objects.requireNonNull(quoteFailure.primaryDiagnostic().span()).text()
@@ -544,7 +545,7 @@ final class SassCompilerTest {
                         CssTarget.DEFAULT
                 )
         );
-        assertEquals("Mismatched closing delimiter.", delimiterFailure.getMessage());
+        assertEquals("expected \")\".", delimiterFailure.getMessage());
     }
     /// Compiles a tab-indented child without dropping its first character.
     @Test
@@ -577,7 +578,7 @@ final class SassCompilerTest {
                 )
         );
 
-        assertEquals("Inconsistent indentation; expected 4 columns.", failure.getMessage());
+        assertEquals("Inconsistent indentation, expected 4 spaces.", failure.getMessage());
     }
 
     /// Compiles media rules for standard and JavaFX textual CSS targets.

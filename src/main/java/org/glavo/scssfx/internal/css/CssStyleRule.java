@@ -5,6 +5,8 @@ import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.ast.selector.SelectorList;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 import org.jetbrains.annotations.UnmodifiableView;
 
 import java.util.ArrayList;
@@ -24,6 +26,13 @@ public final class CssStyleRule extends AbstractCssNode implements CssParentNode
     /// Records whether this rule originated from plain CSS rather than Sass nesting.
     private final boolean fromPlainCss;
 
+    /// Media queries enclosing this rule when it was defined in Sass source.
+    ///
+    /// Nested {@code @media} that later bubbles this rule under a CSS media
+    /// parent does not change this value, so {@code @extend} can still target
+    /// placeholders whose declarations live inside nested media.
+    private final @Nullable @Unmodifiable List<CssMediaQuery> definingMediaContext;
+
     /// Contains child statements in evaluation order.
     private final ArrayList<CssNode> children;
 
@@ -35,7 +44,7 @@ public final class CssStyleRule extends AbstractCssNode implements CssParentNode
     /// @param selector the resolved selector list
     /// @param span     the source range of the originating Sass style rule
     public CssStyleRule(CssValue<SelectorList> selector, SourceSpan span) {
-        this(selector, span, false);
+        this(selector, span, false, null);
     }
 
     /// Creates an empty style rule with an explicit plain-CSS origin flag.
@@ -44,9 +53,28 @@ public final class CssStyleRule extends AbstractCssNode implements CssParentNode
     /// @param span          the source range of the originating style rule
     /// @param fromPlainCss  whether the rule came from plain CSS nesting
     public CssStyleRule(CssValue<SelectorList> selector, SourceSpan span, boolean fromPlainCss) {
+        this(selector, span, fromPlainCss, null);
+    }
+
+    /// Creates an empty style rule with plain-CSS and defining-media metadata.
+    ///
+    /// @param selector              the resolved selector list
+    /// @param span                  the source range of the originating style rule
+    /// @param fromPlainCss          whether the rule came from plain CSS nesting
+    /// @param definingMediaContext  media queries active when the rule was defined,
+    ///                              or {@code null} outside {@code @media}
+    public CssStyleRule(
+            CssValue<SelectorList> selector,
+            SourceSpan span,
+            boolean fromPlainCss,
+            @Nullable List<CssMediaQuery> definingMediaContext
+    ) {
         super(span);
         this.selector = Objects.requireNonNull(selector, "selector");
         this.fromPlainCss = fromPlainCss;
+        this.definingMediaContext = definingMediaContext == null
+                ? null
+                : List.copyOf(definingMediaContext);
         this.children = new ArrayList<>();
         this.childrenView = Collections.unmodifiableList(children);
     }
@@ -73,6 +101,13 @@ public final class CssStyleRule extends AbstractCssNode implements CssParentNode
     /// @return whether the rule is plain CSS
     public boolean fromPlainCss() {
         return fromPlainCss;
+    }
+
+    /// Returns the media context active when this rule was defined.
+    ///
+    /// @return the defining media queries, or {@code null} outside media
+    public @Nullable @Unmodifiable List<CssMediaQuery> definingMediaContext() {
+        return definingMediaContext;
     }
 
     /// Returns whether this rule contributes no visible CSS.
@@ -145,11 +180,11 @@ public final class CssStyleRule extends AbstractCssNode implements CssParentNode
                 && selector.value().toCssString().equals(rule.selector.value().toCssString());
     }
 
-    /// Returns an empty style rule that shares this selector and span.
+    /// Returns an empty style rule that shares this selector, span, and media context.
     ///
     /// @return the empty copy
     @Override
     public CssStyleRule copyWithoutChildren() {
-        return new CssStyleRule(selector, span(), fromPlainCss);
+        return new CssStyleRule(selector, span(), fromPlainCss, definingMediaContext);
     }
 }
