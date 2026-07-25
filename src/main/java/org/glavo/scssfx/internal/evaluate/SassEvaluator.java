@@ -259,6 +259,11 @@ public final class SassEvaluator implements
     /// Contains `@extend` directives collected during the active module body.
     private final ArrayList<PendingExtension> pendingExtensions = new ArrayList<>();
 
+    /// Modules whose CSS/extensions were re-emitted outside the root CSS graph
+    /// (for example {@code @use} inside {@code @import}). Indexed for
+    /// {@code @extend} visibility so private/upstream checks still see them.
+    private final ArrayList<LoadedModule> extensionVisibilityModules = new ArrayList<>();
+
     /// Maps each style rule to the canonical URL of the module that defined it.
     ///
     /// Used so `@extend` only rewrites selectors visible to the extending module
@@ -564,7 +569,13 @@ public final class SassEvaluator implements
             }
             importForwardedMembers(ForwardedModuleView.create(module, forward));
             if (module.transitivelyContainsCss()) {
-                injectModuleCss(ModuleCss.combine(module));
+                var loadedExtensions = new ArrayList<PendingExtension>();
+                collectExtensions(module, loadedExtensions, new IdentityHashMap<>());
+                pendingExtensions.addAll(loadedExtensions);
+                extensionVisibilityModules.add(module);
+                // Preserve defining-module origins so private placeholders and
+                // upstream visibility still apply after CSS is re-emitted here.
+                injectModuleCss(ModuleCss.combine(module), false);
             }
         } catch (SassValueException cause) {
             throw new EvaluationException(
@@ -645,6 +656,7 @@ public final class SassEvaluator implements
         var previousStyleRuleDepth = styleRuleDepth;
         var previousNestedDepth = nestedDeclarationDepth;
         var previousInKeyframes = inKeyframes;
+        var previousLegacyImportDepth = legacyImportDepth;
         var previousPreModuleComments =
                 new IdentityHashMap<>(preModuleComments);
 
@@ -668,11 +680,17 @@ public final class SassEvaluator implements
         styleRuleDepth = 0;
         nestedDeclarationDepth = 0;
         inKeyframes = false;
+        // Module bodies always use module-graph {@code @use} semantics, even when
+        // the load was triggered under a legacy {@code @import}. Import-path CSS
+        // re-emission applies only to {@code @use} written in the import body.
+        legacyImportDepth = 0;
         preModuleComments.clear();
         var previousExtendableRules = new ArrayList<>(extendableStyleRules);
         var previousPendingExtensions = new ArrayList<>(pendingExtensions);
+        var previousExtensionVisibility = new ArrayList<>(extensionVisibilityModules);
         extendableStyleRules.clear();
         pendingExtensions.clear();
+        extensionVisibilityModules.clear();
         diagnostics.addAll(stylesheet.parseTimeWarnings());
 
         try {
@@ -721,12 +739,15 @@ public final class SassEvaluator implements
             styleRuleDepth = previousStyleRuleDepth;
             nestedDeclarationDepth = previousNestedDepth;
             inKeyframes = previousInKeyframes;
+            legacyImportDepth = previousLegacyImportDepth;
             preModuleComments.clear();
             preModuleComments.putAll(previousPreModuleComments);
             extendableStyleRules.clear();
             extendableStyleRules.addAll(previousExtendableRules);
             pendingExtensions.clear();
             pendingExtensions.addAll(previousPendingExtensions);
+            extensionVisibilityModules.clear();
+            extensionVisibilityModules.addAll(previousExtensionVisibility);
             throw failure;
         } finally {
             if (!retainState) {
@@ -747,15 +768,20 @@ public final class SassEvaluator implements
                 styleRuleDepth = previousStyleRuleDepth;
                 nestedDeclarationDepth = previousNestedDepth;
                 inKeyframes = previousInKeyframes;
+                legacyImportDepth = previousLegacyImportDepth;
                 preModuleComments.clear();
                 preModuleComments.putAll(previousPreModuleComments);
                 extendableStyleRules.clear();
                 extendableStyleRules.addAll(previousExtendableRules);
                 pendingExtensions.clear();
                 pendingExtensions.addAll(previousPendingExtensions);
+                extensionVisibilityModules.clear();
+                extensionVisibilityModules.addAll(previousExtensionVisibility);
             } else {
                 extendableStyleRules.clear();
                 pendingExtensions.clear();
+                legacyImportDepth = previousLegacyImportDepth;
+                // Keep extensionVisibilityModules for root executeRoot apply phase.
             }
         }
     }
@@ -983,15 +1009,30 @@ public final class SassEvaluator implements
                     !statement.configuration().isEmpty()
             );
             boolean newlyLoaded = moduleRegistry.loadedModuleCount() > loadedBefore;
-            if (newlyLoaded) {
-                registerCommentsForModule(module);
-            } else if (legacyImportDepth > 0 && module.transitivelyContainsCss()) {
-                // Already-loaded modules still re-emit CSS when {@code @use}d from
-                // a legacy {@code @import}ed stylesheet (dart-sass duplicates
-                // imported module CSS).
-                injectModuleCss(module.css());
+            if (legacyImportDepth > 0) {
+                // {@code @use} inside {@code @import} emits CSS at the import site
+                // (nested under any active style rule) and must not also register
+                // the module on the root CSS graph, or ModuleCss.combine would
+                // re-emit it unnested at the root. Extensions still need to be
+                // collected into the importer's pending list so root-level
+                // applyExtensions can rewrite the injected CSS (dart-sass
+                // compound_through_import / isolated import+use chains).
+                if (module.transitivelyContainsCss()) {
+                    var loadedExtensions = new ArrayList<PendingExtension>();
+                    collectExtensions(module, loadedExtensions, new IdentityHashMap<>());
+                    pendingExtensions.addAll(loadedExtensions);
+                    extensionVisibilityModules.add(module);
+                    // Keep original module origins on cloned style rules so
+                    // {@code @extend} visibility matches the used module graph.
+                    injectModuleCss(ModuleCss.combine(module), false);
+                }
+                environment.addModule(module, statement.namespace(), statement.span(), false);
+            } else {
+                if (newlyLoaded) {
+                    registerCommentsForModule(module);
+                }
+                environment.addModule(module, statement.namespace(), statement.span(), true);
             }
-            environment.addModule(module, statement.namespace(), statement.span());
             assertConfigurationConsumed(configuration);
         } catch (SassValueException cause) {
             throw new EvaluationException(
@@ -1811,6 +1852,12 @@ public final class SassEvaluator implements
             return;
         }
         var modulesByUrl = indexModulesByUrl(root);
+        // Modules re-emitted outside the root CSS graph (import-path {@code @use})
+        // still need to be visible for extension reachability checks.
+        var seenVisibility = new IdentityHashMap<LoadedModule, Boolean>();
+        for (var extra : extensionVisibilityModules) {
+            indexModulesByUrl(extra, modulesByUrl, seenVisibility);
+        }
         for (var extension : extensions) {
             var found = false;
             for (var rule : styleRules) {
@@ -3784,7 +3831,9 @@ public final class SassEvaluator implements
             var loadedExtensions = new ArrayList<PendingExtension>();
             collectExtensions(module, loadedExtensions, new IdentityHashMap<>());
             pendingExtensions.addAll(loadedExtensions);
-            injectModuleCss(ModuleCss.combine(module));
+            // load-css reattributes origins to the caller so extensions treat
+            // the injected CSS as part of the including stylesheet.
+            injectModuleCss(ModuleCss.combine(module), true);
         } catch (SassValueException cause) {
             throw new EvaluationException(
                     Objects.requireNonNull(cause.getMessage(), "module failure message"),
@@ -3797,17 +3846,22 @@ public final class SassEvaluator implements
 
     /// Clones and injects one combined module stylesheet under the current CSS parent.
     ///
-    /// @param stylesheet the combined module CSS
-    private void injectModuleCss(CssStylesheet stylesheet) {
+    /// @param stylesheet         the combined module CSS
+    /// @param reattributeOrigins whether cloned style rules adopt {@link #currentUrl}
+    ///                           as their defining module ({@code true} for
+    ///                           {@code meta.load-css()}; {@code false} when
+    ///                           re-emitting {@code @use} CSS inside {@code @import})
+    private void injectModuleCss(CssStylesheet stylesheet, boolean reattributeOrigins) {
         for (var child : stylesheet.children()) {
-            injectCssNode(child);
+            injectCssNode(child, reattributeOrigins);
         }
     }
 
     /// Clones one CSS node into the active evaluation parent with nesting applied.
     ///
-    /// @param node the source CSS node from a loaded module
-    private void injectCssNode(CssNode node) {
+    /// @param node               the source CSS node from a loaded module
+    /// @param reattributeOrigins whether cloned style rules adopt {@link #currentUrl}
+    private void injectCssNode(CssNode node, boolean reattributeOrigins) {
         if (node instanceof CssComment comment) {
             copyParentAfterSibling();
             requireCssParent().addChild(new CssComment(comment.text(), comment.span()));
@@ -3832,23 +3886,23 @@ public final class SassEvaluator implements
             return;
         }
         if (node instanceof CssStyleRule rule) {
-            injectStyleRule(rule);
+            injectStyleRule(rule, reattributeOrigins);
             return;
         }
         if (node instanceof CssMediaRule mediaRule) {
-            injectMediaRule(mediaRule);
+            injectMediaRule(mediaRule, reattributeOrigins);
             return;
         }
         if (node instanceof CssSupportsRule supportsRule) {
-            injectSupportsRule(supportsRule);
+            injectSupportsRule(supportsRule, reattributeOrigins);
             return;
         }
         if (node instanceof CssUnknownAtRule unknownAtRule) {
-            injectUnknownAtRule(unknownAtRule);
+            injectUnknownAtRule(unknownAtRule, reattributeOrigins);
             return;
         }
         if (node instanceof CssFontFace fontFace) {
-            injectFontFace(fontFace);
+            injectFontFace(fontFace, reattributeOrigins);
             return;
         }
         throw new EvaluationException(
@@ -3858,7 +3912,10 @@ public final class SassEvaluator implements
     }
 
     /// Injects one style rule, nesting selectors into the active style rule when present.
-    private void injectStyleRule(CssStyleRule rule) {
+    ///
+    /// @param rule               the source style rule
+    /// @param reattributeOrigins whether the clone's defining module is {@link #currentUrl}
+    private void injectStyleRule(CssStyleRule rule, boolean reattributeOrigins) {
         @Nullable CssStyleRule effectiveStyleRule =
                 atRootExcludingStyleRule ? null : styleRule;
         boolean merge;
@@ -3893,9 +3950,15 @@ public final class SassEvaluator implements
                 rule.fromPlainCss(),
                 rule.definingMediaContext()
         );
-        // load-css injects foreign CSS into the caller's stylesheet, so for
-        // @extend visibility the cloned rules belong to the caller.
-        styleRuleOrigins.put(injected, currentUrl);
+        if (reattributeOrigins) {
+            // load-css treats injected CSS as part of the caller's stylesheet.
+            styleRuleOrigins.put(injected, currentUrl);
+        } else {
+            // Re-emitting {@code @use} CSS (e.g. inside {@code @import}) keeps the
+            // defining module so private placeholders and upstream visibility work.
+            @Nullable URI sourceOrigin = styleRuleOrigins.get(rule);
+            styleRuleOrigins.put(injected, sourceOrigin != null ? sourceOrigin : currentUrl);
+        }
         addCssChild(injected, merge);
         if (!isPlainCss()) {
             extendableStyleRules.add(injected);
@@ -3911,7 +3974,7 @@ public final class SassEvaluator implements
         styleRuleDepth++;
         try {
             for (var child : rule.children()) {
-                injectCssNode(child);
+                injectCssNode(child, reattributeOrigins);
             }
         } finally {
             styleRuleDepth--;
@@ -3926,7 +3989,7 @@ public final class SassEvaluator implements
     }
 
     /// Injects one media rule using the same nesting and bubbling rules as evaluation.
-    private void injectMediaRule(CssMediaRule mediaRule) {
+    private void injectMediaRule(CssMediaRule mediaRule, boolean reattributeOrigins) {
         if (hasCssNesting()) {
             var nested = new CssMediaRule(mediaRule.queries(), mediaRule.span());
             addCssChild(nested, false);
@@ -3934,7 +3997,7 @@ public final class SassEvaluator implements
             cssParent = nested;
             try {
                 for (var child : mediaRule.children()) {
-                    injectCssNode(child);
+                    injectCssNode(child, reattributeOrigins);
                 }
             } finally {
                 cssParent = previousParent;
@@ -3975,7 +4038,7 @@ public final class SassEvaluator implements
         try {
             if (activeStyleRule == null) {
                 for (var child : mediaRule.children()) {
-                    injectCssNode(child);
+                    injectCssNode(child, reattributeOrigins);
                 }
             } else {
                 var wrapper = activeStyleRule.copyWithoutChildren();
@@ -3984,7 +4047,7 @@ public final class SassEvaluator implements
                 cssParent = wrapper;
                 try {
                     for (var child : mediaRule.children()) {
-                        injectCssNode(child);
+                        injectCssNode(child, reattributeOrigins);
                     }
                 } finally {
                     cssParent = mediaParent;
@@ -3998,7 +4061,7 @@ public final class SassEvaluator implements
     }
 
     /// Injects one supports rule using the same nesting and bubbling rules as evaluation.
-    private void injectSupportsRule(CssSupportsRule supportsRule) {
+    private void injectSupportsRule(CssSupportsRule supportsRule, boolean reattributeOrigins) {
         if (hasCssNesting()) {
             var nested = new CssSupportsRule(supportsRule.condition(), supportsRule.span());
             addCssChild(nested, false);
@@ -4006,7 +4069,7 @@ public final class SassEvaluator implements
             cssParent = nested;
             try {
                 for (var child : supportsRule.children()) {
-                    injectCssNode(child);
+                    injectCssNode(child, reattributeOrigins);
                 }
             } finally {
                 cssParent = previousParent;
@@ -4021,7 +4084,7 @@ public final class SassEvaluator implements
         try {
             if (activeStyleRule == null) {
                 for (var child : supportsRule.children()) {
-                    injectCssNode(child);
+                    injectCssNode(child, reattributeOrigins);
                 }
             } else {
                 var wrapper = activeStyleRule.copyWithoutChildren();
@@ -4030,7 +4093,7 @@ public final class SassEvaluator implements
                 cssParent = wrapper;
                 try {
                     for (var child : supportsRule.children()) {
-                        injectCssNode(child);
+                        injectCssNode(child, reattributeOrigins);
                     }
                 } finally {
                     cssParent = supportsParent;
@@ -4042,7 +4105,7 @@ public final class SassEvaluator implements
     }
 
     /// Injects one opaque at-rule under the current CSS parent.
-    private void injectUnknownAtRule(CssUnknownAtRule rule) {
+    private void injectUnknownAtRule(CssUnknownAtRule rule, boolean reattributeOrigins) {
         var injected = new CssUnknownAtRule(
                 rule.name(),
                 rule.value(),
@@ -4057,7 +4120,7 @@ public final class SassEvaluator implements
         cssParent = injected;
         try {
             for (var child : rule.children()) {
-                injectCssNode(child);
+                injectCssNode(child, reattributeOrigins);
             }
         } finally {
             cssParent = previousParent;
@@ -4066,7 +4129,7 @@ public final class SassEvaluator implements
     }
 
     /// Injects one font-face rule, bubbling through style rules to the root.
-    private void injectFontFace(CssFontFace fontFace) {
+    private void injectFontFace(CssFontFace fontFace, boolean reattributeOrigins) {
         var injected = new CssFontFace(fontFace.span());
         addCssChild(injected, true);
         if (!(injected.parent() instanceof CssStylesheet)) {
@@ -4081,7 +4144,7 @@ public final class SassEvaluator implements
         this.fontFace = injected;
         try {
             for (var child : fontFace.children()) {
-                injectCssNode(child);
+                injectCssNode(child, reattributeOrigins);
             }
         } finally {
             this.fontFace = previousFontFace;

@@ -493,7 +493,10 @@ class SassExpressionParser extends Parser {
             case '*' -> scanOneCodeUnitOperator(BinaryOperator.TIMES);
             case '+' -> scanOneCodeUnitOperator(BinaryOperator.PLUS);
             case '-' -> {
-                if (lookingAtIdentifier()
+                // Match dart-sass: `-#{...}` is an interpolated identifier (e.g.
+                // space list `0 -#{0.12em}` → `0 -0.12em`), not binary minus.
+                // Plain `lookingAtIdentifier()` misses the dash+hash form.
+                if (lookingAtInterpolatedIdentifier()
                         || precededByWhitespace && (CssCharacters.isDigit(scanner.peek(1))
                         || scanner.peek(1) == '.')) {
                     yield null;

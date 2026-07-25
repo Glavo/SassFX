@@ -367,6 +367,25 @@ public final class Environment {
             @Nullable String namespace,
             SourceSpan useSpan
     ) {
+        addModule(module, namespace, useSpan, true);
+    }
+
+    /// Registers a loaded module for member lookup and optionally the CSS graph.
+    ///
+    /// @param module              the loaded module
+    /// @param namespace            the namespace, or {@code null} for {@code as *}
+    /// @param useSpan             the {@code @use} span used for conflict diagnostics
+    /// @param contributeToCssGraph whether to record the module in {@link #allModules}
+    ///                            for root CSS combination (false when CSS is emitted
+    ///                            at a legacy {@code @import} site instead)
+    /// @throws SassValueException if the namespace is already taken or {@code as *}
+    /// conflicts with existing members
+    public void addModule(
+            LoadedModule module,
+            @Nullable String namespace,
+            SourceSpan useSpan,
+            boolean contributeToCssGraph
+    ) {
         Objects.requireNonNull(module, "module");
         Objects.requireNonNull(useSpan, "useSpan");
         if (namespace == null) {
@@ -395,7 +414,9 @@ public final class Environment {
             }
             modules.put(namespace, module);
         }
-        allModules.add(module);
+        if (contributeToCssGraph) {
+            allModules.add(module);
+        }
     }
 
     /// Re-exports a transformed module view without adding local bindings.
