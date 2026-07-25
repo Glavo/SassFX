@@ -617,6 +617,18 @@ public final class Environment {
         );
     }
 
+    /// Clears namespaced and {@code as *} member tables for nested legacy-import
+    /// evaluation.
+    ///
+    /// Imported stylesheets must resolve {@code @use} namespaces against an
+    /// empty local table so they do not collide with the importer's namespaces
+    /// (dart-sass isolates module scopes per stylesheet). {@link #allModules}
+    /// is retained so the CSS dependency graph still records nested loads.
+    public void clearModuleNamespaces() {
+        modules.clear();
+        globalModules.clear();
+    }
+
     /// Restores namespaced and {@code as *} member visibility to a prior snapshot.
     ///
     /// Variable, function, and mixin frames are left unchanged so definitions

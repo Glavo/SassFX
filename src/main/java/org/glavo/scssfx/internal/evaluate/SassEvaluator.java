@@ -243,6 +243,12 @@ public final class SassEvaluator implements
     /// Records whether evaluation is inside a {@code @keyframes} rule body.
     private boolean inKeyframes;
 
+    /// Nesting depth of legacy {@code @import} evaluation.
+    ///
+    /// Nested {@code @use} inside an imported stylesheet must isolate namespaces
+    /// and may re-emit already-loaded module CSS so import paths duplicate it.
+    private int legacyImportDepth;
+
     /// Maps upstream modules to loud comments that must precede their CSS.
     private final IdentityHashMap<LoadedModule, List<CssComment>> preModuleComments =
             new IdentityHashMap<>();
@@ -431,10 +437,14 @@ public final class SassEvaluator implements
         var previousConfiguration = currentConfiguration;
         // Nested {@code @use} members stay local to the imported file: CSS is still
         // emitted, but namespaces and {@code as *} exports are restored afterward
-        // so transitive members do not leak through {@code @import}.
+        // so transitive members do not leak through {@code @import}. Clear the
+        // importer's namespaces before evaluating so nested {@code @use "shared"}
+        // does not collide with an importer that already used the same namespace.
         var moduleSnapshot = environment.snapshotModuleTables();
+        environment.clearModuleNamespaces();
         stylesheet = imported;
         currentUrl = url;
+        legacyImportDepth++;
         // When the imported stylesheet forwards other files, snapshot visible
         // variables as an implicit configuration (dart-sass toImplicitConfiguration)
         // so importer $vars configure downstream !default through @forward.
@@ -484,6 +494,7 @@ public final class SassEvaluator implements
                 }
             }
         } finally {
+            legacyImportDepth--;
             environment.restoreModuleTables(moduleSnapshot);
             stylesheet = previousStylesheet;
             currentUrl = previousUrl;
@@ -971,8 +982,14 @@ public final class SassEvaluator implements
                     configuration,
                     !statement.configuration().isEmpty()
             );
-            if (moduleRegistry.loadedModuleCount() > loadedBefore) {
+            boolean newlyLoaded = moduleRegistry.loadedModuleCount() > loadedBefore;
+            if (newlyLoaded) {
                 registerCommentsForModule(module);
+            } else if (legacyImportDepth > 0 && module.transitivelyContainsCss()) {
+                // Already-loaded modules still re-emit CSS when {@code @use}d from
+                // a legacy {@code @import}ed stylesheet (dart-sass duplicates
+                // imported module CSS).
+                injectModuleCss(module.css());
             }
             environment.addModule(module, statement.namespace(), statement.span());
             assertConfigurationConsumed(configuration);
