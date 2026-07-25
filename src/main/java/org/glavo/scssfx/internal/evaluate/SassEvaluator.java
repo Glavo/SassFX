@@ -280,6 +280,13 @@ public final class SassEvaluator implements
     /// When non-zero, {@link #injectStyleRule} stamps each new rule with this generation.
     private int markingImportGeneration;
 
+    /// Modules whose CSS has already been re-emitted for {@link #currentImportGeneration}.
+    ///
+    /// Successive {@code @use} under one {@code @import} share one generation and
+    /// must not re-emit shared upstream CSS (diamond import copies).
+    private final IdentityHashMap<LoadedModule, Boolean> importGenerationEmittedModules =
+            new IdentityHashMap<>();
+
     /// Maps each style rule to the canonical URL of the module that defined it.
     ///
     /// Used so `@extend` only rewrites selectors visible to the extending module
@@ -486,9 +493,13 @@ public final class SassEvaluator implements
         legacyImportDepth++;
         var previousImportGeneration = currentImportGeneration;
         var previousAttribution = styleRuleAttributionUrl;
-        // Attribute imported style rules to the importer for {@code @extend}
-        // visibility (dart-sass: @import has no module isolation for CSS).
-        styleRuleAttributionUrl = previousUrl != null ? previousUrl : styleRuleAttributionUrl;
+        // Attribute imported style rules to the outermost importer for {@code @extend}
+        // visibility (dart-sass: @import has no module isolation for CSS). Nested
+        // imports keep the outer attribution so re-emitted CSS stays extendable
+        // from the importing evaluation context.
+        if (styleRuleAttributionUrl == null && previousUrl != null) {
+            styleRuleAttributionUrl = previousUrl;
+        }
         // When the imported stylesheet forwards other files, snapshot visible
         // variables as an implicit configuration (dart-sass toImplicitConfiguration)
         // so importer $vars configure downstream !default through @forward.
@@ -540,6 +551,9 @@ public final class SassEvaluator implements
         } finally {
             legacyImportDepth--;
             currentImportGeneration = previousImportGeneration;
+            if (previousImportGeneration == 0) {
+                importGenerationEmittedModules.clear();
+            }
             styleRuleAttributionUrl = previousAttribution;
             environment.restoreModuleTables(moduleSnapshot);
             stylesheet = previousStylesheet;
@@ -1865,6 +1879,11 @@ public final class SassEvaluator implements
                     cause
             );
         }
+        // Extends written in an {@code @import}-ed body under an active import
+        // generation also rewrite gen-0 originals when the extender can reach
+        // them (import_into_use). Re-stamped module extensions keep isolation.
+        boolean fromLegacyImport = legacyImportDepth > 0;
+        boolean crossGeneration = fromLegacyImport && currentImportGeneration > 0;
         pendingExtensions.add(new PendingExtension(
                 styleRule.selector().value(),
                 target,
@@ -1874,7 +1893,9 @@ public final class SassEvaluator implements
                 // @import sees siblings under the same origin URL.
                 styleRuleOriginUrl(),
                 statement.span(),
-                currentImportGeneration
+                currentImportGeneration,
+                crossGeneration,
+                fromLegacyImport
         ));
         return StatementResult.CONTINUE;
     }
@@ -2027,6 +2048,25 @@ public final class SassEvaluator implements
         for (var extra : extensionVisibilityModules) {
             indexModulesByUrl(extra, modulesByUrl, seenVisibility);
         }
+        // Order: cross-generation import-body extends, then other import-body
+        // extends, then pure module-graph extends — so import extenders are
+        // applied first and later module extenders append after them.
+        var orderedExtensions = new ArrayList<PendingExtension>(extensions.size());
+        for (var extension : extensions) {
+            if (extension.crossGeneration()) {
+                orderedExtensions.add(extension);
+            }
+        }
+        for (var extension : extensions) {
+            if (!extension.crossGeneration() && extension.fromLegacyImport()) {
+                orderedExtensions.add(extension);
+            }
+        }
+        for (var extension : extensions) {
+            if (!extension.crossGeneration() && !extension.fromLegacyImport()) {
+                orderedExtensions.add(extension);
+            }
+        }
         // Document-original complexes per rule, shared across successive
         // {@code @extend} applications so intermediate products stay trimmable
         // (dart-sass ExtensionStore {@code _originals}).
@@ -2034,7 +2074,7 @@ public final class SassEvaluator implements
         for (var rule : styleRules) {
             originalKeysByRule.put(rule, SelectorAlgebra.originalKeysOf(rule.selector().value()));
         }
-        for (var extension : extensions) {
+        for (var extension : orderedExtensions) {
             var found = false;
             for (var rule : styleRules) {
                 var result = applyExtensionToRule(
@@ -2210,9 +2250,16 @@ public final class SassEvaluator implements
         int ruleGeneration = styleRuleImportGeneration.getOrDefault(rule, 0);
         @Nullable URI ruleOrigin = styleRuleOrigins.get(rule);
         // Generation 0 is the module-graph original; import-path copies use >0.
-        // Extends only rewrite rules from the same generation (isolated copies).
+        // Same generation always matches. Import-body extends (crossGeneration)
+        // may also rewrite gen-0 originals when the extender can reach the rule.
         if (ruleGeneration != extension.importGeneration()) {
-            return ExtensionApplyResult.NONE;
+            boolean allowCross = extension.crossGeneration()
+                    && extension.importGeneration() > 0
+                    && ruleGeneration == 0
+                    && moduleCanExtend(extension.originUrl(), ruleOrigin, modulesByUrl);
+            if (!allowCross) {
+                return ExtensionApplyResult.NONE;
+            }
         }
         // Private targets may only be extended inside the defining module.
         if (isPrivateTarget(extension.target())
@@ -4058,13 +4105,18 @@ public final class SassEvaluator implements
     /// re-emits a CSS copy whose extensions do not interact with a simultaneous
     /// {@code @use} of the same modules from the importer.
     ///
+    /// Multiple {@code @use} rules in the same import body share one generation so
+    /// a diamond's shared CSS is emitted once with both arms' extensions applied.
+    ///
     /// @param module the module graph to re-emit
     private void injectModuleCssIsolated(LoadedModule module) {
-        int generation = nextImportGeneration++;
-        currentImportGeneration = generation;
-        // Re-emit CSS under this generation and schedule the module's extensions
-        // against the same generation so root applyExtensions stays isolated from
-        // concurrent {@code @use} of the same modules.
+        // Reuse the active import generation when already under a multi-@use import.
+        if (currentImportGeneration == 0) {
+            currentImportGeneration = nextImportGeneration++;
+            importGenerationEmittedModules.clear();
+        }
+        int generation = currentImportGeneration;
+        // Schedule the module's extensions against this generation.
         var extensions = new ArrayList<PendingExtension>();
         collectExtensions(module, extensions, new IdentityHashMap<>());
         for (var extension : extensions) {
@@ -4082,7 +4134,8 @@ public final class SassEvaluator implements
         var previousMarking = markingImportGeneration;
         markingImportGeneration = generation;
         try {
-            injectModuleCss(ModuleCss.combine(module), false);
+            // Skip modules already re-emitted in this generation (shared diamond hubs).
+            injectModuleCss(ModuleCss.combine(module, importGenerationEmittedModules), false);
         } finally {
             markingImportGeneration = previousMarking;
         }

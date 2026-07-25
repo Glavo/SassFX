@@ -15,16 +15,26 @@ import java.util.Objects;
 
 /// Records one `@extend` directive for end-of-module application.
 ///
-/// @param extender         the resolved selectors of the extending style rule
-/// @param target           the single-compound selectors being extended
-/// @param optional         whether an unmatched target is allowed
-/// @param mediaContext     the active media-query list, or {@code null} outside media
-/// @param originUrl        the canonical URL of the module that declared the extend,
-///                         or {@code null} for the anonymous root stylesheet
-/// @param span             the `@extend` source span
-/// @param importGeneration zero for ordinary module-graph extensions; a positive id
-///                         shared with CSS rules re-emitted for one import-path
-///                         {@code @use} copy so extends stay isolated per copy
+/// @param extender          the resolved selectors of the extending style rule
+/// @param target            the single-compound selectors being extended
+/// @param optional          whether an unmatched target is allowed
+/// @param mediaContext      the active media-query list, or {@code null} outside media
+/// @param originUrl         the canonical URL of the module that declared the extend,
+///                          or {@code null} for the anonymous root stylesheet
+/// @param span              the `@extend` source span
+/// @param importGeneration  zero for ordinary module-graph extensions; a positive id
+///                          shared with CSS rules re-emitted for one import-path
+///                          {@code @use} copy so extends stay isolated per copy
+/// @param crossGeneration   when {@code true} and {@code importGeneration > 0}, also
+///                          rewrite generation-0 module-graph originals when the
+///                          extender can reach the rule's defining module (dart-sass:
+///                          extends written in an {@code @import}-ed file that
+///                          {@code @use}s the target apply to both the original and
+///                          the import CSS copy). Re-stamped module-graph extensions
+///                          from {@code injectModuleCssIsolated} keep this {@code false}
+/// @param fromLegacyImport  whether the extend was written while evaluating a legacy
+///                          {@code @import} body (used to order import-body extends
+///                          before pure module-graph extends for selector interleaving)
 @ApiStatus.Internal
 @NotNullByDefault
 public record PendingExtension(
@@ -34,7 +44,9 @@ public record PendingExtension(
         @Nullable @Unmodifiable List<CssMediaQuery> mediaContext,
         @Nullable URI originUrl,
         SourceSpan span,
-        int importGeneration
+        int importGeneration,
+        boolean crossGeneration,
+        boolean fromLegacyImport
 ) {
     /// Creates one pending extension with import generation {@code 0}.
     public PendingExtension(
@@ -45,7 +57,20 @@ public record PendingExtension(
             @Nullable URI originUrl,
             SourceSpan span
     ) {
-        this(extender, target, optional, mediaContext, originUrl, span, 0);
+        this(extender, target, optional, mediaContext, originUrl, span, 0, false, false);
+    }
+
+    /// Creates one pending extension with an explicit import generation.
+    public PendingExtension(
+            SelectorList extender,
+            SelectorList target,
+            boolean optional,
+            @Nullable List<CssMediaQuery> mediaContext,
+            @Nullable URI originUrl,
+            SourceSpan span,
+            int importGeneration
+    ) {
+        this(extender, target, optional, mediaContext, originUrl, span, importGeneration, false, false);
     }
 
     /// Creates one pending extension.

@@ -30,10 +30,26 @@ public final class ModuleCss {
     /// @param root the entry module
     /// @return the combined CSS stylesheet
     public static CssStylesheet combine(LoadedModule root) {
+        return combine(root, new IdentityHashMap<>());
+    }
+
+    /// Builds CSS for {@code root}'s graph, skipping modules already present in
+    /// {@code alreadyEmitted} and recording newly emitted modules into that map.
+    ///
+    /// Used when successive {@code @use} rules under one {@code @import} must
+    /// share a single CSS copy of common upstream modules (diamond import).
+    ///
+    /// @param root           the entry module
+    /// @param alreadyEmitted modules whose CSS has already been re-emitted
+    /// @return the combined CSS stylesheet for newly emitted modules only
+    public static CssStylesheet combine(
+            LoadedModule root,
+            IdentityHashMap<LoadedModule, Boolean> alreadyEmitted
+    ) {
         Objects.requireNonNull(root, "root");
+        Objects.requireNonNull(alreadyEmitted, "alreadyEmitted");
         var result = new CssStylesheet(root.css().span());
-        var seen = new IdentityHashMap<LoadedModule, Boolean>();
-        append(root, result, seen);
+        append(root, result, alreadyEmitted);
         return result;
     }
 
