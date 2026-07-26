@@ -88,7 +88,7 @@ public final class CssSerializer {
     ) {
         Objects.requireNonNull(stylesheet, "stylesheet");
         Objects.requireNonNull(target, "target");
-        JavaFXCssValidator.validate(stylesheet, target.compatibility());
+        JavaFXCssValidator.validate(stylesheet, target.javaFXTarget());
         return serialize(stylesheet, target.style(), sourceMap, true);
     }
 

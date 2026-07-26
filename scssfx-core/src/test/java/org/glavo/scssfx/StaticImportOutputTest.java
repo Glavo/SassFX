@@ -146,11 +146,11 @@ final class StaticImportOutputTest {
         var compiler = new SassCompiler();
         var javaFx17 = compiler.compile(
                 source,
-                new JavaFXCssTarget(JavaFXCompatibility.JAVAFX17, OutputStyle.COMPRESSED)
+                new JavaFXCssTarget(JavaFXTarget.JAVAFX17, OutputStyle.COMPRESSED)
         ).output();
         var javaFx27 = compiler.compile(
                 source,
-                new JavaFXCssTarget(JavaFXCompatibility.JAVAFX27, OutputStyle.COMPRESSED)
+                new JavaFXCssTarget(JavaFXTarget.JAVAFX27, OutputStyle.COMPRESSED)
         ).output();
 
         assertEquals("@import \"theme.css\";", javaFx17);
@@ -168,7 +168,7 @@ final class StaticImportOutputTest {
                                 Syntax.SCSS
                         ),
                         new JavaFXCssTarget(
-                                JavaFXCompatibility.JAVAFX17,
+                                JavaFXTarget.JAVAFX17,
                                 OutputStyle.COMPRESSED
                         )
                 )
@@ -188,7 +188,7 @@ final class StaticImportOutputTest {
                         "@import \"theme.css\" (prefers-color-scheme: dark);",
                         Syntax.SCSS
                 ),
-                new JavaFXCssTarget(JavaFXCompatibility.JAVAFX27, OutputStyle.COMPRESSED)
+                new JavaFXCssTarget(JavaFXTarget.JAVAFX27, OutputStyle.COMPRESSED)
         );
 
         assertEquals(
@@ -197,9 +197,9 @@ final class StaticImportOutputTest {
         );
     }
 
-    /// Rejects imports explicitly when the BSS backend cannot encode them.
+    /// Rejects conditional imports for a BSS target predating JavaFX 27.
     @Test
-    void rejectsStaticImportsForBss() {
+    void rejectsConditionalImportsForLegacyBss() {
         var failure = assertThrows(
                 SassCompilationException.class,
                 () -> new SassCompiler().compile(
@@ -211,6 +211,9 @@ final class StaticImportOutputTest {
                 )
         );
 
-        assertEquals("BSS output doesn't support @import rules.", failure.getMessage());
+        assertEquals(
+                "JavaFX 17 CSS supports only unconditional @import rules.",
+                failure.getMessage()
+        );
     }
 }

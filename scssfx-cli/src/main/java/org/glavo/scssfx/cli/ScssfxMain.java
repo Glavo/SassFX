@@ -6,7 +6,7 @@ import org.glavo.scssfx.CompileResult;
 import org.glavo.scssfx.CssTarget;
 import org.glavo.scssfx.Diagnostic;
 import org.glavo.scssfx.DiagnosticSeverity;
-import org.glavo.scssfx.JavaFXCompatibility;
+import org.glavo.scssfx.JavaFXTarget;
 import org.glavo.scssfx.JavaFXCssTarget;
 import org.glavo.scssfx.OutputStyle;
 import org.glavo.scssfx.OutputTarget;
@@ -82,14 +82,14 @@ public final class ScssfxMain implements Callable<Integer> {
     )
     private String style = "expanded";
 
-    /// The JavaFX compatibility level selected for JavaFX CSS and BSS targets.
+    /// The JavaFX release selected for JavaFX CSS and BSS targets.
     @Option(
-            names = "--javafx-compatibility",
+            names = {"--javafx-target", "--javafx-compatibility"},
             defaultValue = "17",
             paramLabel = "VERSION",
-            description = "Select JavaFX compatibility from 8 through 27 (default: ${DEFAULT-VALUE})."
+            description = "Select a JavaFX target from 8 through 27 (default: ${DEFAULT-VALUE})."
     )
-    private String javafxCompatibility = "17";
+    private String javaFxTargetVersion = "17";
 
     /// The command specification injected by Picocli before invocation.
     @Spec
@@ -127,11 +127,11 @@ public final class ScssfxMain implements Callable<Integer> {
                 ? output
                 : inputs.size() == 2 ? inputs.get(1) : null;
         var targetName = target.toLowerCase(Locale.ROOT);
-        JavaFXCompatibility selectedCompatibility;
+        JavaFXTarget selectedJavaFxTarget;
         @Nullable OutputStyle selectedOutputStyle;
         try {
             validateTargetOptions(targetName, destination);
-            selectedCompatibility = selectedJavaFxCompatibility();
+            selectedJavaFxTarget = selectedJavaFxTarget();
             selectedOutputStyle = "bss".equals(targetName) ? null : selectedOutputStyle();
         } catch (IllegalArgumentException failure) {
             err.println("scssfx: " + Objects.requireNonNullElse(
@@ -167,7 +167,7 @@ public final class ScssfxMain implements Callable<Integer> {
                         selectedSyntax,
                         destination,
                         new JavaFXCssTarget(
-                                selectedCompatibility,
+                                selectedJavaFxTarget,
                                 Objects.requireNonNull(selectedOutputStyle)
                         ),
                         out,
@@ -177,7 +177,7 @@ public final class ScssfxMain implements Callable<Integer> {
                         input,
                         selectedSyntax,
                         Objects.requireNonNull(destination),
-                        new BssTarget(selectedCompatibility),
+                        new BssTarget(selectedJavaFxTarget),
                         err
                 );
                 default -> throw new AssertionError("Unsupported target was validated: " + targetName);
@@ -302,9 +302,10 @@ public final class ScssfxMain implements Callable<Integer> {
     private void validateTargetOptions(String targetName, @Nullable Path destination) {
         switch (targetName) {
             case "css" -> {
-                if (isOptionSpecified("--javafx-compatibility")) {
+                if (isOptionSpecified("--javafx-target")
+                        || isOptionSpecified("--javafx-compatibility")) {
                     throw new IllegalArgumentException(
-                            "--javafx-compatibility is supported only for javafx-css and bss targets"
+                            "--javafx-target is supported only for javafx-css and bss targets"
                     );
                 }
             }
@@ -337,21 +338,21 @@ public final class ScssfxMain implements Callable<Integer> {
         return commandLine().getParseResult().hasMatchedOption(optionName);
     }
 
-    /// Resolves the JavaFX compatibility selected by the command-line option.
+    /// Resolves the JavaFX release selected by the command-line option.
     ///
-    /// @return the selected JavaFX compatibility level
+    /// @return the selected JavaFX target
     /// @throws IllegalArgumentException if the option value is unsupported
-    private JavaFXCompatibility selectedJavaFxCompatibility() {
+    private JavaFXTarget selectedJavaFxTarget() {
         try {
-            if (!javafxCompatibility.matches("[0-9]+")) {
+            if (!javaFxTargetVersion.matches("[0-9]+")) {
                 throw new NumberFormatException();
             }
-            return JavaFXCompatibility.forVersion(
-                    Integer.parseInt(javafxCompatibility)
+            return JavaFXTarget.forVersion(
+                    Integer.parseInt(javaFxTargetVersion)
             );
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException(
-                    "unsupported JavaFX compatibility '" + javafxCompatibility
+                    "unsupported JavaFX target '" + javaFxTargetVersion
                             + "'; expected an integer from 8 through 27",
                     exception
             );

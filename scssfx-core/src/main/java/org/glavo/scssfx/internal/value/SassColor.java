@@ -772,6 +772,8 @@ public final class SassColor implements SassValue {
     }
 
     /// Returns whether alpha is missing.
+    ///
+    /// @return whether this color has no alpha-channel value
     public boolean isAlphaMissing() {
         return alpha == null;
     }

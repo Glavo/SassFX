@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx;
 
+import org.glavo.scssfx.internal.bss.BssImportResolver;
 import org.glavo.scssfx.internal.bss.BssSerializeException;
 import org.glavo.scssfx.internal.bss.BssSerializer;
 import org.glavo.scssfx.internal.css.CssSerializeException;
 import org.glavo.scssfx.internal.css.CssSerializer;
 import org.glavo.scssfx.internal.evaluate.EvaluationException;
 import org.glavo.scssfx.internal.evaluate.SassEvaluator;
+import org.glavo.scssfx.internal.module.FilesystemImporter;
 import org.glavo.scssfx.internal.module.ModuleRegistry;
 import org.glavo.scssfx.internal.parse.ParseException;
 import org.glavo.scssfx.internal.parse.StylesheetParser;
@@ -44,7 +46,8 @@ public final class SassCompiler {
     /// @param <T>    the output representation type
     /// @return the compilation result
     /// @throws IOException               if the root source cannot be read
-    /// @throws SassCompilationException  if parsing, evaluation, or serialization fails
+    /// @throws SassCompilationException  if parsing, evaluation, serialization,
+    ///                                   or dependent stylesheet resolution fails
     public <T> CompileResult<T> compile(SassSource source, OutputTarget<T> target)
             throws IOException, SassCompilationException {
         return compile(source, target, CompileOptions.DEFAULT);
@@ -58,7 +61,8 @@ public final class SassCompiler {
     /// @param <T>     the output representation type
     /// @return the compilation result
     /// @throws IOException              if the root source cannot be read
-    /// @throws SassCompilationException if parsing, evaluation, or serialization fails
+    /// @throws SassCompilationException if parsing, evaluation, serialization,
+    ///                                  or dependent stylesheet resolution fails
     @SuppressWarnings("unchecked")
     public <T> CompileResult<T> compile(
             SassSource source,
@@ -79,9 +83,13 @@ public final class SassCompiler {
         var loaded = readSource(source);
         var registry = new ModuleRegistry(options.loadPaths());
         var evaluator = new SassEvaluator(registry);
+        var importedDiagnostics = new ArrayList<Diagnostic>();
+        var urls = new LinkedHashSet<URI>();
+        urls.addAll(loaded.loadedUrls());
         try {
             var stylesheet = StylesheetParser.parse(loaded.file(), loaded.syntax());
             var root = evaluator.executeRoot(stylesheet, loaded.file().url());
+            urls.addAll(registry.loadedUrls());
             T output;
             org.glavo.scssfx.SourceMap sourceMap = null;
             if (target instanceof CssTarget cssTarget) {
@@ -101,17 +109,71 @@ public final class SassCompiler {
                 output = (T) serialized.css();
                 sourceMap = serialized.sourceMap();
             } else if (target instanceof BssTarget bssTarget) {
-                output = (T) BssSerializer.serialize(root.css(), bssTarget);
+                var cssImporter = new FilesystemImporter(options.loadPaths());
+                @Nullable JavaFXStylesheetResolver stylesheetResolver =
+                        options.javaFXStylesheetResolver();
+                BssImportResolver resolver = (resource, baseUrl, span) -> {
+                    @Nullable JavaFXStylesheetResolver.ResolvedStylesheet custom = null;
+                    if (stylesheetResolver != null) {
+                        custom = stylesheetResolver.resolve(
+                                resource,
+                                baseUrl
+                        );
+                    }
+
+                    SourceFile importedSource;
+                    URI canonicalUrl;
+                    if (custom != null) {
+                        canonicalUrl = custom.canonicalUrl();
+                        importedSource = new SourceFile(custom.content(), canonicalUrl);
+                    } else {
+                        var imported = cssImporter.canonicalizeAndLoadCss(resource, baseUrl);
+                        if (imported == null) {
+                            throw new BssSerializeException(
+                                    "Can't find JavaFX CSS stylesheet to import: \""
+                                            + resource + "\".",
+                                    span,
+                                    null
+                            );
+                        }
+                        canonicalUrl = imported.canonicalUrl();
+                        importedSource = imported.source();
+                    }
+                    urls.add(canonicalUrl);
+                    var childRegistry = new ModuleRegistry(options.loadPaths());
+                    var childEvaluator = new SassEvaluator(childRegistry);
+                    try {
+                        var childAst = StylesheetParser.parse(
+                                importedSource,
+                                Syntax.CSS
+                        );
+                        var childRoot = childEvaluator.executeRoot(
+                                childAst,
+                                canonicalUrl
+                        );
+                        return new BssImportResolver.ResolvedImport(
+                                childRoot.css(),
+                                canonicalUrl
+                        );
+                    } finally {
+                        urls.addAll(childRegistry.loadedUrls());
+                        importedDiagnostics.addAll(childEvaluator.diagnostics());
+                    }
+                };
+                output = (T) BssSerializer.serialize(root.css(), bssTarget, resolver);
             } else {
                 throw unsupportedTarget(target);
             }
-            var urls = new LinkedHashSet<>(registry.loadedUrls());
-            urls.addAll(loaded.loadedUrls());
+            var diagnostics = new ArrayList<Diagnostic>(
+                    evaluator.diagnostics().size() + importedDiagnostics.size()
+            );
+            diagnostics.addAll(evaluator.diagnostics());
+            diagnostics.addAll(importedDiagnostics);
             return new CompileResult<>(
                     output,
                     sourceMap,
                     urls,
-                    evaluator.diagnostics()
+                    diagnostics
             );
         } catch (ParseException failure) {
             var code = failure.code() == null
@@ -128,23 +190,47 @@ public final class SassCompiler {
             );
         } catch (EvaluationException failure) {
             throw new SassCompilationException(
-                    failureDiagnostics(failure.primaryDiagnostic(), evaluator.diagnostics()),
+                    failureDiagnostics(
+                            failure.primaryDiagnostic(),
+                            combinedDiagnostics(evaluator.diagnostics(), importedDiagnostics)
+                    ),
                     failure.sassTrace(),
                     failure
             );
         } catch (CssSerializeException failure) {
             throw new SassCompilationException(
-                    failureDiagnostics(failure.primaryDiagnostic(), evaluator.diagnostics()),
+                    failureDiagnostics(
+                            failure.primaryDiagnostic(),
+                            combinedDiagnostics(evaluator.diagnostics(), importedDiagnostics)
+                    ),
                     failure.sassTrace(),
                     failure
             );
         } catch (BssSerializeException failure) {
             throw new SassCompilationException(
-                    failureDiagnostics(failure.primaryDiagnostic(), evaluator.diagnostics()),
+                    failureDiagnostics(
+                            failure.primaryDiagnostic(),
+                            combinedDiagnostics(evaluator.diagnostics(), importedDiagnostics)
+                    ),
                     failure.sassTrace(),
                     failure
             );
         }
+    }
+
+    /// Combines root and imported-stylesheet diagnostics in evaluation order.
+    ///
+    /// @param root     diagnostics emitted while evaluating the root graph
+    /// @param imported diagnostics emitted while resolving retained CSS imports
+    /// @return one immutable diagnostic sequence
+    private static @Unmodifiable List<Diagnostic> combinedDiagnostics(
+            List<? extends Diagnostic> root,
+            List<? extends Diagnostic> imported
+    ) {
+        var result = new ArrayList<Diagnostic>(root.size() + imported.size());
+        result.addAll(root);
+        result.addAll(imported);
+        return List.copyOf(result);
     }
 
     /// Combines a primary failure with diagnostics emitted before the failure.

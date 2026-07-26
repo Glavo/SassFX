@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.css;
 
-import org.glavo.scssfx.JavaFXCompatibility;
+import org.glavo.scssfx.JavaFXTarget;
 import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.ast.selector.ClassSelector;
 import org.glavo.scssfx.internal.ast.selector.Combinator;
@@ -19,7 +19,6 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 
-import static org.glavo.scssfx.JavaFXFeature.CONDITIONAL_STYLESHEET_IMPORTS;
 import static org.glavo.scssfx.JavaFXFeature.CSS_TRANSITIONS;
 import static org.glavo.scssfx.JavaFXFeature.EXTENDED_BLEND_MODES;
 import static org.glavo.scssfx.JavaFXFeature.MULTIPLE_RULES_PER_MEDIA_QUERY;
@@ -62,7 +61,7 @@ public final class JavaFXCssValidator {
     /// construct, import condition, media query, property, or property value
     public static void validate(
             CssStylesheet stylesheet,
-            JavaFXCompatibility compatibility
+            JavaFXTarget compatibility
     ) {
         Objects.requireNonNull(stylesheet, "stylesheet");
         Objects.requireNonNull(compatibility, "compatibility");
@@ -76,7 +75,7 @@ public final class JavaFXCssValidator {
     /// @param insideStyleRule whether the parent is nested below a style rule
     private static void validateChildren(
             CssParentNode parent,
-            JavaFXCompatibility compatibility,
+            JavaFXTarget compatibility,
             boolean insideStyleRule
     ) {
         for (var child : parent.children()) {
@@ -91,7 +90,7 @@ public final class JavaFXCssValidator {
     /// @param insideStyleRule whether the node is nested below a style rule
     private static void validateNode(
             CssNode node,
-            JavaFXCompatibility compatibility,
+            JavaFXTarget compatibility,
             boolean insideStyleRule
     ) {
         if (node.isInvisible()) {
@@ -260,161 +259,9 @@ public final class JavaFXCssValidator {
     /// @param compatibility the selected JavaFX compatibility level
     private static void validateImport(
             CssImport cssImport,
-            JavaFXCompatibility compatibility
+            JavaFXTarget compatibility
     ) {
-        var argument = cssImport.argument();
-        var conditionStart = importConditionStart(argument, cssImport.span());
-        conditionStart = skipImportTrivia(argument, conditionStart, cssImport.span());
-        var condition = argument.substring(conditionStart).strip();
-        if (condition.isEmpty()) {
-            return;
-        }
-        if (!compatibility.supports(CONDITIONAL_STYLESHEET_IMPORTS)) {
-            throw failure(
-                    "JavaFX " + compatibility.version()
-                            + " CSS supports only unconditional @import rules.",
-                    cssImport.span()
-            );
-        }
-        JavaFXMediaQueryValidator.validate(
-                condition,
-                cssImport.span(),
-                compatibility
-        );
-    }
-
-    /// Returns the offset immediately after an import's first string or URL token.
-    ///
-    /// Quoted strings honor CSS escapes. URL functions honor escapes, quoted
-    /// substrings, and balanced parentheses so whitespace inside the URL is not
-    /// mistaken for the beginning of a media condition.
-    ///
-    /// @param argument the complete import argument
-    /// @param span the import source span used for failures
-    /// @return the first offset after the URL token
-    /// @throws CssSerializeException if no complete string or URL token is present
-    private static int importConditionStart(String argument, SourceSpan span) {
-        var start = skipImportTrivia(argument, 0, span);
-        if (start >= argument.length()) {
-            throw failure("JavaFX CSS requires an @import URL.", span);
-        }
-
-        var first = argument.charAt(start);
-        if (first == '\'' || first == '"') {
-            return quotedTokenEnd(argument, start, first, span);
-        }
-        if (start + 3 < argument.length()
-                && argument.regionMatches(true, start, "url", 0, 3)
-                && argument.charAt(start + 3) == '(') {
-            return urlTokenEnd(argument, start + 4, span);
-        }
-        throw failure(
-                "JavaFX CSS requires @import to begin with a string or url() token.",
-                span
-        );
-    }
-
-    /// Finds the end of a quoted CSS string token.
-    ///
-    /// @param text the containing text
-    /// @param start the opening quote offset
-    /// @param quote the opening quote character
-    /// @param span the source span used for failures
-    /// @return the offset following the closing quote
-    private static int quotedTokenEnd(
-            String text,
-            int start,
-            char quote,
-            SourceSpan span
-    ) {
-        for (var index = start + 1; index < text.length(); index++) {
-            var current = text.charAt(index);
-            if (current == quote) {
-                return index + 1;
-            }
-            if (current == '\\') {
-                index = escapedCodePointEnd(text, index);
-            }
-        }
-        throw failure("JavaFX CSS requires a closed @import string.", span);
-    }
-
-    /// Finds the end of a CSS `url(...)` token.
-    ///
-    /// @param text the containing text
-    /// @param start the first offset inside the opening parenthesis
-    /// @param span the source span used for failures
-    /// @return the offset following the matching closing parenthesis
-    private static int urlTokenEnd(String text, int start, SourceSpan span) {
-        var depth = 1;
-        for (var index = start; index < text.length(); index++) {
-            var current = text.charAt(index);
-            if (current == '\\') {
-                index = escapedCodePointEnd(text, index);
-            } else if (current == '\'' || current == '"') {
-                index = quotedTokenEnd(text, index, current, span) - 1;
-            } else if (current == '(') {
-                depth++;
-            } else if (current == ')' && --depth == 0) {
-                return index + 1;
-            }
-        }
-        throw failure("JavaFX CSS requires a closed @import url() token.", span);
-    }
-
-    /// Returns the last offset consumed by one CSS escape.
-    ///
-    /// A CRLF escape consumes both newline code units.
-    ///
-    /// @param text the containing text
-    /// @param slash the backslash offset
-    /// @return the final consumed offset
-    private static int escapedCodePointEnd(String text, int slash) {
-        if (slash + 1 >= text.length()) {
-            return slash;
-        }
-        if (text.charAt(slash + 1) == '\r'
-                && slash + 2 < text.length()
-                && text.charAt(slash + 2) == '\n') {
-            return slash + 2;
-        }
-        return slash + 1;
-    }
-
-    /// Skips CSS whitespace beginning at the supplied offset.
-    ///
-    /// @param text the text to inspect
-    /// @param start the first candidate offset
-    /// @return the first non-whitespace offset or the text length
-    private static int skipWhitespace(String text, int start) {
-        var index = start;
-        while (index < text.length() && isWhitespace(text.charAt(index))) {
-            index++;
-        }
-        return index;
-    }
-
-    /// Skips whitespace and block comments between import grammar tokens.
-    ///
-    /// @param text  the import argument
-    /// @param start the first candidate offset
-    /// @param span  the import span used for unterminated-comment failures
-    /// @return the first non-trivia offset or the text length
-    private static int skipImportTrivia(String text, int start, SourceSpan span) {
-        var index = start;
-        while (true) {
-            index = skipWhitespace(text, index);
-            if (index + 1 >= text.length()
-                    || text.charAt(index) != '/'
-                    || text.charAt(index + 1) != '*') {
-                return index;
-            }
-            var end = text.indexOf("*/", index + 2);
-            if (end < 0) {
-                throw failure("JavaFX CSS requires a closed @import comment.", span);
-            }
-            index = end + 2;
-        }
+        JavaFXCssImport.parse(cssImport, compatibility);
     }
 
     /// Returns whether a character is CSS whitespace.
@@ -436,7 +283,7 @@ public final class JavaFXCssValidator {
     /// @param compatibility the selected JavaFX compatibility level
     private static void validateDeclaration(
             CssDeclaration declaration,
-            JavaFXCompatibility compatibility
+            JavaFXTarget compatibility
     ) {
         var property = declaration.name().value().toLowerCase(Locale.ROOT);
         if (!compatibility.supports(CSS_TRANSITIONS)
@@ -445,6 +292,19 @@ public final class JavaFXCssValidator {
                     "JavaFX " + compatibility.version()
                             + " CSS does not support property " + property + ".",
                     declaration.name().span()
+            );
+        }
+        if (TRANSITION_PROPERTIES.contains(property)) {
+            var value = declarationValueText(declaration).strip();
+            var importanceStart = trailingImportanceStart(value);
+            if (importanceStart >= 0) {
+                value = value.substring(0, importanceStart).stripTrailing();
+            }
+            JavaFXTransitionValidator.validate(
+                    property,
+                    value,
+                    declaration.value().span(),
+                    compatibility
             );
         }
         if (!compatibility.supports(EXTENDED_BLEND_MODES)

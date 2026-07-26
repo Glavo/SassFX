@@ -3,7 +3,7 @@ package org.glavo.scssfx.internal.sourcemap;
 
 import org.glavo.scssfx.CompileOptions;
 import org.glavo.scssfx.CssTarget;
-import org.glavo.scssfx.JavaFXCompatibility;
+import org.glavo.scssfx.JavaFXTarget;
 import org.glavo.scssfx.JavaFXCssTarget;
 import org.glavo.scssfx.OutputStyle;
 import org.glavo.scssfx.SassCompiler;
@@ -113,7 +113,7 @@ final class SourceMapTest {
                         Syntax.SCSS
                 ),
                 new JavaFXCssTarget(
-                        JavaFXCompatibility.JAVAFX27,
+                        JavaFXTarget.JAVAFX27,
                         OutputStyle.COMPRESSED
                 ),
                 new CompileOptions(true, List.of())

@@ -13,6 +13,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /// Verifies immutable root-source, options, and result models.
@@ -54,12 +55,15 @@ final class CompilationModelTest {
     @Test
     void snapshotsCompileOptions() {
         var paths = new ArrayList<>(List.of(Path.of("styles")));
-        var options = new CompileOptions(true, paths);
+        JavaFXStylesheetResolver resolver = (resource, baseUrl) -> null;
+        var options = new CompileOptions(true, paths, resolver);
         paths.clear();
 
         assertEquals(true, options.sourceMap());
         assertEquals(List.of(Path.of("styles")), options.loadPaths());
+        assertSame(resolver, options.javaFXStylesheetResolver());
         assertThrows(UnsupportedOperationException.class, () -> options.loadPaths().clear());
+        assertNull(new CompileOptions(false, List.of()).javaFXStylesheetResolver());
     }
 
     /// Verifies that compile results snapshot metadata collections.

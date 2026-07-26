@@ -1295,7 +1295,7 @@ final class IndentedSassStructure {
                     return new ContinuationState(
                             false,
                             false,
-                            "Unexpected \"" + (char) character + "\"."
+                            "Unexpected \"" + character + "\"."
                     );
                 }
                 var open = stack.peek();

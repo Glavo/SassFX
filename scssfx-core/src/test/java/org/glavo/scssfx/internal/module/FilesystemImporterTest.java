@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /// Verifies filesystem module search precedence, ambiguity, and canonical URLs.
@@ -177,6 +178,39 @@ final class FilesystemImporterTest {
 
         assertEquals("first", result.source().content());
         assertEquals(firstModule.toRealPath().toUri(), result.canonicalUrl());
+    }
+
+    /// Resolves retained CSS imports by exact filename without Sass inference.
+    @Test
+    void loadsExactCssImports(@TempDir Path directory) throws Exception {
+        var root = Files.createDirectory(directory.resolve("root"));
+        var loadPath = Files.createDirectory(directory.resolve("load-path"));
+        var containingFile = Files.writeString(root.resolve("main.css"), "");
+        var exact = Files.writeString(root.resolve("theme.css"), ".exact {}");
+        Files.writeString(root.resolve("_partial.css"), ".partial {}");
+        Files.writeString(loadPath.resolve("fallback.css"), ".fallback {}");
+        var importer = new FilesystemImporter(List.of(loadPath));
+
+        var relative = Objects.requireNonNull(importer.canonicalizeAndLoadCss(
+                "theme.css",
+                containingFile.toRealPath().toUri()
+        ));
+        assertEquals(Syntax.CSS, relative.syntax());
+        assertEquals(exact.toRealPath().toUri(), relative.canonicalUrl());
+        assertNull(importer.canonicalizeAndLoadCss(
+                "partial.css",
+                containingFile.toRealPath().toUri()
+        ));
+        assertNull(importer.canonicalizeAndLoadCss(
+                "fallback",
+                containingFile.toRealPath().toUri()
+        ));
+        assertEquals(
+                ".fallback {}",
+                Objects.requireNonNull(
+                        importer.canonicalizeAndLoadCss("fallback.css", null)
+                ).source().content()
+        );
     }
 
     /// Reports regular and partial candidates that conflict within one search location.

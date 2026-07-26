@@ -21,9 +21,19 @@ dependencies {
 }
 
 val javaFxOracleSourceSet = sourceSets.create("javaFxOracle")
+val javaFx8OracleSourceSet = sourceSets.create("javaFx8Oracle")
 
-val javaFx17OracleRuntime = configurations.create("javaFx17OracleRuntime")
-val javaFx27OracleRuntime = configurations.create("javaFx27OracleRuntime")
+val javaFxOracleVersions = linkedMapOf(
+    17 to "17.0.20",
+    18 to "18.0.2",
+    23 to "23.0.2",
+    25 to "25.0.4",
+    26 to "26.0.2",
+    27 to "27-ea+25",
+)
+val javaFxOracleRuntimes = javaFxOracleVersions.mapValues { (version, _) ->
+    configurations.create("javaFx${version}OracleRuntime")
+}
 val javaFxOracleDirectory = providers.gradleProperty("javaFxOracleDirectory").orNull
 val hostOperatingSystem = System.getProperty("os.name").lowercase()
 val hostArchitecture = System.getProperty("os.arch").lowercase()
@@ -48,36 +58,43 @@ dependencies {
         javaFxOracleSourceSet.compileOnlyConfigurationName,
         "org.jetbrains:annotations:26.1.0",
     )
+    add(
+        javaFx8OracleSourceSet.compileOnlyConfigurationName,
+        "org.jetbrains:annotations:26.1.0",
+    )
     if (javaFxOracleDirectory == null) {
+        add(
+            javaFxOracleSourceSet.compileOnlyConfigurationName,
+            "org.openjfx:javafx-base:17.0.20:$openJfxPlatform",
+        )
         add(
             javaFxOracleSourceSet.compileOnlyConfigurationName,
             "org.openjfx:javafx-graphics:17.0.20:$openJfxPlatform",
         )
-        javaFx17OracleRuntime(
-            "org.openjfx:javafx-base:17.0.20:$openJfxPlatform",
-        )
-        javaFx17OracleRuntime(
-            "org.openjfx:javafx-graphics:17.0.20:$openJfxPlatform",
-        )
-        javaFx27OracleRuntime(
-            "org.openjfx:javafx-base:27-ea+25:$openJfxPlatform",
-        )
-        javaFx27OracleRuntime(
-            "org.openjfx:javafx-graphics:27-ea+25:$openJfxPlatform",
-        )
+        for ((version, artifactVersion) in javaFxOracleVersions) {
+            val runtime = javaFxOracleRuntimes.getValue(version)
+            runtime(
+                "org.openjfx:javafx-base:$artifactVersion:$openJfxPlatform",
+            )
+            runtime(
+                "org.openjfx:javafx-graphics:$artifactVersion:$openJfxPlatform",
+            )
+        }
     } else {
         val oracleRoot = file(javaFxOracleDirectory)
         val javaFx17Files = files(
             oracleRoot.resolve("17/javafx-base.jar"),
             oracleRoot.resolve("17/javafx-graphics.jar"),
         )
-        val javaFx27Files = files(
-            oracleRoot.resolve("27/javafx-base.jar"),
-            oracleRoot.resolve("27/javafx-graphics.jar"),
-        )
         add(javaFxOracleSourceSet.compileOnlyConfigurationName, javaFx17Files)
-        javaFx17OracleRuntime(javaFx17Files)
-        javaFx27OracleRuntime(javaFx27Files)
+        for (version in javaFxOracleVersions.keys) {
+            javaFxOracleRuntimes.getValue(version)(
+                files(
+                    oracleRoot.resolve("$version/javafx-base.jar"),
+                    oracleRoot.resolve("$version/javafx-graphics.jar"),
+                ),
+            )
+        }
     }
 }
 
@@ -96,6 +113,10 @@ tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     options.release = 17
     options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-processing"))
+}
+
+tasks.named<JavaCompile>(javaFx8OracleSourceSet.compileJavaTaskName) {
+    options.release = 8
 }
 
 tasks.withType<Test>().configureEach {
@@ -206,69 +227,121 @@ val verifyCoreLibraryJar = tasks.register("verifyCoreLibraryJar") {
     }
 }
 
-val java17Launcher = javaToolchains.launcherFor {
-    languageVersion = JavaLanguageVersion.of(17)
+val javaFxOracleLauncherVersions = mapOf(
+    17 to 17,
+    18 to 17,
+    23 to 21,
+    25 to 23,
+    26 to 24,
+    27 to 25,
+)
+val javaFxOracleLaunchers = javaFxOracleLauncherVersions.mapValues { (_, javaVersion) ->
+    javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(javaVersion)
+    }
+}
+val javaFxOracleJavaHome = providers.gradleProperty("javaFxOracleJavaHome")
+    .orElse(providers.gradleProperty("javaFx27OracleJavaHome"))
+    .orNull
+
+val verifyJavaFxCssOracleTasks = javaFxOracleVersions.keys.associateWith { version ->
+    tasks.register<JavaExec>("verifyJavaFx${version}CssOracle") {
+        group = LifecycleBasePlugin.VERIFICATION_GROUP
+        description =
+            "Validates JavaFX $version CSS compatibility against the pinned OpenJFX parser."
+        dependsOn(javaFxOracleSourceSet.classesTaskName)
+        val versionJavaHome = providers
+            .gradleProperty("javaFx${version}OracleJavaHome")
+            .orNull
+        val selectedJavaHome = versionJavaHome ?: javaFxOracleJavaHome
+        if (selectedJavaHome == null) {
+            javaLauncher.set(javaFxOracleLaunchers.getValue(version))
+        } else {
+            val javaExecutable =
+                if (System.getProperty("os.name").startsWith("Windows")) "java.exe" else "java"
+            executable(
+                file(selectedJavaHome)
+                    .resolve("bin/$javaExecutable")
+                    .absolutePath,
+            )
+        }
+        classpath = files(
+            javaFxOracleSourceSet.output,
+            sourceSets.main.get().runtimeClasspath,
+        )
+        jvmArgs(
+            "--module-path",
+            javaFxOracleRuntimes.getValue(version).asPath,
+            "--add-modules",
+            "javafx.graphics",
+        )
+        mainClass.set("org.glavo.scssfx.oracle.JavaFxCssOracle")
+        args(version.toString())
+    }
 }
 
-val java25Launcher = javaToolchains.launcherFor {
-    languageVersion = JavaLanguageVersion.of(25)
-}
-val javaFx27OracleJavaHome =
-    providers.gradleProperty("javaFx27OracleJavaHome").orNull
+val javaFx8OracleDirectory = layout.buildDirectory.dir("tmp/javafx8-oracle")
+val generateJavaFx8OracleInputs =
+    tasks.register<JavaExec>("generateJavaFx8OracleInputs") {
+        group = LifecycleBasePlugin.VERIFICATION_GROUP
+        description = "Generates CSS and BSS inputs for the isolated JavaFX 8 oracle."
+        dependsOn(javaFxOracleSourceSet.classesTaskName)
+        javaLauncher.set(javaFxOracleLaunchers.getValue(17))
+        classpath = files(
+            javaFxOracleSourceSet.output,
+            sourceSets.main.get().runtimeClasspath,
+        )
+        mainClass.set("org.glavo.scssfx.oracle.JavaFx8OracleInputGenerator")
+        args(javaFx8OracleDirectory.get().asFile.absolutePath)
+        outputs.files(
+            javaFx8OracleDirectory.map { it.file("fixture.css") },
+            javaFx8OracleDirectory.map { it.file("actual.bss") },
+        )
+    }
 
-val verifyJavaFx17CssOracle = tasks.register<JavaExec>("verifyJavaFx17CssOracle") {
+val javaFx8JavaHome = providers.gradleProperty("javaFx8OracleJavaHome").orNull
+val verifyJavaFx8CssOracle = tasks.register<Exec>("verifyJavaFx8CssOracle") {
     group = LifecycleBasePlugin.VERIFICATION_GROUP
-    description = "Validates JavaFX 17 CSS compatibility against the pinned OpenJFX parser."
-    dependsOn(javaFxOracleSourceSet.classesTaskName)
-    javaLauncher.set(java17Launcher)
-    classpath = files(
-        javaFxOracleSourceSet.output,
-        sourceSets.main.get().runtimeClasspath,
-    )
-    jvmArgs(
-        "--upgrade-module-path",
-        javaFx17OracleRuntime.asPath,
-        "--add-modules",
-        "javafx.graphics",
-    )
-    mainClass.set("org.glavo.scssfx.oracle.JavaFxCssOracle")
-    args("17")
-}
-
-val verifyJavaFx27CssOracle = tasks.register<JavaExec>("verifyJavaFx27CssOracle") {
-    group = LifecycleBasePlugin.VERIFICATION_GROUP
-    description = "Validates JavaFX 27 CSS compatibility against the pinned OpenJFX parser."
-    dependsOn(javaFxOracleSourceSet.classesTaskName)
-    if (javaFx27OracleJavaHome == null) {
-        javaLauncher.set(java25Launcher)
+    description = "Validates JavaFX 8 BSS against a configured JavaFX 8 runtime."
+    dependsOn(generateJavaFx8OracleInputs)
+    dependsOn(javaFx8OracleSourceSet.classesTaskName)
+    if (javaFx8JavaHome == null) {
+        executable("java")
+        doFirst {
+            throw GradleException(
+                "verifyJavaFx8CssOracle requires -PjavaFx8OracleJavaHome="
+                    + "<a Java 8 JDK containing JavaFX 8>.",
+            )
+        }
     } else {
         val javaExecutable =
             if (System.getProperty("os.name").startsWith("Windows")) "java.exe" else "java"
         executable(
-            file(javaFx27OracleJavaHome)
+            file(javaFx8JavaHome)
                 .resolve("bin/$javaExecutable")
                 .absolutePath,
         )
     }
-    classpath = files(
-        javaFxOracleSourceSet.output,
-        sourceSets.main.get().runtimeClasspath,
+    args(
+        "-Djava.awt.headless=true",
+        "-cp",
+        javaFx8OracleSourceSet.output.classesDirs.asPath,
+        "org.glavo.scssfx.oracle.JavaFx8OracleHelper",
+        javaFx8OracleDirectory.get().asFile.absolutePath,
     )
-    jvmArgs(
-        "--upgrade-module-path",
-        javaFx27OracleRuntime.asPath,
-        "--add-modules",
-        "javafx.graphics",
-    )
-    mainClass.set("org.glavo.scssfx.oracle.JavaFxCssOracle")
-    args("27")
 }
 
 tasks.register("verifyJavaFxCssOracles") {
     group = LifecycleBasePlugin.VERIFICATION_GROUP
-    description = "Runs the isolated JavaFX 17 and JavaFX 27 CSS parser oracles."
-    dependsOn(verifyJavaFx17CssOracle)
-    dependsOn(verifyJavaFx27CssOracle)
+    description = "Runs the isolated JavaFX 17 through 27 CSS parser oracle matrix."
+    dependsOn(verifyJavaFxCssOracleTasks.values)
+}
+
+tasks.register("verifyAllJavaFxCssOracles") {
+    group = LifecycleBasePlugin.VERIFICATION_GROUP
+    description = "Runs the isolated JavaFX 8 and JavaFX 17 through 27 oracle matrix."
+    dependsOn(verifyJavaFx8CssOracle)
+    dependsOn(verifyJavaFxCssOracleTasks.values)
 }
 
 val referenceSensitiveFiles = fileTree(rootProject.layout.projectDirectory) {

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.ByteBuffer;
 import java.util.Set;
 
+import static org.glavo.scssfx.JavaFXFeature.ADVANCED_TRANSITION_EASING;
 import static org.glavo.scssfx.JavaFXFeature.CONDITIONAL_STYLESHEET_IMPORTS;
 import static org.glavo.scssfx.JavaFXFeature.CSS_TRANSITIONS;
 import static org.glavo.scssfx.JavaFXFeature.EXTENDED_BLEND_MODES;
@@ -38,7 +39,7 @@ final class OutputTargetTest {
     void providesJavaFXDefaults() {
         var target = JavaFXCssTarget.DEFAULT;
 
-        assertEquals(JavaFXCompatibility.JAVAFX17, target.compatibility());
+        assertEquals(JavaFXTarget.JAVAFX17, target.javaFXTarget());
         assertEquals(OutputStyle.EXPANDED, target.style());
     }
 
@@ -49,17 +50,17 @@ final class OutputTargetTest {
         var bss = assertInstanceOf(BssTarget.class, target);
 
         assertEquals(6, bss.bssVersion());
-        assertEquals(9, new BssTarget(JavaFXCompatibility.JAVAFX27).bssVersion());
+        assertEquals(9, new BssTarget(JavaFXTarget.JAVAFX27).bssVersion());
     }
 
     /// Verifies every supported JavaFX release and BSS format mapping.
     @Test
     void exposesContinuousJavaFxTargets() {
-        var targets = JavaFXCompatibility.values();
+        var targets = JavaFXTarget.values();
         assertEquals(20, targets.length);
 
         for (var version = 8; version <= 27; version++) {
-            var target = JavaFXCompatibility.forVersion(version);
+            var target = JavaFXTarget.forVersion(version);
             assertSame(targets[version - 8], target);
             assertEquals(version, target.version());
             assertEquals(
@@ -73,11 +74,11 @@ final class OutputTargetTest {
 
         assertThrows(
                 IllegalArgumentException.class,
-                () -> JavaFXCompatibility.forVersion(7)
+                () -> JavaFXTarget.forVersion(7)
         );
         assertThrows(
                 IllegalArgumentException.class,
-                () -> JavaFXCompatibility.forVersion(28)
+                () -> JavaFXTarget.forVersion(28)
         );
     }
 
@@ -89,21 +90,23 @@ final class OutputTargetTest {
                         JavaFXFeature.FONT_FACE,
                         JavaFXFeature.UNCONDITIONAL_STYLESHEET_IMPORTS
                 ),
-                JavaFXCompatibility.JAVAFX8.features()
+                JavaFXTarget.JAVAFX8.features()
         );
-        assertFalse(JavaFXCompatibility.JAVAFX17.supports(EXTENDED_BLEND_MODES));
-        assertTrue(JavaFXCompatibility.JAVAFX18.supports(EXTENDED_BLEND_MODES));
-        assertFalse(JavaFXCompatibility.JAVAFX22.supports(CSS_TRANSITIONS));
-        assertTrue(JavaFXCompatibility.JAVAFX23.supports(CSS_TRANSITIONS));
-        assertTrue(JavaFXCompatibility.JAVAFX25.supports(USER_PREFERENCE_MEDIA_QUERIES));
-        assertFalse(JavaFXCompatibility.JAVAFX25.supports(MULTIPLE_RULES_PER_MEDIA_QUERY));
-        assertTrue(JavaFXCompatibility.JAVAFX26.supports(MULTIPLE_RULES_PER_MEDIA_QUERY));
-        assertTrue(JavaFXCompatibility.JAVAFX26.supports(VIEWPORT_MEDIA_QUERIES));
-        assertFalse(JavaFXCompatibility.JAVAFX26.supports(CONDITIONAL_STYLESHEET_IMPORTS));
-        assertTrue(JavaFXCompatibility.JAVAFX27.supports(CONDITIONAL_STYLESHEET_IMPORTS));
+        assertFalse(JavaFXTarget.JAVAFX17.supports(EXTENDED_BLEND_MODES));
+        assertTrue(JavaFXTarget.JAVAFX18.supports(EXTENDED_BLEND_MODES));
+        assertFalse(JavaFXTarget.JAVAFX22.supports(CSS_TRANSITIONS));
+        assertTrue(JavaFXTarget.JAVAFX23.supports(CSS_TRANSITIONS));
+        assertFalse(JavaFXTarget.JAVAFX25.supports(ADVANCED_TRANSITION_EASING));
+        assertTrue(JavaFXTarget.JAVAFX26.supports(ADVANCED_TRANSITION_EASING));
+        assertTrue(JavaFXTarget.JAVAFX25.supports(USER_PREFERENCE_MEDIA_QUERIES));
+        assertFalse(JavaFXTarget.JAVAFX25.supports(MULTIPLE_RULES_PER_MEDIA_QUERY));
+        assertTrue(JavaFXTarget.JAVAFX26.supports(MULTIPLE_RULES_PER_MEDIA_QUERY));
+        assertTrue(JavaFXTarget.JAVAFX26.supports(VIEWPORT_MEDIA_QUERIES));
+        assertFalse(JavaFXTarget.JAVAFX26.supports(CONDITIONAL_STYLESHEET_IMPORTS));
+        assertTrue(JavaFXTarget.JAVAFX27.supports(CONDITIONAL_STYLESHEET_IMPORTS));
         assertThrows(
                 UnsupportedOperationException.class,
-                () -> JavaFXCompatibility.JAVAFX27.features().clear()
+                () -> JavaFXTarget.JAVAFX27.features().clear()
         );
     }
 
@@ -118,7 +121,7 @@ final class OutputTargetTest {
         );
         assertThrows(
                 NullPointerException.class,
-                () -> new JavaFXCssTarget(JavaFXCompatibility.JAVAFX17, null)
+                () -> new JavaFXCssTarget(JavaFXTarget.JAVAFX17, null)
         );
         assertThrows(NullPointerException.class, () -> new BssTarget(null));
     }

@@ -5,6 +5,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
@@ -12,6 +13,8 @@ import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Base64;
 import java.util.Objects;
 
@@ -73,6 +76,37 @@ final class BssTargetTest {
               -fx-stroke-dash-array: 1px 2px;
               -fx-alignment: center;
               -fx-text-alignment: center;
+            }
+            """;
+
+    /// Contains quoted strings parsed by generic and font-family grammars.
+    private static final String QUOTED_STRING_SOURCE = """
+            Label {
+              -fx-ellipsis-string: "More";
+              -fx-prompt-text: 'Type here';
+              -fx-shape: "M 0 0 L 1 1 Z";
+              -fx-custom-string: "";
+              -fx-custom-true: "TrUe";
+              -fx-custom-false: 'FALSE';
+              -fx-custom-duration: "INDEFINITE";
+              -fx-custom-infinity: "Infinity";
+              -fx-custom-color: "red";
+              -fx-custom-hex-color: "#123456";
+              -fx-font-family: "Oracle Font";
+              -fx-keyword-font-family: indefinite;
+              -fx-quoted-keyword-font-family: "true";
+              -fx-empty-font-family: "";
+            }
+            """;
+
+    /// Contains every size unit accepted by JavaFX's generic sequence parser.
+    private static final String GENERIC_SIZE_SEQUENCE_SOURCE = """
+            Pane {
+              -fx-custom-single-size: 1px;
+              -fx-custom-sizes:
+                  1 2% 3em 4ex 5px 6cm 7mm 8in 9pt 10pc
+                  11deg 12grad 13rad 14turn;
+              -fx-custom-mixed-sizes: -1.5em 0 2turn;
             }
             """;
 
@@ -313,7 +347,7 @@ final class BssTargetTest {
     /// Serializes the JavaFX 27 import and media-rule framing of BSS v9.
     @Test
     void compilesJavaFx27Bss() throws Exception {
-        var target = new BssTarget(JavaFXCompatibility.JAVAFX27);
+        var target = new BssTarget(JavaFXTarget.JAVAFX27);
         var output = compile(target).output();
 
         assertTrue(output.isReadOnly());
@@ -327,7 +361,7 @@ final class BssTargetTest {
     /// Emits every JavaFX target with its corresponding BSS header version.
     @Test
     void writesEverySupportedBssHeader() throws Exception {
-        for (var compatibility : JavaFXCompatibility.values()) {
+        for (var compatibility : JavaFXTarget.values()) {
             var output = new SassCompiler().compile(
                     SassSource.fromString(
                             "Pane { -fx-opacity: 1; }",
@@ -355,7 +389,7 @@ final class BssTargetTest {
                                 """,
                         Syntax.SCSS
                 ),
-                new BssTarget(JavaFXCompatibility.JAVAFX8)
+                new BssTarget(JavaFXTarget.JAVAFX8)
         ).output();
         var binaryText = new String(
                 remainingBytes(output),
@@ -366,6 +400,43 @@ final class BssTargetTest {
         assertTrue(binaryText.contains("com.sun.javafx.css.parser.StopConverter"));
         assertFalse(binaryText.contains("javafx.css.converter.SizeConverter"));
         assertFalse(binaryText.contains("com.sun.javafx.css.converters.StopConverter"));
+    }
+
+    /// Reproduces JavaFX 8's gradient repeat-cycle encoding.
+    @Test
+    void writesJavaFx8GradientRepeatCompatibility() throws Exception {
+        var compiler = new SassCompiler();
+        var source = SassSource.fromString(
+                """
+                        Pane {
+                          -fx-background-color:
+                              linear-gradient(repeat, red, blue),
+                              radial-gradient(radius 50%, repeat, red, blue);
+                        }
+                        """,
+                Syntax.SCSS
+        );
+        var javaFx8Output = compiler.compile(
+                source,
+                new BssTarget(JavaFXTarget.JAVAFX8)
+        ).output();
+        var javaFx17Output = compiler.compile(
+                source,
+                new BssTarget(JavaFXTarget.JAVAFX17)
+        ).output();
+        var javaFx8Text = new String(
+                remainingBytes(javaFx8Output),
+                StandardCharsets.ISO_8859_1
+        );
+        var javaFx17Text = new String(
+                remainingBytes(javaFx17Output),
+                StandardCharsets.ISO_8859_1
+        );
+
+        assertTrue(javaFx8Text.contains("REFLECT"));
+        assertFalse(javaFx8Text.contains("REPEAT"));
+        assertTrue(javaFx17Text.contains("REPEAT"));
+        assertFalse(javaFx17Text.contains("REFLECT"));
     }
 
     /// Serializes JavaFX scalar converters with the JavaFX 17 BSS wire format.
@@ -380,6 +451,117 @@ final class BssTargetTest {
                 Base64.getDecoder().decode(TYPED_SCALAR_JAVAFX17_FIXTURE),
                 remainingBytes(output)
         );
+    }
+
+    /// Strips CSS quotes from generic strings while preserving font-family tokens.
+    @Test
+    void compilesQuotedStringsWithPropertySpecificSemantics() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(QUOTED_STRING_SOURCE, Syntax.SCSS),
+                BssTarget.DEFAULT
+        ).output());
+        var strings = java.util.Arrays.asList(document.strings());
+
+        assertTrue(strings.contains("More"));
+        assertTrue(strings.contains("Type here"));
+        assertTrue(strings.contains("M 0 0 L 1 1 Z"));
+        assertTrue(strings.contains(""));
+        assertTrue(strings.contains("\"Oracle Font\""));
+        assertTrue(strings.contains("indefinite"));
+        assertTrue(strings.contains("\"true\""));
+        assertTrue(strings.contains("\"\""));
+        assertTrue(strings.contains("javafx.css.converter.StringConverter"));
+        assertTrue(strings.contains("javafx.css.converter.BooleanConverter"));
+        assertTrue(strings.contains("javafx.css.converter.DurationConverter"));
+        assertTrue(strings.contains("javafx.css.converter.SizeConverter"));
+        assertTrue(strings.contains("true"));
+        assertTrue(strings.contains("false"));
+        assertFalse(strings.contains("\"More\""));
+        assertFalse(strings.contains("'Type here'"));
+        assertFalse(strings.contains("\"M 0 0 L 1 1 Z\""));
+        assertFalse(strings.contains("\"TrUe\""));
+        assertFalse(strings.contains("'FALSE'"));
+        assertFalse(strings.contains("\"INDEFINITE\""));
+        assertFalse(strings.contains("\"Infinity\""));
+        assertFalse(strings.contains("\"red\""));
+        assertFalse(strings.contains("\"#123456\""));
+    }
+
+    /// Serializes all generic non-time size units with the sequence converter.
+    @Test
+    void compilesGenericSizeSequence() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(GENERIC_SIZE_SEQUENCE_SOURCE, Syntax.SCSS),
+                BssTarget.DEFAULT
+        ).output());
+        var strings = java.util.Arrays.asList(document.strings());
+
+        assertTrue(strings.contains("javafx.css.converter.SizeConverter"));
+        assertTrue(strings.contains("javafx.css.converter.SizeConverter$SequenceConverter"));
+        for (var unit : new String[]{
+                "PX", "PERCENT", "EM", "EX", "CM", "MM", "IN", "PT", "PC",
+                "DEG", "GRAD", "RAD", "TURN"
+        }) {
+            assertTrue(strings.contains(unit), unit);
+        }
+        assertFalse(strings.contains("S"));
+        assertFalse(strings.contains("MS"));
+    }
+
+    /// Rejects generic sequences containing non-size or time values.
+    @Test
+    void rejectsInvalidGenericSizeSequences() {
+        for (var value : new String[]{
+                "1px 2ms",
+                "1ms 2px",
+                "1px -fx-other-size",
+                "-fx-other-size 1px",
+                "1px red",
+                "1px, 2px",
+                "1px / 2px",
+                "[1px 2px]"
+        }) {
+            var failure = assertThrows(
+                    SassCompilationException.class,
+                    () -> new SassCompiler().compile(
+                            SassSource.fromString(
+                                    "Pane { -fx-custom-sizes: " + value + "; }",
+                                    Syntax.SCSS
+                            ),
+                            BssTarget.DEFAULT
+                    ),
+                    value
+            );
+
+            assertEquals(
+                    "BSS generic size sequences require two or more unbracketed"
+                            + " space-separated non-time sizes.",
+                    failure.getMessage()
+            );
+        }
+    }
+
+    /// Serializes JavaFX 18 color-named blend modes as plain strings.
+    @Test
+    void compilesExtendedBlendModesAsStrings() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                Add { -fx-blend-mode: add; }
+                                Red { -fx-blend-mode: red; }
+                                Green { -fx-blend-mode: green; }
+                                Blue { -fx-blend-mode: blue; }
+                                """,
+                        Syntax.SCSS
+                ),
+                new BssTarget(JavaFXTarget.JAVAFX18)
+        ).output());
+        var strings = java.util.Arrays.asList(document.strings());
+
+        assertTrue(strings.contains("add"));
+        assertTrue(strings.contains("red"));
+        assertTrue(strings.contains("green"));
+        assertTrue(strings.contains("blue"));
     }
 
     /// Serializes JavaFX numeric, relative, and posture font variants.
@@ -694,24 +876,425 @@ final class BssTargetTest {
         );
     }
 
-    /// Rejects a JavaFX property whose BSS converter remains unimplemented.
+    /// Encodes the JavaFX font shorthand with its composite converter.
     @Test
-    void rejectsPropertiesWithUnimplementedConverters() {
-        var failure = assertThrows(
-                SassCompilationException.class,
-                () -> new SassCompiler().compile(
-                        SassSource.fromString(
-                                ".button { -fx-font: 12px System; }",
-                                Syntax.SCSS
-                        ),
-                        BssTarget.DEFAULT
+    void compilesFontShorthand() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                .button {
+                                  -fx-font: italic small-caps bold 14px/18px "Example Sans";
+                                }
+                                """,
+                        Syntax.SCSS
+                ),
+                BssTarget.DEFAULT
+        ).output());
+
+        assertTrue(
+                java.util.Arrays.asList(document.strings()).contains(
+                        "javafx.css.converter.FontConverter"
                 )
         );
+    }
 
-        assertEquals(
-                "BSS output doesn't support JavaFX property -fx-font.",
-                failure.getMessage()
+    /// Encodes scalar and nested derived and ladder colors with JavaFX converters.
+    @Test
+    void compilesDerivedAndLadderColors() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                .button {
+                                  -fx-text-fill: derive(#336699, -15%);
+                                  -fx-fill: ladder(-fx-base, black 0%, white 100%);
+                                  -fx-background-color: linear-gradient(derive(-fx-base, 20%), ladder(-fx-background, red 0%, white 100%));
+                                }
+                                """,
+                        Syntax.SCSS
+                ),
+                BssTarget.DEFAULT
+        ).output());
+        var strings = java.util.Arrays.asList(document.strings());
+
+        assertTrue(strings.contains("javafx.css.converter.DeriveColorConverter"));
+        assertTrue(strings.contains("javafx.css.converter.LadderConverter"));
+        assertTrue(strings.contains("javafx.css.converter.StopConverter"));
+    }
+
+    /// Encodes scalar and layered JavaFX region references with StringConverter.
+    @Test
+    void compilesRegionReferences() throws Exception {
+        for (var target : java.util.List.of(
+                JavaFXTarget.JAVAFX8,
+                JavaFXTarget.JAVAFX17
+        )) {
+            var document = decodeDocument(new SassCompiler().compile(
+                    SassSource.fromString(
+                            """
+                                    Shape {
+                                      -fx-fill: region("#glyph");
+                                    }
+                                    Pane {
+                                      -fx-background-color:
+                                          region(".source"),
+                                          region("#badge"),
+                                          REGION(""),
+                                          regionXYZ(".escaped\\6f");
+                                    }
+                                    """,
+                            Syntax.SCSS
+                    ),
+                    new BssTarget(target)
+            ).output());
+            var strings = java.util.Arrays.asList(document.strings());
+            var converter = target == JavaFXTarget.JAVAFX8
+                    ? "com.sun.javafx.css.converters.StringConverter"
+                    : "javafx.css.converter.StringConverter";
+
+            assertTrue(strings.contains(converter));
+            assertTrue(strings.contains("SPECIAL-REGION-URL:#glyph"));
+            assertTrue(strings.contains("SPECIAL-REGION-URL:.source"));
+            assertTrue(strings.contains("SPECIAL-REGION-URL:#badge"));
+            assertTrue(strings.contains("SPECIAL-REGION-URL:"));
+            assertTrue(strings.contains("SPECIAL-REGION-URL:.escapedo"));
+            assertFalse(strings.contains("region(\"#glyph\")"));
+        }
+    }
+
+    /// Ignores tokens after the first quoted JavaFX region argument.
+    @Test
+    void regionReferenceUsesOnlyFirstArgument() throws Exception {
+        var compiler = new SassCompiler();
+        var plain = compiler.compile(
+                SassSource.fromString(
+                        "Shape { -fx-fill: region(\".source\"); }",
+                        Syntax.SCSS
+                ),
+                BssTarget.DEFAULT
+        ).output();
+        var commaExtra = compiler.compile(
+                SassSource.fromString(
+                        "Shape { -fx-fill: region(\".source\", \".ignored\"); }",
+                        Syntax.SCSS
+                ),
+                BssTarget.DEFAULT
+        ).output();
+        var seriesExtra = compiler.compile(
+                SassSource.fromString(
+                        "Shape { -fx-fill: region(\".source\" \".ignored\"); }",
+                        Syntax.SCSS
+                ),
+                BssTarget.DEFAULT
+        ).output();
+
+        assertArrayEquals(remainingBytes(plain), remainingBytes(commaExtra));
+        assertArrayEquals(remainingBytes(plain), remainingBytes(seriesExtra));
+    }
+
+    /// Rejects malformed JavaFX region references.
+    @Test
+    void rejectsInvalidRegionReferences() {
+        for (var value : java.util.List.of(
+                "region()",
+                "region(unquoted)"
+        )) {
+            var failure = assertThrows(
+                    SassCompilationException.class,
+                    () -> new SassCompiler().compile(
+                            SassSource.fromString(
+                                    "Shape { -fx-fill: " + value + "; }",
+                                    Syntax.SCSS
+                            ),
+                            BssTarget.DEFAULT
+                    )
+            );
+
+            assertEquals(
+                    "BSS paint values require solid, derived, or ladder colors,"
+                            + " property lookups, JavaFX gradients, image patterns,"
+                            + " or region references.",
+                    failure.getMessage()
+            );
+        }
+    }
+
+    /// Encodes one scalar URL with JavaFX's non-sequence URL converter.
+    @Test
+    void compilesScalarUrl() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        ".button { -fx-graphic: url(\"icon.png\"); }",
+                        Syntax.SCSS,
+                        URI.create("https://example.invalid/assets/theme.scss")
+                ),
+                BssTarget.DEFAULT
+        ).output());
+        var strings = java.util.Arrays.asList(document.strings());
+
+        assertTrue(strings.contains("javafx.css.converter.URLConverter"));
+        assertTrue(strings.contains("icon.png"));
+        assertTrue(strings.contains("https://example.invalid/assets/theme.scss"));
+        assertFalse(strings.contains("javafx.css.converter.URLConverter$SequenceConverter"));
+    }
+
+    /// Encodes ordinary millisecond, second, and indefinite duration values.
+    @Test
+    void compilesDurationScalars() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                Tooltip {
+                                  -fx-show-delay: 125ms;
+                                  -fx-show-duration: 1.5s;
+                                  -fx-hide-delay: indefinite;
+                                }
+                                Spinner {
+                                  -fx-initial-delay: "INDEFINITE";
+                                  -fx-repeat-delay: 50ms;
+                                }
+                                """,
+                        Syntax.SCSS
+                ),
+                BssTarget.DEFAULT
+        ).output());
+        var strings = java.util.Arrays.asList(document.strings());
+
+        assertTrue(strings.contains("javafx.css.converter.DurationConverter"));
+        assertTrue(strings.contains("MS"));
+        assertTrue(strings.contains("S"));
+        assertTrue(strings.contains("PX"));
+        assertFalse(strings.contains("indefinite"));
+        assertFalse(strings.contains("\"INDEFINITE\""));
+    }
+
+    /// Uses the internal JavaFX 8 converter name for ordinary durations.
+    @Test
+    void compilesJavaFx8DurationConverterName() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        "Tooltip { -fx-show-delay: 125ms; }",
+                        Syntax.SCSS
+                ),
+                new BssTarget(JavaFXTarget.JAVAFX8)
+        ).output());
+        var strings = java.util.Arrays.asList(document.strings());
+
+        assertTrue(strings.contains(
+                "com.sun.javafx.css.converters.DurationConverter"
+        ));
+        assertFalse(strings.contains("javafx.css.converter.DurationConverter"));
+    }
+
+    /// Preserves a duration property lookup without assigning a duration converter.
+    @Test
+    void preservesDurationLookup() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        "Tooltip { -fx-show-delay: -fx-delay; }",
+                        Syntax.SCSS
+                ),
+                BssTarget.DEFAULT
+        ).output());
+        var strings = java.util.Arrays.asList(document.strings());
+
+        assertTrue(strings.contains("-fx-delay"));
+        assertFalse(strings.contains("javafx.css.converter.DurationConverter"));
+    }
+
+    /// Keeps the indefinite token in property-specific font-family grammar.
+    @Test
+    void keepsIndefiniteFontFamilyAsString() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        "Label { -fx-font-family: indefinite; }",
+                        Syntax.SCSS
+                ),
+                BssTarget.DEFAULT
+        ).output());
+        var strings = java.util.Arrays.asList(document.strings());
+
+        assertTrue(strings.contains("javafx.css.converter.StringConverter"));
+        assertTrue(strings.contains("indefinite"));
+        assertFalse(strings.contains("javafx.css.converter.DurationConverter"));
+    }
+
+    /// Wraps a scalar fill URL as an image pattern without a stylesheet base URL.
+    @Test
+    void compilesFillUrlWithoutStylesheetBase() throws Exception {
+        var sourceUrl = URI.create("https://example.invalid/assets/theme.scss");
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        "Shape { -fx-fill: url(\"fill.png\"); }",
+                        Syntax.SCSS,
+                        sourceUrl
+                ),
+                BssTarget.DEFAULT
+        ).output());
+        var strings = java.util.Arrays.asList(document.strings());
+
+        assertTrue(strings.contains(
+                "javafx.css.converter.PaintConverter$ImagePatternConverter"
+        ));
+        assertTrue(strings.contains("javafx.css.converter.URLConverter"));
+        assertTrue(strings.contains("fill.png"));
+        assertFalse(strings.contains(sourceUrl.toString()));
+    }
+
+    /// Produces the same BSS value for scalar fill URL and image-pattern syntax.
+    @Test
+    void scalarFillUrlMatchesImagePatternFunction() throws Exception {
+        var sourceUrl = URI.create("https://example.invalid/assets/theme.scss");
+        for (var javaFXTarget : java.util.List.of(
+                JavaFXTarget.JAVAFX8,
+                JavaFXTarget.JAVAFX17,
+                JavaFXTarget.JAVAFX27
+        )) {
+            var scalar = new SassCompiler().compile(
+                    SassSource.fromString(
+                            "Shape { -fx-fill: url(\"fill.png\"); }",
+                            Syntax.SCSS,
+                            sourceUrl
+                    ),
+                    new BssTarget(javaFXTarget)
+            ).output();
+            var function = new SassCompiler().compile(
+                    SassSource.fromString(
+                            "Shape { -fx-fill: image-pattern(url(\"fill.png\")); }",
+                            Syntax.SCSS,
+                            sourceUrl
+                    ),
+                    new BssTarget(javaFXTarget)
+            ).output();
+
+            assertArrayEquals(remainingBytes(function), remainingBytes(scalar));
+        }
+    }
+
+    /// Encodes both JavaFX shadow effects, all blur types, and lookup-backed slots.
+    @Test
+    void compilesShadowEffects() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                Pane {
+                                  -fx-effect: dropshadow(gaussian, rgba(18, 52, 86, 0.3), 12px, 25%, -2px, 3em);
+                                }
+                                Text {
+                                  -fx-effect: innershadow(two-pass-box, -fx-shadow-color, -fx-radius, 0.4, 2px, -3px);
+                                }
+                                Region {
+                                  -fx-effect: dropshadow(one-pass-box, derive(#123456, 10%), 1em, 0, 0, 1px);
+                                }
+                                Label {
+                                  -fx-effect: innershadow(three-pass-box, hsba(240, 100%, 50%, 0.5), 8px, 0.2, 1px, 2px);
+                                }
+                                """,
+                        Syntax.SCSS
+                ),
+                BssTarget.DEFAULT
+        ).output());
+        var strings = java.util.Arrays.asList(document.strings());
+
+        assertTrue(strings.contains(
+                "javafx.css.converter.EffectConverter$DropShadowConverter"
+        ));
+        assertTrue(strings.contains(
+                "javafx.css.converter.EffectConverter$InnerShadowConverter"
+        ));
+        assertTrue(strings.contains("javafx.scene.effect.BlurType"));
+        assertTrue(strings.contains("GAUSSIAN"));
+        assertTrue(strings.contains("ONE_PASS_BOX"));
+        assertTrue(strings.contains("TWO_PASS_BOX"));
+        assertTrue(strings.contains("THREE_PASS_BOX"));
+        assertTrue(strings.contains("-fx-shadow-color"));
+        assertTrue(strings.contains("-fx-radius"));
+    }
+
+    /// Uses JavaFX 8's internal converter package for shadow effects.
+    @Test
+    void compilesJavaFx8ShadowConverterNames() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                Pane {
+                                  -fx-effect: dropshadow(gaussian, black, 10px, 0, 1px, 2px);
+                                }
+                                Text {
+                                  -fx-effect: innershadow(three-pass-box, black, 8px, 0.2, 1px, 2px);
+                                }
+                                """,
+                        Syntax.SCSS
+                ),
+                new BssTarget(JavaFXTarget.JAVAFX8)
+        ).output());
+        var strings = java.util.Arrays.asList(document.strings());
+
+        assertTrue(strings.contains(
+                "com.sun.javafx.css.converters.EffectConverter$DropShadowConverter"
+        ));
+        assertTrue(strings.contains(
+                "com.sun.javafx.css.converters.EffectConverter$InnerShadowConverter"
+        ));
+        assertTrue(strings.contains("com.sun.javafx.css.converters.EnumConverter"));
+        assertFalse(strings.contains(
+                "javafx.css.converter.EffectConverter$DropShadowConverter"
+        ));
+    }
+
+    /// Rejects malformed or unsupported JavaFX effect functions.
+    @Test
+    void rejectsInvalidShadowEffects() {
+        var invalidValues = java.util.List.of(
+                "dropshadow(unknown, black, 10px, 0, 1px, 2px)",
+                "dropshadow(gaussian, black, 10px, 0, 1px)",
+                "dropshadow(gaussian, black, 10px, 0, 1px, 2px, 3px)",
+                "dropshadow(gaussian, black, 10px, 100ms, 1px, 2px)",
+                "unknown-effect(gaussian, black, 10px, 0, 1px, 2px)",
+                "\"dropshadow(gaussian, black, 10px, 0, 1px, 2px)\""
         );
+        for (var value : invalidValues) {
+            var failure = assertThrows(
+                    SassCompilationException.class,
+                    () -> new SassCompiler().compile(
+                            SassSource.fromString(
+                                    ".button { -fx-effect: " + value + "; }",
+                                    Syntax.SCSS
+                            ),
+                            BssTarget.DEFAULT
+                    )
+            );
+
+            assertEquals(
+                    "BSS effects require dropshadow() or innershadow() with a blur"
+                            + " type, color, radius, spread or choke, and two offsets.",
+                    failure.getMessage()
+            );
+        }
+    }
+
+    /// Preserves global and property-lookup effect values without a shadow converter.
+    @Test
+    void compilesEffectKeywordsAndLookups() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                Pane { -fx-effect: none; }
+                                Text { -fx-effect: -fx-other-effect; }
+                                """,
+                        Syntax.SCSS
+                ),
+                BssTarget.DEFAULT
+        ).output());
+        var strings = java.util.Arrays.asList(document.strings());
+
+        assertTrue(strings.contains("null"));
+        assertTrue(strings.contains("-fx-other-effect"));
+        assertFalse(strings.contains(
+                "javafx.css.converter.EffectConverter$DropShadowConverter"
+        ));
+        assertFalse(strings.contains(
+                "javafx.css.converter.EffectConverter$InnerShadowConverter"
+        ));
     }
 
     /// Rejects a selector relation that the supported BSS subset cannot encode.
@@ -775,6 +1358,43 @@ final class BssTargetTest {
         );
     }
 
+    /// Rejects every transition declaration that affected JavaFX releases
+    /// cannot deserialize from BSS.
+    @Test
+    void rejectsTransitionsThatJavaFxCannotLoadFromBss() {
+        String @Unmodifiable [] declarations = new String[]{
+                "transition: opacity 250ms ease-in 10ms",
+                "transition-delay: 10ms",
+                "transition-duration: 250ms",
+                "transition-property: opacity",
+                "transition-timing-function: ease-in"
+        };
+        JavaFXTarget @Unmodifiable [] targets = new JavaFXTarget[]{
+                JavaFXTarget.JAVAFX23,
+                JavaFXTarget.JAVAFX27
+        };
+
+        for (var target : targets) {
+            for (var declaration : declarations) {
+                var failure = assertThrows(
+                        SassCompilationException.class,
+                        () -> new SassCompiler().compile(
+                                SassSource.fromString(
+                                        "Pane { " + declaration + "; }",
+                                        Syntax.SCSS
+                                ),
+                                new BssTarget(target)
+                        )
+                );
+
+                assertEquals(
+                        "JavaFX 23 through 27 cannot load transition declarations from BSS.",
+                        failure.getMessage()
+                );
+            }
+        }
+    }
+
     /// Rejects media types, which JavaFX media-condition grammar does not support.
     @Test
     void rejectsMediaTypes() {
@@ -815,7 +1435,7 @@ final class BssTargetTest {
                                 """,
                         Syntax.SCSS
                 ),
-                new BssTarget(JavaFXCompatibility.JAVAFX25)
+                new BssTarget(JavaFXTarget.JAVAFX25)
         ).output());
         var input = document.input();
 
@@ -860,7 +1480,7 @@ final class BssTargetTest {
                                 """,
                         Syntax.SCSS
                 ),
-                new BssTarget(JavaFXCompatibility.JAVAFX26)
+                new BssTarget(JavaFXTarget.JAVAFX26)
         ).output());
         var input = document.input();
 
@@ -887,7 +1507,7 @@ final class BssTargetTest {
                                 """,
                         Syntax.SCSS
                 ),
-                new BssTarget(JavaFXCompatibility.JAVAFX27)
+                new BssTarget(JavaFXTarget.JAVAFX27)
         ).output());
         var input = document.input();
 
@@ -899,6 +1519,110 @@ final class BssTargetTest {
         assertEquals(1, input.readInt());
         assertFeature(input, document.strings(), "-fx-platform", "windows");
         assertFalse(input.readBoolean());
+    }
+
+    /// Resolves and embeds a conditional imported stylesheet in BSS version 9.
+    @Test
+    void compilesJavaFx27ConditionalImport(@TempDir Path directory) throws Exception {
+        var imported = directory.resolve("theme.css");
+        var root = directory.resolve("root.css");
+        Files.writeString(
+                imported,
+                "ImportedPane { -fx-opacity: 0.75; }",
+                StandardCharsets.UTF_8
+        );
+        Files.writeString(
+                root,
+                """
+                        @import "theme.css" (prefers-color-scheme: dark);
+                        RootPane { -fx-opacity: 0.5; }
+                        """,
+                StandardCharsets.UTF_8
+        );
+
+        var result = new SassCompiler().compile(
+                SassSource.fromFile(root),
+                new BssTarget(JavaFXTarget.JAVAFX27)
+        );
+        var document = decodeDocument(result.output());
+        var input = document.input();
+
+        assertEquals(9, document.version());
+        assertEquals(1, input.readInt());
+        assertEquals(1, input.readInt());
+        assertFeature(
+                input,
+                document.strings(),
+                "prefers-color-scheme",
+                "dark"
+        );
+        var importedLength = input.readInt();
+        assertTrue(importedLength > 0);
+        var importedBody = new DataInputStream(
+                new ByteArrayInputStream(input.readNBytes(importedLength))
+        );
+        assertEquals(0, importedBody.readInt());
+        importedBody.readShort(); // origin
+        assertEquals(1, importedBody.readShort());
+        assertEquals(
+                java.util.Set.of(root.toRealPath().toUri(), imported.toRealPath().toUri()),
+                result.loadedUrls()
+        );
+    }
+
+    /// Flattens unconditional imports for BSS versions predating import framing.
+    @Test
+    void flattensImportForJavaFx17(@TempDir Path directory) throws Exception {
+        var imported = directory.resolve("theme.css");
+        var root = directory.resolve("root.css");
+        Files.writeString(
+                imported,
+                "ImportedPane { -fx-opacity: 0.75; }",
+                StandardCharsets.UTF_8
+        );
+        Files.writeString(
+                root,
+                """
+                        @import "theme.css";
+                        RootPane { -fx-opacity: 0.5; }
+                        """,
+                StandardCharsets.UTF_8
+        );
+
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromFile(root),
+                new BssTarget(JavaFXTarget.JAVAFX17)
+        ).output());
+        var input = document.input();
+
+        assertEquals(6, document.version());
+        input.readShort(); // origin
+        assertEquals(2, input.readShort());
+    }
+
+    /// Rejects a recursive retained CSS import with the importing source range.
+    @Test
+    void rejectsRecursiveImport(@TempDir Path directory) throws Exception {
+        var root = directory.resolve("root.css");
+        Files.writeString(
+                root,
+                """
+                        @import "root.css";
+                        RootPane { -fx-opacity: 0.5; }
+                        """,
+                StandardCharsets.UTF_8
+        );
+
+        var failure = assertThrows(
+                SassCompilationException.class,
+                () -> new SassCompiler().compile(
+                        SassSource.fromFile(root),
+                        new BssTarget(JavaFXTarget.JAVAFX27)
+                )
+        );
+
+        assertTrue(failure.getMessage().contains("Recursive JavaFX CSS import"));
+        assertEquals(root.toRealPath().toUri(), failure.primaryDiagnostic().span().url());
     }
 
     /// Reads and verifies one discrete media feature expression.

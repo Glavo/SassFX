@@ -9,23 +9,23 @@ import java.util.Objects;
 ///
 /// This target does not load JavaFX classes. Before serialization, the compiler
 /// rejects CSS structures, media conditions, imports, and declarations that
-/// cannot preserve their intended meaning at the selected [#compatibility()]
+/// cannot preserve their intended meaning at the selected [#javaFXTarget()]
 /// level.
 ///
-/// @param compatibility the JavaFX stylesheet compatibility level
+/// @param javaFXTarget the JavaFX release targeted by the stylesheet
 /// @param style the formatting style applied to the generated stylesheet
 @NotNullByDefault
 public record JavaFXCssTarget(
-        JavaFXCompatibility compatibility,
+        JavaFXTarget javaFXTarget,
         OutputStyle style
 ) implements OutputTarget<String> {
     /// The default expanded target compatible with JavaFX 17.
     public static final JavaFXCssTarget DEFAULT =
-            new JavaFXCssTarget(JavaFXCompatibility.JAVAFX17, OutputStyle.EXPANDED);
+            new JavaFXCssTarget(JavaFXTarget.JAVAFX17, OutputStyle.EXPANDED);
 
     /// Creates a JavaFX CSS output target.
     public JavaFXCssTarget {
-        Objects.requireNonNull(compatibility, "compatibility");
+        Objects.requireNonNull(javaFXTarget, "javaFXTarget");
         Objects.requireNonNull(style, "style");
     }
 }

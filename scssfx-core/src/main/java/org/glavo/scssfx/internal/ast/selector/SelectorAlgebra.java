@@ -327,9 +327,17 @@ public final class SelectorAlgebra {
     /// original and its rewrite when the original complex is a protected
     /// extender key (dart-sass into_pseudo / {@code _extendExistingExtensions}).
     ///
+    /// @param selector          the selector list to extend
+    /// @param extendee          the single-compound targets to match
+    /// @param extender          the selector alternatives to insert
+    /// @param originalKeys      semantic keys of document-original complexes
+    /// @param sourceSpecificity max original-extender specificity per simple key;
+    ///                          mutated when new extender simples are recorded
     /// @param protectedExtenderKeys complex keys of same-module extenders that
     ///                              must not be replaced solely by nested rewrites,
     ///                              or {@code null} when none
+    /// @return the original and extended selector alternatives
+    /// @throws SassValueException if an input uses unsupported selector syntax
     public static SelectorList extend(
             SelectorList selector,
             SelectorList extendee,

@@ -18,8 +18,18 @@ import java.util.Set;
 /// Each constant documents changes represented by SCSSFX's CSS and BSS
 /// capability model. A statement that a release introduces no relevant change
 /// does not imply that every JavaFX CSS implementation detail is unchanged.
+///
+/// This type selects the JavaFX platform release for multiple output backends;
+/// it is not an [OutputTarget] itself. [JavaFXCssTarget] and [BssTarget]
+/// combine this release target with the configuration of a concrete backend.
+///
+/// JavaFX 23 through 27 can parse transition declarations from textual CSS,
+/// but their BSS implementation cannot deserialize the associated duration,
+/// interpolator, and transition-definition converters. [BssTarget] therefore
+/// rejects transition declarations for those releases instead of producing a
+/// binary stylesheet that JavaFX cannot load.
 @NotNullByDefault
-public enum JavaFXCompatibility {
+public enum JavaFXTarget {
     /// Targets JavaFX 8 and BSS version 5.
     ///
     /// This baseline supports `@font-face`, unconditional `@import`, and the
@@ -67,13 +77,13 @@ public enum JavaFXCompatibility {
     JAVAFX16(16, 6),
     /// Targets JavaFX 17 and BSS version 6.
     ///
-    /// This release introduces no new modeled capability and retains the
-    /// legacy `add`, `red`, `green`, and `blue` blend-mode parsing defect.
+    /// This release introduces no new modeled capability. JavaFX 17 cannot set
+    /// the `add`, `red`, `green`, or `blue` blend modes from CSS.
     JAVAFX17(17, 6),
     /// Targets JavaFX 18 and BSS version 6.
     ///
-    /// This release correctly parses the `add`, `red`, `green`, and `blue`
-    /// blend modes.
+    /// This release fixes CSS parsing for the `add`, `red`, `green`, and
+    /// `blue` blend modes.
     JAVAFX18(18, 6),
     /// Targets JavaFX 19 and BSS version 6.
     ///
@@ -97,7 +107,9 @@ public enum JavaFXCompatibility {
     JAVAFX22(22, 6),
     /// Targets JavaFX 23 and BSS version 6.
     ///
-    /// This release adds CSS transition properties.
+    /// This release adds the `transition` shorthand and the
+    /// `transition-property`, `transition-duration`, `transition-delay`, and
+    /// `transition-timing-function` longhands to textual JavaFX CSS.
     JAVAFX23(23, 6),
     /// Targets JavaFX 24 and BSS version 6.
     ///
@@ -106,18 +118,26 @@ public enum JavaFXCompatibility {
     JAVAFX24(24, 6),
     /// Targets JavaFX 25 and BSS version 7.
     ///
-    /// BSS v7 adds user-preference media queries. JavaFX 25 cannot reliably
-    /// apply multiple style rules within one `@media` rule.
+    /// JavaFX 25 adds user-preference media queries, and BSS v7 serializes
+    /// them. Its CSS parser does not accept multiple style rules within one
+    /// `@media` block.
     JAVAFX25(25, 7),
     /// Targets JavaFX 26 and BSS version 8.
     ///
-    /// BSS v8 adds viewport, range, orientation, and display-mode media
-    /// queries and fixes multiple style rules within one `@media` rule.
+    /// JavaFX 26 adds `width`, `height`, and `aspect-ratio` media features,
+    /// including min/max and range syntax, as well as `orientation` and
+    /// `display-mode`; BSS v8 serializes these queries. This release also
+    /// accepts multiple style rules within one `@media` block, adds the
+    /// `linear()` transition timing function, and permits `cubic-bezier()` y
+    /// control points outside `[0, 1]` while continuing to constrain x control
+    /// points.
     JAVAFX26(26, 8),
     /// Targets JavaFX 27 and BSS version 9.
     ///
-    /// BSS v9 adds conditional stylesheet imports. This target also adds the
-    /// `-fx-supports-conditional-feature` and `-fx-platform` media features.
+    /// JavaFX 27 adds media conditions to stylesheet `@import` rules. BSS v9
+    /// preserves those conditions and the imported stylesheet structure. This
+    /// release also adds the `-fx-supports-conditional-feature` and
+    /// `-fx-platform` media features.
     JAVAFX27(27, 9);
 
     /// Contains the JavaFX major release number.
@@ -129,11 +149,11 @@ public enum JavaFXCompatibility {
     /// Contains the immutable feature set supported by this target.
     private final @Unmodifiable Set<JavaFXFeature> features;
 
-    /// Creates a compatibility level.
+    /// Creates a JavaFX release target.
     ///
     /// @param version    the JavaFX major release number
     /// @param bssVersion the associated binary stylesheet format version
-    JavaFXCompatibility(int version, int bssVersion) {
+    JavaFXTarget(int version, int bssVersion) {
         this.version = version;
         this.bssVersion = bssVersion;
         var supported = EnumSet.noneOf(JavaFXFeature.class);
@@ -181,15 +201,15 @@ public enum JavaFXCompatibility {
     /// @return the corresponding target
     /// @throws IllegalArgumentException if the version is outside the supported
     /// range from `8` through `27`
-    public static JavaFXCompatibility forVersion(int version) {
+    public static JavaFXTarget forVersion(int version) {
         if (version < JAVAFX8.version || version > JAVAFX27.version) {
             throw new IllegalArgumentException(
                     "Unsupported JavaFX target " + version + "; expected 8 through 27"
             );
         }
-        for (var compatibility : values()) {
-            if (compatibility.version == version) {
-                return compatibility;
+        for (var target : values()) {
+            if (target.version == version) {
+                return target;
             }
         }
         throw new AssertionError("Missing JavaFX target " + version);

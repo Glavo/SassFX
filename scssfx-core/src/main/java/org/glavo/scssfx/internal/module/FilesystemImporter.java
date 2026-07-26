@@ -70,6 +70,81 @@ public final class FilesystemImporter {
         return canonicalizeAndLoad(url, baseUrl, true);
     }
 
+    /// Canonicalizes and loads an exact plain-CSS resource.
+    ///
+    /// Unlike Sass module resolution, this method does not infer extensions,
+    /// partial names, import-only names, or directory indexes. Relative
+    /// resources are searched beside a containing file and then in the
+    /// configured load paths.
+    ///
+    /// @param resource the decoded CSS import resource
+    /// @param baseUrl  the canonical URL of the containing stylesheet, or {@code null}
+    /// @return the loaded plain-CSS stylesheet, or {@code null} when no exact file exists
+    /// @throws IOException if an existing candidate cannot be canonicalized or read
+    public @Nullable ImportResult canonicalizeAndLoadCss(
+            String resource,
+            @Nullable URI baseUrl
+    ) throws IOException {
+        Objects.requireNonNull(resource, "resource");
+        @Nullable Path absolute = absoluteFileResource(resource);
+        if (absolute != null) {
+            return Files.isRegularFile(absolute) ? loadCss(absolute) : null;
+        }
+        if (hasNonFileScheme(resource)) {
+            return null;
+        }
+        if (baseUrl != null && "file".equalsIgnoreCase(baseUrl.getScheme())) {
+            try {
+                var resolvedUrl = baseUrl.resolve(resource);
+                if ("file".equalsIgnoreCase(resolvedUrl.getScheme())
+                        && resolvedUrl.getQuery() == null
+                        && resolvedUrl.getFragment() == null) {
+                    var resolvedPath = Path.of(resolvedUrl).normalize();
+                    if (Files.isRegularFile(resolvedPath)) {
+                        return loadCss(resolvedPath);
+                    }
+                }
+            } catch (IllegalArgumentException ignored) {
+                // Fall back to a platform path for resources not expressible as URIs.
+            }
+            var basePath = Path.of(baseUrl).getParent();
+            if (basePath != null) {
+                var candidate = basePath.resolve(resource).normalize();
+                if (Files.isRegularFile(candidate)) {
+                    return loadCss(candidate);
+                }
+            }
+        }
+        for (var loadPath : loadPaths) {
+            var candidate = loadPath.resolve(resource).normalize();
+            if (Files.isRegularFile(candidate)) {
+                return loadCss(candidate);
+            }
+        }
+        return null;
+    }
+
+    /// Returns an absolute path represented by a file URI or absolute path.
+    ///
+    /// @param resource the decoded CSS resource
+    /// @return the absolute path, or {@code null} for a relative resource
+    private static @Nullable Path absoluteFileResource(String resource) {
+        try {
+            var uri = URI.create(resource);
+            if (uri.isAbsolute()) {
+                return "file".equalsIgnoreCase(uri.getScheme()) ? Path.of(uri).normalize() : null;
+            }
+        } catch (IllegalArgumentException ignored) {
+            // A resource that is not a URI may still be a valid platform path.
+        }
+        try {
+            var path = Path.of(resource);
+            return path.isAbsolute() ? path.normalize() : null;
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
     /// Resolves a URL using module or legacy-import candidate precedence.
     ///
     /// @param url       the unresolved stylesheet URL
@@ -201,6 +276,21 @@ public final class FilesystemImporter {
         return new ImportResult(
                 new SourceFile(content, canonical),
                 syntax,
+                canonical
+        );
+    }
+
+    /// Loads an exact file as plain CSS.
+    ///
+    /// @param path the existing CSS resource path
+    /// @return the loaded plain-CSS source
+    /// @throws IOException if the real path or contents cannot be read
+    private static ImportResult loadCss(Path path) throws IOException {
+        var realPath = path.toRealPath();
+        var canonical = realPath.toUri();
+        return new ImportResult(
+                new SourceFile(Files.readString(realPath, StandardCharsets.UTF_8), canonical),
+                Syntax.CSS,
                 canonical
         );
     }

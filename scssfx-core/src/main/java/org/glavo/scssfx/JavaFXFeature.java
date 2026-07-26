@@ -21,14 +21,21 @@ public enum JavaFXFeature {
     /// Supports CSS transition properties.
     CSS_TRANSITIONS(23),
 
-    /// Supports user-preference media queries.
+    /// Supports `prefers-color-scheme`, `prefers-reduced-motion`,
+    /// `prefers-reduced-transparency`, `prefers-reduced-data`, and
+    /// `-fx-prefers-persistent-scrollbars` media queries.
     USER_PREFERENCE_MEDIA_QUERIES(25),
 
     /// Correctly applies multiple style rules within one `@media` rule.
     MULTIPLE_RULES_PER_MEDIA_QUERY(26),
 
-    /// Supports viewport and display-mode media queries.
+    /// Supports `width`, `height`, `aspect-ratio`, `orientation`, and
+    /// `display-mode` media queries, including min/max and range syntax.
     VIEWPORT_MEDIA_QUERIES(26),
+
+    /// Supports the `linear()` transition timing function and CSS-compliant
+    /// out-of-range y control points in `cubic-bezier()`.
+    ADVANCED_TRANSITION_EASING(26),
 
     /// Supports the `-fx-supports-conditional-feature` media feature.
     CONDITIONAL_MEDIA_FEATURE(27),

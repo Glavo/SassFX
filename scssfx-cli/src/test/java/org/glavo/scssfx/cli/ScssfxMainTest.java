@@ -2,7 +2,7 @@
 package org.glavo.scssfx.cli;
 
 import org.glavo.scssfx.BssTarget;
-import org.glavo.scssfx.JavaFXCompatibility;
+import org.glavo.scssfx.JavaFXTarget;
 import org.glavo.scssfx.SassCompiler;
 import org.glavo.scssfx.SassFileSource;
 import org.glavo.scssfx.Syntax;
@@ -135,7 +135,7 @@ final class ScssfxMainTest {
                 commandLine.execute(
                         "--target",
                         "javafx-css",
-                        "--javafx-compatibility",
+                        "--javafx-target",
                         "27",
                         "--style",
                         "compressed",
@@ -163,7 +163,7 @@ final class ScssfxMainTest {
                 commandLine.execute(
                         "--target",
                         "bss",
-                        "--javafx-compatibility",
+                        "--javafx-target",
                         "27",
                         "-o",
                         destination.toString(),
@@ -173,7 +173,7 @@ final class ScssfxMainTest {
 
         var expected = remainingBytes(new SassCompiler().compile(
                 new SassFileSource(input, Syntax.SCSS),
-                new BssTarget(JavaFXCompatibility.JAVAFX27)
+                new BssTarget(JavaFXTarget.JAVAFX27)
         ).output());
         var actual = Files.readAllBytes(destination);
         assertArrayEquals(expected, actual);
@@ -247,9 +247,9 @@ final class ScssfxMainTest {
         var cssCommand = commandLine(new StringWriter(), cssError);
         assertEquals(
                 2,
-                cssCommand.execute("--javafx-compatibility", "27", input.toString())
+                cssCommand.execute("--javafx-target", "27", input.toString())
         );
-        assertTrue(cssError.toString().contains("--javafx-compatibility is supported only"));
+        assertTrue(cssError.toString().contains("--javafx-target is supported only"));
     }
 
     /// Reports unsupported output option values as usage errors.
@@ -278,7 +278,7 @@ final class ScssfxMainTest {
                     commandLine.execute(
                             "--target",
                             "javafx-css",
-                            "--javafx-compatibility",
+                            "--javafx-target",
                             version,
                             input.toString()
                     )
@@ -300,7 +300,7 @@ final class ScssfxMainTest {
                     commandLine.execute(
                             "--target",
                             "javafx-css",
-                            "--javafx-compatibility",
+                            "--javafx-target",
                             version,
                             input.toString()
                     )
@@ -309,6 +309,26 @@ final class ScssfxMainTest {
                     "expected an integer from 8 through 27"
             ));
         }
+    }
+
+    /// Accepts the former JavaFX compatibility option as an alias.
+    @Test
+    void acceptsJavaFxCompatibilityAlias(@TempDir Path directory) throws Exception {
+        var input = directory.resolve("style.scss");
+        Files.writeString(input, "Pane { -fx-opacity: 1; }");
+
+        var commandLine = commandLine(new StringWriter(), new StringWriter());
+
+        assertEquals(
+                0,
+                commandLine.execute(
+                        "--target",
+                        "javafx-css",
+                        "--javafx-compatibility",
+                        "27",
+                        input.toString()
+                )
+        );
     }
 
     /// Reports structured compilation failures on stderr.

@@ -7,8 +7,13 @@ validated against fixed upstream snapshots.
 | --- | --- | --- |
 | Dart Sass | `1.101.3` (`e8c12331ea5304a1d641d6a6bd4cb526cb3800b9`) | Sass language and diagnostic behavior |
 | sass-spec | `24e61bf508f5b48968546fbf1a4c16af61048709` | Sass language conformance suite |
-| JavaFX | `17.0.20` | JavaFX CSS and BSS version 6 oracle |
-| JavaFX | `27-ea+25` | JavaFX CSS and BSS version 9 oracle |
+| JavaFX | `8u352` | JavaFX CSS and BSS version 5 oracle |
+| JavaFX | `17.0.20` | JavaFX CSS and BSS version 6 baseline |
+| JavaFX | `18.0.2` | Extended blend-mode boundary |
+| JavaFX | `23.0.2` | Transition boundary |
+| JavaFX | `25.0.4` | Preference media queries and BSS version 7 |
+| JavaFX | `26.0.2` | Viewport media, advanced easing, and BSS version 8 |
+| JavaFX | `27-ea+25` | Conditional imports and BSS version 9 |
 
 Upstream source checkouts are development-only references. The build,
 tests, and published artifacts must remain self-contained and must not depend
@@ -21,17 +26,15 @@ compatibility oracles.
 The isolated JavaFX CSS oracles are run with:
 
 ```shell
-./gradlew :scssfx-core:verifyJavaFxCssOracles
+./gradlew :scssfx-core:verifyAllJavaFxCssOracles \
+  -PjavaFx8OracleJavaHome=<javafx-8-jdk>
 ```
 
-The task resolves the pinned platform-specific OpenJFX artifacts, runs the
-JavaFX 17 oracle on a Java 17 toolchain, and runs the JavaFX 27 oracle on a
-Java 25 toolchain. The `javaFxOracle` source set and its dependencies are not
-included in product runtime or publication variants.
+The modular tasks resolve pinned platform-specific OpenJFX artifacts and use
+JDK launchers compatible with each release's class-file version. The JavaFX 8
+oracle uses a separate Java 8 process and a Java 17 input generator. Oracle
+source sets and dependencies are not included in product runtime or
+publication variants.
 
-For offline development, `-PjavaFxOracleDirectory=<directory>` selects a
-directory containing `17/javafx-base.jar`, `17/javafx-graphics.jar`,
-`27/javafx-base.jar`, and `27/javafx-graphics.jar`. If the selected Java 25
-toolchain bundles an older JavaFX module, use
-`-PjavaFx27OracleJavaHome=<java-home>` to select a Java 25 installation without
-bundled JavaFX modules.
+See [ORACLES.md](ORACLES.md) for Java-home overrides, offline artifact layout,
+and the exact verification model.

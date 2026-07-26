@@ -36,6 +36,13 @@ tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-processing"))
 }
 
+tasks.withType<Javadoc>().configureEach {
+    javadocTool = javaToolchains.javadocToolFor {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+    options.encoding = "UTF-8"
+}
+
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     val taskTemporaryDirectory = layout.buildDirectory.dir("tmp/$name")

@@ -186,7 +186,7 @@ final class SassCompilerTest {
         var result = compiler.compile(
                 SassSource.fromString("a { -fx-text-fill: #f00; }", Syntax.SCSS),
                 new JavaFXCssTarget(
-                        JavaFXCompatibility.JAVAFX27,
+                        JavaFXTarget.JAVAFX27,
                         OutputStyle.COMPRESSED
                 )
         );
@@ -204,11 +204,11 @@ final class SassCompilerTest {
                 Syntax.SCSS
         );
         var javaFx17 = new JavaFXCssTarget(
-                JavaFXCompatibility.JAVAFX17,
+                JavaFXTarget.JAVAFX17,
                 OutputStyle.COMPRESSED
         );
         var javaFx27 = new JavaFXCssTarget(
-                JavaFXCompatibility.JAVAFX27,
+                JavaFXTarget.JAVAFX27,
                 OutputStyle.COMPRESSED
         );
 
@@ -677,7 +677,7 @@ final class SassCompilerTest {
         var javaFx = new SassCompiler().compile(
                 SassSource.fromString(source, Syntax.SCSS),
                 new JavaFXCssTarget(
-                        JavaFXCompatibility.JAVAFX27,
+                        JavaFXTarget.JAVAFX27,
                         OutputStyle.COMPRESSED
                 )
         );
@@ -692,12 +692,58 @@ final class SassCompilerTest {
                 () -> new SassCompiler().compile(
                         SassSource.fromString(source, Syntax.SCSS),
                         new JavaFXCssTarget(
-                                JavaFXCompatibility.JAVAFX17,
+                                JavaFXTarget.JAVAFX17,
                                 OutputStyle.COMPRESSED
                         )
                 )
         );
         assertTrue(failure.getMessage().contains("JavaFX 17"), failure.getMessage());
+    }
+
+    /// Validates transition functions after SassScript evaluation and serialization.
+    @Test
+    void compilesEvaluatedJavaFxTransitions() throws Exception {
+        var source = """
+                $duration: 120ms;
+                $curve: cubic-bezier(0.1, -2, 0.9, 3);
+                Pane {
+                  transition: -fx-opacity $duration $curve,
+                              -fx-rotate ($duration * 2) steps(3, jump-both) 10ms !important;
+                  transition-timing-function: linear(0, .1 25%, .75 50%, 1);
+                }
+                """;
+
+        var result = new SassCompiler().compile(
+                SassSource.fromString(source, Syntax.SCSS),
+                new JavaFXCssTarget(
+                        JavaFXTarget.JAVAFX27,
+                        OutputStyle.COMPRESSED
+                )
+        );
+        assertTrue(
+                result.output().contains(
+                        "cubic-bezier(0.1, -2, 0.9, 3)"
+                ),
+                result.output()
+        );
+        assertTrue(
+                result.output().contains(
+                        "linear(0, 0.1 25%, 0.75 50%, 1)"
+                ),
+                result.output()
+        );
+
+        var failure = assertThrows(
+                SassCompilationException.class,
+                () -> new SassCompiler().compile(
+                        SassSource.fromString(source, Syntax.SCSS),
+                        new JavaFXCssTarget(
+                                JavaFXTarget.JAVAFX25,
+                                OutputStyle.COMPRESSED
+                        )
+                )
+        );
+        assertTrue(failure.getMessage().contains("cubic-bezier"), failure.getMessage());
     }
 
     /// Compiles supports rules for CSS and rejects them for JavaFX CSS.
@@ -738,7 +784,7 @@ final class SassCompilerTest {
                 () -> new SassCompiler().compile(
                         SassSource.fromString(source, Syntax.SCSS),
                         new JavaFXCssTarget(
-                                JavaFXCompatibility.JAVAFX27,
+                                JavaFXTarget.JAVAFX27,
                                 OutputStyle.COMPRESSED
                         )
                 )

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.css;
 
-import org.glavo.scssfx.JavaFXCompatibility;
+import org.glavo.scssfx.JavaFXTarget;
 import org.glavo.scssfx.SourceLocation;
 import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.ast.selector.SelectorList;
@@ -32,13 +32,13 @@ final class JavaFXCssValidatorTest {
                 CssSerializeException.class,
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVAFX24
+                        JavaFXTarget.JAVAFX24
                 )
         );
         assertDoesNotThrow(
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVAFX25
+                        JavaFXTarget.JAVAFX25
                 )
         );
     }
@@ -58,13 +58,13 @@ final class JavaFXCssValidatorTest {
                 CssSerializeException.class,
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVAFX25
+                        JavaFXTarget.JAVAFX25
                 )
         );
         assertDoesNotThrow(
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVAFX26
+                        JavaFXTarget.JAVAFX26
                 )
         );
     }
@@ -82,7 +82,7 @@ final class JavaFXCssValidatorTest {
                 CssSerializeException.class,
                 () -> JavaFXCssValidator.validate(
                         stylesheet(media),
-                        JavaFXCompatibility.JAVAFX27
+                        JavaFXTarget.JAVAFX27
                 )
         );
     }
@@ -102,13 +102,13 @@ final class JavaFXCssValidatorTest {
         assertDoesNotThrow(
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVAFX17
+                        JavaFXTarget.JAVAFX17
                 )
         );
         assertDoesNotThrow(
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVAFX27
+                        JavaFXTarget.JAVAFX27
                 )
         );
     }
@@ -127,13 +127,13 @@ final class JavaFXCssValidatorTest {
                 CssSerializeException.class,
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVAFX26
+                        JavaFXTarget.JAVAFX26
                 )
         );
         assertDoesNotThrow(
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVAFX27
+                        JavaFXTarget.JAVAFX27
                 )
         );
     }
@@ -150,7 +150,7 @@ final class JavaFXCssValidatorTest {
                 CssSerializeException.class,
                 () -> JavaFXCssValidator.validate(
                         stylesheet(new CssImport(argument, span(argument))),
-                        JavaFXCompatibility.JAVAFX27
+                        JavaFXTarget.JAVAFX27
                 )
         );
     }
@@ -168,7 +168,7 @@ final class JavaFXCssValidatorTest {
             node = new CssUnknownAtRule("container", "main", true, span("@container"));
         }
 
-        for (var compatibility : JavaFXCompatibility.values()) {
+        for (var compatibility : JavaFXTarget.values()) {
             assertThrows(
                     CssSerializeException.class,
                     () -> JavaFXCssValidator.validate(
@@ -185,7 +185,7 @@ final class JavaFXCssValidatorTest {
         var outer = styleRule(".outer");
         outer.addChild(styleRuleWithDeclaration(".inner", "-fx-opacity", "1"));
 
-        for (var compatibility : JavaFXCompatibility.values()) {
+        for (var compatibility : JavaFXTarget.values()) {
             assertThrows(
                     CssSerializeException.class,
                     () -> JavaFXCssValidator.validate(
@@ -206,21 +206,345 @@ final class JavaFXCssValidatorTest {
             "transition-timing-function"
     })
     void validatesTransitionPropertiesByVersion(String property) {
+        var value = switch (property) {
+            case "transition" -> "-fx-opacity 100ms ease";
+            case "transition-delay" -> "0ms";
+            case "transition-duration" -> "100ms";
+            case "transition-property" -> "-fx-opacity";
+            case "transition-timing-function" -> "ease";
+            default -> throw new AssertionError("unexpected transition property");
+        };
         var stylesheet = stylesheet(
-                styleRuleWithDeclaration("Pane", property, "initial")
+                styleRuleWithDeclaration("Pane", property, value)
         );
 
         assertThrows(
                 CssSerializeException.class,
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVAFX22
+                        JavaFXTarget.JAVAFX22
                 )
         );
         assertDoesNotThrow(
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVAFX23
+                        JavaFXTarget.JAVAFX23
+                )
+        );
+    }
+
+    /// Accepts every supported transition longhand value shape.
+    @Test
+    void acceptsTransitionLonghands() {
+        assertTransitionAcceptedAll("transition-property", "all");
+        assertTransitionAcceptedAll(
+                "transition-property",
+                "-fx-opacity, \"custom-name\", Foo"
+        );
+        assertTransitionAcceptedAll("transition-duration", "0ms");
+        assertTransitionAcceptedAll(
+                "transition-duration",
+                "250ms, 1.5s, indefinite, -fx-duration, initial"
+        );
+        assertTransitionAcceptedAll(
+                "transition-delay",
+                "-250ms, 0s, 1s, -fx-delay, inherit"
+        );
+        assertTransitionAcceptedAll(
+                "transition-timing-function",
+                "linear, ease, ease-in, ease-out, ease-in-out, step-start,"
+                        + " step-end, -fx-ease-in, -fx-ease-out, -fx-ease-both"
+        );
+    }
+
+    /// Rejects malformed longhand layers rather than silently dropping tokens.
+    @Test
+    void rejectsMalformedTransitionLonghands() {
+        assertTransitionRejected("transition-property", "10", JavaFXTarget.JAVAFX27);
+        assertTransitionRejected(
+                "transition-property",
+                "foo,,bar",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected("transition-duration", "0", JavaFXTarget.JAVAFX27);
+        assertTransitionRejected(
+                "transition-duration",
+                "-1ms",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-duration",
+                "1px",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-delay",
+                "\"1s\"",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-timing-function",
+                "unknown",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-timing-function",
+                "ease ease-in",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-timing-function",
+                "ease,",
+                JavaFXTarget.JAVAFX27
+        );
+    }
+
+    /// Accepts shorthand components in every ordering interpreted by JavaFX.
+    @Test
+    void acceptsTransitionShorthand() {
+        assertTransitionAcceptedAll("transition", "-fx-opacity 100ms linear");
+        assertTransitionAcceptedAll(
+                "transition",
+                "foo 0.3s 0.4s cubic-bezier(0.1, 0.2, 0.3, 0.4)"
+        );
+        assertTransitionAcceptedAll(
+                "transition",
+                "0.3s foo cubic-bezier(0.1, 0.2, 0.3, 0.4) 0.4s"
+        );
+        assertTransitionAcceptedAll(
+                "transition",
+                "-fx-opacity 100ms, -fx-rotate 200ms ease-out,"
+                        + " step-end -fx-scale-x 300ms -25ms"
+        );
+        assertTransitionAcceptedAll("transition", "100ms ease");
+        assertTransitionAcceptedAll("transition", "\"linear()\" 100ms");
+    }
+
+    /// Rejects ambiguous, duplicated, empty, or surplus shorthand components.
+    @Test
+    void rejectsMalformedTransitionShorthand() {
+        assertTransitionRejected("transition", "foo bar", JavaFXTarget.JAVAFX27);
+        assertTransitionRejected("transition", "ease linear", JavaFXTarget.JAVAFX27);
+        assertTransitionRejected("transition", "foo -1ms", JavaFXTarget.JAVAFX27);
+        assertTransitionRejected(
+                "transition",
+                "foo 100ms ease ease-in",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition",
+                "foo 100ms 10ms 20ms",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition",
+                "foo 100ms ease 10ms ignored",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected("transition", "foo 100ms,", JavaFXTarget.JAVAFX27);
+        assertTransitionRejected("transition", "", JavaFXTarget.JAVAFX27);
+    }
+
+    /// Applies the JavaFX 23–25 and 26+ cubic Bézier coordinate rules.
+    @Test
+    void validatesCubicBezierControlPointsByVersion() {
+        for (var version = 23; version <= 27; version++) {
+            var compatibility = JavaFXTarget.forVersion(version);
+            assertTransitionAccepted(
+                    "transition-timing-function",
+                    "cubic-bezier(0.1, 0.2, 0.9, 0.8)",
+                    compatibility
+            );
+            assertTransitionRejected(
+                    "transition-timing-function",
+                    "cubic-bezier(-0.1, 0, 0.9, 1)",
+                    compatibility
+            );
+            assertTransitionRejected(
+                    "transition-timing-function",
+                    "cubic-bezier(0.1, 0, 1.1, 1)",
+                    compatibility
+            );
+            if (version < 26) {
+                assertTransitionRejected(
+                        "transition-timing-function",
+                        "cubic-bezier(0.1, -2, 0.9, 3)",
+                        compatibility
+                );
+            } else {
+                assertTransitionAccepted(
+                        "transition-timing-function",
+                        "cubic-bezier(0.1, -2, 0.9, 3)",
+                        compatibility
+                );
+            }
+        }
+
+        assertTransitionRejected(
+                "transition-timing-function",
+                "cubic-bezier(0, 0, 1)",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-timing-function",
+                "cubic-bezier(0, 0px, 1, 1)",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-timing-function",
+                "CUBIC-BEZIER(0, 0, 1, 1)",
+                JavaFXTarget.JAVAFX27
+        );
+    }
+
+    /// Validates step positions and constraints required during conversion.
+    @Test
+    void validatesStepsTimingFunctions() {
+        assertTransitionAcceptedAll("transition-timing-function", "steps(3)");
+        for (var position : java.util.List.of(
+                "jump-start",
+                "jump-end",
+                "jump-none",
+                "jump-both",
+                "start",
+                "end"
+        )) {
+            assertTransitionAcceptedAll(
+                    "transition-timing-function",
+                    "steps(3, " + position + ")"
+            );
+        }
+
+        assertTransitionRejected(
+                "transition-timing-function",
+                "steps(0)",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-timing-function",
+                "steps(1, jump-none)",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-timing-function",
+                "steps(2.5)",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-timing-function",
+                "steps(2, END)",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-timing-function",
+                "steps(2, end, ignored)",
+                JavaFXTarget.JAVAFX27
+        );
+    }
+
+    /// Applies the JavaFX 26 piecewise-linear easing grammar.
+    @Test
+    void validatesPiecewiseLinearTimingFunctions() {
+        for (var value : java.util.List.of(
+                "linear(0, 0.25, 1)",
+                "linear(0, 0.25 75%, 1)",
+                "linear(0, 0.25 25% 75%, 1)",
+                "linear(0, 0.25 25%, 0.25 75%, 1)",
+                "linear(0, .1 25%, .75 50%, 1)"
+        )) {
+            assertTransitionRejected(
+                    "transition-timing-function",
+                    value,
+                    JavaFXTarget.JAVAFX25
+            );
+            assertTransitionAccepted(
+                    "transition-timing-function",
+                    value,
+                    JavaFXTarget.JAVAFX26
+            );
+        }
+
+        assertTransitionRejected(
+                "transition-timing-function",
+                "linear()",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-timing-function",
+                "linear(0, 0.25 0.5, 1)",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-timing-function",
+                "LINEAR(0, 1)",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-timing-function",
+                "linear (0, 1)",
+                JavaFXTarget.JAVAFX27
+        );
+    }
+
+    /// Preserves JavaFX's case-insensitive leading global keyword short circuit.
+    @Test
+    void validatesTransitionGlobalKeywords() {
+        for (var property : java.util.List.of(
+                "transition",
+                "transition-delay",
+                "transition-duration",
+                "transition-property",
+                "transition-timing-function"
+        )) {
+            for (var value : java.util.List.of("inherit", "INHERIT", "NoNe", "NULL")) {
+                assertTransitionAcceptedAll(property, value);
+            }
+        }
+
+        assertTransitionAcceptedAll("transition", "NoNe, ignored");
+        assertTransitionAcceptedAll("transition-duration", "INHERIT, ignored");
+        assertTransitionAcceptedAll("transition-duration", "100MS");
+        assertTransitionRejected(
+                "transition-timing-function",
+                "EASE",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-timing-function",
+                "\"ease\"",
+                JavaFXTarget.JAVAFX27
+        );
+    }
+
+    /// Rejects `linear()` timing functions through JavaFX 25 and accepts them
+    /// beginning with JavaFX 26.
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "transition",
+            "transition-timing-function"
+    })
+    void validatesLinearTransitionEasingByVersion(String property) {
+        var stylesheet = stylesheet(
+                styleRuleWithDeclaration(
+                        "Pane",
+                        property,
+                        property.equals("transition")
+                                ? "opacity 100ms linear(0, 1)"
+                                : "linear(0, 1)"
+                )
+        );
+
+        assertThrows(
+                CssSerializeException.class,
+                () -> JavaFXCssValidator.validate(
+                        stylesheet,
+                        JavaFXTarget.JAVAFX25
+                )
+        );
+        assertDoesNotThrow(
+                () -> JavaFXCssValidator.validate(
+                        stylesheet,
+                        JavaFXTarget.JAVAFX26
                 )
         );
     }
@@ -244,13 +568,13 @@ final class JavaFXCssValidatorTest {
                 CssSerializeException.class,
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVAFX17
+                        JavaFXTarget.JAVAFX17
                 )
         );
         assertDoesNotThrow(
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVAFX18
+                        JavaFXTarget.JAVAFX18
                 )
         );
     }
@@ -267,7 +591,7 @@ final class JavaFXCssValidatorTest {
                                         "multiply"
                                 )
                         ),
-                        JavaFXCompatibility.JAVAFX17
+                        JavaFXTarget.JAVAFX17
                 )
         );
     }
@@ -283,7 +607,7 @@ final class JavaFXCssValidatorTest {
             "VBox > .button .label"
     })
     void acceptsJavaFxSelectors(String selector) {
-        for (var compatibility : JavaFXCompatibility.values()) {
+        for (var compatibility : JavaFXTarget.values()) {
             assertDoesNotThrow(
                     () -> JavaFXCssValidator.validate(
                             stylesheet(
@@ -312,7 +636,7 @@ final class JavaFXCssValidatorTest {
             "svg|Pane"
     })
     void rejectsUnsupportedJavaFxSelectors(String selector) {
-        for (var compatibility : JavaFXCompatibility.values()) {
+        for (var compatibility : JavaFXTarget.values()) {
             assertThrows(
                     CssSerializeException.class,
                     () -> JavaFXCssValidator.validate(
@@ -327,6 +651,59 @@ final class JavaFXCssValidatorTest {
                     )
             );
         }
+    }
+
+    /// Requires a transition value to be accepted by every supporting release.
+    ///
+    /// @param property the transition property name
+    /// @param value    the declaration value
+    private static void assertTransitionAcceptedAll(String property, String value) {
+        for (var version = 23; version <= 27; version++) {
+            assertTransitionAccepted(
+                    property,
+                    value,
+                    JavaFXTarget.forVersion(version)
+            );
+        }
+    }
+
+    /// Requires a transition value to be accepted by one release.
+    ///
+    /// @param property      the transition property name
+    /// @param value         the declaration value
+    /// @param compatibility the selected JavaFX release
+    private static void assertTransitionAccepted(
+            String property,
+            String value,
+            JavaFXTarget compatibility
+    ) {
+        assertDoesNotThrow(
+                () -> JavaFXCssValidator.validate(
+                        stylesheet(styleRuleWithDeclaration("Pane", property, value)),
+                        compatibility
+                ),
+                property + ": " + value + " for JavaFX " + compatibility.version()
+        );
+    }
+
+    /// Requires a transition value to be rejected by one release.
+    ///
+    /// @param property      the transition property name
+    /// @param value         the declaration value
+    /// @param compatibility the selected JavaFX release
+    private static void assertTransitionRejected(
+            String property,
+            String value,
+            JavaFXTarget compatibility
+    ) {
+        assertThrows(
+                CssSerializeException.class,
+                () -> JavaFXCssValidator.validate(
+                        stylesheet(styleRuleWithDeclaration("Pane", property, value)),
+                        compatibility
+                ),
+                property + ": " + value + " for JavaFX " + compatibility.version()
+        );
     }
 
     /// Creates a stylesheet containing the supplied nodes in order.

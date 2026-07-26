@@ -3,7 +3,7 @@ package org.glavo.scssfx.internal.module;
 
 import org.glavo.scssfx.BssTarget;
 import org.glavo.scssfx.CssTarget;
-import org.glavo.scssfx.JavaFXCompatibility;
+import org.glavo.scssfx.JavaFXTarget;
 import org.glavo.scssfx.JavaFXCssTarget;
 import org.glavo.scssfx.OutputStyle;
 import org.glavo.scssfx.SassCompilationException;
@@ -256,7 +256,7 @@ final class ModuleVariableAssignmentTest {
                 compiler.compile(
                         SassSource.fromFile(entry),
                         new JavaFXCssTarget(
-                                JavaFXCompatibility.JAVAFX17,
+                                JavaFXTarget.JAVAFX17,
                                 OutputStyle.COMPRESSED
                         )
                 ).output()

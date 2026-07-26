@@ -20,9 +20,10 @@ import java.util.regex.Pattern;
 /// Parses the JavaFX paint subset retained as Sass values and CSS function text.
 ///
 /// The evaluator preserves unknown CSS functions as unquoted [SassString]
-/// values. This parser reconstructs JavaFX solid colors, property lookups,
-/// gradients, and image patterns needed by background and border paint
-/// declarations without loading JavaFX classes at compilation time.
+/// values. This parser reconstructs JavaFX solid, derived, and ladder colors,
+/// property lookups, gradients, and image patterns needed by layered and scalar
+/// paint declarations, including `region(...)` selector references, without
+/// loading JavaFX classes at compilation time.
 @NotNullByDefault
 final class JavaFxPaintParser {
     /// Matches one finite decimal CSS number followed by an optional unit.
@@ -38,6 +39,9 @@ final class JavaFxPaintParser {
 
     /// Contains JavaFX's reflecting gradient cycle-method spelling.
     private static final String REFLECT = "REFLECT";
+
+    /// Prefixes the selector reference stored by JavaFX's `region(...)` parser.
+    private static final String REGION_REFERENCE_PREFIX = "SPECIAL-REGION-URL:";
 
     /// Contains the zero-percent gradient coordinate.
     private static final SassNumber ZERO_PERCENT = SassNumber.of(0.0, "%");
@@ -67,6 +71,38 @@ final class JavaFxPaintParser {
         return parseTextPaint(string.text(), span);
     }
 
+    /// Returns whether a value is one of JavaFX's paint function forms.
+    ///
+    /// Solid Sass colors and property lookup identifiers do not need this
+    /// predicate because the generic declaration encoder already preserves
+    /// their BSS representation.
+    ///
+    /// @param value the evaluated Sass value
+    /// @return whether the value begins with a supported unquoted paint function
+    static boolean isPaintFunction(SassValue value) {
+        if (!(value instanceof SassString string) || string.hasQuotes()) {
+            return false;
+        }
+        var text = string.text().stripLeading();
+        var parenthesis = text.indexOf('(');
+        if (parenthesis <= 0) {
+            return false;
+        }
+        var functionName = text.substring(0, parenthesis).trim().toLowerCase(Locale.ROOT);
+        if (functionName.startsWith("region")) {
+            return true;
+        }
+        return switch (functionName) {
+            case "linear-gradient",
+                 "radial-gradient",
+                 "image-pattern",
+                 "repeating-image-pattern",
+                 "derive",
+                 "ladder" -> true;
+            default -> false;
+        };
+    }
+
     /// Parses one unquoted JavaFX paint value.
     ///
     /// @param text the preserved CSS text
@@ -79,13 +115,98 @@ final class JavaFxPaintParser {
             return new LookupPaint(trimmed);
         }
         var function = parseFunctionInvocation(trimmed, span);
-        return switch (function.name().toLowerCase(Locale.ROOT)) {
+        var functionName = function.name().toLowerCase(Locale.ROOT);
+        if (functionName.startsWith("region")) {
+            return parseRegionReference(function.arguments(), span);
+        }
+        return switch (functionName) {
             case "linear-gradient" -> parseLinearGradient(function.arguments(), span);
             case "radial-gradient" -> parseRadialGradient(function.arguments(), span);
             case "image-pattern" -> parseImagePattern(function.arguments(), span);
             case "repeating-image-pattern" -> parseRepeatingImagePattern(function.arguments(), span);
+            case "derive" -> parseDerivedColor(function.arguments(), span);
+            case "ladder" -> parseLadderColor(function.arguments(), span);
             default -> throw invalidPaint(span);
         };
+    }
+
+    /// Parses JavaFX's `region("selector")` paint reference.
+    ///
+    /// JavaFX reads only the first token, requires it to be quoted, removes
+    /// only the surrounding quote characters, and retains the token's
+    /// remaining spelling, including CSS escape sequences. Later tokens and
+    /// comma-separated arguments are ignored.
+    ///
+    /// @param arguments the function body without its parentheses
+    /// @param span      the source range associated with the declaration
+    /// @return the normalized selector reference
+    /// @throws BssSerializeException if the first token is not a quoted string
+    private static RegionReferencePaint parseRegionReference(
+            String arguments,
+            SourceSpan span
+    ) {
+        var text = arguments.stripLeading();
+        if (text.isEmpty()) {
+            throw invalidPaint(span);
+        }
+        var quote = text.charAt(0);
+        if (quote != '\'' && quote != '"') {
+            throw invalidPaint(span);
+        }
+        var escaped = false;
+        for (var index = 1; index < text.length(); index++) {
+            var character = text.charAt(index);
+            if (escaped) {
+                escaped = false;
+            } else if (character == '\\') {
+                escaped = true;
+            } else if (character == quote) {
+                return new RegionReferencePaint(
+                        REGION_REFERENCE_PREFIX + text.substring(1, index)
+                );
+            }
+        }
+        throw invalidPaint(span);
+    }
+
+    /// Parses JavaFX's `derive(color, brightness)` color function.
+    ///
+    /// @param arguments the function body without its parentheses
+    /// @param span      the source range associated with the declaration
+    /// @return the normalized derived color
+    /// @throws BssSerializeException if the grammar is invalid
+    private static DerivedPaint parseDerivedColor(
+            String arguments,
+            SourceSpan span
+    ) {
+        var values = splitTopLevelCommas(arguments, span);
+        if (values.size() != 2) {
+            throw invalidPaint(span);
+        }
+        return new DerivedPaint(
+                parseColorPaint(values.get(0), span),
+                parseSize(values.get(1), span)
+        );
+    }
+
+    /// Parses JavaFX's `ladder(color, stops...)` color function.
+    ///
+    /// @param arguments the function body without its parentheses
+    /// @param span      the source range associated with the declaration
+    /// @return the normalized ladder color
+    /// @throws BssSerializeException if the grammar is invalid
+    private static LadderPaint parseLadderColor(
+            String arguments,
+            SourceSpan span
+    ) {
+        var values = splitTopLevelCommas(arguments, span);
+        if (values.size() < 3) {
+            throw invalidPaint(span);
+        }
+        return new LadderPaint(
+                parseColorPaint(values.get(0), span),
+                parseGradientStops(values.subList(1, values.size()), span)
+        );
     }
 
     /// Parses JavaFX's {@code image-pattern(...)} grammar.
@@ -738,22 +859,63 @@ final class JavaFxPaintParser {
         components.add(current.toString());
         current.setLength(0);
     }
-    /// Parses one CSS gradient color, preserving JavaFX property lookups.
+    /// Parses one CSS gradient color, preserving recursive JavaFX color forms.
     ///
     /// @param text the raw color text
     /// @param span the source range associated with the declaration
-    /// @return a solid color or a deferred property lookup
+    /// @return a solid, lookup, derived, or ladder color
     /// @throws BssSerializeException if the color syntax is not supported
-    private static GradientColor parseGradientColor(String text, SourceSpan span) {
+    private static ColorPaint parseGradientColor(String text, SourceSpan span) {
+        return parseColorPaint(text, span);
+    }
+
+    /// Parses one JavaFX value whose runtime type is `Color`.
+    ///
+    /// @param text the raw color text
+    /// @param span the source range associated with the declaration
+    /// @return a solid, lookup, derived, or ladder color
+    /// @throws BssSerializeException if the color syntax is unsupported
+    static ColorPaint parseColorPaint(String text, SourceSpan span) {
         var trimmed = text.trim();
         if (trimmed.isEmpty()) {
             throw invalidPaint(span);
         }
         @Nullable SassColor named = SassColor.named(trimmed, span);
-        if (named == null && isLookupIdentifier(trimmed)) {
-            return new LookupGradientColor(trimmed);
+        if (named != null) {
+            return new SolidPaint(named);
         }
-        return new SolidGradientColor(parseColor(trimmed, span));
+        if (trimmed.startsWith("#")
+                || trimmed.length() > 2
+                && trimmed.charAt(0) == '0'
+                && (trimmed.charAt(1) == 'x' || trimmed.charAt(1) == 'X')) {
+            return new SolidPaint(parseColor(trimmed, span));
+        }
+        if (isLookupIdentifier(trimmed)) {
+            return new LookupPaint(trimmed);
+        }
+        var function = parseFunctionInvocation(trimmed, span);
+        return switch (function.name().toLowerCase(Locale.ROOT)) {
+            case "rgb", "rgba", "hsl", "hsla", "hsb", "hsba" ->
+                    new SolidPaint(parseColor(trimmed, span));
+            case "derive" -> parseDerivedColor(function.arguments(), span);
+            case "ladder" -> parseLadderColor(function.arguments(), span);
+            default -> throw invalidPaint(span);
+        };
+    }
+
+    /// Attempts to parse one concrete JavaFX color without accepting lookups.
+    ///
+    /// @param text the candidate color text
+    /// @param span the source range associated with the declaration
+    /// @return the parsed solid color, or {@code null} when the text is not a
+    ///         concrete JavaFX color
+    static @Nullable SolidPaint tryParseSolidColor(String text, SourceSpan span) {
+        try {
+            var color = parseColorPaint(text, span);
+            return color instanceof SolidPaint solid ? solid : null;
+        } catch (BssSerializeException ignored) {
+            return null;
+        }
     }
 
     /// Parses one concrete CSS color usable as a JavaFX gradient stop.
@@ -861,6 +1023,7 @@ final class JavaFxPaintParser {
         return switch (function.name().toLowerCase(Locale.ROOT)) {
             case "rgb", "rgba" -> parseRgbColor(components, span);
             case "hsl", "hsla" -> parseHslColor(components, span);
+            case "hsb", "hsba" -> parseHsbColor(components, span);
             default -> throw invalidPaint(span);
         };
     }
@@ -978,6 +1141,112 @@ final class JavaFxPaintParser {
         );
     }
 
+    /// Parses JavaFX's {@code hsb(...)} or {@code hsba(...)} color.
+    ///
+    /// @param components the hue, saturation, brightness, and optional alpha
+    /// @param span       the source range associated with the declaration
+    /// @return the decoded RGB color
+    /// @throws BssSerializeException if a component has the wrong unit or arity
+    private static SassColor parseHsbColor(List<String> components, SourceSpan span) {
+        if (components.size() != 3 && components.size() != 4) {
+            throw invalidPaint(span);
+        }
+        var hue = parseUnitlessNumber(components.get(0), span);
+        var saturation = parseClampedPercentage(components.get(1), span);
+        var brightness = parseClampedPercentage(components.get(2), span);
+        var alpha = components.size() == 4
+                ? clampUnitInterval(parseUnitlessNumber(components.get(3), span))
+                : 1.0;
+
+        var normalizedHue = ((hue % 360.0) + 360.0) % 360.0 / 360.0;
+        double red;
+        double green;
+        double blue;
+        if (saturation == 0.0) {
+            red = brightness;
+            green = brightness;
+            blue = brightness;
+        } else {
+            var sectorValue = (normalizedHue - Math.floor(normalizedHue)) * 6.0;
+            var fraction = sectorValue - Math.floor(sectorValue);
+            var minimum = brightness * (1.0 - saturation);
+            var descending = brightness * (1.0 - saturation * fraction);
+            var ascending = brightness * (1.0 - saturation * (1.0 - fraction));
+            switch ((int) sectorValue) {
+                case 0 -> {
+                    red = brightness;
+                    green = ascending;
+                    blue = minimum;
+                }
+                case 1 -> {
+                    red = descending;
+                    green = brightness;
+                    blue = minimum;
+                }
+                case 2 -> {
+                    red = minimum;
+                    green = brightness;
+                    blue = ascending;
+                }
+                case 3 -> {
+                    red = minimum;
+                    green = descending;
+                    blue = brightness;
+                }
+                case 4 -> {
+                    red = ascending;
+                    green = minimum;
+                    blue = brightness;
+                }
+                case 5 -> {
+                    red = brightness;
+                    green = minimum;
+                    blue = descending;
+                }
+                default -> throw new AssertionError("normalized hue produced an invalid sector");
+            }
+        }
+        return SassColor.rgb(red * 255.0, green * 255.0, blue * 255.0, alpha, null);
+    }
+
+    /// Parses one finite unitless number.
+    ///
+    /// @param text the raw numeric token
+    /// @param span the source range associated with the declaration
+    /// @return the numeric value
+    /// @throws BssSerializeException if the token has a unit
+    private static double parseUnitlessNumber(String text, SourceSpan span) {
+        var number = parseSize(text, span);
+        if (!number.isUnitless()) {
+            throw invalidPaint(span);
+        }
+        return number.value();
+    }
+
+    /// Parses and clamps one JavaFX HSB percentage.
+    ///
+    /// @param text the raw percentage token
+    /// @param span the source range associated with the declaration
+    /// @return the normalized value in the unit interval
+    /// @throws BssSerializeException if the token is not a percentage
+    private static double parseClampedPercentage(String text, SourceSpan span) {
+        var number = parseSize(text, span);
+        if (number.numeratorUnits().size() != 1
+                || !number.numeratorUnits().get(0).equals("%")
+                || !number.denominatorUnits().isEmpty()) {
+            throw invalidPaint(span);
+        }
+        return clampUnitInterval(number.value() / 100.0);
+    }
+
+    /// Clamps one finite number to the closed unit interval.
+    ///
+    /// @param value the finite input value
+    /// @return `0`, `1`, or the unchanged in-range value
+    private static double clampUnitInterval(double value) {
+        return Math.max(0.0, Math.min(1.0, value));
+    }
+
     /// Parses one RGB color channel.
     ///
     /// @param text the raw channel text
@@ -1052,7 +1321,7 @@ final class JavaFxPaintParser {
     /// @param span the source range associated with the declaration
     /// @return a finite unitless or one-unit Sass number
     /// @throws BssSerializeException if the token is not a finite CSS number
-    private static SassNumber parseSize(String text, SourceSpan span) {
+    static SassNumber parseSize(String text, SourceSpan span) {
         @Nullable SassNumber size = tryParseSize(text);
         if (size == null) {
             throw invalidPaint(span);
@@ -1064,7 +1333,7 @@ final class JavaFxPaintParser {
     ///
     /// @param text the raw size text
     /// @return the parsed size, or {@code null} when the text is not finite size syntax
-    private static @Nullable SassNumber tryParseSize(String text) {
+    static @Nullable SassNumber tryParseSize(String text) {
         Matcher matcher = SIZE_PATTERN.matcher(text.trim());
         if (!matcher.matches()) {
             return null;
@@ -1098,7 +1367,7 @@ final class JavaFxPaintParser {
     ///
     /// @param text the candidate token
     /// @return whether the token uses the supported CSS identifier subset
-    private static boolean isLookupIdentifier(String text) {
+    static boolean isLookupIdentifier(String text) {
         var length = text.length();
         if (length == 0) {
             return false;
@@ -1163,7 +1432,9 @@ final class JavaFxPaintParser {
     /// @return the serialization failure
     private static BssSerializeException invalidPaint(SourceSpan span) {
         return new BssSerializeException(
-                "BSS paint values require solid colors, property lookups, JavaFX gradients, or image patterns.",
+                "BSS paint values require solid, derived, or ladder colors,"
+                        + " property lookups, JavaFX gradients, image patterns,"
+                        + " or region references.",
                 span,
                 null
         );
@@ -1171,15 +1442,24 @@ final class JavaFxPaintParser {
 
     /// Represents one paint that can be serialized by the BSS paint converters.
     @NotNullByDefault
-    sealed interface Paint permits SolidPaint, LookupPaint, LinearGradientPaint, RadialGradientPaint,
-            ImagePatternPaint, RepeatingImagePatternPaint {
+    sealed interface Paint permits ColorPaint, LinearGradientPaint, RadialGradientPaint,
+            ImagePatternPaint, RepeatingImagePatternPaint, RegionReferencePaint {
+    }
+
+    /// Represents one paint whose JavaFX runtime type is `Color`.
+    @NotNullByDefault
+    sealed interface ColorPaint extends Paint permits
+            SolidPaint,
+            LookupPaint,
+            DerivedPaint,
+            LadderPaint {
     }
 
     /// Represents one solid JavaFX color paint.
     ///
     /// @param color the legacy RGB color
     @NotNullByDefault
-    record SolidPaint(SassColor color) implements Paint {
+    record SolidPaint(SassColor color) implements ColorPaint {
         /// Creates an immutable solid color paint.
         SolidPaint {
             color = Objects.requireNonNull(color, "color");
@@ -1190,10 +1470,43 @@ final class JavaFxPaintParser {
     ///
     /// @param key the unquoted property key
     @NotNullByDefault
-    record LookupPaint(String key) implements Paint {
+    record LookupPaint(String key) implements ColorPaint {
         /// Creates an immutable lookup paint.
         LookupPaint {
             key = requireNonEmpty(key, "key");
+        }
+    }
+
+    /// Represents one JavaFX `derive(...)` color.
+    ///
+    /// @param base       the input color
+    /// @param brightness the brightness adjustment
+    @NotNullByDefault
+    record DerivedPaint(ColorPaint base, SassNumber brightness)
+            implements ColorPaint {
+        /// Creates an immutable derived color.
+        DerivedPaint {
+            base = Objects.requireNonNull(base, "base");
+            brightness = Objects.requireNonNull(brightness, "brightness");
+        }
+    }
+
+    /// Represents one JavaFX `ladder(...)` color.
+    ///
+    /// @param base  the input color
+    /// @param stops the normalized ladder stops
+    @NotNullByDefault
+    record LadderPaint(
+            ColorPaint base,
+            @Unmodifiable List<GradientStop> stops
+    ) implements ColorPaint {
+        /// Creates an immutable ladder color.
+        LadderPaint {
+            base = Objects.requireNonNull(base, "base");
+            stops = List.copyOf(stops);
+            if (stops.size() < 2) {
+                throw new IllegalArgumentException("a ladder requires at least two stops");
+            }
         }
     }
 
@@ -1303,30 +1616,14 @@ final class JavaFxPaintParser {
         }
     }
 
-    /// Represents one JavaFX gradient stop color.
-    @NotNullByDefault
-    sealed interface GradientColor permits SolidGradientColor, LookupGradientColor {
-    }
-
-    /// Represents one concrete JavaFX gradient stop color.
+    /// Represents one JavaFX `region("selector")` paint reference.
     ///
-    /// @param color the legacy RGB color
+    /// @param value the prefixed selector reference stored by JavaFX
     @NotNullByDefault
-    record SolidGradientColor(SassColor color) implements GradientColor {
-        /// Creates an immutable solid gradient color.
-        SolidGradientColor {
-            color = Objects.requireNonNull(color, "color");
-        }
-    }
-
-    /// Represents one JavaFX property lookup used as a gradient stop color.
-    ///
-    /// @param key the unquoted property key
-    @NotNullByDefault
-    record LookupGradientColor(String key) implements GradientColor {
-        /// Creates an immutable lookup gradient color.
-        LookupGradientColor {
-            key = requireNonEmpty(key, "key");
+    record RegionReferencePaint(String value) implements Paint {
+        /// Creates an immutable region reference.
+        RegionReferencePaint {
+            value = requireNonEmpty(value, "value");
         }
     }
 
@@ -1362,7 +1659,7 @@ final class JavaFxPaintParser {
     /// @param offset the normalized stop offset
     /// @param color  the stop color
     @NotNullByDefault
-    record GradientStop(SassNumber offset, GradientColor color) {
+    record GradientStop(SassNumber offset, ColorPaint color) {
         /// Creates an immutable gradient color stop.
         GradientStop {
             offset = Objects.requireNonNull(offset, "offset");
@@ -1375,7 +1672,7 @@ final class JavaFxPaintParser {
     /// @param color  the stop color
     /// @param offset the optional source offset
     @NotNullByDefault
-    private record RawGradientStop(GradientColor color, @Nullable SassNumber offset) {
+    private record RawGradientStop(ColorPaint color, @Nullable SassNumber offset) {
         /// Creates an immutable raw gradient color stop.
         RawGradientStop {
             color = Objects.requireNonNull(color, "color");

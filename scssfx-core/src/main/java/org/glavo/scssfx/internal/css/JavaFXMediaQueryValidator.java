@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.css;
 
-import org.glavo.scssfx.JavaFXCompatibility;
+import org.glavo.scssfx.JavaFXTarget;
 import org.glavo.scssfx.JavaFXFeature;
 import org.glavo.scssfx.SourceSpan;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -36,7 +36,7 @@ public final class JavaFXMediaQueryValidator {
     public static void validate(
             String queryList,
             SourceSpan span,
-            JavaFXCompatibility compatibility
+            JavaFXTarget compatibility
     ) {
         parse(queryList, span, compatibility);
     }
@@ -51,7 +51,7 @@ public final class JavaFXMediaQueryValidator {
     public static JavaFXMediaQuery parse(
             String queryList,
             SourceSpan span,
-            JavaFXCompatibility compatibility
+            JavaFXTarget compatibility
     ) {
         Objects.requireNonNull(queryList, "queryList");
         Objects.requireNonNull(span, "span");
@@ -326,7 +326,7 @@ public final class JavaFXMediaQueryValidator {
         private final SourceSpan span;
 
         /// Contains the JavaFX release whose media features are accepted.
-        private final JavaFXCompatibility compatibility;
+        private final JavaFXTarget compatibility;
 
         /// Contains the next token offset.
         private int index;
@@ -339,7 +339,7 @@ public final class JavaFXMediaQueryValidator {
         private Parser(
                 List<Token> tokens,
                 SourceSpan span,
-                JavaFXCompatibility compatibility
+                JavaFXTarget compatibility
         ) {
             this.tokens = List.copyOf(tokens);
             this.span = span;
@@ -512,7 +512,11 @@ public final class JavaFXMediaQueryValidator {
                             "transparent-window",
                             "unified-window",
                             "extended-window",
-                            "input-pointer"
+                            "input-pointer",
+                            "two-level-focus",
+                            "virtual-keyboard",
+                            "input-touch",
+                            "input-multitouch"
                     );
                 }
                 case "-fx-platform" -> {

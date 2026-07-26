@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.css;
 
-import org.glavo.scssfx.JavaFXCompatibility;
+import org.glavo.scssfx.JavaFXTarget;
 import org.glavo.scssfx.SourceLocation;
 import org.glavo.scssfx.SourceSpan;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -54,7 +54,7 @@ final class JavaFXMediaQueryValidatorTest {
         assertDoesNotThrow(() -> JavaFXMediaQueryValidator.validate(
                 query,
                 span(query),
-                JavaFXCompatibility.JAVAFX27
+                JavaFXTarget.JAVAFX27
         ));
     }
 
@@ -93,7 +93,7 @@ final class JavaFXMediaQueryValidatorTest {
                 () -> JavaFXMediaQueryValidator.validate(
                         query,
                         span(query),
-                        JavaFXCompatibility.JAVAFX27
+                        JavaFXTarget.JAVAFX27
                 )
         );
     }
@@ -108,7 +108,7 @@ final class JavaFXMediaQueryValidatorTest {
                 () -> JavaFXMediaQueryValidator.validate(
                         query,
                         span,
-                        JavaFXCompatibility.JAVAFX27
+                        JavaFXTarget.JAVAFX27
                 )
         );
 
@@ -123,7 +123,7 @@ final class JavaFXMediaQueryValidatorTest {
         assertDoesNotThrow(() -> JavaFXMediaQueryValidator.validate(
                 preference,
                 span(preference),
-                JavaFXCompatibility.JAVAFX25
+                JavaFXTarget.JAVAFX25
         ));
 
         var viewport = "(width >= 500px)";
@@ -132,13 +132,13 @@ final class JavaFXMediaQueryValidatorTest {
                 () -> JavaFXMediaQueryValidator.validate(
                         viewport,
                         span(viewport),
-                        JavaFXCompatibility.JAVAFX25
+                        JavaFXTarget.JAVAFX25
                 )
         );
         assertDoesNotThrow(() -> JavaFXMediaQueryValidator.validate(
                 viewport,
                 span(viewport),
-                JavaFXCompatibility.JAVAFX26
+                JavaFXTarget.JAVAFX26
         ));
 
         for (var query : new String[]{
@@ -150,15 +150,35 @@ final class JavaFXMediaQueryValidatorTest {
                     () -> JavaFXMediaQueryValidator.validate(
                             query,
                             span(query),
-                            JavaFXCompatibility.JAVAFX26
+                            JavaFXTarget.JAVAFX26
                     )
             );
             assertDoesNotThrow(() -> JavaFXMediaQueryValidator.validate(
                     query,
                     span(query),
-                    JavaFXCompatibility.JAVAFX27
+                    JavaFXTarget.JAVAFX27
             ));
         }
+    }
+
+    /// Accepts every JavaFX 27 conditional input feature added to the media grammar.
+    ///
+    /// @param value the conditional-feature identifier
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "two-level-focus",
+            "virtual-keyboard",
+            "input-touch",
+            "input-multitouch"
+    })
+    void acceptsJavaFx27ConditionalInputFeatures(String value) {
+        var query = "(-fx-supports-conditional-feature: " + value + ")";
+
+        assertDoesNotThrow(() -> JavaFXMediaQueryValidator.validate(
+                query,
+                span(query),
+                JavaFXTarget.JAVAFX27
+        ));
     }
 
     /// Lowers discrete and range syntax to the canonical JavaFX media AST.
@@ -168,7 +188,7 @@ final class JavaFXMediaQueryValidatorTest {
         var parsed = JavaFXMediaQueryValidator.parse(
                 query,
                 span(query),
-                JavaFXCompatibility.JAVAFX26
+                JavaFXTarget.JAVAFX26
         );
 
         assertEquals(2, parsed.alternatives().size());
@@ -208,7 +228,7 @@ final class JavaFXMediaQueryValidatorTest {
         var parsed = JavaFXMediaQueryValidator.parse(
                 query,
                 span(query),
-                JavaFXCompatibility.JAVAFX25
+                JavaFXTarget.JAVAFX25
         );
         var feature = assertInstanceOf(
                 JavaFXMediaQuery.Feature.class,
