@@ -392,7 +392,11 @@ public final class SassSpecBatchMain {
             HrxArchive archive = HrxArchive.parse(readResource(resource), resource);
             verifyClassification(archiveDeclaration, archive);
             for (SassSpecManifest.Case fixture : archiveDeclaration.cases()) {
-                fixtures.add(new ResolvedFixture(archiveDeclaration.path(), archive, fixture));
+                fixtures.add(new ResolvedFixture(
+                        archiveDeclaration.path(),
+                        archive,
+                        SassSpecDartSassTodos.apply(archive, fixture)
+                ));
             }
         }
         return List.copyOf(fixtures);

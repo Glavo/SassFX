@@ -195,6 +195,65 @@ final class SassCompilerTest {
         assertNull(result.sourceMap());
     }
 
+    /// Preserves declaration meaning across JavaFX compatibility levels.
+    @Test
+    void validatesVersionSpecificJavaFxDeclarations() throws Exception {
+        var compiler = new SassCompiler();
+        var transitionSource = SassSource.fromString(
+                "Pane { transition: -fx-opacity 100ms linear; }",
+                Syntax.SCSS
+        );
+        var javaFx17 = new JavaFXCssTarget(
+                JavaFXCompatibility.JAVA_FX_17,
+                OutputStyle.COMPRESSED
+        );
+        var javaFx27 = new JavaFXCssTarget(
+                JavaFXCompatibility.JAVA_FX_27,
+                OutputStyle.COMPRESSED
+        );
+
+        var transitionFailure = assertThrows(
+                SassCompilationException.class,
+                () -> compiler.compile(transitionSource, javaFx17)
+        );
+        assertEquals(
+                "JavaFX 17 CSS does not support property transition.",
+                transitionFailure.getMessage()
+        );
+        assertEquals(
+                "Pane{transition:-fx-opacity 100ms linear}",
+                compiler.compile(transitionSource, javaFx27).output()
+        );
+
+        var redBlendMode = SassSource.fromString(
+                "Pane { -fx-blend-mode: red; }",
+                Syntax.SCSS
+        );
+        var blendFailure = assertThrows(
+                SassCompilationException.class,
+                () -> compiler.compile(redBlendMode, javaFx17)
+        );
+        assertEquals(
+                "JavaFX 17 CSS does not support -fx-blend-mode value red.",
+                blendFailure.getMessage()
+        );
+        assertEquals(
+                "Pane{-fx-blend-mode:red}",
+                compiler.compile(redBlendMode, javaFx27).output()
+        );
+
+        assertEquals(
+                "Pane{-fx-blend-mode:multiply}",
+                compiler.compile(
+                        SassSource.fromString(
+                                "Pane { -fx-blend-mode: multiply; }",
+                                Syntax.SCSS
+                        ),
+                        javaFx17
+                ).output()
+        );
+    }
+
     /// Compiles top-level font-face rules with evaluated Sass descriptor values.
     @Test
     void compilesFontFaceRules() throws Exception {
@@ -434,7 +493,7 @@ final class SassCompilerTest {
         );
     }
 
-    /// Compiles multiline selector interpolation and preserves loud comments.
+    /// Compiles multiline selector interpolation and normalizes loud comments.
     @Test
     void compilesIndentedInterpolationAndComments() throws Exception {
         var result = new SassCompiler().compile(
@@ -460,12 +519,13 @@ final class SassCompilerTest {
                         .item {
                           color: red;
                           /* loud
-                             note */
+                          * note */
                         }""",
                 result.output()
         );
     }
-    /// Compiles escaped cross-line strings and interpolation expressions.
+
+    /// Preserves physical indentation after an escaped newline in a quoted string.
     @Test
     void compilesIndentedCrossLineStringsAndInterpolation() throws Exception {
         var source = String.join(
@@ -483,9 +543,9 @@ final class SassCompilerTest {
         );
 
         assertEquals(
-                """
+                        """
                         .item {
-                          content: "prefix item";
+                          content: "prefix     item";
                         }""",
                 result.output()
         );
@@ -581,18 +641,18 @@ final class SassCompilerTest {
         assertEquals("Inconsistent indentation, expected 4 spaces.", failure.getMessage());
     }
 
-    /// Compiles media rules for standard and JavaFX textual CSS targets.
+    /// Compiles JavaFX 27 media conditions and rejects them for JavaFX 17.
     @Test
     void compilesMediaRulesForCssAndJavaFxCssTargets() throws Exception {
         var source = """
-                $medium: screen;
-                @media #{$medium} and (min-width: 600px) {
+                $minimum: 600px;
+                @media (min-width: #{$minimum}) {
                   Pane {
                     -fx-opacity: 1;
                   }
                 }
                 Pane {
-                  @media (hover) {
+                  @media (orientation: landscape) {
                     -fx-opacity: 0.5;
                   }
                 }
@@ -601,12 +661,12 @@ final class SassCompilerTest {
         var css = compile(source);
         assertEquals(
                 """
-                        @media screen and (min-width: 600px) {
+                        @media (min-width: 600px) {
                           Pane {
                             -fx-opacity: 1;
                           }
                         }
-                        @media (hover) {
+                        @media (orientation: landscape) {
                           Pane {
                             -fx-opacity: 0.5;
                           }
@@ -622,13 +682,25 @@ final class SassCompilerTest {
                 )
         );
         assertEquals(
-                "@media screen and (min-width: 600px){Pane{-fx-opacity:1}}"
-                        + "@media(hover){Pane{-fx-opacity:0.5}}",
+                "@media (min-width: 600px){Pane{-fx-opacity:1}}"
+                        + "@media (orientation: landscape){Pane{-fx-opacity:0.5}}",
                 javaFx.output()
         );
+
+        var failure = assertThrows(
+                SassCompilationException.class,
+                () -> new SassCompiler().compile(
+                        SassSource.fromString(source, Syntax.SCSS),
+                        new JavaFXCssTarget(
+                                JavaFXCompatibility.JAVA_FX_17,
+                                OutputStyle.COMPRESSED
+                        )
+                )
+        );
+        assertTrue(failure.getMessage().contains("JavaFX 17"), failure.getMessage());
     }
 
-    /// Compiles supports rules for standard and JavaFX textual CSS targets.
+    /// Compiles supports rules for CSS and rejects them for JavaFX CSS.
     @Test
     void compilesSupportsRulesForCssAndJavaFxCssTargets() throws Exception {
         var source = """
@@ -661,18 +733,17 @@ final class SassCompilerTest {
                 css.output()
         );
 
-        var javaFx = new SassCompiler().compile(
-                SassSource.fromString(source, Syntax.SCSS),
-                new JavaFXCssTarget(
-                        JavaFXCompatibility.JAVA_FX_27,
-                        OutputStyle.COMPRESSED
+        var failure = assertThrows(
+                SassCompilationException.class,
+                () -> new SassCompiler().compile(
+                        SassSource.fromString(source, Syntax.SCSS),
+                        new JavaFXCssTarget(
+                                JavaFXCompatibility.JAVA_FX_27,
+                                OutputStyle.COMPRESSED
+                        )
                 )
         );
-        assertEquals(
-                "@supports(display: grid){Pane{-fx-opacity:1}}"
-                        + "@supports not (display: block){Pane{-fx-opacity:0.5}}",
-                javaFx.output()
-        );
+        assertTrue(failure.getMessage().contains("@supports"), failure.getMessage());
     }
 
     /// Evaluates SassScript values in supports declarations and preserves
@@ -789,9 +860,9 @@ final class SassCompilerTest {
         }
     }
 
-    /// Merges compatible nested media queries while preserving source order.
+    /// Hoists merged nested media without repeating its enclosing media rule.
     @Test
-    void mergesNestedMediaQueriesAndResumesOuterRulesInOrder() throws Exception {
+    void hoistsMergedNestedMediaWithoutRepeatingOuterMedia() throws Exception {
         var result = compile(
                 """
                         @media screen, print {
@@ -811,16 +882,12 @@ final class SassCompilerTest {
                         @media screen, print {
                           .button {
                             color: one;
+                            color: three;
                           }
                         }
                         @media screen and (min-width: 600px), print and (min-width: 600px) {
                           .button {
                             color: two;
-                          }
-                        }
-                        @media screen, print {
-                          .button {
-                            color: three;
                           }
                         }""",
                 result.output()
@@ -1033,40 +1100,31 @@ final class SassCompilerTest {
         );
     }
 
-    /// Serializes plain-CSS nesting through the JavaFX textual CSS target.
+    /// Rejects native CSS nesting that JavaFX would silently discard.
     @Test
-    void serializesNativeCssNestingForJavaFxCss() throws Exception {
-        var result = new SassCompiler().compile(
-                SassSource.fromString(
-                        """
-                                .parent {
-                                  color: blue;
-                                  .child {
-                                    color: red;
-                                  }
-                                  &:hover {
-                                    color: green;
-                                  }
-                                }
-                                """,
-                        Syntax.CSS
-                ),
-                JavaFXCssTarget.DEFAULT
+    void serializesNativeCssNestingForJavaFxCss() {
+        var failure = assertThrows(
+                SassCompilationException.class,
+                () -> new SassCompiler().compile(
+                        SassSource.fromString(
+                                """
+                                        .parent {
+                                          color: blue;
+                                          .child {
+                                            color: red;
+                                          }
+                                          &:hover {
+                                            color: green;
+                                          }
+                                        }
+                                        """,
+                                Syntax.CSS
+                        ),
+                        JavaFXCssTarget.DEFAULT
+                )
         );
 
-        assertEquals(
-                """
-                        .parent {
-                          color: blue;
-                          .child {
-                            color: red;
-                          }
-                          &:hover {
-                            color: green;
-                          }
-                        }""",
-                result.output()
-        );
+        assertTrue(failure.getMessage().contains("nested style"), failure.getMessage());
     }
 
     /// Keeps unknown at-rules nested once native CSS nesting is already active.

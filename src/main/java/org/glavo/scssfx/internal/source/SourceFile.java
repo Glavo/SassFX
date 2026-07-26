@@ -15,8 +15,9 @@ import java.util.Objects;
 
 /// Indexes source text for offset, line, column, and span operations.
 ///
-/// Line boundaries recognize LF, CRLF, and lone CR terminators. All offsets
-/// and columns use UTF-16 code units.
+/// Line boundaries recognize LF, CRLF, lone CR, and form feed terminators
+/// (matching CSS and Sass newline classes). All offsets and columns use
+/// UTF-16 code units.
 ///
 /// This type is shared across internal packages and is not a supported public
 /// extension point.
@@ -197,7 +198,7 @@ public final class SourceFile {
         var end = line + 1 < lineStarts.length ? lineStarts[line + 1] : content.length();
         while (end > start) {
             var last = content.charAt(end - 1);
-            if (last != '\r' && last != '\n') {
+            if (last != '\r' && last != '\n' && last != '\f') {
                 break;
             }
             end--;
@@ -230,7 +231,7 @@ public final class SourceFile {
                     index++;
                 }
                 starts[count++] = index + 1;
-            } else if (current == '\n') {
+            } else if (current == '\n' || current == '\f') {
                 starts[count++] = index + 1;
             }
         }

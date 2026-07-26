@@ -4,6 +4,7 @@ package org.glavo.scssfx.internal.extend;
 import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.ast.selector.SelectorList;
 import org.glavo.scssfx.internal.css.CssMediaQuery;
+import org.glavo.scssfx.internal.css.CssStyleRule;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -35,6 +36,9 @@ import java.util.Objects;
 /// @param fromLegacyImport  whether the extend was written while evaluating a legacy
 ///                          {@code @import} body (used to order import-body extends
 ///                          before pure module-graph extends for selector interleaving)
+/// @param extenderRule      the live style rule that owns the extender, or
+///                          {@code null} when the extension belongs to a detached
+///                          CSS copy and [#extender] is the authoritative snapshot
 @ApiStatus.Internal
 @NotNullByDefault
 public record PendingExtension(
@@ -46,7 +50,8 @@ public record PendingExtension(
         SourceSpan span,
         int importGeneration,
         boolean crossGeneration,
-        boolean fromLegacyImport
+        boolean fromLegacyImport,
+        @Nullable CssStyleRule extenderRule
 ) {
     /// Creates one pending extension with import generation {@code 0}.
     public PendingExtension(
@@ -57,7 +62,7 @@ public record PendingExtension(
             @Nullable URI originUrl,
             SourceSpan span
     ) {
-        this(extender, target, optional, mediaContext, originUrl, span, 0, false, false);
+        this(extender, target, optional, mediaContext, originUrl, span, 0, false, false, null);
     }
 
     /// Creates one pending extension with an explicit import generation.
@@ -70,7 +75,18 @@ public record PendingExtension(
             SourceSpan span,
             int importGeneration
     ) {
-        this(extender, target, optional, mediaContext, originUrl, span, importGeneration, false, false);
+        this(
+                extender,
+                target,
+                optional,
+                mediaContext,
+                originUrl,
+                span,
+                importGeneration,
+                false,
+                false,
+                null
+        );
     }
 
     /// Creates one pending extension.
@@ -84,5 +100,16 @@ public record PendingExtension(
         if (importGeneration < 0) {
             throw new IllegalArgumentException("importGeneration must be non-negative");
         }
+    }
+
+    /// Returns the current selector of the extending rule.
+    ///
+    /// Incremental extension propagation may rewrite the defining rule before a
+    /// later directive is registered. Detached copies retain the immutable
+    /// selector snapshot supplied at construction.
+    ///
+    /// @return the current extender selector
+    public SelectorList resolvedExtender() {
+        return extenderRule == null ? extender : extenderRule.selector().value();
     }
 }

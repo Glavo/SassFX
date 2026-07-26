@@ -17,3 +17,21 @@ on a local upstream checkout.
 OpenJFX source code is not copied into SCSSFX. JavaFX CSS and BSS support is an
 independent implementation validated through public behavior and test-only
 compatibility oracles.
+
+The isolated JavaFX CSS oracles are run with:
+
+```shell
+./gradlew verifyJavaFxCssOracles
+```
+
+The task resolves the pinned platform-specific OpenJFX artifacts, runs the
+JavaFX 17 oracle on a Java 17 toolchain, and runs the JavaFX 27 oracle on a
+Java 25 toolchain. The `javaFxOracle` source set and its dependencies are not
+included in product runtime or publication variants.
+
+For offline development, `-PjavaFxOracleDirectory=<directory>` selects a
+directory containing `17/javafx-base.jar`, `17/javafx-graphics.jar`,
+`27/javafx-base.jar`, and `27/javafx-graphics.jar`. If the selected Java 25
+toolchain bundles an older JavaFX module, use
+`-PjavaFx27OracleJavaHome=<java-home>` to select a Java 25 installation without
+bundled JavaFX modules.

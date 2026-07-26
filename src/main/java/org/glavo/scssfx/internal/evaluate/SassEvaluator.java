@@ -84,8 +84,10 @@ import org.glavo.scssfx.internal.css.CssImport;
 import org.glavo.scssfx.internal.callable.UserDefinedCallable;
 import org.glavo.scssfx.internal.ast.selector.ComplexSelector;
 import org.glavo.scssfx.internal.ast.selector.PlaceholderSelector;
+import org.glavo.scssfx.internal.ast.selector.PseudoSelector;
 import org.glavo.scssfx.internal.ast.selector.SelectorAlgebra;
 import org.glavo.scssfx.internal.ast.selector.SelectorList;
+import org.glavo.scssfx.internal.ast.selector.SimpleSelector;
 import org.glavo.scssfx.internal.extend.PendingExtension;
 import org.glavo.scssfx.internal.css.CssComment;
 import org.glavo.scssfx.internal.css.CssFontFace;
@@ -97,6 +99,7 @@ import org.glavo.scssfx.internal.function.BuiltInFunctions;
 import org.glavo.scssfx.internal.css.CssDeclaration;
 import org.glavo.scssfx.internal.css.CssNode;
 import org.glavo.scssfx.internal.css.CssParentNode;
+import org.glavo.scssfx.internal.css.CssSelectorReference;
 import org.glavo.scssfx.internal.css.CssStyleRule;
 import org.glavo.scssfx.internal.css.CssStylesheet;
 import org.glavo.scssfx.internal.css.CssValue;
@@ -318,6 +321,17 @@ public final class SassEvaluator implements
     /// extension products as extend targets (dart-sass per-module ExtensionStore).
     private final IdentityHashMap<CssStyleRule, Map<String, URI>> styleRuleComplexOrigins =
             new IdentityHashMap<>();
+
+    /// Contains evaluation-order positions for style-rule selector registrations.
+    private final IdentityHashMap<CssStyleRule, Long> styleRuleExtensionEventOrders =
+            new IdentityHashMap<>();
+
+    /// Contains evaluation-order positions for extension registrations.
+    private final IdentityHashMap<PendingExtension, Long> extensionEventOrders =
+            new IdentityHashMap<>();
+
+    /// Supplies stable positions for selector and extension registration events.
+    private long nextExtensionEventOrder;
 
     /// Creates an evaluator with an empty environment and no module loader.
     public SassEvaluator() {
@@ -1387,6 +1401,12 @@ public final class SassEvaluator implements
     /// @return an empty copy with the same origin and import generation
     private CssStyleRule copyStyleRulePreservingOrigin(CssStyleRule source) {
         var copy = source.copyWithoutChildren();
+        @Nullable Long eventOrder = styleRuleExtensionEventOrders.get(source);
+        if (eventOrder == null) {
+            registerStyleRuleExtensionEvent(source);
+            eventOrder = styleRuleExtensionEventOrders.get(source);
+        }
+        styleRuleExtensionEventOrders.put(copy, Objects.requireNonNull(eventOrder));
         styleRuleOrigins.put(
                 copy,
                 styleRuleOrigins.containsKey(source)
@@ -1408,6 +1428,26 @@ public final class SassEvaluator implements
             );
         }
         return copy;
+    }
+
+    /// Registers a style-rule selector at the current extension event position.
+    ///
+    /// @param rule the style rule whose selector becomes visible
+    private void registerStyleRuleExtensionEvent(CssStyleRule rule) {
+        styleRuleExtensionEventOrders.putIfAbsent(
+                Objects.requireNonNull(rule, "rule"),
+                nextExtensionEventOrder++
+        );
+    }
+
+    /// Registers an extension directive at the current event position.
+    ///
+    /// @param extension the extension that becomes active
+    private void registerExtensionEvent(PendingExtension extension) {
+        extensionEventOrders.putIfAbsent(
+                Objects.requireNonNull(extension, "extension"),
+                nextExtensionEventOrder++
+        );
     }
 
     /// Records each complex of {@code selector} as originating from {@code originUrl}.
@@ -1755,6 +1795,7 @@ public final class SassEvaluator implements
                     new CssValue<>(parsed, statement.selector().span()),
                     statement.span()
             );
+            registerStyleRuleExtensionEvent(keyframeRule);
             addCssChild(keyframeRule, true);
             var previousParent = requireCssParent();
             var previousStyleRule = styleRule;
@@ -1818,6 +1859,7 @@ public final class SassEvaluator implements
                 // Snapshot media active at definition time (not after bubbling).
                 mediaQueries
         );
+        registerStyleRuleExtensionEvent(rule);
         @Nullable URI origin = styleRuleOriginUrl();
         styleRuleOrigins.put(rule, origin);
         registerOriginalComplexes(rule, nestedSelector, origin);
@@ -1890,7 +1932,7 @@ public final class SassEvaluator implements
         // them (import_into_use). Re-stamped module extensions keep isolation.
         boolean fromLegacyImport = legacyImportDepth > 0;
         boolean crossGeneration = fromLegacyImport && currentImportGeneration > 0;
-        pendingExtensions.add(new PendingExtension(
+        var extension = new PendingExtension(
                 styleRule.selector().value(),
                 target,
                 statement.optional(),
@@ -1901,8 +1943,11 @@ public final class SassEvaluator implements
                 statement.span(),
                 currentImportGeneration,
                 crossGeneration,
-                fromLegacyImport
-        ));
+                fromLegacyImport,
+                styleRule
+        );
+        pendingExtensions.add(extension);
+        registerExtensionEvent(extension);
         return StatementResult.CONTINUE;
     }
 
@@ -2110,7 +2155,7 @@ public final class SassEvaluator implements
         }
     }
 
-    /// Applies collected `@extend` directives across a complete stylesheet.
+    /// Applies collected {@code @extend} directives across a complete stylesheet.
     ///
     /// @param styleRules  every style rule in the combined CSS tree
     /// @param extensions  every extension from the module graph
@@ -2124,15 +2169,10 @@ public final class SassEvaluator implements
             return;
         }
         var modulesByUrl = indexModulesByUrl(root);
-        // Modules re-emitted outside the root CSS graph (import-path {@code @use})
-        // still need to be visible for extension reachability checks.
         var seenVisibility = new IdentityHashMap<LoadedModule, Boolean>();
         for (var extra : extensionVisibilityModules) {
             indexModulesByUrl(extra, modulesByUrl, seenVisibility);
         }
-        // Order: cross-generation import-body extends, then other import-body
-        // extends, then pure module-graph extends — so import extenders are
-        // applied first and later module extenders append after them.
         var orderedExtensions = new ArrayList<PendingExtension>(extensions.size());
         for (var extension : extensions) {
             if (extension.crossGeneration()) {
@@ -2149,92 +2189,80 @@ public final class SassEvaluator implements
                 orderedExtensions.add(extension);
             }
         }
-        // Document-original complexes per rule, shared across successive
-        // {@code @extend} applications so intermediate products stay trimmable
-        // (dart-sass ExtensionStore {@code _originals}).
-        var originalKeysByRule = new IdentityHashMap<CssStyleRule, Set<String>>();
+        var events = new ArrayList<IncrementalExtensionEvent>(
+                styleRules.size() + orderedExtensions.size()
+        );
+        var sequence = 0;
         for (var rule : styleRules) {
-            originalKeysByRule.put(rule, SelectorAlgebra.originalKeysOf(rule.selector().value()));
-        }
-        // Shared source-specificity map for second-law trimming (dart-sass
-        // ExtensionStore {@code _sourceSpecificity}).
-        var sourceSpecificity = new HashMap<String, Integer>();
-        for (var extension : orderedExtensions) {
-            SelectorAlgebra.recordSourceSpecificity(extension.extender(), sourceSpecificity);
-        }
-        // Whether each mandatory extension found a target after the full
-        // multi-extension fixed-point (later extensions may introduce targets
-        // for earlier ones, e.g. extend-result-of-extend).
-        var foundByExtension = new IdentityHashMap<PendingExtension, Boolean>();
-        for (var extension : orderedExtensions) {
-            foundByExtension.put(extension, false);
-        }
-        // Apply each extension with an inner fixed-point, then run a bounded
-        // multi-extension closure so later producers can feed earlier consumers
-        // (181 three-level loop, extend-result-of-extend) without reverse-order
-        // thrashing of intermediate products.
-        for (var extension : orderedExtensions) {
-            for (var rule : styleRules) {
-                var result = applyExtensionToRule(
-                        extension,
-                        rule,
-                        true,
-                        modulesByUrl,
-                        originalKeysByRule.get(rule),
-                        sourceSpecificity
-                );
-                if (result.found()) {
-                    foundByExtension.put(extension, true);
-                }
+            @Nullable Long order = styleRuleExtensionEventOrders.get(rule);
+            if (order == null) {
+                registerStyleRuleExtensionEvent(rule);
+                order = styleRuleExtensionEventOrders.get(rule);
             }
-            var changed = true;
-            while (changed) {
-                changed = false;
-                for (var rule : styleRules) {
-                    var result = applyExtensionToRule(
-                            extension,
-                            rule,
-                            false,
-                            modulesByUrl,
-                            originalKeysByRule.get(rule),
-                            sourceSpecificity
-                    );
-                    if (result.found()) {
-                        foundByExtension.put(extension, true);
-                    }
-                    changed |= result.changed();
-                }
+            events.add(IncrementalExtensionEvent.selector(
+                    Objects.requireNonNull(order),
+                    sequence++,
+                    rule
+            ));
+        }
+        for (var extension : orderedExtensions) {
+            @Nullable Long order = extensionEventOrders.get(extension);
+            if (order == null) {
+                registerExtensionEvent(extension);
+                order = extensionEventOrders.get(extension);
+            }
+            events.add(IncrementalExtensionEvent.extension(
+                    Objects.requireNonNull(order),
+                    sequence++,
+                    extension
+            ));
+        }
+        var pendingSelectors = new ArrayList<IncrementalExtensionEvent>();
+        for (var event : events) {
+            if (event.rule() != null) {
+                pendingSelectors.add(event);
             }
         }
-        // Cross-extension closure (later targets become visible to earlier extends).
-        var progress = true;
-        var round = 0;
-        final int maxClosureRounds = 16;
-        while (progress && round < maxClosureRounds) {
-            progress = false;
-            round++;
-            for (var extension : orderedExtensions) {
-                for (var rule : styleRules) {
-                    var result = applyExtensionToRule(
-                            extension,
-                            rule,
-                            false,
-                            modulesByUrl,
-                            originalKeysByRule.get(rule),
-                            sourceSpecificity
-                    );
-                    if (result.found()) {
-                        foundByExtension.put(extension, true);
-                    }
-                    progress |= result.changed();
-                }
+        pendingSelectors.sort((left, right) -> {
+            int byOrder = Long.compare(left.order(), right.order());
+            return byOrder != 0
+                    ? byOrder
+                    : Integer.compare(left.sequence(), right.sequence());
+        });
+
+        var registry = new IncrementalExtensionRegistry(modulesByUrl);
+        // Legacy-import CSS copies are assembled eagerly as complete generation
+        // snapshots. Register those selectors before applying the category-
+        // ordered copied extensions so sibling module products cannot become
+        // newly visible partway through one imported generation.
+        for (var iterator = pendingSelectors.iterator(); iterator.hasNext(); ) {
+            var selectorEvent = iterator.next();
+            var rule = Objects.requireNonNull(selectorEvent.rule());
+            if (styleRuleImportGeneration.getOrDefault(rule, 0) == 0) {
+                continue;
             }
+            registry.addSelector(rule);
+            iterator.remove();
         }
         for (var extension : orderedExtensions) {
-            // "Found" means a matching compound existed, even when unification
-            // produced no additional selector alternative (namespace/universal
-            // cases that keep the original form only).
-            if (!Boolean.TRUE.equals(foundByExtension.get(extension))
+            var extensionOrder = Objects.requireNonNull(
+                    extensionEventOrders.get(extension)
+            );
+            for (var iterator = pendingSelectors.iterator(); iterator.hasNext(); ) {
+                var selectorEvent = iterator.next();
+                if (selectorEvent.order() >= extensionOrder) {
+                    continue;
+                }
+                registry.addSelector(Objects.requireNonNull(selectorEvent.rule()));
+                iterator.remove();
+            }
+            registry.addExtension(extension);
+        }
+        for (var selectorEvent : pendingSelectors) {
+            registry.addSelector(Objects.requireNonNull(selectorEvent.rule()));
+        }
+        for (var extension : orderedExtensions) {
+            if (!registry.wasFound(extension)
                     && !extension.optional()) {
                 throw new EvaluationException(
                         "The target selector was not found.\n"
@@ -2249,6 +2277,666 @@ public final class SassEvaluator implements
             if (!selectorCssEquals(rule.selector().value(), stripped)) {
                 rule.setSelector(new CssValue<>(stripped, rule.selector().span()));
             }
+        }
+    }
+
+    /// Orders one selector registration or extension registration event.
+    ///
+    /// @param order     the evaluator-wide registration position
+    /// @param sequence  a deterministic tie breaker for shared selector copies
+    /// @param rule      the selector rule, or {@code null} for an extension event
+    /// @param extension the extension, or {@code null} for a selector event
+    @NotNullByDefault
+    private record IncrementalExtensionEvent(
+            long order,
+            int sequence,
+            @Nullable CssStyleRule rule,
+            @Nullable PendingExtension extension
+    ) {
+        /// Creates a selector-registration event.
+        private static IncrementalExtensionEvent selector(
+                long order,
+                int sequence,
+                CssStyleRule rule
+        ) {
+            return new IncrementalExtensionEvent(order, sequence, rule, null);
+        }
+
+        /// Creates an extension-registration event.
+        private static IncrementalExtensionEvent extension(
+                long order,
+                int sequence,
+                PendingExtension extension
+        ) {
+            return new IncrementalExtensionEvent(order, sequence, null, extension);
+        }
+
+        /// Validates that exactly one event payload is present.
+        private IncrementalExtensionEvent {
+            if ((rule == null) == (extension == null)) {
+                throw new IllegalArgumentException(
+                        "exactly one extension event payload is required"
+                );
+            }
+        }
+    }
+
+    /// Maintains the transitively closed extension set for one CSS assembly.
+    ///
+    /// Selectors are registered before directives because every final CSS rule
+    /// is already available at this phase. Each directive is nevertheless added
+    /// in evaluation order: its live extender has absorbed earlier directives,
+    /// it derives replacements for existing extenders, and only that delta is
+    /// applied to registered selectors. Structural keys, rather than replay
+    /// limits, guarantee termination.
+    @NotNullByDefault
+    private final class IncrementalExtensionRegistry {
+        /// Contains every distinct selector reference registered so far.
+        private final ArrayList<RegisteredSelector> selectors = new ArrayList<>();
+
+        /// Maps selector boxes to all structural rule contexts that share them.
+        private final IdentityHashMap<CssSelectorReference, RegisteredSelector> selectorsByReference =
+                new IdentityHashMap<>();
+
+        /// Contains modules keyed by canonical URL for visibility checks.
+        private final @Unmodifiable Map<URI, LoadedModule> modulesByUrl;
+
+        /// Contains source specificity recorded from original extenders.
+        private final HashMap<String, Integer> sourceSpecificity = new HashMap<>();
+
+        /// Contains original extender complexes protected from nested-pseudo replacement.
+        private final HashMap<@Nullable URI, Set<String>> protectedExtenderKeysByOrigin =
+                new HashMap<>();
+
+        /// Records whether each directive found a visible target.
+        private final IdentityHashMap<PendingExtension, Boolean> foundByDirective =
+                new IdentityHashMap<>();
+
+        /// Contains base and derived extension entries in registration order.
+        private final ArrayList<IncrementalExtensionEntry> entries = new ArrayList<>();
+
+        /// Contains structural entry keys already registered for each directive.
+        private final IdentityHashMap<PendingExtension, Set<String>> entryKeysByDirective =
+                new IdentityHashMap<>();
+
+        /// Groups structural CSS rule copies that observe one mutable selector.
+        ///
+        /// @param contexts     every structural rule carrying the selector
+        /// @param originalKeys document-original complex keys for the selector
+        private record RegisteredSelector(
+                ArrayList<CssStyleRule> contexts,
+                Set<String> originalKeys
+        ) {
+        }
+
+        /// Creates an empty registry for one CSS assembly.
+        ///
+        /// @param modulesByUrl modules used for extension visibility
+        private IncrementalExtensionRegistry(Map<URI, LoadedModule> modulesByUrl) {
+            this.modulesByUrl = Map.copyOf(modulesByUrl);
+        }
+
+        /// Registers a selector and applies every extension active at this point.
+        ///
+        /// Structural CSS copies share one selector reference but retain distinct
+        /// parent, media, module, and visibility contexts. The selector itself is
+        /// rewritten once through the shared reference.
+        ///
+        /// @param rule the rule whose selector becomes visible
+        private void addSelector(CssStyleRule rule) {
+            @Nullable RegisteredSelector registered = selectorsByReference.get(
+                    rule.selectorReference()
+            );
+            if (registered != null) {
+                registered.contexts().add(rule);
+                if (!entries.isEmpty()) {
+                    applyEntriesToSelector(registered, entries);
+                }
+                return;
+            }
+            registered = new RegisteredSelector(
+                    new ArrayList<>(List.of(rule)),
+                    SelectorAlgebra.originalKeysOf(rule.selector().value())
+            );
+            selectorsByReference.put(rule.selectorReference(), registered);
+            selectors.add(registered);
+            if (!entries.isEmpty()) {
+                applyEntriesToSelector(registered, entries);
+            }
+        }
+
+        /// Registers one directive and propagates its extension delta.
+        ///
+        /// @param directive the directive to register
+        private void addExtension(PendingExtension directive) {
+            foundByDirective.putIfAbsent(directive, false);
+            var extender = directive.resolvedExtender();
+            SelectorAlgebra.recordSourceSpecificity(extender, sourceSpecificity);
+            var protectedKeys = protectedExtenderKeysByOrigin.computeIfAbsent(
+                    directive.originUrl(),
+                    ignored -> new LinkedHashSet<>()
+            );
+            for (var complex : extender.components()) {
+                protectedKeys.add(SelectorAlgebra.complexKey(complex));
+            }
+
+            var affectedExisting = new ArrayList<IncrementalExtensionEntry>();
+            for (var existing : entries) {
+                if (directiveTargetsExtender(directive, existing.extender())) {
+                    affectedExisting.add(existing);
+                }
+            }
+            var wave = new ArrayList<IncrementalExtensionEntry>();
+            for (var targetComplex : directive.target().components()) {
+                var target = targetComplex.components().get(0).selector().components().get(0);
+                for (var extenderComplex : extender.components()) {
+                    addEntry(directive, target, extenderComplex, wave);
+                }
+            }
+            if (wave.isEmpty()) {
+                return;
+            }
+
+            // A target with no pre-existing reverse-index bucket must not derive
+            // from the extension currently being inserted (issue_2399). When a
+            // bucket already existed, Dart Sass retains its live list and newly
+            // inserted self-targeting extenders join the finite snapshot.
+            if (!affectedExisting.isEmpty()) {
+                for (var entry : wave) {
+                    if (directiveTargetsExtender(directive, entry.extender())) {
+                        affectedExisting.add(entry);
+                    }
+                }
+            }
+            var additional = deriveExistingExtensions(affectedExisting, wave);
+            if (!additional.isEmpty()) {
+                wave.addAll(additional);
+            }
+            applyWave(wave);
+        }
+
+        /// Returns whether any target of a directive occurs in an extender.
+        private boolean directiveTargetsExtender(
+                PendingExtension directive,
+                ComplexSelector extender
+        ) {
+            var selector = new SelectorList(List.of(extender), extender.span());
+            for (var targetComplex : directive.target().components()) {
+                var target = new SelectorList(
+                        List.of(targetComplex),
+                        targetComplex.span()
+                );
+                if (SelectorAlgebra.containsExtendee(selector, target)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// Adds an entry unless the same directive already owns its structure.
+        private void addEntry(
+                PendingExtension directive,
+                SimpleSelector target,
+                ComplexSelector extender,
+                ArrayList<IncrementalExtensionEntry> added
+        ) {
+            var keys = entryKeysByDirective.computeIfAbsent(
+                    directive,
+                    ignored -> new LinkedHashSet<>()
+            );
+            var key = target.toCssString() + '\u001d' + SelectorAlgebra.complexKey(extender);
+            if (!keys.add(key)) {
+                return;
+            }
+            var entry = new IncrementalExtensionEntry(target, extender, directive);
+            entries.add(entry);
+            added.add(entry);
+        }
+
+        /// Derives old-target entries whose extenders contain the new targets.
+        private ArrayList<IncrementalExtensionEntry> deriveExistingExtensions(
+                List<IncrementalExtensionEntry> existingSnapshot,
+                List<IncrementalExtensionEntry> wave
+        ) {
+            var additional = new ArrayList<IncrementalExtensionEntry>();
+            var waveTargetKeys = new HashSet<String>();
+            for (var incoming : wave) {
+                waveTargetKeys.add(incoming.target().toCssString());
+            }
+            for (var existing : existingSnapshot) {
+                var applicable = new ArrayList<SelectorAlgebra.SimpleExtension>();
+                for (var incoming : wave) {
+                    if (extensionCanRewriteEntry(incoming, existing)) {
+                        applicable.add(incoming.asSimpleExtension());
+                    }
+                }
+                if (applicable.isEmpty()) {
+                    continue;
+                }
+                var original = new SelectorList(
+                        List.of(existing.extender()),
+                        existing.extender().span()
+                );
+                SelectorList extended;
+                try {
+                    extended = SelectorAlgebra.extendAll(
+                            original,
+                            applicable,
+                            SelectorAlgebra.originalKeysOf(original),
+                            sourceSpecificity
+                    );
+                } catch (SassValueException cause) {
+                    throw new EvaluationException(
+                            Objects.requireNonNull(
+                                    cause.getMessage(),
+                                    "extend failure message"
+                            ),
+                            existing.directive().span(),
+                            List.of(),
+                            cause
+                    );
+                }
+                var originalKey = SelectorAlgebra.complexKey(existing.extender());
+                for (var derived : extended.components()) {
+                    if (SelectorAlgebra.complexKey(derived).equals(originalKey)) {
+                        continue;
+                    }
+                    var sink = waveTargetKeys.contains(existing.target().toCssString())
+                            ? additional
+                            : new ArrayList<IncrementalExtensionEntry>();
+                    addEntry(existing.directive(), existing.target(), derived, sink);
+                }
+            }
+            return additional;
+        }
+
+        /// Returns whether an incoming entry may rewrite an existing extender.
+        private boolean extensionCanRewriteEntry(
+                IncrementalExtensionEntry incoming,
+                IncrementalExtensionEntry existing
+        ) {
+            var incomingDirective = incoming.directive();
+            var existingDirective = existing.directive();
+            if (!extensionScopesMatch(incomingDirective, existingDirective)) {
+                return false;
+            }
+            var target = incoming.targetSelector();
+            var extender = new SelectorList(
+                    List.of(existing.extender()),
+                    existing.extender().span()
+            );
+            if (!SelectorAlgebra.containsExtendee(extender, target)) {
+                return false;
+            }
+            if (!mediaContextsCompatible(
+                    incomingDirective.mediaContext(),
+                    existingDirective.mediaContext()
+            )) {
+                throw new EvaluationException(
+                        crossMediaExtendMessage(existingDirective.span()),
+                        incomingDirective.span(),
+                        List.of(new RelatedSpan(
+                                existingDirective.span(),
+                                "target selector"
+                        )),
+                        null
+                );
+            }
+            return true;
+        }
+
+        /// Returns whether two extension scopes allow the incoming directive to
+        /// rewrite the existing directive's extender.
+        private boolean extensionScopesMatch(
+                PendingExtension incoming,
+                PendingExtension existing
+        ) {
+            if (incoming.importGeneration() != existing.importGeneration()) {
+                boolean allowCross = incoming.crossGeneration()
+                        && incoming.importGeneration() > 0
+                        && existing.importGeneration() == 0
+                        && moduleCanExtend(
+                                incoming.originUrl(),
+                                existing.originUrl(),
+                                modulesByUrl
+                        );
+                if (!allowCross) {
+                    return false;
+                }
+            }
+            if (isPrivateTarget(incoming.target())
+                    && !Objects.equals(incoming.originUrl(), existing.originUrl())) {
+                return false;
+            }
+            if (incoming.importGeneration() != 0 && incoming.fromLegacyImport()) {
+                return true;
+            }
+            return moduleCanExtend(
+                            incoming.originUrl(),
+                            existing.originUrl(),
+                            modulesByUrl
+            );
+        }
+
+        /// Applies one newly registered and derived extension wave to all rules.
+        private void applyWave(List<IncrementalExtensionEntry> wave) {
+            for (var selector : selectors) {
+                applyEntriesToSelector(selector, wave);
+            }
+        }
+
+        /// Applies an extension wave to one selector reference.
+        private void applyEntriesToSelector(
+                RegisteredSelector registered,
+                List<IncrementalExtensionEntry> wave
+        ) {
+            var pending = new ArrayList<>(wave);
+            var activated = java.util.Collections.newSetFromMap(
+                    new IdentityHashMap<IncrementalExtensionEntry, Boolean>()
+            );
+            while (!pending.isEmpty()) {
+                    var applicable = new ArrayList<IncrementalExtensionEntry>();
+                    @Nullable CssStyleRule rule = null;
+                    for (var entry : pending) {
+                        for (var context : registered.contexts()) {
+                            if (!entryAppliesToRule(entry, context)) {
+                                continue;
+                            }
+                            if (context.children().isEmpty()
+                                    || context.children().stream().allMatch(CssNode::isInvisible)) {
+                                continue;
+                            }
+                            applicable.add(entry);
+                            activated.add(entry);
+                            if (rule == null) {
+                                rule = context;
+                            }
+                            break;
+                        }
+                    }
+                    if (applicable.isEmpty()) {
+                        break;
+                    }
+                    rule = Objects.requireNonNull(rule);
+                    var simpleExtensions =
+                            new ArrayList<SelectorAlgebra.SimpleExtension>(applicable.size());
+                    for (var entry : applicable) {
+                        simpleExtensions.add(entry.asSimpleExtension());
+                    }
+                    var before = rule.selector().value();
+                    SelectorList after;
+                    try {
+                        var firstEntry = applicable.get(0);
+                        boolean oneDirectiveTarget = true;
+                        var firstTargetKey = firstEntry.target().toCssString();
+                        for (var entry : applicable) {
+                            if (entry.directive() != firstEntry.directive()
+                                    || !entry.target().toCssString().equals(firstTargetKey)) {
+                                oneDirectiveTarget = false;
+                                break;
+                            }
+                        }
+                        if (oneDirectiveTarget
+                                && !requiresPathExtension(
+                                        before,
+                                        firstEntry.target()
+                                )) {
+                            var entry = applicable.get(0);
+                            var extenderComplexes =
+                                    new ArrayList<ComplexSelector>(applicable.size());
+                            for (var alternative : applicable) {
+                                extenderComplexes.add(alternative.extender());
+                            }
+                            var extender = new SelectorList(
+                                    extenderComplexes,
+                                    entry.directive().resolvedExtender().span()
+                            );
+                            @Nullable Set<String> protectedKeys =
+                                    Objects.equals(
+                                            entry.directive().originUrl(),
+                                            styleRuleOrigins.get(rule)
+                                    )
+                                            ? protectedExtenderKeysByOrigin.get(
+                                                    entry.directive().originUrl()
+                                            )
+                                            : null;
+                            var protectedOriginals =
+                                    new HashSet<>(registered.originalKeys());
+                            for (var alternative : applicable) {
+                                if (alternative.containsSelectorPseudo()) {
+                                    protectedOriginals.add(
+                                            SelectorAlgebra.complexKey(
+                                                    alternative.extender()
+                                            )
+                                    );
+                                }
+                            }
+                            after = SelectorAlgebra.extend(
+                                    before,
+                                    entry.targetSelector(),
+                                    extender,
+                                    protectedOriginals,
+                                    sourceSpecificity,
+                                    protectedKeys
+                            );
+                        } else {
+                            var protectedOriginals =
+                                    new HashSet<>(registered.originalKeys());
+                            for (var entry : applicable) {
+                                if (entry.containsSelectorPseudo()
+                                        && Objects.equals(
+                                        entry.directive().originUrl(),
+                                        styleRuleOrigins.get(rule)
+                                )) {
+                                    protectedOriginals.add(
+                                            SelectorAlgebra.complexKey(entry.extender())
+                                    );
+                                }
+                            }
+                            after = SelectorAlgebra.extendAll(
+                                    before,
+                                    simpleExtensions,
+                                    protectedOriginals,
+                                    sourceSpecificity
+                            );
+                        }
+                    } catch (SassValueException cause) {
+                        throw new EvaluationException(
+                                Objects.requireNonNull(
+                                        cause.getMessage(),
+                                        "extend failure message"
+                                ),
+                                applicable.get(0).directive().span(),
+                                List.of(),
+                                cause
+                        );
+                    }
+                    if (selectorCssEquals(before, after)) {
+                        break;
+                    }
+                    rule.setSelector(new CssValue<>(after, rule.selector().span()));
+                    for (var context : registered.contexts()) {
+                        recordExtensionComplexes(
+                                context,
+                                before,
+                                after,
+                                applicable.get(0).directive().originUrl()
+                        );
+                    }
+
+                    // A newly generated selector may expose the target of an
+                    // older extension (extend-result-of-extend). Activate only
+                    // targets absent from the previous selector; extensions
+                    // whose target was already present were closed through
+                    // derived extenders when the current directive was added.
+                    pending = new ArrayList<>();
+                    for (var entry : entries) {
+                        if (activated.contains(entry)
+                                || SelectorAlgebra.containsExtendee(
+                                        before,
+                                        entry.targetSelector()
+                                )
+                                || !SelectorAlgebra.containsExtendee(
+                                        after,
+                                        entry.targetSelector()
+                                )) {
+                            continue;
+                        }
+                        boolean canSeeGenerator = false;
+                        for (var generator : applicable) {
+                            if (entry.directive().originUrl() == null
+                                    || Objects.equals(
+                                            entry.directive().originUrl(),
+                                            generator.directive().originUrl()
+                                    )
+                                    || moduleCanExtend(
+                                            entry.directive().originUrl(),
+                                            generator.directive().originUrl(),
+                                            modulesByUrl
+                                    )) {
+                                canSeeGenerator = true;
+                                break;
+                            }
+                        }
+                        if (!canSeeGenerator) {
+                            continue;
+                        }
+                        pending.add(entry);
+                    }
+            }
+        }
+
+        /// Returns whether compound paths, rather than sequential replacement,
+        /// are required for one target.
+        ///
+        /// Repeated occurrences need their Cartesian replacement products.
+        /// A matching compound with residual simples must unify those residuals
+        /// with extender ancestors rather than append them to the final compound.
+        private boolean requiresPathExtension(
+                SelectorList selector,
+                SimpleSelector target
+        ) {
+            var targetCss = target.toCssString();
+            for (var complex : selector.components()) {
+                var count = 0;
+                for (var component : complex.components()) {
+                    boolean matchedComponent = false;
+                    for (var simple : component.selector().components()) {
+                        if (simple.toCssString().equals(targetCss)) {
+                            matchedComponent = true;
+                            if (++count > 1) {
+                                return true;
+                            }
+                        }
+                    }
+                    if (matchedComponent
+                            && component.selector().components().size() > 1) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /// Returns whether an entry sees and may rewrite a rule.
+        private boolean entryAppliesToRule(
+                IncrementalExtensionEntry entry,
+                CssStyleRule rule
+        ) {
+            var directive = entry.directive();
+            int ruleGeneration = styleRuleImportGeneration.getOrDefault(rule, 0);
+            @Nullable URI ruleOrigin = styleRuleOrigins.get(rule);
+            if (ruleGeneration != directive.importGeneration()) {
+                boolean allowCross = directive.crossGeneration()
+                        && directive.importGeneration() > 0
+                        && ruleGeneration == 0
+                        && moduleCanExtend(directive.originUrl(), ruleOrigin, modulesByUrl);
+                if (!allowCross) {
+                    return false;
+                }
+            }
+            if (isPrivateTarget(entry.targetSelector())
+                    && !Objects.equals(directive.originUrl(), ruleOrigin)) {
+                return false;
+            }
+            if (directive.importGeneration() == 0
+                    && !moduleCanExtend(directive.originUrl(), ruleOrigin, modulesByUrl)) {
+                return false;
+            }
+            if (!containsVisibleExtendee(
+                    rule,
+                    rule.selector().value(),
+                    entry.targetSelector(),
+                    directive.originUrl(),
+                    modulesByUrl
+            )) {
+                return false;
+            }
+            foundByDirective.put(directive, true);
+            if (!mediaContextsCompatible(directive.mediaContext(), mediaContextOf(rule))) {
+                throw new EvaluationException(
+                        crossMediaExtendMessage(rule.selector().span()),
+                        directive.span(),
+                        List.of(new RelatedSpan(
+                                rule.selector().span(),
+                                "target selector"
+                        )),
+                        null
+                );
+            }
+            return true;
+        }
+
+        /// Returns whether a directive found any visible target.
+        private boolean wasFound(PendingExtension directive) {
+            return Boolean.TRUE.equals(foundByDirective.get(directive));
+        }
+    }
+
+    /// Stores one exact target/extender pair in the incremental registry.
+    ///
+    /// @param target    the exact simple selector being extended
+    /// @param extender  one complex extender alternative
+    /// @param directive the source directive whose scope and diagnostics apply
+    @NotNullByDefault
+    private record IncrementalExtensionEntry(
+            SimpleSelector target,
+            ComplexSelector extender,
+            PendingExtension directive
+    ) {
+        /// Creates a validated extension entry.
+        private IncrementalExtensionEntry {
+            Objects.requireNonNull(target, "target");
+            Objects.requireNonNull(extender, "extender");
+            Objects.requireNonNull(directive, "directive");
+        }
+
+        /// Returns this entry as selector-algebra input.
+        private SelectorAlgebra.SimpleExtension asSimpleExtension() {
+            return new SelectorAlgebra.SimpleExtension(target, extender);
+        }
+
+        /// Returns a one-target selector list for visibility checks.
+        private SelectorList targetSelector() {
+            for (var complex : directive.target().components()) {
+                var simple = complex.components().get(0).selector().components().get(0);
+                if (simple == target) {
+                    return new SelectorList(List.of(complex), complex.span());
+                }
+            }
+            throw new AssertionError("extension target is absent from its directive");
+        }
+
+        /// Returns whether the extender contains a selector pseudo.
+        private boolean containsSelectorPseudo() {
+            for (var component : extender.components()) {
+                for (var simple : component.selector().components()) {
+                    if (simple instanceof PseudoSelector) {
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
     }
 
@@ -2351,120 +3039,6 @@ public final class SassEvaluator implements
             return false;
         }
         return !name.isEmpty() && (name.charAt(0) == '-' || name.charAt(0) == '_');
-    }
-
-    /// Result of attempting to apply one extension to one style rule.
-    ///
-    /// @param found   whether the extension target matched a compound in the rule
-    /// @param changed whether the rule selector was rewritten
-    private record ExtensionApplyResult(boolean found, boolean changed) {
-        static final ExtensionApplyResult NONE = new ExtensionApplyResult(false, false);
-        static final ExtensionApplyResult FOUND_ONLY = new ExtensionApplyResult(true, false);
-    }
-
-    /// Applies one extension to one style rule when media contexts allow it.
-    ///
-    /// @param extension     the pending extension
-    /// @param rule          the candidate style rule
-    /// @param rejectCrossMedia whether a cross-media match should error
-    /// @param modulesByUrl  modules keyed by canonical URL for visibility checks
-    /// @param originalKeys  document-original complex keys for this rule
-    /// @return whether the target was found and whether the rule selector changed
-    private ExtensionApplyResult applyExtensionToRule(
-            PendingExtension extension,
-            CssStyleRule rule,
-            boolean rejectCrossMedia,
-            Map<URI, LoadedModule> modulesByUrl,
-            Set<String> originalKeys,
-            Map<String, Integer> sourceSpecificity
-    ) {
-        int ruleGeneration = styleRuleImportGeneration.getOrDefault(rule, 0);
-        @Nullable URI ruleOrigin = styleRuleOrigins.get(rule);
-        // Generation 0 is the module-graph original; import-path copies use >0.
-        // Same generation always matches. Import-body extends (crossGeneration)
-        // may also rewrite gen-0 originals when the extender can reach the rule.
-        if (ruleGeneration != extension.importGeneration()) {
-            boolean allowCross = extension.crossGeneration()
-                    && extension.importGeneration() > 0
-                    && ruleGeneration == 0
-                    && moduleCanExtend(extension.originUrl(), ruleOrigin, modulesByUrl);
-            if (!allowCross) {
-                return ExtensionApplyResult.NONE;
-            }
-        }
-        // Private targets may only be extended inside the defining module.
-        if (isPrivateTarget(extension.target())
-                && !Objects.equals(extension.originUrl(), ruleOrigin)) {
-            return ExtensionApplyResult.NONE;
-        }
-        // Import-path copies are self-contained: the extend origin may be a
-        // legacy-imported URL that is not present on the module graph index.
-        if (extension.importGeneration() == 0
-                && !moduleCanExtend(extension.originUrl(), ruleOrigin, modulesByUrl)) {
-            return ExtensionApplyResult.NONE;
-        }
-        var before = rule.selector().value();
-        // Match only complexes introduced by modules visible to this extender so
-        // sibling {@code @extend} products on a shared rule are not retargeted.
-        if (!containsVisibleExtendee(
-                rule,
-                before,
-                extension.target(),
-                extension.originUrl(),
-                modulesByUrl
-        )) {
-            return ExtensionApplyResult.NONE;
-        }
-        // Extend-only rules (no CSS children) still contribute extenders but must
-        // not receive nested {@code :not} rewrites of their own selectors
-        // (issue_2399 hangs when {@code .a:not(.thing) { @extend .thing; }}
-        // rewrites itself). Do not use {@link CssStyleRule#isInvisible()}: that
-        // is also true for placeholder rules that still need to be rewritten.
-        if (rule.children().isEmpty()
-                || rule.children().stream().allMatch(CssNode::isInvisible)) {
-            return ExtensionApplyResult.FOUND_ONLY;
-        }
-        SelectorList after;
-        try {
-            after = SelectorAlgebra.extend(
-                    before,
-                    extension.target(),
-                    extension.extender(),
-                    originalKeys,
-                    sourceSpecificity
-            );
-        } catch (SassValueException cause) {
-            throw new EvaluationException(
-                    Objects.requireNonNull(cause.getMessage(), "extend failure message"),
-                    extension.span(),
-                    List.of(),
-                    cause
-            );
-        }
-        if (selectorCssEquals(before, after)) {
-            return ExtensionApplyResult.FOUND_ONLY;
-        }
-        if (!mediaContextsCompatible(extension.mediaContext(), mediaContextOf(rule))) {
-            if (rejectCrossMedia) {
-                // Match dart-sass MultiSpanSassException primary text for sass-spec:
-                // "From <target selector span>:\nYou may not @extend …" with the
-                // span dump stripped by extractErrorMessage to the From-line prefix.
-                throw new EvaluationException(
-                        crossMediaExtendMessage(rule.selector().span()),
-                        extension.span(),
-                        List.of(new RelatedSpan(
-                                rule.selector().span(),
-                                "target selector"
-                        )),
-                        null
-                );
-            }
-            // Target matched but media forbids rewriting; still counts as found.
-            return ExtensionApplyResult.FOUND_ONLY;
-        }
-        rule.setSelector(new CssValue<>(after, rule.selector().span()));
-        recordExtensionComplexes(rule, before, after, extension.originUrl());
-        return new ExtensionApplyResult(true, true);
     }
 
     /// Returns the media context used for {@code @extend} compatibility checks.
@@ -4040,57 +4614,31 @@ public final class SassEvaluator implements
                 && mediaRule.queries().stream().allMatch(mediaQuerySources::contains);
     }
 
-    /// Copies the active CSS ancestor path after any visible later sibling.
+    /// If the current parent is not the last child of its grandparent, replaces
+    /// it with a childless copy appended after that interstitial sibling.
     ///
-    /// A nested conditional rule may bubble outside several active parents.
-    /// Later declarations must resume in copies of every affected ancestor so
-    /// their source order remains after the bubbled rule.
+    /// Matches dart-sass {@code _copyParentAfterSibling}: only the immediate
+    /// parent is copied. Nested {@code @media} that bubbles out of a style rule
+    /// becomes a sibling of the enclosing media rule; later declarations must
+    /// continue in the original style rule (still the last child of that media),
+    /// not a second copy of the whole media+style chain (issue_185 hoisting).
     private void copyParentAfterSibling() {
-        var path = new ArrayList<CssParentNode>();
-        var current = requireCssParent();
-        while (true) {
-            path.add(current);
-            @Nullable CssParentNode parent = current.parent();
-            if (parent == null) {
-                break;
-            }
-            current = parent;
-        }
-
-        var copyStart = -1;
-        for (var index = 0; index < path.size() - 1; index++) {
-            if (path.get(index).hasFollowingSibling()) {
-                copyStart = index;
-            }
-        }
-        if (copyStart < 0) {
+        var parent = requireCssParent();
+        @Nullable CssParentNode grandparent = parent.parent();
+        if (grandparent == null) {
             return;
         }
-
-        var sourceParent = path.get(copyStart);
-        var copiedParent = sourceParent instanceof CssStyleRule style
-                ? copyStyleRulePreservingOrigin(style)
-                : sourceParent.copyWithoutChildren();
-        var copies = new IdentityHashMap<CssParentNode, CssParentNode>();
-        copies.put(path.get(copyStart), copiedParent);
-        path.get(copyStart + 1).addChild(copiedParent);
-        CssParentNode copiedLeaf = copiedParent;
-        for (var index = copyStart - 1; index >= 0; index--) {
-            var sourceChild = path.get(index);
-            var childCopy = sourceChild instanceof CssStyleRule style
-                    ? copyStyleRulePreservingOrigin(style)
-                    : sourceChild.copyWithoutChildren();
-            copies.put(path.get(index), childCopy);
-            copiedLeaf.addChild(childCopy);
-            copiedLeaf = childCopy;
+        var siblings = grandparent.children();
+        if (siblings.isEmpty() || siblings.get(siblings.size() - 1) == parent) {
+            return;
         }
-
-        cssParent = copiedLeaf;
-        if (styleRule != null) {
-            @Nullable CssParentNode copiedStyleRule = copies.get(styleRule);
-            if (copiedStyleRule instanceof CssStyleRule rule) {
-                styleRule = rule;
-            }
+        var copy = parent instanceof CssStyleRule style
+                ? copyStyleRulePreservingOrigin(style)
+                : parent.copyWithoutChildren();
+        grandparent.addChild(copy);
+        cssParent = copy;
+        if (styleRule == parent && copy instanceof CssStyleRule rule) {
+            styleRule = rule;
         }
     }
 
@@ -4331,7 +4879,7 @@ public final class SassEvaluator implements
             injectModuleCss(combined, false);
             var stamped = new ArrayList<PendingExtension>(extensions.size());
             for (var extension : extensions) {
-                stamped.add(new PendingExtension(
+                var copy = new PendingExtension(
                         extension.extender(),
                         extension.target(),
                         extension.optional(),
@@ -4339,7 +4887,15 @@ public final class SassEvaluator implements
                         extension.originUrl(),
                         extension.span(),
                         generation
-                ));
+                );
+                stamped.add(copy);
+                extensionEventOrders.put(
+                        copy,
+                        extensionEventOrders.getOrDefault(
+                                extension,
+                                nextExtensionEventOrder++
+                        )
+                );
             }
             var rules = new ArrayList<CssStyleRule>();
             collectStyleRules(isolated, rules);
@@ -4376,7 +4932,7 @@ public final class SassEvaluator implements
         var extensions = new ArrayList<PendingExtension>();
         collectExtensions(module, extensions, new IdentityHashMap<>());
         for (var extension : extensions) {
-            pendingExtensions.add(new PendingExtension(
+            var copy = new PendingExtension(
                     extension.extender(),
                     extension.target(),
                     extension.optional(),
@@ -4384,7 +4940,15 @@ public final class SassEvaluator implements
                     extension.originUrl(),
                     extension.span(),
                     generation
-            ));
+            );
+            pendingExtensions.add(copy);
+            extensionEventOrders.put(
+                    copy,
+                    extensionEventOrders.getOrDefault(
+                            extension,
+                            nextExtensionEventOrder++
+                    )
+            );
         }
         extensionVisibilityModules.add(module);
         var previousMarking = markingImportGeneration;
@@ -4507,6 +5071,7 @@ public final class SassEvaluator implements
                 rule.fromPlainCss(),
                 rule.definingMediaContext()
         );
+        registerStyleRuleExtensionEvent(injected);
         if (reattributeOrigins) {
             // load-css treats injected CSS as part of the caller's stylesheet.
             styleRuleOrigins.put(injected, currentUrl);

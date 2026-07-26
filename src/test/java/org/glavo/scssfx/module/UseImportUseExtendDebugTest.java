@@ -50,4 +50,52 @@ final class UseImportUseExtendDebugTest {
                 css
         );
     }
+
+    /// Keeps sibling extensions isolated in used and imported diamond copies.
+    @Test
+    void importedDiamondDoesNotExposeSiblingExtensionProducts(
+            @TempDir Path directory
+    ) throws Exception {
+        Files.writeString(directory.resolve("_shared.scss"), "in-shared {x: y}");
+        Files.writeString(directory.resolve("_left.scss"), """
+                @use "shared";
+                left-extendee {@extend in-shared}
+                left-extender {@extend right-extendee !optional}
+                """);
+        Files.writeString(directory.resolve("_right.scss"), """
+                @use "shared";
+                right-extendee {@extend in-shared}
+                right-extender {@extend left-extendee !optional}
+                """);
+        Files.writeString(directory.resolve("_downstream.scss"), """
+                @use "left";
+                @use "right";
+                """);
+        Files.writeString(directory.resolve("_imported.scss"), "@use \"downstream\";");
+        Files.writeString(directory.resolve("input.scss"), """
+                @use "downstream";
+                @import "downstream";
+                @import "imported";
+                """);
+
+        var css = new SassCompiler().compile(
+                SassSource.fromFile(directory.resolve("input.scss")),
+                CssTarget.DEFAULT
+        ).output();
+        assertEquals(
+                """
+                        in-shared, right-extendee, left-extendee {
+                          x: y;
+                        }
+
+                        in-shared, right-extendee, left-extendee {
+                          x: y;
+                        }
+
+                        in-shared, right-extendee, left-extendee {
+                          x: y;
+                        }""",
+                css
+        );
+    }
 }

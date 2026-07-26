@@ -94,21 +94,20 @@ final class StaticImportOutputTest {
         );
     }
 
-    /// Emits supports() even when the interpolated condition text is empty.
-    ///
-    /// Empty-condition rejection for structured supports is no longer applied when
-    /// modifiers are stored as a single evaluated interpolation (dart-sass parity
-    /// for bare supports interpolations is tracked separately).
+    /// Rejects a bare interpolation where an import supports declaration is required.
     @Test
-    void allowsEmptyInterpolatedStaticImportSupportsCondition() throws Exception {
-        var result = new SassCompiler().compile(
-                SassSource.fromString(
-                        "$condition: \"\"; @import \"theme.css\" supports(#{$condition});",
-                        Syntax.SCSS
-                ),
-                CssTarget.DEFAULT
+    void rejectsBareInterpolatedStaticImportSupportsCondition() {
+        var failure = assertThrows(
+                SassCompilationException.class,
+                () -> new SassCompiler().compile(
+                        SassSource.fromString(
+                                "$condition: \"\"; @import \"theme.css\" supports(#{$condition});",
+                                Syntax.SCSS
+                        ),
+                        CssTarget.DEFAULT
+                )
         );
-        assertEquals("@import \"theme.css\" supports();", result.output());
+        assertEquals("expected \":\".", failure.getMessage());
     }
 
     /// Places root imports before CSS emitted by used modules.
@@ -140,18 +139,62 @@ final class StaticImportOutputTest {
         );
     }
 
-    /// Serializes static imports for JavaFX CSS without loading JavaFX classes.
+    /// Serializes unconditional imports for both JavaFX compatibility levels.
     @Test
     void serializesJavaFxCssImports() throws Exception {
-        var result = new SassCompiler().compile(
-                SassSource.fromString(
-                        "$display: grid; @import \"theme.css\" supports(display: $display) screen;",
-                        Syntax.SCSS
-                ),
+        var source = SassSource.fromString("@import \"theme.css\";", Syntax.SCSS);
+        var compiler = new SassCompiler();
+        var javaFx17 = compiler.compile(
+                source,
                 new JavaFXCssTarget(JavaFXCompatibility.JAVA_FX_17, OutputStyle.COMPRESSED)
+        ).output();
+        var javaFx27 = compiler.compile(
+                source,
+                new JavaFXCssTarget(JavaFXCompatibility.JAVA_FX_27, OutputStyle.COMPRESSED)
+        ).output();
+
+        assertEquals("@import \"theme.css\";", javaFx17);
+        assertEquals("@import \"theme.css\";", javaFx27);
+    }
+
+    /// Rejects conditional imports whose semantics differ on JavaFX 17.
+    @Test
+    void rejectsConditionalImportsForJavaFx17() {
+        var failure = assertThrows(
+                SassCompilationException.class,
+                () -> new SassCompiler().compile(
+                        SassSource.fromString(
+                                "@import \"theme.css\" (prefers-color-scheme: dark);",
+                                Syntax.SCSS
+                        ),
+                        new JavaFXCssTarget(
+                                JavaFXCompatibility.JAVA_FX_17,
+                                OutputStyle.COMPRESSED
+                        )
+                )
         );
 
-        assertEquals("@import \"theme.css\" supports(display: grid) screen;", result.output());
+        assertEquals(
+                "JavaFX 17 CSS supports only unconditional @import rules.",
+                failure.getMessage()
+        );
+    }
+
+    /// Serializes JavaFX 27 media conditions after the import URL.
+    @Test
+    void serializesConditionalImportsForJavaFx27() throws Exception {
+        var result = new SassCompiler().compile(
+                SassSource.fromString(
+                        "@import \"theme.css\" (prefers-color-scheme: dark);",
+                        Syntax.SCSS
+                ),
+                new JavaFXCssTarget(JavaFXCompatibility.JAVA_FX_27, OutputStyle.COMPRESSED)
+        );
+
+        assertEquals(
+                "@import \"theme.css\" (prefers-color-scheme: dark);",
+                result.output()
+        );
     }
 
     /// Rejects imports explicitly when the BSS backend cannot encode them.

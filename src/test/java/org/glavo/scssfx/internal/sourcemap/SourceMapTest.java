@@ -3,6 +3,9 @@ package org.glavo.scssfx.internal.sourcemap;
 
 import org.glavo.scssfx.CompileOptions;
 import org.glavo.scssfx.CssTarget;
+import org.glavo.scssfx.JavaFXCompatibility;
+import org.glavo.scssfx.JavaFXCssTarget;
+import org.glavo.scssfx.OutputStyle;
 import org.glavo.scssfx.SassCompiler;
 import org.glavo.scssfx.SassSource;
 import org.glavo.scssfx.SourceMap;
@@ -93,6 +96,39 @@ final class SourceMapTest {
         var entries = decode(map);
         assertTrue(hasMapping(entries, 0, 0, 1, 2), entries.toString());
         assertTrue(hasMapping(entries, 1, 2, 2, 4), entries.toString());
+    }
+
+    /// Accounts for the separator required by compressed JavaFX media rules.
+    @Test
+    void mapsCompressedJavaFxMediaRules() throws Exception {
+        var result = new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                @media (min-width: 1px) {
+                                  Pane {
+                                    -fx-opacity: 1;
+                                  }
+                                }
+                                """,
+                        Syntax.SCSS
+                ),
+                new JavaFXCssTarget(
+                        JavaFXCompatibility.JAVA_FX_27,
+                        OutputStyle.COMPRESSED
+                ),
+                new CompileOptions(true, List.of())
+        );
+
+        assertEquals(
+                "@media (min-width: 1px){Pane{-fx-opacity:1}}",
+                result.output()
+        );
+        var map = result.sourceMap();
+        assertNotNull(map);
+        assertTrue(
+                hasMapping(decode(map), 0, 24, 1, 2),
+                decode(map).toString()
+        );
     }
 
     /// Records multiple source files loaded through the module system.

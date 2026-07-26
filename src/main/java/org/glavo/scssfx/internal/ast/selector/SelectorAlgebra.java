@@ -312,6 +312,32 @@ public final class SelectorAlgebra {
             Set<String> originalKeys,
             Map<String, Integer> sourceSpecificity
     ) {
+        return extend(
+                selector,
+                extendee,
+                extender,
+                originalKeys,
+                sourceSpecificity,
+                null
+        );
+    }
+
+    /// Extends {@code selector} as {@link #extend(SelectorList, SelectorList,
+    /// SelectorList, Set, Map)} and optionally keeps both a nested union-pseudo
+    /// original and its rewrite when the original complex is a protected
+    /// extender key (dart-sass into_pseudo / {@code _extendExistingExtensions}).
+    ///
+    /// @param protectedExtenderKeys complex keys of same-module extenders that
+    ///                              must not be replaced solely by nested rewrites,
+    ///                              or {@code null} when none
+    public static SelectorList extend(
+            SelectorList selector,
+            SelectorList extendee,
+            SelectorList extender,
+            Set<String> originalKeys,
+            Map<String, Integer> sourceSpecificity,
+            @Nullable Set<String> protectedExtenderKeys
+    ) {
         assertSupported(selector, "selector");
         assertCompoundTargets(extendee, "extendee");
         assertSupported(extender, "extender");
@@ -332,10 +358,440 @@ public final class SelectorAlgebra {
                     extender,
                     false,
                     originalKeys,
-                    sourceSpecificity
+                    sourceSpecificity,
+                    protectedExtenderKeys
             ));
         }
         return new SelectorList(current, selector.span());
+    }
+
+    /// One simple-selector extension used by simultaneous multi-extension.
+    ///
+    /// @param target   the single simple selector being extended
+    /// @param extender one complex selector alternative that extends {@code target}
+    public record SimpleExtension(SimpleSelector target, ComplexSelector extender) {
+        /// Creates a simple extension entry.
+        public SimpleExtension {
+            Objects.requireNonNull(target, "target");
+            Objects.requireNonNull(extender, "extender");
+        }
+    }
+
+    /// Bucket of extenders for one exact simple target.
+    private record ExtensionBucket(SimpleSelector target, List<ComplexSelector> extenders) {
+    }
+
+    /// One choice in a simultaneous multi-extension paths step.
+    private record ExtenderChoice(ComplexSelector selector, boolean original) {
+        static ExtenderChoice originalSimple(SimpleSelector simple) {
+            var compound = new CompoundSelector(List.of(simple), simple.span());
+            var component = new ComplexSelectorComponent(compound, List.of(), simple.span());
+            return new ExtenderChoice(
+                    new ComplexSelector(List.of(), List.of(component), simple.span()),
+                    true
+            );
+        }
+
+        static ExtenderChoice originalCompound(List<SimpleSelector> simples, SourceSpan span) {
+            var compound = new CompoundSelector(simples, span);
+            var component = new ComplexSelectorComponent(compound, List.of(), span);
+            return new ExtenderChoice(
+                    new ComplexSelector(List.of(), List.of(component), span),
+                    true
+            );
+        }
+    }
+
+    /// Extends {@code selector} with every entry in {@code extensions} at once.
+    ///
+    /// Matches dart-sass {@code ExtensionStore._extendList}: each compound is
+    /// rewritten by taking {@code paths} over the per-simple extender choices so
+    /// multi-simple compounds such as {@code .e.f} produce the registration-order
+    /// interleaving of single- and multi-extension products.
+    ///
+    /// @param selector          the selector list to extend
+    /// @param extensions        simple-target extensions applied simultaneously
+    /// @param originalKeys      semantic keys of document-original complexes
+    /// @param sourceSpecificity max original-extender specificity per simple key
+    /// @return the original and extended selector alternatives
+    public static SelectorList extendAll(
+            SelectorList selector,
+            List<SimpleExtension> extensions,
+            Set<String> originalKeys,
+            Map<String, Integer> sourceSpecificity
+    ) {
+        assertSupported(selector, "selector");
+        Objects.requireNonNull(extensions, "extensions");
+        Objects.requireNonNull(originalKeys, "originalKeys");
+        Objects.requireNonNull(sourceSpecificity, "sourceSpecificity");
+        if (extensions.isEmpty()) {
+            return selector;
+        }
+        var byTarget = indexExtensions(extensions);
+        var result = new ArrayList<ComplexSelector>();
+        for (var complex : selector.components()) {
+            @Nullable List<ComplexSelector> extended = extendComplexAll(
+                    complex,
+                    byTarget,
+                    originalKeys,
+                    sourceSpecificity
+            );
+            if (extended == null) {
+                result.add(complex);
+            } else {
+                result.addAll(extended);
+            }
+        }
+        return new SelectorList(
+                trimSubselectors(deduplicate(result), originalKeys, sourceSpecificity),
+                selector.span()
+        );
+    }
+
+    /// Indexes extensions by exact simple-selector key.
+    private static Map<String, ExtensionBucket> indexExtensions(List<SimpleExtension> extensions) {
+        var byTarget = new LinkedHashMap<String, ExtensionBucket>();
+        for (var extension : extensions) {
+            var key = simpleKey(extension.target());
+            var bucket = byTarget.get(key);
+            if (bucket == null) {
+                var extenders = new ArrayList<ComplexSelector>();
+                extenders.add(extension.extender());
+                byTarget.put(key, new ExtensionBucket(extension.target(), extenders));
+            } else {
+                bucket.extenders().add(extension.extender());
+            }
+        }
+        return byTarget;
+    }
+
+    /// Extends one complex selector with the simultaneous extension map.
+    private static @Nullable List<ComplexSelector> extendComplexAll(
+            ComplexSelector complex,
+            Map<String, ExtensionBucket> byTarget,
+            Set<String> originalKeys,
+            Map<String, Integer> sourceSpecificity
+    ) {
+        if (complex.leadingCombinators().size() > 1) {
+            return null;
+        }
+        List<List<ComplexSelector>> extendedNotExpanded = null;
+        boolean isOriginal = originalKeys.contains(complexKey(complex));
+        for (var index = 0; index < complex.components().size(); index++) {
+            var component = complex.components().get(index);
+            @Nullable List<ComplexSelector> extended = extendCompoundAll(
+                    component,
+                    byTarget,
+                    sourceSpecificity
+            );
+            if (extended == null) {
+                if (extendedNotExpanded != null) {
+                    extendedNotExpanded.add(List.of(new ComplexSelector(
+                            List.of(),
+                            List.of(component),
+                            complex.span(),
+                            complex.lineBreak()
+                    )));
+                }
+            } else if (extendedNotExpanded != null) {
+                extendedNotExpanded.add(extended);
+            } else if (index != 0) {
+                extendedNotExpanded = new ArrayList<>();
+                extendedNotExpanded.add(List.of(new ComplexSelector(
+                        complex.leadingCombinators(),
+                        complex.components().subList(0, index),
+                        complex.span(),
+                        complex.lineBreak()
+                )));
+                extendedNotExpanded.add(extended);
+            } else if (complex.leadingCombinators().isEmpty()) {
+                extendedNotExpanded = new ArrayList<>();
+                extendedNotExpanded.add(extended);
+            } else {
+                extendedNotExpanded = new ArrayList<>();
+                var withLeading = new ArrayList<ComplexSelector>();
+                for (var newComplex : extended) {
+                    if (newComplex.leadingCombinators().isEmpty()
+                            || newComplex.leadingCombinators().equals(complex.leadingCombinators())) {
+                        withLeading.add(new ComplexSelector(
+                                complex.leadingCombinators(),
+                                newComplex.components(),
+                                complex.span(),
+                                complex.lineBreak() || newComplex.lineBreak()
+                        ));
+                    }
+                }
+                extendedNotExpanded.add(withLeading);
+            }
+        }
+        if (extendedNotExpanded == null) {
+            return null;
+        }
+        var woven = new ArrayList<ComplexSelector>();
+        boolean first = true;
+        for (var path : paths(extendedNotExpanded)) {
+            for (var output : weave(path, complex.span())) {
+                if (complex.lineBreak()) {
+                    output = output.withLineBreak(true);
+                }
+                if (first && isOriginal) {
+                    originalKeys.add(complexKey(output));
+                }
+                first = false;
+                woven.add(output);
+            }
+        }
+        return woven.isEmpty() ? null : woven;
+    }
+
+    /// Extends one compound component by taking paths over per-simple choices.
+    private static @Nullable List<ComplexSelector> extendCompoundAll(
+            ComplexSelectorComponent component,
+            Map<String, ExtensionBucket> byTarget,
+            Map<String, Integer> sourceSpecificity
+    ) {
+        var simples = component.selector().components();
+        List<List<ExtenderChoice>> options = null;
+        for (var index = 0; index < simples.size(); index++) {
+            var simple = simples.get(index);
+            @Nullable List<List<ExtenderChoice>> extended = extendSimpleAll(
+                    simple,
+                    byTarget,
+                    sourceSpecificity
+            );
+            if (extended == null) {
+                if (options != null) {
+                    options.add(List.of(ExtenderChoice.originalSimple(simple)));
+                }
+            } else {
+                if (options == null) {
+                    options = new ArrayList<>();
+                    if (index != 0) {
+                        options.add(List.of(ExtenderChoice.originalCompound(
+                                simples.subList(0, index),
+                                component.span()
+                        )));
+                    }
+                }
+                options.addAll(extended);
+            }
+        }
+        if (options == null) {
+            return null;
+        }
+        if (options.size() == 1) {
+            var result = new ArrayList<ComplexSelector>();
+            for (var choice : options.get(0)) {
+                var withCombinators = choice.selector().withAdditionalCombinators(component.combinators());
+                if (!hasMultipleCombinators(withCombinators)) {
+                    result.add(withCombinators);
+                }
+            }
+            return result.isEmpty() ? null : result;
+        }
+        var extenderPaths = paths(options);
+        var result = new ArrayList<ComplexSelector>();
+        // First path is the original compound (all original choices).
+        var firstPath = extenderPaths.get(0);
+        var originalSimples = new ArrayList<SimpleSelector>();
+        for (var choice : firstPath) {
+            var last = choice.selector().components().get(choice.selector().components().size() - 1);
+            originalSimples.addAll(last.selector().components());
+        }
+        result.add(new ComplexSelector(
+                List.of(),
+                List.of(new ComplexSelectorComponent(
+                        new CompoundSelector(originalSimples, component.selector().span()),
+                        component.combinators(),
+                        component.span()
+                )),
+                component.span()
+        ));
+        for (var pathIndex = 1; pathIndex < extenderPaths.size(); pathIndex++) {
+            @Nullable List<ComplexSelector> unified = unifyExtenderChoices(
+                    extenderPaths.get(pathIndex),
+                    component.span()
+            );
+            if (unified == null) {
+                continue;
+            }
+            for (var complex : unified) {
+                var withCombinators = complex.withAdditionalCombinators(component.combinators());
+                if (!hasMultipleCombinators(withCombinators)) {
+                    result.add(withCombinators);
+                }
+            }
+        }
+        return result;
+    }
+
+    /// Extends one simple selector, including nested selector-pseudo arguments.
+    private static @Nullable List<List<ExtenderChoice>> extendSimpleAll(
+            SimpleSelector simple,
+            Map<String, ExtensionBucket> byTarget,
+            Map<String, Integer> sourceSpecificity
+    ) {
+        if (simple instanceof PseudoSelector pseudo && selectorArgument(pseudo) != null) {
+            @Nullable List<SimpleSelector> extendedPseudos = extendPseudoAll(
+                    pseudo,
+                    byTarget,
+                    sourceSpecificity
+            );
+            if (extendedPseudos != null) {
+                var choices = new ArrayList<List<ExtenderChoice>>();
+                for (var extendedSimple : extendedPseudos) {
+                    @Nullable List<ExtenderChoice> without = withoutPseudoAll(extendedSimple, byTarget);
+                    choices.add(without != null
+                            ? without
+                            : List.of(ExtenderChoice.originalSimple(extendedSimple)));
+                }
+                return choices;
+            }
+        }
+        @Nullable List<ExtenderChoice> without = withoutPseudoAll(simple, byTarget);
+        if (without == null) {
+            return null;
+        }
+        return List.of(without);
+    }
+
+    /// Returns extender choices for an exact simple target, or {@code null}.
+    private static @Nullable List<ExtenderChoice> withoutPseudoAll(
+            SimpleSelector simple,
+            Map<String, ExtensionBucket> byTarget
+    ) {
+        @Nullable ExtensionBucket bucket = byTarget.get(simpleKey(simple));
+        if (bucket == null || bucket.extenders().isEmpty()) {
+            return null;
+        }
+        var choices = new ArrayList<ExtenderChoice>(1 + bucket.extenders().size());
+        choices.add(ExtenderChoice.originalSimple(simple));
+        for (var extender : bucket.extenders()) {
+            choices.add(new ExtenderChoice(extender, false));
+        }
+        return choices;
+    }
+
+    /// Extends a selector-taking pseudo's argument with all extensions at once.
+    private static @Nullable List<SimpleSelector> extendPseudoAll(
+            PseudoSelector pseudo,
+            Map<String, ExtensionBucket> byTarget,
+            Map<String, Integer> sourceSpecificity
+    ) {
+        @Nullable SelectorList originalSelectors = selectorArgument(pseudo);
+        if (originalSelectors == null || byTarget.isEmpty()) {
+            return null;
+        }
+        var extensionList = new ArrayList<SimpleExtension>();
+        for (var bucket : byTarget.values()) {
+            for (var extender : bucket.extenders()) {
+                extensionList.add(new SimpleExtension(bucket.target(), extender));
+            }
+        }
+        var nestedOriginals = originalKeysOf(originalSelectors);
+        var extended = extendAll(originalSelectors, extensionList, nestedOriginals, sourceSpecificity);
+        if (selectorListSemanticallyEquals(originalSelectors, extended)) {
+            return null;
+        }
+        var normalized = normalizedPseudoName(pseudo.name().value());
+        if ("not".equals(normalized)) {
+            var originalHadComplex = false;
+            for (var complex : originalSelectors.components()) {
+                if (complex.components().size() > 1) {
+                    originalHadComplex = true;
+                    break;
+                }
+            }
+            var anySimpleCompound = false;
+            for (var complex : extended.components()) {
+                if (complex.components().size() == 1) {
+                    anySimpleCompound = true;
+                }
+            }
+            var expanded = new ArrayList<ComplexSelector>();
+            for (var complex : extended.components()) {
+                if (!originalHadComplex
+                        && anySimpleCompound
+                        && complex.components().size() > 1) {
+                    continue;
+                }
+                expanded.addAll(expandForNotArgument(complex));
+            }
+            if (originalSelectors.components().size() == 1) {
+                var result = new ArrayList<SimpleSelector>(expanded.size());
+                for (var complex : expanded) {
+                    result.add(new PseudoSelector(
+                            pseudo.name(),
+                            pseudo.element(),
+                            new SelectorPseudoArgument(new SelectorList(List.of(complex), complex.span())),
+                            pseudo.span()
+                    ));
+                }
+                return result;
+            }
+            return List.of(new PseudoSelector(
+                    pseudo.name(),
+                    pseudo.element(),
+                    new SelectorPseudoArgument(new SelectorList(expanded, originalSelectors.span())),
+                    pseudo.span()
+            ));
+        }
+        @Nullable PseudoArgument argument = pseudo.argument();
+        PseudoArgument rewritten;
+        if (argument instanceof NthPseudoArgument nth) {
+            rewritten = new NthPseudoArgument(nth.formula(), extended);
+        } else {
+            rewritten = new SelectorPseudoArgument(extended);
+        }
+        return List.of(new PseudoSelector(
+                pseudo.name(),
+                pseudo.element(),
+                rewritten,
+                pseudo.span()
+        ));
+    }
+
+    /// Unifies one paths row of extender choices (dart-sass {@code _unifyExtenders}).
+    private static @Nullable List<ComplexSelector> unifyExtenderChoices(
+            List<ExtenderChoice> extenders,
+            SourceSpan span
+    ) {
+        var toUnify = new ArrayList<ComplexSelector>();
+        List<SimpleSelector> originals = null;
+        boolean originalsLineBreak = false;
+        for (var extender : extenders) {
+            if (extender.original()) {
+                if (originals == null) {
+                    originals = new ArrayList<>();
+                }
+                var finalComponent = extender.selector().components()
+                        .get(extender.selector().components().size() - 1);
+                originals.addAll(finalComponent.selector().components());
+                originalsLineBreak = originalsLineBreak || extender.selector().lineBreak();
+            } else if (hasMultipleCombinators(extender.selector())) {
+                return null;
+            } else {
+                toUnify.add(extender.selector());
+            }
+        }
+        if (originals != null) {
+            var originalComplex = new ComplexSelector(
+                    List.of(),
+                    List.of(new ComplexSelectorComponent(
+                            new CompoundSelector(originals, span),
+                            List.of(),
+                            span
+                    )),
+                    span,
+                    originalsLineBreak
+            );
+            toUnify.add(0, originalComplex);
+        }
+        if (toUnify.isEmpty()) {
+            return null;
+        }
+        var unified = unifyComplex(toUnify, span);
+        return unified.isEmpty() ? null : unified;
     }
 
     /// Records the specificity of each simple in {@code extender} for second-law
@@ -548,6 +1004,103 @@ public final class SelectorAlgebra {
         }
         toWeave.add(withoutBases.get(withoutBases.size() - 1).concatenate(base));
         return weave(toWeave, selector1.span());
+    }
+
+    /// Unifies an entire extender path in one operation.
+    ///
+    /// Dart Sass unifies all final compounds before it weaves any parent
+    /// prefixes. Pairwise unification is not equivalent because weaving an
+    /// intermediate result may permanently place one extender's ancestors
+    /// before ancestors contributed by a later extender.
+    ///
+    /// @param complexes the complex selectors whose intersection is required
+    /// @param span      the span for the unified selector products
+    /// @return every supported intersection in stable weave order
+    private static @Unmodifiable List<ComplexSelector> unifyComplex(
+            List<ComplexSelector> complexes,
+            SourceSpan span
+    ) {
+        if (complexes.isEmpty()) {
+            return List.of();
+        }
+        if (complexes.size() == 1) {
+            return List.of(complexes.get(0));
+        }
+
+        @Nullable CompoundSelector unifiedBase = null;
+        @Nullable List<Combinator> leadingCombinator = null;
+        @Nullable List<Combinator> trailingCombinator = null;
+        var lineBreak = false;
+        for (var complex : complexes) {
+            if (complex.components().isEmpty()
+                    || complex.leadingCombinators().size() > 1) {
+                return List.of();
+            }
+            for (var component : complex.components()) {
+                if (component.combinators().size() > 1) {
+                    return List.of();
+                }
+            }
+
+            if (complex.components().size() == 1
+                    && complex.leadingCombinators().size() == 1) {
+                if (leadingCombinator == null) {
+                    leadingCombinator = complex.leadingCombinators();
+                } else if (!leadingCombinator.equals(complex.leadingCombinators())) {
+                    return List.of();
+                }
+            }
+
+            var base = complex.components().get(complex.components().size() - 1);
+            if (base.combinators().size() == 1) {
+                if (trailingCombinator != null
+                        && !trailingCombinator.equals(base.combinators())) {
+                    return List.of();
+                }
+                trailingCombinator = base.combinators();
+            }
+
+            if (unifiedBase == null) {
+                unifiedBase = base.selector();
+            } else {
+                unifiedBase = unifyCompound(unifiedBase, base.selector());
+                if (unifiedBase == null) {
+                    return List.of();
+                }
+            }
+            lineBreak |= complex.lineBreak();
+        }
+
+        var withoutBases = new ArrayList<ComplexSelector>();
+        for (var complex : complexes) {
+            if (complex.components().size() > 1) {
+                withoutBases.add(new ComplexSelector(
+                        complex.leadingCombinators(),
+                        complex.components().subList(0, complex.components().size() - 1),
+                        complex.span(),
+                        complex.lineBreak()
+                ));
+            }
+        }
+
+        var base = new ComplexSelector(
+                leadingCombinator == null ? List.of() : leadingCombinator,
+                List.of(new ComplexSelectorComponent(
+                        Objects.requireNonNull(unifiedBase),
+                        trailingCombinator == null ? List.of() : trailingCombinator,
+                        span
+                )),
+                span,
+                lineBreak
+        );
+        if (withoutBases.isEmpty()) {
+            return List.of(base);
+        }
+
+        var toWeave = new ArrayList<ComplexSelector>(withoutBases.size());
+        toWeave.addAll(withoutBases.subList(0, withoutBases.size() - 1));
+        toWeave.add(withoutBases.get(withoutBases.size() - 1).concatenate(base));
+        return weave(toWeave, span);
     }
 
     /// Returns whether one selector contains a pseudo selector whose result
@@ -2351,6 +2904,26 @@ public final class SelectorAlgebra {
             Set<String> originalKeys,
             Map<String, Integer> sourceSpecificity
     ) {
+        return transformTarget(
+                selectors,
+                target,
+                inserted,
+                replacement,
+                originalKeys,
+                sourceSpecificity,
+                null
+        );
+    }
+
+    private static @Unmodifiable List<ComplexSelector> transformTarget(
+            List<ComplexSelector> selectors,
+            CompoundSelector target,
+            SelectorList inserted,
+            boolean replacement,
+            Set<String> originalKeys,
+            Map<String, Integer> sourceSpecificity,
+            @Nullable Set<String> protectedExtenderKeys
+    ) {
         var bases = new ArrayList<ComplexSelector>(selectors.size());
         for (var candidate : selectors) {
             // Nested {@code :not} on document originals always runs. Pure {@code :not}
@@ -2378,9 +2951,6 @@ public final class SelectorAlgebra {
                 // {@code :is}/{:matches} chains and trimming still see them.
                 // Skip promotion when the rewrite is a nested {@code :not} product
                 // so fixed-point does not re-expand forever (issue_2399).
-                // Nested non-{:not} rewrites replace in place (module midstream
-                // extend and selector.extend idempotent :is/:matches). Keep-both
-                // for into_pseudo conflicts with midstream_extend_within_pseudoselector.
                 String beforeKey = complexKey(candidate);
                 String afterKey = complexKey(nested);
                 if (originalKeys.contains(beforeKey)
@@ -2388,7 +2958,26 @@ public final class SelectorAlgebra {
                         && !complexHasNotPseudo(nested)) {
                     originalKeys.add(afterKey);
                 }
-                bases.add(nested);
+                // When this complex is itself a same-document extender of another
+                // target (dart-sass {@code _extendExistingExtensions} products),
+                // keep both the original extender and the rewritten form so
+                // into_pseudo/extends_after yields
+                // {@code :is(midstream), :is(midstream, downstream)}. Nested
+                // rewrites of injected module CSS replace in place. Mark both as
+                // original-equivalent so second-law trimming cannot drop the
+                // narrower {@code :is(midstream)} as a subselector of the
+                // rewritten form.
+                if (protectedExtenderKeys != null
+                        && protectedExtenderKeys.contains(beforeKey)
+                        && !beforeKey.equals(afterKey)
+                        && !complexHasNotPseudo(nested)) {
+                    bases.add(candidate);
+                    bases.add(nested);
+                    originalKeys.add(beforeKey);
+                    originalKeys.add(afterKey);
+                } else {
+                    bases.add(nested);
+                }
             }
         }
 
@@ -2480,13 +3069,22 @@ public final class SelectorAlgebra {
     }
 
     /// Returns whether every alternative of {@code extender} is a single simple
-    /// selector with no combinators (safe for nested {@code :not} on products).
+    /// selector with no combinators and no nested selector arguments (safe for
+    /// nested {@code :not} expansion on pure {@code :not} products).
+    ///
+    /// Selector-taking extenders such as {@code :not(.thing[disabled])} or
+    /// {@code :has(...)} must not re-enter pure {@code :not} products or
+    /// issue_2055 / issue_2399 explode combinatorially.
     private static boolean isSimpleExtender(SelectorList extender) {
         for (var complex : extender.components()) {
             if (!complex.leadingCombinators().isEmpty()
                     || complex.components().size() != 1
                     || !complex.components().get(0).combinators().isEmpty()
                     || complex.components().get(0).selector().components().size() != 1) {
+                return false;
+            }
+            var simple = complex.components().get(0).selector().components().get(0);
+            if (simple instanceof PseudoSelector pseudo && selectorArgument(pseudo) != null) {
                 return false;
             }
         }
@@ -3402,7 +4000,7 @@ public final class SelectorAlgebra {
     ///
     /// @param selector the selector list to encode
     /// @return the selector-list semantic key
-    private static String selectorListKey(SelectorList selector) {
+    public static String selectorListKey(SelectorList selector) {
         var keys = new ArrayList<String>(selector.components().size());
         for (var component : selector.components()) {
             keys.add(complexKey(component));

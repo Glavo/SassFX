@@ -281,6 +281,40 @@ final class SelectorAlgebraTest {
         );
     }
 
+    /// Preserves path order while unifying multiple complex extenders.
+    @Test
+    void extendsCompoundWithMultipleComplexExtenders() {
+        var selector = parse(".e.f");
+        var e = parse(".e").components().get(0)
+                .components().get(0).selector().components().get(0);
+        var f = parse(".f").components().get(0)
+                .components().get(0).selector().components().get(0);
+        var aB = parse(".a .b").components().get(0);
+        var cD = parse(".c .d").components().get(0);
+        var specificity = new java.util.HashMap<String, Integer>();
+        SelectorAlgebra.recordSourceSpecificity(
+                new SelectorList(java.util.List.of(aB), aB.span()),
+                specificity
+        );
+        SelectorAlgebra.recordSourceSpecificity(
+                new SelectorList(java.util.List.of(cD), cD.span()),
+                specificity
+        );
+
+        assertEquals(
+                ".e.f, .a .f.b, .c .e.d, .a .c .b.d, .c .a .b.d",
+                SelectorAlgebra.extendAll(
+                        selector,
+                        java.util.List.of(
+                                new SelectorAlgebra.SimpleExtension(e, aB),
+                                new SelectorAlgebra.SimpleExtension(f, cD)
+                        ),
+                        new java.util.HashSet<>(SelectorAlgebra.originalKeysOf(selector)),
+                        specificity
+                ).toCssString()
+        );
+    }
+
     /// Verifies extension and replacement retain namespace restrictions.
     @Test
     void extendsAndReplacesNamespaceAwareElementSelectors() {

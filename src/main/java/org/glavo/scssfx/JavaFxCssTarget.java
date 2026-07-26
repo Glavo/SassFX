@@ -7,10 +7,12 @@ import java.util.Objects;
 
 /// Configures textual CSS intended for JavaFX stylesheet consumers.
 ///
-/// This target does not load JavaFX classes. Current textual serialization does
-/// not vary by [#compatibility()].
+/// This target does not load JavaFX classes. Before serialization, the compiler
+/// rejects CSS structures, media conditions, imports, and declarations that
+/// cannot preserve their intended meaning at the selected [#compatibility()]
+/// level.
 ///
-/// @param compatibility the JavaFX stylesheet compatibility metadata
+/// @param compatibility the JavaFX stylesheet compatibility level
 /// @param style the formatting style applied to the generated stylesheet
 @NotNullByDefault
 public record JavaFXCssTarget(

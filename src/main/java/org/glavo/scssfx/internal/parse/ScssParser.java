@@ -118,11 +118,17 @@ final class ScssParser extends SassExpressionParser {
     /// Records whether module directives are still allowed at the stylesheet root.
     private boolean moduleDirectivesAllowed = true;
 
+    /// Whether this parse was projected from the indented syntax.
+    ///
+    /// Empty {@code @import} (no URL) is valid only in indented Sass and must
+    /// become a dynamic import of the empty path, which reloads the current file.
+    private final boolean fromIndented;
+
     /// Creates a parser for an indexed SCSS source.
     ///
     /// @param source the SCSS source to parse
     ScssParser(SourceFile source) {
-        this(source, false);
+        this(source, false, false);
     }
 
     /// Creates a parser for an indexed SCSS or plain-CSS source.
@@ -130,8 +136,18 @@ final class ScssParser extends SassExpressionParser {
     /// @param source the source to parse
     /// @param plainCss whether Sass-only stylesheet syntax must be rejected
     ScssParser(SourceFile source, boolean plainCss) {
+        this(source, plainCss, false);
+    }
+
+    /// Creates a parser for projected indented Sass, SCSS, or plain CSS.
+    ///
+    /// @param source the source to parse
+    /// @param plainCss whether Sass-only stylesheet syntax must be rejected
+    /// @param fromIndented whether the source was projected from indented Sass
+    ScssParser(SourceFile source, boolean plainCss, boolean fromIndented) {
         super(source);
         this.plainCss = plainCss;
+        this.fromIndented = fromIndented;
     }
 
     /// {@inheritDoc}
@@ -1953,6 +1969,24 @@ final class ScssParser extends SassExpressionParser {
                         dynamic.span(),
                         "import"
                 ));
+            } else if (fromIndented && !plainCss && atImportArgumentEnd()) {
+                // Indented {@code @import} / {@code @import } with no URL is a
+                // dynamic import of the empty path (reloads the current file).
+                if (controlDirectiveDepth > 0 || inMixin) {
+                    throw scanner.error("This at-rule is not allowed here.");
+                }
+                var emptySpan = scanner.spanFrom(argumentStart);
+                var dynamic = new DynamicImport("", emptySpan);
+                imports.add(dynamic);
+                addParseTimeWarning(new Diagnostic(
+                        DiagnosticSeverity.DEPRECATION,
+                        "Sass @import rules are deprecated and will be removed in "
+                                + "Dart Sass 3.0.0.\n\n"
+                                + "More info and automated migrator: "
+                                + "https://sass-lang.com/d/import",
+                        dynamic.span(),
+                        "import"
+                ));
             } else {
                 throw scanner.error("Expected string or url().");
             }
@@ -2202,42 +2236,50 @@ final class ScssParser extends SassExpressionParser {
     ///
     /// @return the parsed import supports condition
     private SupportsCondition importSupportsCondition() {
-        var start = scanner.state();
-        var colonConsumed = false;
-        try {
-            var name = expression();
+        // Match dart-sass {@code _importSupportsQuery}: after optional {@code not}
+        // / parenthesized conditions / function forms, a bare expression must be
+        // a declaration {@code name: value} (no fallback to general supports).
+        if (scanIdentifier("not")) {
             whitespace(true);
-            if (!scanner.scan(':')) {
-                throw scanner.error("Expected \":\".");
-            }
-            colonConsumed = true;
-
-            boolean customProperty = name instanceof StringExpression string
-                    && isPlainCustomPropertyName(string);
-            SassExpression value;
-            if (customProperty) {
-                // Preserve post-colon whitespace/comments for import supports().
-                // dart-sass rejects a completely empty custom-property value
-                // ({@code supports(--a:)}) with "Expected token."
-                var rawValue = interpolatedDeclarationValue(false, true);
-                value = new StringExpression(rawValue, false);
-            } else {
-                whitespace(true);
-                value = expression();
-            }
-            return new SupportsDeclaration(
-                    name,
-                    value,
-                    customProperty,
-                    scanner.spanFrom(start)
-            );
-        } catch (ParseException failure) {
-            scanner.restore(start);
-            if (colonConsumed) {
-                throw failure;
-            }
+            var start = scanner.state();
+            return new SupportsNegation(supportsConditionInParens(), scanner.spanFrom(start));
+        }
+        if (scanner.peek() == '(') {
             return supportsCondition();
         }
+        if (lookingAtInterpolatedIdentifier()) {
+            var functionStart = scanner.state();
+            var functionName = interpolatedIdentifier();
+            if (scanner.scan('(')) {
+                var arguments = interpolatedDeclarationValue(true, true, true);
+                scanner.expect(')');
+                return new SupportsFunction(functionName, arguments, scanner.spanFrom(functionStart));
+            }
+            scanner.restore(functionStart);
+        }
+        var start = scanner.state();
+        var name = expression();
+        whitespace(true);
+        scanner.expect(':');
+        boolean customProperty = name instanceof StringExpression string
+                && isPlainCustomPropertyName(string);
+        SassExpression value;
+        if (customProperty) {
+            // Preserve post-colon whitespace/comments for import supports().
+            // dart-sass rejects a completely empty custom-property value
+            // ({@code supports(--a:)}) with "Expected token."
+            var rawValue = interpolatedDeclarationValue(false, true);
+            value = new StringExpression(rawValue, false);
+        } else {
+            whitespace(true);
+            value = expression();
+        }
+        return new SupportsDeclaration(
+                name,
+                value,
+                customProperty,
+                scanner.spanFrom(start)
+        );
     }
 
     /// Returns whether a top-level static-import `supports()` modifier begins here.

@@ -116,7 +116,23 @@ final class IndentedSassStructure {
                         "multiple statements on one line are not supported in the indented syntax."
                 );
             }
+            // {@code @extend b} / {@code !optional} on the next sibling line is
+            // not a valid split: dart-sass requires {@code !optional} on the same
+            // line and reports Expected newline at the end of the @extend line.
+            if (isExtendAtRule(normalized)
+                    && !normalized.contains("!optional")
+                    && next != null
+                    && next.indent() == line.indent()
+                    && next.text().strip().equalsIgnoreCase("!optional")) {
+                throw error(source, line, "Expected newline.");
+            }
             if (hasChildren) {
+                // Bare {@code @-moz-document} looks like a block header but its
+                // value uses {@code whitespace(consumeNewlines: false)}; an
+                // indented first token is not the rule body.
+                if (isBareMozDocument(normalized)) {
+                    throw error(source, line, "Expected identifier.");
+                }
                 if (!isBlockHeader(normalized) || isCssFunctionResultHeader(normalized)) {
                     // Bare {@code @charset}/{@code @namespace} still require a
                     // string argument on the same line. Indented children must not
@@ -251,6 +267,15 @@ final class IndentedSassStructure {
             var directive = original.charAt(0) == '=' ? "@mixin " : "@include ";
             output.appendReplacement(directive, base, base + remainder);
             output.appendOriginal(base + remainder, base + original.length());
+            return true;
+        }
+
+        // Leading {@code \} forces a style rule in indented Sass (dart-sass
+        // {@code if (indented && scanChar(backslash)) return styleRule()}).
+        // The backslash is not part of the emitted selector.
+        if (original.startsWith("\\") && original.length() > 1) {
+            output.appendReplacement("", base, base + 1);
+            output.appendOriginal(base + 1, base + original.length());
             return true;
         }
 
@@ -398,13 +423,16 @@ final class IndentedSassStructure {
                 );
                 if (nextPhysical == null) {
                     if (needsForcedContinuation && state.mandatory()) {
+                        // Unterminated quotes keep the quote-specific message.
+                        // Unterminated loud comments and other open delimiters
+                        // match dart-sass string_scanner: "expected more input."
                         throw error(
                                 source,
                                 startOffset,
                                 endOffset,
                                 state.openQuote()
                                         ? "Expected closing quote."
-                                        : "Expected a continuation line."
+                                        : "expected more input."
                         );
                     }
                     break;
@@ -529,7 +557,7 @@ final class IndentedSassStructure {
                         source,
                         startOffset,
                         endOffset,
-                        "Expected a continuation line."
+                        "expected more input."
                 );
             }
 
@@ -1248,7 +1276,16 @@ final class IndentedSassStructure {
                     && text.charAt(index + 1) == '{') {
                 stack.push(INTERPOLATION);
                 index++;
-            } else if (character == '(' || character == '[' || character == '{') {
+            } else if (character == '{') {
+                // Custom-property / declaration values may contain braces
+                // ({@code --b: {c d}}). Bare SCSS block braces after a selector
+                // ({@code a {}}) are rejected with Expected newline.
+                var colon = indexOfTopLevelColon(text);
+                if (stack.isEmpty() && (colon < 0 || colon >= index)) {
+                    return new ContinuationState(false, false, "Expected newline.");
+                }
+                stack.push(character);
+            } else if (character == '(' || character == '[') {
                 stack.push(character);
             } else if (character == ')'
                     || character == ']'
@@ -1298,12 +1335,15 @@ final class IndentedSassStructure {
         // target (extend/whitespace multiple_selectors/comma). {@code @each $a
         // in b,} ends the list (trailing comma) so the next indented line is the
         // body, not another list item (each/multiline/in_expression). {@code
+        // @import …,} similarly must not join a more-indented next import URL
+        // (that is an illegal nested statement under {@code @import}). {@code
         // @forward}/{@code @use} trailing commas still join show/hide members.
         var strippedForComma = text.strip();
         var trailingComma = lastSignificant >= 0
                 && text.charAt(lastSignificant) == ','
                 && !isExtendAtRule(strippedForComma)
-                && !isEachAtRule(strippedForComma);
+                && !isEachAtRule(strippedForComma)
+                && !isImportAtRule(strippedForComma);
         // Trailing spaced binary operators and {@code and}/{@code or}/{@code not}
         // force a same-indent continuation only for declarations/assignments
         // ({@code b: 3 %} / {@code $a: b +}). Selector lines ending in combinators
@@ -1633,6 +1673,10 @@ final class IndentedSassStructure {
                 && text.length() > 1
                 && isIncludeNameStart(text.charAt(1))) {
             return "@include " + text.substring(1);
+        }
+        // Leading {@code \} forces a style rule; drop it from the selector text.
+        if (text.startsWith("\\") && text.length() > 1) {
+            return text.substring(1);
         }
         if (text.startsWith("@elseif")) {
             return "@else if" + text.substring("@elseif".length());
@@ -2398,6 +2442,14 @@ final class IndentedSassStructure {
         return lower.equals("@charset") || lower.equals("@namespace");
     }
 
+    /// Returns whether {@code text} is bare {@code @-moz-document} with no value.
+    ///
+    /// @param text the statement text
+    /// @return whether the at-rule still needs a same-line function identifier
+    private static boolean isBareMozDocument(String text) {
+        return text.strip().equalsIgnoreCase("@-moz-document");
+    }
+
     /// Returns whether {@code text} ends with a top-level {@code !} token.
     ///
     /// @param text the statement text
@@ -2436,11 +2488,21 @@ final class IndentedSassStructure {
     /// @param text the accumulated statement text so far
     /// @return whether same-indent continuation is permitted
     private static boolean allowsSameIndentExpressionContinuation(String text) {
-        var stripped = withoutTrailingSilentComment(text.strip()).toLowerCase(Locale.ROOT);
-        return stripped.equals("@error")
-                || stripped.equals("@debug")
-                || stripped.equals("@warn")
-                || stripped.equals("@return");
+        var stripped = withoutTrailingSilentComment(text.strip());
+        var lower = stripped.toLowerCase(Locale.ROOT);
+        if (lower.equals("@error")
+                || lower.equals("@debug")
+                || lower.equals("@warn")
+                || lower.equals("@return")) {
+            return true;
+        }
+        // Incomplete top-level assignment {@code $a:} may put the value on the
+        // next same-indent line ({@code $a:\nnot c}), matching dart-sass.
+        if (stripped.startsWith("$")) {
+            var colon = indexOfTopLevelColon(stripped);
+            return colon >= 0 && stripped.substring(colon + 1).isBlank();
+        }
+        return false;
     }
 
     /// Returns whether {@code text} is {@code @function}/{@code @mixin} with a

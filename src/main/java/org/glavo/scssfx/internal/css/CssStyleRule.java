@@ -20,8 +20,9 @@ import java.util.Objects;
 public final class CssStyleRule extends AbstractCssNode implements CssParentNode {
     /// Contains the evaluated selector list and its source span.
     ///
-    /// The value may be rewritten in place when `@extend` is applied.
-    private CssValue<SelectorList> selector;
+    /// Structural copies share this reference so later `@extend` updates remain
+    /// visible through every copy.
+    private final CssSelectorReference selectorReference;
 
     /// Records whether this rule originated from plain CSS rather than Sass nesting.
     private final boolean fromPlainCss;
@@ -69,8 +70,36 @@ public final class CssStyleRule extends AbstractCssNode implements CssParentNode
             boolean fromPlainCss,
             @Nullable List<CssMediaQuery> definingMediaContext
     ) {
+        this(
+                new CssSelectorReference(Objects.requireNonNull(selector, "selector")),
+                span,
+                fromPlainCss,
+                definingMediaContext
+        );
+    }
+
+    /// Creates an empty style rule backed by a shared selector reference.
+    ///
+    /// Rules created with the same reference observe each other's selector
+    /// updates. Call [CssSelectorReference#copy()] before construction when an
+    /// independent deep copy is required.
+    ///
+    /// @param selectorReference    the shared selector reference
+    /// @param span                 the source range of the originating style rule
+    /// @param fromPlainCss         whether the rule came from plain CSS nesting
+    /// @param definingMediaContext media queries active when the rule was defined,
+    ///                             or {@code null} outside {@code @media}
+    public CssStyleRule(
+            CssSelectorReference selectorReference,
+            SourceSpan span,
+            boolean fromPlainCss,
+            @Nullable List<CssMediaQuery> definingMediaContext
+    ) {
         super(span);
-        this.selector = Objects.requireNonNull(selector, "selector");
+        this.selectorReference = Objects.requireNonNull(
+                selectorReference,
+                "selectorReference"
+        );
         this.fromPlainCss = fromPlainCss;
         this.definingMediaContext = definingMediaContext == null
                 ? null
@@ -83,14 +112,25 @@ public final class CssStyleRule extends AbstractCssNode implements CssParentNode
     ///
     /// @return the selector value
     public CssValue<SelectorList> selector() {
-        return selector;
+        return selectorReference.value();
+    }
+
+    /// Returns the shared reference that owns this rule's selector.
+    ///
+    /// Structural copies return the same reference. Deep-copy code must use
+    /// [CssSelectorReference#copy()] when the copied CSS tree requires isolated
+    /// extension state.
+    ///
+    /// @return the shared selector reference
+    public CssSelectorReference selectorReference() {
+        return selectorReference;
     }
 
     /// Replaces the resolved selector list after extension.
     ///
     /// @param selector the extended selector list
     public void setSelector(CssValue<SelectorList> selector) {
-        this.selector = Objects.requireNonNull(selector, "selector");
+        selectorReference.set(selector);
     }
 
     /// Returns whether this rule originated from plain CSS.
@@ -123,12 +163,12 @@ public final class CssStyleRule extends AbstractCssNode implements CssParentNode
         if (children.stream().allMatch(CssNode::isInvisible)) {
             return true;
         }
-        if (selector.value().isInvisible()) {
+        if (selector().value().isInvisible()) {
             return true;
         }
         // Bogus complexes are dropped from non-inspect serialization; when every
         // complex is bogus the selector CSS is empty and the rule is omitted.
-        return selector.value().toCssString(false).isEmpty();
+        return selector().value().toCssString(false).isEmpty();
     }
 
     /// Returns the live unmodifiable child list.
@@ -177,7 +217,7 @@ public final class CssStyleRule extends AbstractCssNode implements CssParentNode
     @Override
     public boolean equalsIgnoringChildren(CssNode other) {
         return other instanceof CssStyleRule rule
-                && selector.value().toCssString().equals(rule.selector.value().toCssString());
+                && selector().value().toCssString().equals(rule.selector().value().toCssString());
     }
 
     /// Returns an empty style rule that shares this selector, span, and media context.
@@ -185,6 +225,11 @@ public final class CssStyleRule extends AbstractCssNode implements CssParentNode
     /// @return the empty copy
     @Override
     public CssStyleRule copyWithoutChildren() {
-        return new CssStyleRule(selector, span(), fromPlainCss, definingMediaContext);
+        return new CssStyleRule(
+                selectorReference,
+                span(),
+                fromPlainCss,
+                definingMediaContext
+        );
     }
 }

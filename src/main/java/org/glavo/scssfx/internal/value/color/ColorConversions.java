@@ -818,7 +818,8 @@ public final class ColorConversions {
         }
         // LCH → rectangular Lab uses computed a/b (0 when chroma/hue are missing).
         // Only polar missingness is forwarded for LCH/OKLCH destinations.
-        var hueRadians = Math.toRadians(hue != null ? hue : 0.0);
+        // Match dart-sass: hue * pi / 180 (not Math.toRadians).
+        var hueRadians = (hue != null ? hue : 0.0) * Math.PI / 180.0;
         var c = chroma != null ? chroma : 0.0;
         return convertFromLab(
                 dest,
@@ -926,7 +927,8 @@ public final class ColorConversions {
                     alpha
             );
         }
-        var hueRadians = Math.toRadians(hue != null ? hue : 0.0);
+        // Match dart-sass: hue * pi / 180 (not Math.toRadians).
+        var hueRadians = (hue != null ? hue : 0.0) * Math.PI / 180.0;
         var c = chroma != null ? chroma : 0.0;
         // Always go through OKLab→LMS like dart-sass OklchColorSpace.convert,
         // including when the destination is OKLab (no polar short-circuit).
@@ -1097,9 +1099,11 @@ public final class ColorConversions {
     ) {
         var chroma = Math.sqrt(Math.pow(a != null ? a : 0.0, 2.0)
                 + Math.pow(b != null ? b : 0.0, 2.0));
+        // Match dart-sass: atan2 * 180 / pi (not Math.toDegrees, which multiplies by
+        // the precomputed 180/pi constant and yields a different ULP for extreme a/b).
         @Nullable Double hue = missingHue || SassFuzzy.equals(chroma, 0.0)
                 ? null
-                : Math.toDegrees(Math.atan2(b != null ? b : 0.0, a != null ? a : 0.0));
+                : Math.atan2(b != null ? b : 0.0, a != null ? a : 0.0) * 180.0 / Math.PI;
         if (hue != null && hue < 0.0) {
             hue += 360.0;
         }

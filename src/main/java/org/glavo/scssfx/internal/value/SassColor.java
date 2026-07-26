@@ -1102,17 +1102,16 @@ public final class SassColor implements SassValue {
     }
 
     /// Normalizes one hue to the half-open degree range, optionally inverted.
+    ///
+    /// Matches dart-sass {@code (hue % 360 + 360 + (invert ? 180 : 0)) % 360}.
+    /// The extra {@code + 360} before the second modulo is required for bit-exact
+    /// agreement on extreme Lab→LCH values, not only for negative-hue wrapping.
     private static @Nullable Double normalizeHue(@Nullable Double hue, boolean invert) {
         if (hue == null) {
             return null;
         }
-        var normalized = hue % 360.0;
-        if (normalized < 0.0) {
-            normalized += 360.0;
-        }
-        if (invert) {
-            normalized = (normalized + 180.0) % 360.0;
-        }
+        var normalized = (hue % 360.0 + 360.0 + (invert ? 180.0 : 0.0)) % 360.0;
+        // Canonicalize -0.0 so serialization and equality stay stable.
         return normalized == 0.0 ? 0.0 : normalized;
     }
 

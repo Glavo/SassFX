@@ -53,6 +53,9 @@ import java.util.Objects;
 @ApiStatus.Internal
 @NotNullByDefault
 class SassExpressionParser extends Parser {
+    /// Maximum consecutive bracket prefix parsed through recursive productions.
+    private static final int MAX_RECURSIVE_BRACKET_PREFIX = 128;
+
     /// Parse-time diagnostics retained while parsing the current source.
     private final ArrayList<Diagnostic> parseTimeWarnings = new ArrayList<>();
 
@@ -784,6 +787,7 @@ class SassExpressionParser extends Parser {
     ///
     /// @return the bracketed list
     private ListExpression bracketedList() {
+        rejectUnsafeDeepBracketPrefix();
         var start = scanner.state();
         scanner.expect('[');
         whitespace(true);
@@ -811,6 +815,31 @@ class SassExpressionParser extends Parser {
                 true,
                 span
         );
+    }
+
+    /// Rejects a dangerous consecutive bracket prefix without recursive descent.
+    ///
+    /// Invalid prefixes are scanned through their innermost token so ordinary
+    /// expression diagnostics retain the same message and location. A
+    /// syntactically plausible prefix beyond the recursion budget receives an
+    /// explicit parser error rather than exhausting the JVM stack.
+    private void rejectUnsafeDeepBracketPrefix() {
+        var start = scanner.state();
+        var count = 0;
+        while (scanner.peek() == '[') {
+            scanner.expect('[');
+            whitespace(true);
+            count++;
+        }
+        if (count <= MAX_RECURSIVE_BRACKET_PREFIX) {
+            scanner.restore(start);
+            return;
+        }
+        if (scanner.peek() != ']' && !lookingAtExpression()) {
+            throw scanner.error("Expected expression.");
+        }
+        scanner.restore(start);
+        throw scanner.error("Expression nesting depth exceeds the supported limit.");
     }
 
     /// Parses a unary operation whose operand is one single expression.

@@ -9,19 +9,17 @@ import java.util.Objects;
 
 /// Loads and executes another Sass stylesheet in the caller's legacy import scope.
 ///
-/// @param url  the decoded unresolved stylesheet URL
+/// An empty {@code url} is valid in the indented syntax ({@code @import} with no
+/// path) and reloads the current file, matching dart-sass.
+///
+/// @param url  the decoded unresolved stylesheet URL; may be empty
 /// @param span the source range occupied by the quoted URL
 @ApiStatus.Internal
 @NotNullByDefault
 public record DynamicImport(String url, SourceSpan span) implements SassImport {
     /// Creates a dynamic Sass import.
-    ///
-    /// @throws IllegalArgumentException if {@code url} is empty
     public DynamicImport {
         Objects.requireNonNull(url, "url");
-        if (url.isEmpty()) {
-            throw new IllegalArgumentException("url must not be empty");
-        }
         Objects.requireNonNull(span, "span");
     }
 }

@@ -62,7 +62,7 @@ public final class CssSerializer {
             boolean sourceMap
     ) {
         Objects.requireNonNull(target, "target");
-        var result = serialize(stylesheet, target.style(), sourceMap);
+        var result = serialize(stylesheet, target.style(), sourceMap, false);
         if (target.charset()
                 && target.style() == OutputStyle.EXPANDED
                 && containsNonAscii(result.css())) {
@@ -86,22 +86,31 @@ public final class CssSerializer {
             JavaFXCssTarget target,
             boolean sourceMap
     ) {
+        Objects.requireNonNull(stylesheet, "stylesheet");
         Objects.requireNonNull(target, "target");
-        return serialize(stylesheet, target.style(), sourceMap);
+        JavaFXCssValidator.validate(stylesheet, target.compatibility());
+        return serialize(stylesheet, target.style(), sourceMap, true);
     }
 
-    /// Serializes a stylesheet with the selected layout style.
+    /// Serializes a stylesheet with the selected layout and grammar profile.
+    ///
+    /// @param stylesheet the evaluated CSS IR root
+    /// @param style      the output layout
+    /// @param sourceMap  whether source-map entries are recorded
+    /// @param javaFX     whether JavaFX-required token separators are emitted
+    /// @return the serialized CSS and optional source map
     private static CssSerializeResult serialize(
             CssStylesheet stylesheet,
             OutputStyle style,
-            boolean sourceMap
+            boolean sourceMap,
+            boolean javaFX
     ) {
         Objects.requireNonNull(stylesheet, "stylesheet");
         Objects.requireNonNull(style, "style");
         var buffer = new SourceMapBuffer(sourceMap);
         switch (style) {
             case EXPANDED -> writeExpandedStylesheet(stylesheet, buffer);
-            case COMPRESSED -> writeCompressedStylesheet(stylesheet, buffer);
+            case COMPRESSED -> writeCompressedStylesheet(stylesheet, buffer, javaFX);
         }
         return new CssSerializeResult(buffer.css(), SourceMapGenerator.generate(buffer));
     }
@@ -553,33 +562,46 @@ public final class CssSerializer {
     }
 
     /// Writes all visible top-level nodes using compressed layout.
+    ///
+    /// @param stylesheet the evaluated CSS IR root
+    /// @param buffer     the output and source-map buffer
+    /// @param javaFX     whether JavaFX-required token separators are emitted
     private static void writeCompressedStylesheet(
             CssStylesheet stylesheet,
-            SourceMapBuffer buffer
+            SourceMapBuffer buffer,
+            boolean javaFX
     ) {
         for (var child : stylesheet.children()) {
             if (!isCompressedVisible(child)) {
                 continue;
             }
-            writeCompressedNode(child, buffer);
+            writeCompressedNode(child, buffer, javaFX);
         }
     }
 
     /// Writes one visible CSS node using compressed layout.
-    private static void writeCompressedNode(CssNode node, SourceMapBuffer buffer) {
+    ///
+    /// @param node   the visible node
+    /// @param buffer the output and source-map buffer
+    /// @param javaFX whether JavaFX-required token separators are emitted
+    private static void writeCompressedNode(
+            CssNode node,
+            SourceMapBuffer buffer,
+            boolean javaFX
+    ) {
         if (node instanceof CssImport importRule) {
             buffer.forSpan(importRule.span(), () ->
                     buffer.append("@import ").append(importRule.argument()).append(';'));
         } else if (node instanceof CssMediaRule mediaRule) {
             buffer.forSpan(mediaRule.span(), () -> {
                 buffer.append("@media");
-                if (mediaRule.queries().get(0).startsWithIdentifier()) {
+                if (javaFX || mediaRule.queries().get(0).startsWithIdentifier()) {
                     buffer.append(' ');
                 }
                 appendMediaQueries(mediaRule, buffer, true);
             });
             buffer.append('{');
-            writeCompressedChildren(mediaRule, buffer);
+            writeCompressedChildren(mediaRule, buffer, javaFX);
             buffer.append('}');
         } else if (node instanceof CssSupportsRule supportsRule) {
             buffer.forSpan(supportsRule.span(), () -> {
@@ -590,7 +612,7 @@ public final class CssSerializer {
                 buffer.append(supportsRule.condition());
             });
             buffer.append('{');
-            writeCompressedChildren(supportsRule, buffer);
+            writeCompressedChildren(supportsRule, buffer, javaFX);
             buffer.append('}');
         } else if (node instanceof CssUnknownAtRule unknownAtRule) {
             buffer.forSpan(unknownAtRule.span(), () -> {
@@ -601,20 +623,20 @@ public final class CssSerializer {
             });
             if (unknownAtRule.hasBlock()) {
                 buffer.append('{');
-                writeCompressedChildren(unknownAtRule, buffer);
+                writeCompressedChildren(unknownAtRule, buffer, javaFX);
                 buffer.append('}');
             } else {
                 buffer.append(';');
             }
         } else if (node instanceof CssFontFace fontFace) {
             buffer.forSpan(fontFace.span(), () -> buffer.append("@font-face{"));
-            writeCompressedChildren(fontFace, buffer);
+            writeCompressedChildren(fontFace, buffer, javaFX);
             buffer.append('}');
         } else if (node instanceof CssStyleRule rule) {
             buffer.forSpan(rule.selector().span(), () ->
                     buffer.append(rule.selector().value().toCssString(false)));
             buffer.append('{');
-            writeCompressedChildren(rule, buffer);
+            writeCompressedChildren(rule, buffer, javaFX);
             buffer.append('}');
         } else if (node instanceof CssDeclaration declaration) {
             writeCompressedDeclaration(declaration, buffer);
@@ -643,9 +665,14 @@ public final class CssSerializer {
     }
 
     /// Writes visible braced children using compressed layout.
+    ///
+    /// @param parent the parent whose visible children are written
+    /// @param buffer the output and source-map buffer
+    /// @param javaFX whether JavaFX-required token separators are emitted
     private static void writeCompressedChildren(
             CssParentNode parent,
-            SourceMapBuffer buffer
+            SourceMapBuffer buffer,
+            boolean javaFX
     ) {
         boolean precedingDeclaration = false;
         for (var child : parent.children()) {
@@ -655,7 +682,7 @@ public final class CssSerializer {
             if (precedingDeclaration) {
                 buffer.append(';');
             }
-            writeCompressedNode(child, buffer);
+            writeCompressedNode(child, buffer, javaFX);
             precedingDeclaration = child instanceof CssDeclaration;
         }
     }

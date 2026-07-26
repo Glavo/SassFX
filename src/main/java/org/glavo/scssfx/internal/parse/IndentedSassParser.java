@@ -35,13 +35,13 @@ public final class IndentedSassParser {
         // call sites can inspect structure without going through SCSS text.
         var lines = IndentedSassLexer.lex(source);
         if (lines.isEmpty()) {
-            return new ScssParser(source).parse();
+            return new ScssParser(source, false, true).parse();
         }
         // Structural projection into the shared SCSS statement grammar. This is
         // an implementation detail of the indented parser, not a public
         // Sass→SCSS preprocessing API. Direct AST construction for simple
         // statement forms is the intended replacement path.
         SourceFile projected = IndentedSassStructure.project(source);
-        return new ScssParser(projected).parse();
+        return new ScssParser(projected, false, true).parse();
     }
 }

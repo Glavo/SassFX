@@ -5,9 +5,9 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 /// Selects a JavaFX stylesheet compatibility level.
 ///
-/// The current textual CSS backend preserves the selected value as target
-/// metadata and emits the same CSS for every level. BSS targets use it to
-/// select a binary format version.
+/// Textual JavaFX CSS targets use this level to reject syntax or declarations
+/// whose meaning is unavailable in the selected JavaFX release. BSS targets
+/// use it to select the corresponding binary format version.
 @NotNullByDefault
 public enum JavaFXCompatibility {
     /// Targets the binary stylesheet format used by JavaFX 17.

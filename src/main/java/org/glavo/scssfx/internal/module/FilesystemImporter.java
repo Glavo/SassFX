@@ -90,6 +90,14 @@ public final class FilesystemImporter {
             return null;
         }
         if (baseUrl != null && "file".equalsIgnoreCase(baseUrl.getScheme())) {
+            // Empty import path reloads the current file (indented {@code @import}
+            // with no URL), matching dart-sass.
+            if (url.isEmpty()) {
+                var current = Path.of(baseUrl).normalize();
+                if (Files.isRegularFile(current)) {
+                    return load(current);
+                }
+            }
             var basePath = Path.of(baseUrl).getParent();
             if (basePath != null) {
                 @Nullable Path candidate = resolveAt(basePath.resolve(url).normalize(), forImport);

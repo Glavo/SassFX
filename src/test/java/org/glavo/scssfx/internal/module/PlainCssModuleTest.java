@@ -71,19 +71,17 @@ final class PlainCssModuleTest {
                 expanded
         );
 
-        var compressed = new SassCompiler().compile(
-                SassSource.fromString(source, Syntax.CSS),
-                new JavaFXCssTarget(
-                        org.glavo.scssfx.JavaFXCompatibility.JAVA_FX_17,
-                        OutputStyle.COMPRESSED
+        var failure = assertThrows(
+                SassCompilationException.class,
+                () -> new SassCompiler().compile(
+                        SassSource.fromString(source, Syntax.CSS),
+                        new JavaFXCssTarget(
+                                org.glavo.scssfx.JavaFXCompatibility.JAVA_FX_17,
+                                OutputStyle.COMPRESSED
+                        )
                 )
-        ).output();
-        assertTrue(
-                compressed.contains("@keyframes pulse{from{opacity:0}to{opacity:1}}"),
-                compressed
         );
-        assertTrue(compressed.contains("@page{margin:1cm}"), compressed);
-        assertTrue(compressed.contains("width:10px"), compressed);
+        assertTrue(failure.getMessage().contains("@page"), failure.getMessage());
     }
 
     /// Loads CSS modules before caller CSS and retains their empty namespace.
