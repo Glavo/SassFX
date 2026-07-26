@@ -21,7 +21,7 @@ compatibility oracles.
 The isolated JavaFX CSS oracles are run with:
 
 ```shell
-./gradlew verifyJavaFxCssOracles
+./gradlew :scssfx-core:verifyJavaFxCssOracles
 ```
 
 The task resolves the pinned platform-specific OpenJFX artifacts, runs the
