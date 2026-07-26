@@ -113,7 +113,7 @@ final class SourceMapTest {
                         Syntax.SCSS
                 ),
                 new JavaFXCssTarget(
-                        JavaFXCompatibility.JAVA_FX_27,
+                        JavaFXCompatibility.JAVAFX27,
                         OutputStyle.COMPRESSED
                 ),
                 new CompileOptions(true, List.of())

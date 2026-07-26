@@ -186,7 +186,7 @@ final class SassCompilerTest {
         var result = compiler.compile(
                 SassSource.fromString("a { -fx-text-fill: #f00; }", Syntax.SCSS),
                 new JavaFXCssTarget(
-                        JavaFXCompatibility.JAVA_FX_27,
+                        JavaFXCompatibility.JAVAFX27,
                         OutputStyle.COMPRESSED
                 )
         );
@@ -204,11 +204,11 @@ final class SassCompilerTest {
                 Syntax.SCSS
         );
         var javaFx17 = new JavaFXCssTarget(
-                JavaFXCompatibility.JAVA_FX_17,
+                JavaFXCompatibility.JAVAFX17,
                 OutputStyle.COMPRESSED
         );
         var javaFx27 = new JavaFXCssTarget(
-                JavaFXCompatibility.JAVA_FX_27,
+                JavaFXCompatibility.JAVAFX27,
                 OutputStyle.COMPRESSED
         );
 
@@ -677,7 +677,7 @@ final class SassCompilerTest {
         var javaFx = new SassCompiler().compile(
                 SassSource.fromString(source, Syntax.SCSS),
                 new JavaFXCssTarget(
-                        JavaFXCompatibility.JAVA_FX_27,
+                        JavaFXCompatibility.JAVAFX27,
                         OutputStyle.COMPRESSED
                 )
         );
@@ -692,7 +692,7 @@ final class SassCompilerTest {
                 () -> new SassCompiler().compile(
                         SassSource.fromString(source, Syntax.SCSS),
                         new JavaFXCssTarget(
-                                JavaFXCompatibility.JAVA_FX_17,
+                                JavaFXCompatibility.JAVAFX17,
                                 OutputStyle.COMPRESSED
                         )
                 )
@@ -738,7 +738,7 @@ final class SassCompilerTest {
                 () -> new SassCompiler().compile(
                         SassSource.fromString(source, Syntax.SCSS),
                         new JavaFXCssTarget(
-                                JavaFXCompatibility.JAVA_FX_27,
+                                JavaFXCompatibility.JAVAFX27,
                                 OutputStyle.COMPRESSED
                         )
                 )

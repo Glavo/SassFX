@@ -220,7 +220,7 @@ final class DiagnosticStatementTest {
                         Pane { -fx-opacity: 0.5; }
                         """,
                 Syntax.SCSS,
-                new BssTarget(JavaFXCompatibility.JAVA_FX_27)
+                new BssTarget(JavaFXCompatibility.JAVAFX27)
         );
 
         assertEquals(1, result.diagnostics().size());
@@ -240,7 +240,7 @@ final class DiagnosticStatementTest {
                                 Pane + .button { -fx-opacity: 0.5; }
                                 """,
                         Syntax.SCSS,
-                        new BssTarget(JavaFXCompatibility.JAVA_FX_27)
+                        new BssTarget(JavaFXCompatibility.JAVAFX27)
                 )
         );
 

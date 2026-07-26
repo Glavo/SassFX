@@ -87,7 +87,7 @@ public final class ScssfxMain implements Callable<Integer> {
             names = "--javafx-compatibility",
             defaultValue = "17",
             paramLabel = "VERSION",
-            description = "Select JavaFX compatibility: 17 or 27 (default: ${DEFAULT-VALUE})."
+            description = "Select JavaFX compatibility from 8 through 27 (default: ${DEFAULT-VALUE})."
     )
     private String javafxCompatibility = "17";
 
@@ -342,14 +342,20 @@ public final class ScssfxMain implements Callable<Integer> {
     /// @return the selected JavaFX compatibility level
     /// @throws IllegalArgumentException if the option value is unsupported
     private JavaFXCompatibility selectedJavaFxCompatibility() {
-        return switch (javafxCompatibility) {
-            case "17" -> JavaFXCompatibility.JAVA_FX_17;
-            case "27" -> JavaFXCompatibility.JAVA_FX_27;
-            default -> throw new IllegalArgumentException(
-                    "unsupported JavaFX compatibility '" + javafxCompatibility
-                            + "'; expected '17' or '27'"
+        try {
+            if (!javafxCompatibility.matches("[0-9]+")) {
+                throw new NumberFormatException();
+            }
+            return JavaFXCompatibility.forVersion(
+                    Integer.parseInt(javafxCompatibility)
             );
-        };
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException(
+                    "unsupported JavaFX compatibility '" + javafxCompatibility
+                            + "'; expected an integer from 8 through 27",
+                    exception
+            );
+        }
     }
 
     /// Resolves the output style selected by the command-line option.

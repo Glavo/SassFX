@@ -19,6 +19,12 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 
+import static org.glavo.scssfx.JavaFXFeature.CONDITIONAL_STYLESHEET_IMPORTS;
+import static org.glavo.scssfx.JavaFXFeature.CSS_TRANSITIONS;
+import static org.glavo.scssfx.JavaFXFeature.EXTENDED_BLEND_MODES;
+import static org.glavo.scssfx.JavaFXFeature.MULTIPLE_RULES_PER_MEDIA_QUERY;
+import static org.glavo.scssfx.JavaFXFeature.USER_PREFERENCE_MEDIA_QUERIES;
+
 /// Validates CSS IR against the syntax and property support of a JavaFX release.
 ///
 /// Validation is implemented without loading JavaFX classes. It rejects CSS
@@ -27,7 +33,7 @@ import java.util.Set;
 @ApiStatus.Internal
 @NotNullByDefault
 public final class JavaFXCssValidator {
-    /// Contains transition properties introduced after JavaFX 17.
+    /// Contains transition properties introduced in JavaFX 23.
     private static final @Unmodifiable Set<String> TRANSITION_PROPERTIES = Set.of(
             "transition",
             "transition-delay",
@@ -36,8 +42,9 @@ public final class JavaFXCssValidator {
             "transition-timing-function"
     );
 
-    /// Contains blend modes introduced after JavaFX 17.
+    /// Contains blend modes parsed correctly beginning with JavaFX 18.
     private static final @Unmodifiable Set<String> NEW_BLEND_MODES = Set.of(
+            "add",
             "blue",
             "green",
             "red"
@@ -112,16 +119,32 @@ public final class JavaFXCssValidator {
             return;
         }
         if (node instanceof CssMediaRule mediaRule) {
-            if (compatibility == JavaFXCompatibility.JAVA_FX_17) {
+            if (!compatibility.supports(USER_PREFERENCE_MEDIA_QUERIES)) {
                 throw failure(
-                        "JavaFX 17 CSS does not support @media rules.",
+                        "JavaFX " + compatibility.version()
+                                + " CSS does not support @media rules.",
                         mediaRule.span()
                 );
             }
             JavaFXMediaQueryValidator.validate(
                     serializeMediaQueries(mediaRule),
-                    mediaRule.span()
+                    mediaRule.span(),
+                    compatibility
             );
+            if (!compatibility.supports(MULTIPLE_RULES_PER_MEDIA_QUERY)
+                    && mediaRule.children().stream()
+                    .filter(child -> !child.isInvisible())
+                    .filter(CssStyleRule.class::isInstance)
+                    .skip(1)
+                    .findAny()
+                    .isPresent()) {
+                throw failure(
+                        "JavaFX " + compatibility.version()
+                                + " CSS cannot apply multiple style rules"
+                                + " within one @media rule.",
+                        mediaRule.span()
+                );
+            }
             validateChildren(mediaRule, compatibility, insideStyleRule);
             return;
         }
@@ -246,13 +269,18 @@ public final class JavaFXCssValidator {
         if (condition.isEmpty()) {
             return;
         }
-        if (compatibility == JavaFXCompatibility.JAVA_FX_17) {
+        if (!compatibility.supports(CONDITIONAL_STYLESHEET_IMPORTS)) {
             throw failure(
-                    "JavaFX 17 CSS supports only unconditional @import rules.",
+                    "JavaFX " + compatibility.version()
+                            + " CSS supports only unconditional @import rules.",
                     cssImport.span()
             );
         }
-        JavaFXMediaQueryValidator.validate(condition, cssImport.span());
+        JavaFXMediaQueryValidator.validate(
+                condition,
+                cssImport.span(),
+                compatibility
+        );
     }
 
     /// Returns the offset immediately after an import's first string or URL token.
@@ -402,7 +430,7 @@ public final class JavaFXCssValidator {
                 || value == '\f';
     }
 
-    /// Validates JavaFX 17 declaration compatibility.
+    /// Validates versioned JavaFX declaration compatibility.
     ///
     /// @param declaration the declaration to validate
     /// @param compatibility the selected JavaFX compatibility level
@@ -410,22 +438,22 @@ public final class JavaFXCssValidator {
             CssDeclaration declaration,
             JavaFXCompatibility compatibility
     ) {
-        if (compatibility != JavaFXCompatibility.JAVA_FX_17) {
-            return;
-        }
-
         var property = declaration.name().value().toLowerCase(Locale.ROOT);
-        if (TRANSITION_PROPERTIES.contains(property)) {
+        if (!compatibility.supports(CSS_TRANSITIONS)
+                && TRANSITION_PROPERTIES.contains(property)) {
             throw failure(
-                    "JavaFX 17 CSS does not support property " + property + ".",
+                    "JavaFX " + compatibility.version()
+                            + " CSS does not support property " + property + ".",
                     declaration.name().span()
             );
         }
-        if (property.equals("-fx-blend-mode")) {
+        if (!compatibility.supports(EXTENDED_BLEND_MODES)
+                && property.equals("-fx-blend-mode")) {
             var value = normalizedBlendMode(declarationValueText(declaration));
             if (NEW_BLEND_MODES.contains(value)) {
                 throw failure(
-                        "JavaFX 17 CSS does not support -fx-blend-mode value "
+                        "JavaFX " + compatibility.version()
+                                + " CSS does not support -fx-blend-mode value "
                                 + value
                                 + ".",
                         declaration.value().span()
@@ -434,9 +462,9 @@ public final class JavaFXCssValidator {
         }
     }
 
-    /// Normalizes a blend-mode token for JavaFX 17 conflict detection.
+    /// Normalizes a blend-mode token for legacy JavaFX conflict detection.
     ///
-    /// The old JavaFX parser resolves the three conflicting identifiers as
+    /// The old JavaFX parser resolves conflicting identifiers as
     /// colors even when they are quoted or followed by `!important`.
     ///
     /// @param value the emitted declaration value

@@ -256,7 +256,7 @@ final class ModuleVariableAssignmentTest {
                 compiler.compile(
                         SassSource.fromFile(entry),
                         new JavaFXCssTarget(
-                                JavaFXCompatibility.JAVA_FX_17,
+                                JavaFXCompatibility.JAVAFX17,
                                 OutputStyle.COMPRESSED
                         )
                 ).output()

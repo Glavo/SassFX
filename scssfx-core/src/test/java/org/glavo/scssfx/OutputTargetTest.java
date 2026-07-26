@@ -5,10 +5,20 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
+import java.util.Set;
 
+import static org.glavo.scssfx.JavaFXFeature.CONDITIONAL_STYLESHEET_IMPORTS;
+import static org.glavo.scssfx.JavaFXFeature.CSS_TRANSITIONS;
+import static org.glavo.scssfx.JavaFXFeature.EXTENDED_BLEND_MODES;
+import static org.glavo.scssfx.JavaFXFeature.MULTIPLE_RULES_PER_MEDIA_QUERY;
+import static org.glavo.scssfx.JavaFXFeature.USER_PREFERENCE_MEDIA_QUERIES;
+import static org.glavo.scssfx.JavaFXFeature.VIEWPORT_MEDIA_QUERIES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Verifies output target configuration contracts.
 @NotNullByDefault
@@ -28,7 +38,7 @@ final class OutputTargetTest {
     void providesJavaFXDefaults() {
         var target = JavaFXCssTarget.DEFAULT;
 
-        assertEquals(JavaFXCompatibility.JAVA_FX_17, target.compatibility());
+        assertEquals(JavaFXCompatibility.JAVAFX17, target.compatibility());
         assertEquals(OutputStyle.EXPANDED, target.style());
     }
 
@@ -38,8 +48,63 @@ final class OutputTargetTest {
         OutputTarget<ByteBuffer> target = BssTarget.DEFAULT;
         var bss = assertInstanceOf(BssTarget.class, target);
 
-        assertEquals(6, bss.version());
-        assertEquals(9, new BssTarget(JavaFXCompatibility.JAVA_FX_27).version());
+        assertEquals(6, bss.bssVersion());
+        assertEquals(9, new BssTarget(JavaFXCompatibility.JAVAFX27).bssVersion());
+    }
+
+    /// Verifies every supported JavaFX release and BSS format mapping.
+    @Test
+    void exposesContinuousJavaFxTargets() {
+        var targets = JavaFXCompatibility.values();
+        assertEquals(20, targets.length);
+
+        for (var version = 8; version <= 27; version++) {
+            var target = JavaFXCompatibility.forVersion(version);
+            assertSame(targets[version - 8], target);
+            assertEquals(version, target.version());
+            assertEquals(
+                    version == 8 ? 5
+                            : version <= 24 ? 6
+                            : version == 25 ? 7
+                            : version == 26 ? 8 : 9,
+                    target.bssVersion()
+            );
+        }
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> JavaFXCompatibility.forVersion(7)
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> JavaFXCompatibility.forVersion(28)
+        );
+    }
+
+    /// Verifies the recorded JavaFX CSS feature milestones.
+    @Test
+    void exposesFeatureMatrix() {
+        assertEquals(
+                Set.of(
+                        JavaFXFeature.FONT_FACE,
+                        JavaFXFeature.UNCONDITIONAL_STYLESHEET_IMPORTS
+                ),
+                JavaFXCompatibility.JAVAFX8.features()
+        );
+        assertFalse(JavaFXCompatibility.JAVAFX17.supports(EXTENDED_BLEND_MODES));
+        assertTrue(JavaFXCompatibility.JAVAFX18.supports(EXTENDED_BLEND_MODES));
+        assertFalse(JavaFXCompatibility.JAVAFX22.supports(CSS_TRANSITIONS));
+        assertTrue(JavaFXCompatibility.JAVAFX23.supports(CSS_TRANSITIONS));
+        assertTrue(JavaFXCompatibility.JAVAFX25.supports(USER_PREFERENCE_MEDIA_QUERIES));
+        assertFalse(JavaFXCompatibility.JAVAFX25.supports(MULTIPLE_RULES_PER_MEDIA_QUERY));
+        assertTrue(JavaFXCompatibility.JAVAFX26.supports(MULTIPLE_RULES_PER_MEDIA_QUERY));
+        assertTrue(JavaFXCompatibility.JAVAFX26.supports(VIEWPORT_MEDIA_QUERIES));
+        assertFalse(JavaFXCompatibility.JAVAFX26.supports(CONDITIONAL_STYLESHEET_IMPORTS));
+        assertTrue(JavaFXCompatibility.JAVAFX27.supports(CONDITIONAL_STYLESHEET_IMPORTS));
+        assertThrows(
+                UnsupportedOperationException.class,
+                () -> JavaFXCompatibility.JAVAFX27.features().clear()
+        );
     }
 
     /// Verifies that required target components reject null.
@@ -53,7 +118,7 @@ final class OutputTargetTest {
         );
         assertThrows(
                 NullPointerException.class,
-                () -> new JavaFXCssTarget(JavaFXCompatibility.JAVA_FX_17, null)
+                () -> new JavaFXCssTarget(JavaFXCompatibility.JAVAFX17, null)
         );
         assertThrows(NullPointerException.class, () -> new BssTarget(null));
     }

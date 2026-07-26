@@ -33,8 +33,8 @@ public final class JavaFxCssOracle {
         }
 
         var compatibility = switch (arguments[0]) {
-            case "17" -> JavaFXCompatibility.JAVA_FX_17;
-            case "27" -> JavaFXCompatibility.JAVA_FX_27;
+            case "17" -> JavaFXCompatibility.JAVAFX17;
+            case "27" -> JavaFXCompatibility.JAVAFX27;
             default -> throw new IllegalArgumentException(
                     "Unsupported JavaFX version: " + arguments[0]
             );
@@ -65,7 +65,7 @@ public final class JavaFxCssOracle {
                         Syntax.SCSS
                 )
         );
-        if (compatibility == JavaFXCompatibility.JAVA_FX_17) {
+        if (compatibility == JavaFXCompatibility.JAVAFX17) {
             return common;
         }
 
@@ -116,7 +116,7 @@ public final class JavaFxCssOracle {
                         Syntax.CSS
                 )
         );
-        if (compatibility == JavaFXCompatibility.JAVA_FX_27) {
+        if (compatibility == JavaFXCompatibility.JAVAFX27) {
             return List.of(
                     common.get(0),
                     common.get(1),

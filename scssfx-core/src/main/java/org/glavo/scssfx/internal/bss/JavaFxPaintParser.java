@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
 /// Parses the JavaFX paint subset retained as Sass values and CSS function text.
 ///
 /// The evaluator preserves unknown CSS functions as unquoted [SassString]
-/// values. This parser reconstructs JavaFX 17 solid colors, property lookups,
+/// values. This parser reconstructs JavaFX solid colors, property lookups,
 /// gradients, and image patterns needed by background and border paint
 /// declarations without loading JavaFX classes at compilation time.
 @NotNullByDefault
@@ -408,7 +408,7 @@ final class JavaFxPaintParser {
     }
     /// Parses and normalizes JavaFX color stops.
     ///
-    /// The normalization follows JavaFX 17's CSS parser: omitted endpoints
+    /// The normalization follows JavaFX's CSS parser: omitted endpoints
     /// become zero and one hundred percent, descending offsets are clamped,
     /// and omitted intermediate offsets are evenly distributed.
     ///

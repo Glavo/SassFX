@@ -21,7 +21,7 @@ public record JavaFXCssTarget(
 ) implements OutputTarget<String> {
     /// The default expanded target compatible with JavaFX 17.
     public static final JavaFXCssTarget DEFAULT =
-            new JavaFXCssTarget(JavaFXCompatibility.JAVA_FX_17, OutputStyle.EXPANDED);
+            new JavaFXCssTarget(JavaFXCompatibility.JAVAFX17, OutputStyle.EXPANDED);
 
     /// Creates a JavaFX CSS output target.
     public JavaFXCssTarget {

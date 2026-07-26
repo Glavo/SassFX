@@ -173,7 +173,7 @@ final class ScssfxMainTest {
 
         var expected = remainingBytes(new SassCompiler().compile(
                 new SassFileSource(input, Syntax.SCSS),
-                new BssTarget(JavaFXCompatibility.JAVA_FX_27)
+                new BssTarget(JavaFXCompatibility.JAVAFX27)
         ).output());
         var actual = Files.readAllBytes(destination);
         assertArrayEquals(expected, actual);
@@ -263,6 +263,52 @@ final class ScssfxMainTest {
 
         assertEquals(2, commandLine.execute("--style", "dense", input.toString()));
         assertTrue(error.toString().contains("unsupported output style 'dense'"));
+    }
+
+    /// Accepts every boundary of the configurable JavaFX target range.
+    @Test
+    void acceptsJavaFxTargetRange(@TempDir Path directory) throws Exception {
+        var input = directory.resolve("style.scss");
+        Files.writeString(input, "Pane { -fx-opacity: 1; }");
+
+        for (var version : new String[]{"8", "27"}) {
+            var commandLine = commandLine(new StringWriter(), new StringWriter());
+            assertEquals(
+                    0,
+                    commandLine.execute(
+                            "--target",
+                            "javafx-css",
+                            "--javafx-compatibility",
+                            version,
+                            input.toString()
+                    )
+            );
+        }
+    }
+
+    /// Rejects JavaFX target values outside the supported integer range.
+    @Test
+    void rejectsInvalidJavaFxTargets(@TempDir Path directory) throws Exception {
+        var input = directory.resolve("style.scss");
+        Files.writeString(input, "Pane { -fx-opacity: 1; }");
+
+        for (var version : new String[]{"7", "28", "17.0", "current"}) {
+            var error = new StringWriter();
+            var commandLine = commandLine(new StringWriter(), error);
+            assertEquals(
+                    2,
+                    commandLine.execute(
+                            "--target",
+                            "javafx-css",
+                            "--javafx-compatibility",
+                            version,
+                            input.toString()
+                    )
+            );
+            assertTrue(error.toString().contains(
+                    "expected an integer from 8 through 27"
+            ));
+        }
     }
 
     /// Reports structured compilation failures on stderr.

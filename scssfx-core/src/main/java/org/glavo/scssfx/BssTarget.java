@@ -20,7 +20,7 @@ import java.util.Objects;
 public record BssTarget(JavaFXCompatibility compatibility)
         implements OutputTarget<@Unmodifiable ByteBuffer> {
     /// The default target compatible with JavaFX 17 BSS version 6.
-    public static final BssTarget DEFAULT = new BssTarget(JavaFXCompatibility.JAVA_FX_17);
+    public static final BssTarget DEFAULT = new BssTarget(JavaFXCompatibility.JAVAFX17);
 
     /// Creates a binary stylesheet output target.
     public BssTarget {
@@ -29,8 +29,19 @@ public record BssTarget(JavaFXCompatibility compatibility)
 
     /// Returns the binary stylesheet format version selected by this target.
     ///
-    /// @return the positive BSS version number
-    public int version() {
+    /// @return a value from `5` through `9`
+    public int bssVersion() {
         return compatibility.bssVersion();
+    }
+
+    /// Returns the binary stylesheet format version selected by this target.
+    ///
+    /// @deprecated Use [#bssVersion()] to distinguish the BSS format version
+    /// from [JavaFXCompatibility#version()].
+    ///
+    /// @return a value from `5` through `9`
+    @Deprecated
+    public int version() {
+        return bssVersion();
     }
 }

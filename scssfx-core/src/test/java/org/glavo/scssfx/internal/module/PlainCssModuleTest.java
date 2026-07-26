@@ -76,7 +76,7 @@ final class PlainCssModuleTest {
                 () -> new SassCompiler().compile(
                         SassSource.fromString(source, Syntax.CSS),
                         new JavaFXCssTarget(
-                                org.glavo.scssfx.JavaFXCompatibility.JAVA_FX_17,
+                                org.glavo.scssfx.JavaFXCompatibility.JAVAFX17,
                                 OutputStyle.COMPRESSED
                         )
                 )

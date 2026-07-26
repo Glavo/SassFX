@@ -146,11 +146,11 @@ final class StaticImportOutputTest {
         var compiler = new SassCompiler();
         var javaFx17 = compiler.compile(
                 source,
-                new JavaFXCssTarget(JavaFXCompatibility.JAVA_FX_17, OutputStyle.COMPRESSED)
+                new JavaFXCssTarget(JavaFXCompatibility.JAVAFX17, OutputStyle.COMPRESSED)
         ).output();
         var javaFx27 = compiler.compile(
                 source,
-                new JavaFXCssTarget(JavaFXCompatibility.JAVA_FX_27, OutputStyle.COMPRESSED)
+                new JavaFXCssTarget(JavaFXCompatibility.JAVAFX27, OutputStyle.COMPRESSED)
         ).output();
 
         assertEquals("@import \"theme.css\";", javaFx17);
@@ -168,7 +168,7 @@ final class StaticImportOutputTest {
                                 Syntax.SCSS
                         ),
                         new JavaFXCssTarget(
-                                JavaFXCompatibility.JAVA_FX_17,
+                                JavaFXCompatibility.JAVAFX17,
                                 OutputStyle.COMPRESSED
                         )
                 )
@@ -188,7 +188,7 @@ final class StaticImportOutputTest {
                         "@import \"theme.css\" (prefers-color-scheme: dark);",
                         Syntax.SCSS
                 ),
-                new JavaFXCssTarget(JavaFXCompatibility.JAVA_FX_27, OutputStyle.COMPRESSED)
+                new JavaFXCssTarget(JavaFXCompatibility.JAVAFX27, OutputStyle.COMPRESSED)
         );
 
         assertEquals(

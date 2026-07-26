@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.css;
 
+import org.glavo.scssfx.JavaFXCompatibility;
+import org.glavo.scssfx.JavaFXFeature;
 import org.glavo.scssfx.SourceSpan;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -28,12 +30,19 @@ final class JavaFXMediaQueryValidator {
     /// always-matching media-query list.
     ///
     /// @param queryList the serialized query-list contents, excluding `@media`
-    /// @param span      the source range reported when validation fails
+    /// @param span          the source range reported when validation fails
+    /// @param compatibility the JavaFX release whose grammar is validated
     /// @throws CssSerializeException if the text is not accepted by JavaFX
-    static void validate(String queryList, SourceSpan span) {
+    static void validate(
+            String queryList,
+            SourceSpan span,
+            JavaFXCompatibility compatibility
+    ) {
         Objects.requireNonNull(queryList, "queryList");
         Objects.requireNonNull(span, "span");
-        new Parser(tokenize(queryList, span), span).parseQueryList();
+        Objects.requireNonNull(compatibility, "compatibility");
+        new Parser(tokenize(queryList, span), span, compatibility)
+                .parseQueryList();
     }
 
     /// Converts CSS media-condition text into the token subset used by JavaFX.
@@ -338,16 +347,25 @@ final class JavaFXMediaQueryValidator {
         /// Contains the source range used by reported failures.
         private final SourceSpan span;
 
+        /// Contains the JavaFX release whose media features are accepted.
+        private final JavaFXCompatibility compatibility;
+
         /// Contains the next token offset.
         private int index;
 
         /// Creates a parser over an immutable token sequence.
         ///
-        /// @param tokens the token sequence
-        /// @param span   the source range used by reported failures
-        private Parser(List<Token> tokens, SourceSpan span) {
+        /// @param tokens        the token sequence
+        /// @param span          the source range used by reported failures
+        /// @param compatibility the JavaFX release whose grammar is validated
+        private Parser(
+                List<Token> tokens,
+                SourceSpan span,
+                JavaFXCompatibility compatibility
+        ) {
             this.tokens = List.copyOf(tokens);
             this.span = span;
+            this.compatibility = compatibility;
         }
 
         /// Parses a comma-separated media-condition list.
@@ -434,22 +452,81 @@ final class JavaFXMediaQueryValidator {
         private void validateDiscreteFeature(String name, @Nullable Token value) {
             switch (name) {
                 case "min-width", "max-width", "width",
-                        "min-height", "max-height", "height" ->
-                        requireSizeValue(name, value);
-                case "min-aspect-ratio", "max-aspect-ratio", "aspect-ratio" ->
-                        requireAspectRatioValue(name, value);
-                case "orientation" ->
-                        requireIdentifierValue(name, value, "landscape", "portrait");
-                case "display-mode" ->
-                        requireIdentifierValue(name, value, "standalone", "fullscreen");
-                case "prefers-color-scheme" ->
-                        requireIdentifierValue(name, value, "light", "dark");
+                        "min-height", "max-height", "height" -> {
+                    requireFeature(JavaFXFeature.VIEWPORT_MEDIA_QUERIES, name);
+                    requireSizeValue(name, value);
+                }
+                case "min-aspect-ratio", "max-aspect-ratio", "aspect-ratio" -> {
+                    requireFeature(JavaFXFeature.VIEWPORT_MEDIA_QUERIES, name);
+                    requireAspectRatioValue(name, value);
+                }
+                case "orientation" -> {
+                    requireFeature(JavaFXFeature.VIEWPORT_MEDIA_QUERIES, name);
+                    requireIdentifierValue(name, value, "landscape", "portrait");
+                }
+                case "display-mode" -> {
+                    requireFeature(JavaFXFeature.VIEWPORT_MEDIA_QUERIES, name);
+                    requireIdentifierValue(name, value, "standalone", "fullscreen");
+                }
+                case "prefers-color-scheme" -> {
+                    requireFeature(JavaFXFeature.USER_PREFERENCE_MEDIA_QUERIES, name);
+                    requireIdentifierValue(name, value, "light", "dark");
+                }
                 case "prefers-reduced-motion", "prefers-reduced-transparency",
-                        "prefers-reduced-data" ->
-                        requireBooleanPreference(name, value, "reduce");
-                case "-fx-prefers-persistent-scrollbars" ->
-                        requireBooleanPreference(name, value, "persistent");
+                        "prefers-reduced-data" -> {
+                    requireFeature(JavaFXFeature.USER_PREFERENCE_MEDIA_QUERIES, name);
+                    requireBooleanPreference(name, value, "reduce");
+                }
+                case "-fx-prefers-persistent-scrollbars" -> {
+                    requireFeature(JavaFXFeature.USER_PREFERENCE_MEDIA_QUERIES, name);
+                    requireBooleanPreference(name, value, "persistent");
+                }
+                case "-fx-supports-conditional-feature" -> {
+                    requireFeature(JavaFXFeature.CONDITIONAL_MEDIA_FEATURE, name);
+                    requireIdentifierValue(
+                            name,
+                            value,
+                            "graphics",
+                            "controls",
+                            "media",
+                            "web",
+                            "swt",
+                            "swing",
+                            "fxml",
+                            "scene3d",
+                            "effect",
+                            "shape-clip",
+                            "input-method",
+                            "transparent-window",
+                            "unified-window",
+                            "extended-window",
+                            "input-pointer"
+                    );
+                }
+                case "-fx-platform" -> {
+                    requireFeature(JavaFXFeature.PLATFORM_MEDIA_FEATURE, name);
+                    requireIdentifierValue(
+                            name,
+                            value,
+                            "android",
+                            "ios",
+                            "linux",
+                            "macos",
+                            "windows"
+                    );
+                }
                 default -> fail("Unknown JavaFX media feature '" + name + "'");
+            }
+        }
+
+        /// Requires a media feature to be present in the selected JavaFX release.
+        ///
+        /// @param feature the required platform capability
+        /// @param name    the media feature name reported on failure
+        private void requireFeature(JavaFXFeature feature, String name) {
+            if (!compatibility.supports(feature)) {
+                fail("JavaFX " + compatibility.version()
+                        + " CSS does not support media feature '" + name + "'");
             }
         }
 
@@ -556,6 +633,7 @@ final class JavaFXMediaQueryValidator {
         /// @param name  the lowercase feature name
         /// @param value the numeric token
         private void validateRangeValue(String name, Token value) {
+            requireFeature(JavaFXFeature.VIEWPORT_MEDIA_QUERIES, name);
             switch (name) {
                 case "width", "height" -> {
                     if (!isLength(value)) {

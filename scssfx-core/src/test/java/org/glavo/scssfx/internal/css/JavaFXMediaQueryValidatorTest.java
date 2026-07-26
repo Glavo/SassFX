@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.css;
 
+import org.glavo.scssfx.JavaFXCompatibility;
 import org.glavo.scssfx.SourceLocation;
 import org.glavo.scssfx.SourceSpan;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -48,7 +49,11 @@ final class JavaFXMediaQueryValidatorTest {
             "(width: 1px) // trailing"
     })
     void acceptsSupportedQueries(String query) {
-        assertDoesNotThrow(() -> JavaFXMediaQueryValidator.validate(query, span(query)));
+        assertDoesNotThrow(() -> JavaFXMediaQueryValidator.validate(
+                query,
+                span(query),
+                JavaFXCompatibility.JAVAFX27
+        ));
     }
 
     /// Rejects media types, unsupported features, invalid values, and malformed logic.
@@ -83,7 +88,11 @@ final class JavaFXMediaQueryValidatorTest {
     void rejectsUnsupportedQueries(String query) {
         assertThrows(
                 CssSerializeException.class,
-                () -> JavaFXMediaQueryValidator.validate(query, span(query))
+                () -> JavaFXMediaQueryValidator.validate(
+                        query,
+                        span(query),
+                        JavaFXCompatibility.JAVAFX27
+                )
         );
     }
 
@@ -94,11 +103,60 @@ final class JavaFXMediaQueryValidatorTest {
         var span = span(query);
         var failure = assertThrows(
                 CssSerializeException.class,
-                () -> JavaFXMediaQueryValidator.validate(query, span)
+                () -> JavaFXMediaQueryValidator.validate(
+                        query,
+                        span,
+                        JavaFXCompatibility.JAVAFX27
+                )
         );
 
         assertSame(span, failure.primaryDiagnostic().span());
         assertEquals("Expected '('", failure.getMessage());
+    }
+
+    /// Applies the JavaFX 25, 26, and 27 media-feature boundaries.
+    @Test
+    void validatesVersionedMediaFeatures() {
+        var preference = "(prefers-color-scheme: dark)";
+        assertDoesNotThrow(() -> JavaFXMediaQueryValidator.validate(
+                preference,
+                span(preference),
+                JavaFXCompatibility.JAVAFX25
+        ));
+
+        var viewport = "(width >= 500px)";
+        assertThrows(
+                CssSerializeException.class,
+                () -> JavaFXMediaQueryValidator.validate(
+                        viewport,
+                        span(viewport),
+                        JavaFXCompatibility.JAVAFX25
+                )
+        );
+        assertDoesNotThrow(() -> JavaFXMediaQueryValidator.validate(
+                viewport,
+                span(viewport),
+                JavaFXCompatibility.JAVAFX26
+        ));
+
+        for (var query : new String[]{
+                "(-fx-supports-conditional-feature: scene3d)",
+                "(-fx-platform: windows)"
+        }) {
+            assertThrows(
+                    CssSerializeException.class,
+                    () -> JavaFXMediaQueryValidator.validate(
+                            query,
+                            span(query),
+                            JavaFXCompatibility.JAVAFX26
+                    )
+            );
+            assertDoesNotThrow(() -> JavaFXMediaQueryValidator.validate(
+                    query,
+                    span(query),
+                    JavaFXCompatibility.JAVAFX27
+            ));
+        }
     }
 
     /// Creates a source span covering the complete query text.

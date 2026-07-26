@@ -52,17 +52,20 @@ import java.util.Objects;
 
 /// Converts the supported CSS IR subset into JavaFX binary stylesheet bytes.
 ///
-/// The serializer implements the BSS v6 and v9 wire framing directly and does
+/// The serializer implements the BSS v5 through v9 wire framing directly and does
 /// not load or link JavaFX classes. Unsupported selectors and declaration
 /// values fail with a source-associated [BssSerializeException] instead of
 /// producing a binary stylesheet with different semantics.
 @ApiStatus.Internal
 @NotNullByDefault
 public final class BssSerializer {
-    /// Contains the JavaFX 17 binary stylesheet version.
-    private static final int VERSION_6 = 6;
+    /// Contains the JavaFX 8 binary stylesheet version.
+    private static final int VERSION_5 = 5;
 
-    /// Contains the JavaFX 27 binary stylesheet version.
+    /// Contains the first BSS version with per-rule media framing.
+    private static final int VERSION_7 = 7;
+
+    /// Contains the first BSS version with stylesheet-import framing.
     private static final int VERSION_9 = 9;
 
     /// Contains the maximum count and string-table index representable by BSS.
@@ -285,9 +288,9 @@ public final class BssSerializer {
 
         var content = collectStylesheet(stylesheet);
         try {
-            var strings = new StringStore(stylesheet.span());
+            var strings = new StringStore(target.bssVersion(), stylesheet.span());
             byte[] body = writeBody(
-                    target.version(),
+                    target.bssVersion(),
                     content.rules(),
                     content.fontFaces(),
                     strings,
@@ -295,7 +298,7 @@ public final class BssSerializer {
             );
             var document = new ByteArrayOutputStream(body.length + 128);
             try (var output = new DataOutputStream(document)) {
-                output.writeShort(target.version());
+                output.writeShort(target.bssVersion());
                 strings.writeBinary(output);
                 output.write(body);
                 output.flush();
@@ -498,9 +501,9 @@ public final class BssSerializer {
         var bytes = new ByteArrayOutputStream();
         try (var output = new DataOutputStream(bytes)) {
             switch (version) {
-                case VERSION_6 -> {
-                }
                 case VERSION_9 -> output.writeInt(0);
+                case VERSION_5, 6, VERSION_7, 8 -> {
+                }
                 default -> throw new BssSerializeException(
                         "Unsupported JavaFX BSS version " + version + ".",
                         span,
@@ -569,7 +572,7 @@ public final class BssSerializer {
             BssRule rule,
             StringStore strings
     ) throws IOException {
-        if (version >= VERSION_9) {
+        if (version >= VERSION_7) {
             output.writeBoolean(false);
         }
 
@@ -3995,6 +3998,9 @@ public final class BssSerializer {
     /// Interns BSS strings in their encounter order.
     @NotNullByDefault
     private static final class StringStore {
+        /// Contains the BSS version whose class names are encoded.
+        private final int version;
+
         /// Maps non-null strings to their BSS indices.
         private final Map<String, Integer> indices = new HashMap<>();
 
@@ -4009,8 +4015,10 @@ public final class BssSerializer {
 
         /// Creates an empty string table.
         ///
-        /// @param span the root source range
-        private StringStore(SourceSpan span) {
+        /// @param version the selected BSS format version
+        /// @param span    the root source range
+        private StringStore(int version, SourceSpan span) {
+            this.version = version;
             this.span = Objects.requireNonNull(span, "span");
         }
 
@@ -4026,6 +4034,7 @@ public final class BssSerializer {
                 nullIndex = addNew(null);
                 return nullIndex;
             }
+            value = converterClassName(value);
             @Nullable Integer existing = indices.get(value);
             if (existing != null) {
                 return existing;
@@ -4033,6 +4042,26 @@ public final class BssSerializer {
             var index = addNew(value);
             indices.put(value, index);
             return index;
+        }
+
+        /// Returns the converter class name used by the selected BSS version.
+        ///
+        /// JavaFX 8 used the internal plural `converters` package. JavaFX 9
+        /// made these converters public in the singular `converter` package.
+        ///
+        /// @param value the candidate string-table value
+        /// @return the value adjusted for BSS v5 when it names a converter
+        private String converterClassName(String value) {
+            if (version == VERSION_5) {
+                if (value.equals("javafx.css.converter.StopConverter")) {
+                    return "com.sun.javafx.css.parser.StopConverter";
+                }
+                if (value.startsWith("javafx.css.converter.")) {
+                    return "com.sun.javafx.css.converters."
+                            + value.substring("javafx.css.converter.".length());
+                }
+            }
+            return value;
         }
 
         /// Adds a new table entry after enforcing BSS's signed-short limit.

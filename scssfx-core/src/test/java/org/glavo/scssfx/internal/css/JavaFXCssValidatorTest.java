@@ -18,12 +18,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 /// Verifies JavaFX-version validation over evaluated CSS IR.
 @NotNullByDefault
 final class JavaFXCssValidatorTest {
-    /// Rejects every media rule for JavaFX 17 and accepts a supported JavaFX 27 query.
+    /// Rejects media rules through JavaFX 24 and accepts preferences in JavaFX 25.
     @Test
     void validatesMediaRulesByVersion() {
         var media = new CssMediaRule(
-                CssMediaQuery.parseList("(min-width: 100px)"),
-                span("@media (min-width: 100px)")
+                CssMediaQuery.parseList("(prefers-color-scheme: dark)"),
+                span("@media (prefers-color-scheme: dark)")
         );
         media.addChild(styleRuleWithDeclaration("Pane", "-fx-opacity", "1"));
         var stylesheet = stylesheet(media);
@@ -32,13 +32,39 @@ final class JavaFXCssValidatorTest {
                 CssSerializeException.class,
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVA_FX_17
+                        JavaFXCompatibility.JAVAFX24
                 )
         );
         assertDoesNotThrow(
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVA_FX_27
+                        JavaFXCompatibility.JAVAFX25
+                )
+        );
+    }
+
+    /// Rejects the JavaFX 25 multi-rule media bug and accepts its JavaFX 26 fix.
+    @Test
+    void validatesMultipleMediaRulesByVersion() {
+        var media = new CssMediaRule(
+                CssMediaQuery.parseList("(prefers-color-scheme: dark)"),
+                span("@media (prefers-color-scheme: dark)")
+        );
+        media.addChild(styleRuleWithDeclaration("Pane", "-fx-opacity", "1"));
+        media.addChild(styleRuleWithDeclaration("Label", "-fx-opacity", "1"));
+        var stylesheet = stylesheet(media);
+
+        assertThrows(
+                CssSerializeException.class,
+                () -> JavaFXCssValidator.validate(
+                        stylesheet,
+                        JavaFXCompatibility.JAVAFX25
+                )
+        );
+        assertDoesNotThrow(
+                () -> JavaFXCssValidator.validate(
+                        stylesheet,
+                        JavaFXCompatibility.JAVAFX26
                 )
         );
     }
@@ -56,7 +82,7 @@ final class JavaFXCssValidatorTest {
                 CssSerializeException.class,
                 () -> JavaFXCssValidator.validate(
                         stylesheet(media),
-                        JavaFXCompatibility.JAVA_FX_27
+                        JavaFXCompatibility.JAVAFX27
                 )
         );
     }
@@ -76,18 +102,18 @@ final class JavaFXCssValidatorTest {
         assertDoesNotThrow(
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVA_FX_17
+                        JavaFXCompatibility.JAVAFX17
                 )
         );
         assertDoesNotThrow(
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVA_FX_27
+                        JavaFXCompatibility.JAVAFX27
                 )
         );
     }
 
-    /// Rejects import media conditions for JavaFX 17 and accepts them for JavaFX 27.
+    /// Rejects import media conditions through JavaFX 26 and accepts them in JavaFX 27.
     @ParameterizedTest
     @ValueSource(strings = {
             "\"theme.css\" (prefers-color-scheme: dark)",
@@ -101,13 +127,13 @@ final class JavaFXCssValidatorTest {
                 CssSerializeException.class,
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVA_FX_17
+                        JavaFXCompatibility.JAVAFX26
                 )
         );
         assertDoesNotThrow(
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVA_FX_27
+                        JavaFXCompatibility.JAVAFX27
                 )
         );
     }
@@ -124,7 +150,7 @@ final class JavaFXCssValidatorTest {
                 CssSerializeException.class,
                 () -> JavaFXCssValidator.validate(
                         stylesheet(new CssImport(argument, span(argument))),
-                        JavaFXCompatibility.JAVA_FX_27
+                        JavaFXCompatibility.JAVAFX27
                 )
         );
     }
@@ -170,7 +196,7 @@ final class JavaFXCssValidatorTest {
         }
     }
 
-    /// Rejects each JavaFX transition property for JavaFX 17 but accepts it for JavaFX 27.
+    /// Rejects each transition property through JavaFX 22 and accepts it in JavaFX 23.
     @ParameterizedTest
     @ValueSource(strings = {
             "transition",
@@ -188,20 +214,21 @@ final class JavaFXCssValidatorTest {
                 CssSerializeException.class,
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVA_FX_17
+                        JavaFXCompatibility.JAVAFX22
                 )
         );
         assertDoesNotThrow(
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVA_FX_27
+                        JavaFXCompatibility.JAVAFX23
                 )
         );
     }
 
-    /// Rejects blend modes added after JavaFX 17 but accepts them for JavaFX 27.
+    /// Rejects conflicting blend modes through JavaFX 17 and accepts them in JavaFX 18.
     @ParameterizedTest
     @ValueSource(strings = {
+            "add",
             "red",
             "RED",
             "\"red\"",
@@ -217,13 +244,13 @@ final class JavaFXCssValidatorTest {
                 CssSerializeException.class,
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVA_FX_17
+                        JavaFXCompatibility.JAVAFX17
                 )
         );
         assertDoesNotThrow(
                 () -> JavaFXCssValidator.validate(
                         stylesheet,
-                        JavaFXCompatibility.JAVA_FX_27
+                        JavaFXCompatibility.JAVAFX18
                 )
         );
     }
@@ -240,7 +267,7 @@ final class JavaFXCssValidatorTest {
                                         "multiply"
                                 )
                         ),
-                        JavaFXCompatibility.JAVA_FX_17
+                        JavaFXCompatibility.JAVAFX17
                 )
         );
     }
