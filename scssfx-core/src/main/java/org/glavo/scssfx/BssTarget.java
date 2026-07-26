@@ -15,6 +15,11 @@ import java.util.Objects;
 /// fail with [SassCompilationException] when evaluated CSS requires a BSS
 /// construct outside the supported subset.
 ///
+/// Media rules are encoded for JavaFX 25 and later. A retained `@import`
+/// currently fails because BSS v9 embeds the resolved imported stylesheet
+/// rather than preserving its URL, and this target does not yet define a
+/// resource-resolution contract.
+///
 /// @param compatibility the JavaFX compatibility level that determines the BSS version
 @NotNullByDefault
 public record BssTarget(JavaFXCompatibility compatibility)

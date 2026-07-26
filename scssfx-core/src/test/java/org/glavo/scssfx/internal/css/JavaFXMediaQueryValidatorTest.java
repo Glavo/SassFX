@@ -11,6 +11,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -157,6 +159,64 @@ final class JavaFXMediaQueryValidatorTest {
                     JavaFXCompatibility.JAVAFX27
             ));
         }
+    }
+
+    /// Lowers discrete and range syntax to the canonical JavaFX media AST.
+    @Test
+    void parsesBinaryMediaExpressions() {
+        var query = "(min-width: 10em), (400px <= width < 800px)";
+        var parsed = JavaFXMediaQueryValidator.parse(
+                query,
+                span(query),
+                JavaFXCompatibility.JAVAFX26
+        );
+
+        assertEquals(2, parsed.alternatives().size());
+        var minimum = assertInstanceOf(
+                JavaFXMediaQuery.Range.class,
+                parsed.alternatives().get(0)
+        );
+        assertEquals(JavaFXMediaQuery.Comparison.GREATER_OR_EQUAL, minimum.comparison());
+        assertEquals("width", minimum.name());
+        assertEquals(10, minimum.value());
+        assertEquals(JavaFXMediaQuery.Unit.EM, minimum.unit());
+
+        var interval = assertInstanceOf(
+                JavaFXMediaQuery.Conjunction.class,
+                parsed.alternatives().get(1)
+        );
+        var lower = assertInstanceOf(
+                JavaFXMediaQuery.Range.class,
+                interval.left()
+        );
+        var upper = assertInstanceOf(
+                JavaFXMediaQuery.Range.class,
+                interval.right()
+        );
+        assertEquals(JavaFXMediaQuery.Comparison.GREATER_OR_EQUAL, lower.comparison());
+        assertEquals(400, lower.value());
+        assertEquals(JavaFXMediaQuery.Unit.PX, lower.unit());
+        assertEquals(JavaFXMediaQuery.Comparison.LESS, upper.comparison());
+        assertEquals(800, upper.value());
+        assertEquals(JavaFXMediaQuery.Unit.PX, upper.unit());
+    }
+
+    /// Preserves boolean-context features as null-valued function expressions.
+    @Test
+    void parsesBooleanMediaFeature() {
+        var query = "(prefers-reduced-motion)";
+        var parsed = JavaFXMediaQueryValidator.parse(
+                query,
+                span(query),
+                JavaFXCompatibility.JAVAFX25
+        );
+        var feature = assertInstanceOf(
+                JavaFXMediaQuery.Feature.class,
+                parsed.alternatives().get(0)
+        );
+
+        assertEquals("prefers-reduced-motion", feature.name());
+        assertNull(feature.value());
     }
 
     /// Creates a source span covering the complete query text.

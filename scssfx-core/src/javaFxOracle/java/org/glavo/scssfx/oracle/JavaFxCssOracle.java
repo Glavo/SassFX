@@ -2,6 +2,8 @@
 package org.glavo.scssfx.oracle;
 
 import javafx.css.CssParser;
+import javafx.css.Stylesheet;
+import org.glavo.scssfx.BssTarget;
 import org.glavo.scssfx.JavaFXCompatibility;
 import org.glavo.scssfx.JavaFXCssTarget;
 import org.glavo.scssfx.OutputStyle;
@@ -10,8 +12,12 @@ import org.glavo.scssfx.SassCompiler;
 import org.glavo.scssfx.SassSource;
 import org.glavo.scssfx.Syntax;
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Unmodifiable;
 
+import java.nio.ByteBuffer;
+import java.nio.file.Files;
 import java.util.List;
+import java.util.Arrays;
 
 /// Verifies SCSSFX JavaFX CSS compatibility against a pinned OpenJFX parser.
 ///
@@ -182,6 +188,55 @@ public final class JavaFxCssOracle {
         if (stylesheet.getRules().isEmpty()) {
             throw new AssertionError(fixture.name() + " produced no JavaFX rules.");
         }
+        if (compatibility == JavaFXCompatibility.JAVAFX27
+                && fixture.name().equals("media")) {
+            verifyBss(fixture, css, compatibility);
+        }
+    }
+
+    /// Compares SCSSFX BSS output with the pinned OpenJFX writer.
+    ///
+    /// @param fixture       the source fixture
+    /// @param css           the compiled JavaFX CSS
+    /// @param compatibility the selected JavaFX release
+    /// @throws Exception if either writer fails or their bytes differ
+    private static void verifyBss(
+            Fixture fixture,
+            String css,
+            JavaFXCompatibility compatibility
+    ) throws Exception {
+        var directory = Files.createTempDirectory("scssfx-javafx-oracle-");
+        var source = directory.resolve("fixture.css");
+        var destination = directory.resolve("fixture.bss");
+        try {
+            Files.writeString(source, css);
+            Stylesheet.convertToBinary(source.toFile(), destination.toFile());
+            var expected = Files.readAllBytes(destination);
+            var actual = remainingBytes(new SassCompiler().compile(
+                    SassSource.fromString(fixture.source(), fixture.syntax()),
+                    new BssTarget(compatibility)
+            ).output());
+            if (!Arrays.equals(expected, actual)) {
+                throw new AssertionError(
+                        fixture.name() + " BSS differs from OpenJFX output."
+                );
+            }
+        } finally {
+            Files.deleteIfExists(destination);
+            Files.deleteIfExists(source);
+            Files.deleteIfExists(directory);
+        }
+    }
+
+    /// Copies all remaining BSS bytes without changing the source buffer.
+    ///
+    /// @param buffer the read-only compiler output
+    /// @return a newly allocated byte array
+    private static byte[] remainingBytes(@Unmodifiable ByteBuffer buffer) {
+        var copy = buffer.duplicate();
+        var result = new byte[copy.remaining()];
+        copy.get(result);
+        return result;
     }
 
     /// Requires one fixture to fail before JavaFX CSS text is emitted.

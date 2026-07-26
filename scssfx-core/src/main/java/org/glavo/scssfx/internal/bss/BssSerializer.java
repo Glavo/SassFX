@@ -2,6 +2,7 @@
 package org.glavo.scssfx.internal.bss;
 
 import org.glavo.scssfx.BssTarget;
+import org.glavo.scssfx.JavaFXCompatibility;
 import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.ast.selector.ClassSelector;
 import org.glavo.scssfx.internal.ast.selector.Combinator;
@@ -23,6 +24,8 @@ import org.glavo.scssfx.internal.css.CssSupportsRule;
 import org.glavo.scssfx.internal.css.CssStyleRule;
 import org.glavo.scssfx.internal.css.CssStylesheet;
 import org.glavo.scssfx.internal.css.CssUnknownAtRule;
+import org.glavo.scssfx.internal.css.JavaFXMediaQuery;
+import org.glavo.scssfx.internal.css.JavaFXMediaQueryValidator;
 import org.glavo.scssfx.internal.value.ListSeparator;
 import org.glavo.scssfx.internal.value.SassBoolean;
 import org.glavo.scssfx.internal.value.SassColor;
@@ -49,6 +52,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+
+import static org.glavo.scssfx.JavaFXFeature.MULTIPLE_RULES_PER_MEDIA_QUERY;
 
 /// Converts the supported CSS IR subset into JavaFX binary stylesheet bytes.
 ///
@@ -286,7 +291,7 @@ public final class BssSerializer {
         Objects.requireNonNull(stylesheet, "stylesheet");
         Objects.requireNonNull(target, "target");
 
-        var content = collectStylesheet(stylesheet);
+        var content = collectStylesheet(stylesheet, target.compatibility());
         try {
             var strings = new StringStore(target.bssVersion(), stylesheet.span());
             byte[] body = writeBody(
@@ -319,9 +324,13 @@ public final class BssSerializer {
     /// accepts them only before ordinary rules. BSS preserves that same safe
     /// source-order boundary.
     ///
-    /// @param stylesheet the evaluated CSS root
+    /// @param stylesheet  the evaluated CSS root
+    /// @param compatibility the selected JavaFX release
     /// @return binary-ready stylesheet content
-    private static BssStylesheet collectStylesheet(CssStylesheet stylesheet) {
+    private static BssStylesheet collectStylesheet(
+            CssStylesheet stylesheet,
+            JavaFXCompatibility compatibility
+    ) {
         var rules = new ArrayList<BssRule>();
         var fontFaces = new ArrayList<BssFontFace>();
         var sawStyleRule = false;
@@ -337,7 +346,7 @@ public final class BssSerializer {
                 );
             } else if (child instanceof CssStyleRule rule) {
                 sawStyleRule = true;
-                @Nullable BssRule converted = collectRule(rule);
+                @Nullable BssRule converted = collectRule(rule, null);
                 if (converted != null) {
                     rules.add(converted);
                 }
@@ -351,11 +360,8 @@ public final class BssSerializer {
                 }
                 fontFaces.add(collectFontFace(fontFace));
             } else if (child instanceof CssMediaRule mediaRule) {
-                throw new BssSerializeException(
-                        "BSS output doesn't support @media rules.",
-                        mediaRule.span(),
-                        null
-                );
+                sawStyleRule = true;
+                collectMediaRule(mediaRule, null, compatibility, rules);
             } else if (child instanceof CssSupportsRule supportsRule) {
                 throw new BssSerializeException(
                         "BSS output doesn't support @supports rules.",
@@ -369,6 +375,74 @@ public final class BssSerializer {
             }
         }
         return new BssStylesheet(rules, fontFaces);
+    }
+
+    /// Collects rules nested under one JavaFX media rule.
+    ///
+    /// @param mediaRule     the CSS media rule
+    /// @param parent        the enclosing binary media rule, or `null`
+    /// @param compatibility the selected JavaFX release
+    /// @param rules         the destination rule list
+    private static void collectMediaRule(
+            CssMediaRule mediaRule,
+            @Nullable BssMediaRule parent,
+            JavaFXCompatibility compatibility,
+            List<BssRule> rules
+    ) {
+        if (!compatibility.supports(MULTIPLE_RULES_PER_MEDIA_QUERY)
+                && mediaRule.children().stream()
+                .filter(child -> !child.isInvisible())
+                .filter(CssStyleRule.class::isInstance)
+                .skip(1)
+                .findAny()
+                .isPresent()) {
+            throw new BssSerializeException(
+                    "JavaFX " + compatibility.version()
+                            + " CSS cannot apply multiple style rules"
+                            + " within one @media rule.",
+                    mediaRule.span(),
+                    null
+            );
+        }
+        var queryText = new StringBuilder();
+        for (var index = 0; index < mediaRule.queries().size(); index++) {
+            if (index != 0) {
+                queryText.append(", ");
+            }
+            queryText.append(mediaRule.queries().get(index).toCssString());
+        }
+        var binaryMediaRule = new BssMediaRule(
+                JavaFXMediaQueryValidator.parse(
+                        queryText.toString(),
+                        mediaRule.span(),
+                        compatibility
+                ),
+                parent
+        );
+
+        for (var child : mediaRule.children()) {
+            if (child instanceof CssComment || child.isInvisible()) {
+                continue;
+            }
+            if (child instanceof CssStyleRule rule) {
+                @Nullable BssRule converted = collectRule(rule, binaryMediaRule);
+                if (converted != null) {
+                    rules.add(converted);
+                }
+            } else if (child instanceof CssMediaRule nested) {
+                collectMediaRule(nested, binaryMediaRule, compatibility, rules);
+            } else if (child instanceof CssSupportsRule supportsRule) {
+                throw new BssSerializeException(
+                        "BSS output doesn't support @supports rules.",
+                        supportsRule.span(),
+                        null
+                );
+            } else if (child instanceof CssUnknownAtRule unknownAtRule) {
+                throw unsupportedAtRule(unknownAtRule);
+            } else {
+                throw unsupported(child, "media-rule CSS node");
+            }
+        }
     }
 
     /// Collects JavaFX font-face descriptors and sources from one CSS rule.
@@ -438,7 +512,10 @@ public final class BssSerializer {
     ///
     /// @param rule the CSS style rule
     /// @return a binary-ready rule, or {@code null} when comments are its only content
-    private static @Nullable BssRule collectRule(CssStyleRule rule) {
+    private static @Nullable BssRule collectRule(
+            CssStyleRule rule,
+            @Nullable BssMediaRule mediaRule
+    ) {
         var declarations = new ArrayList<CssDeclaration>();
         for (var child : rule.children()) {
             if (child instanceof CssComment || child.isInvisible()) {
@@ -458,10 +535,10 @@ public final class BssSerializer {
                         nested.span(),
                         null
                 );
-            } else if (child instanceof CssMediaRule mediaRule) {
+            } else if (child instanceof CssMediaRule nestedMediaRule) {
                 throw new BssSerializeException(
                         "BSS output doesn't support @media rules.",
-                        mediaRule.span(),
+                        nestedMediaRule.span(),
                         null
                 );
             } else if (child instanceof CssSupportsRule supportsRule) {
@@ -479,7 +556,12 @@ public final class BssSerializer {
         if (declarations.isEmpty()) {
             return null;
         }
-        return new BssRule(rule.selector().value(), declarations, rule.span());
+        return new BssRule(
+                rule.selector().value(),
+                declarations,
+                mediaRule,
+                rule.span()
+        );
     }
 
     /// Writes the BSS stylesheet body after all output strings have been collected.
@@ -573,7 +655,10 @@ public final class BssSerializer {
             StringStore strings
     ) throws IOException {
         if (version >= VERSION_7) {
-            output.writeBoolean(false);
+            output.writeBoolean(rule.mediaRule() != null);
+            if (rule.mediaRule() != null) {
+                writeMediaRule(output, rule.mediaRule(), strings);
+            }
         }
 
         var selectors = rule.selectors().components();
@@ -597,6 +682,68 @@ public final class BssSerializer {
         }
         output.writeInt(declarationBytes.size());
         declarationBytes.writeTo(output);
+    }
+
+    /// Writes one media rule and its optional parent chain.
+    ///
+    /// @param output    the stylesheet output stream
+    /// @param mediaRule the media rule to encode
+    /// @param strings   the shared string table
+    /// @throws IOException if an in-memory output stream rejects a write
+    private static void writeMediaRule(
+            DataOutputStream output,
+            BssMediaRule mediaRule,
+            StringStore strings
+    ) throws IOException {
+        var alternatives = mediaRule.query().alternatives();
+        output.writeInt(alternatives.size());
+        for (var expression : alternatives) {
+            writeMediaExpression(output, expression, strings);
+        }
+        output.writeBoolean(mediaRule.parent() != null);
+        if (mediaRule.parent() != null) {
+            writeMediaRule(output, mediaRule.parent(), strings);
+        }
+    }
+
+    /// Writes one JavaFX media-query expression.
+    ///
+    /// @param output     the stylesheet output stream
+    /// @param expression the expression to encode
+    /// @param strings    the shared string table
+    /// @throws IOException if an in-memory output stream rejects a write
+    private static void writeMediaExpression(
+            DataOutputStream output,
+            JavaFXMediaQuery.Expression expression,
+            StringStore strings
+    ) throws IOException {
+        if (expression instanceof JavaFXMediaQuery.Feature feature) {
+            output.writeByte(2);
+            output.writeInt(strings.add(feature.name()));
+            output.writeInt(
+                    feature.value() == null ? -1 : strings.add(feature.value())
+            );
+        } else if (expression instanceof JavaFXMediaQuery.Conjunction conjunction) {
+            output.writeByte(3);
+            writeMediaExpression(output, conjunction.left(), strings);
+            writeMediaExpression(output, conjunction.right(), strings);
+        } else if (expression instanceof JavaFXMediaQuery.Disjunction disjunction) {
+            output.writeByte(4);
+            writeMediaExpression(output, disjunction.left(), strings);
+            writeMediaExpression(output, disjunction.right(), strings);
+        } else if (expression instanceof JavaFXMediaQuery.Negation negation) {
+            output.writeByte(5);
+            writeMediaExpression(output, negation.expression(), strings);
+        } else if (expression instanceof JavaFXMediaQuery.Range range) {
+            output.writeByte(range.comparison().binaryTag());
+            output.writeInt(strings.add(range.name()));
+            output.writeDouble(range.value());
+            output.writeByte(
+                    range.unit() == null ? -1 : range.unit().binaryOrdinal()
+            );
+        } else {
+            throw new AssertionError("Unknown JavaFX media expression");
+        }
     }
 
     /// Writes a JavaFX-compatible complex selector.
@@ -3973,6 +4120,7 @@ public final class BssSerializer {
     private record BssRule(
             SelectorList selectors,
             List<CssDeclaration> declarations,
+            @Nullable BssMediaRule mediaRule,
             SourceSpan span
     ) {
         /// Creates an immutable BSS rule snapshot.
@@ -3980,6 +4128,21 @@ public final class BssSerializer {
             Objects.requireNonNull(selectors, "selectors");
             declarations = List.copyOf(declarations);
             Objects.requireNonNull(span, "span");
+        }
+    }
+
+    /// Holds one media rule attached to a binary style rule.
+    ///
+    /// @param query  the media-query list
+    /// @param parent the enclosing media rule, or `null`
+    @NotNullByDefault
+    private record BssMediaRule(
+            JavaFXMediaQuery query,
+            @Nullable BssMediaRule parent
+    ) {
+        /// Validates the media-query list.
+        private BssMediaRule {
+            Objects.requireNonNull(query, "query");
         }
     }
 

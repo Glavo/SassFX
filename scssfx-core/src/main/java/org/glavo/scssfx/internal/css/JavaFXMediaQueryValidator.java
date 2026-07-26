@@ -19,7 +19,7 @@ import java.util.Objects;
 /// `media-query` grammar. In particular, media types such as `screen` and
 /// `print` are not accepted by the supported parser profiles.
 @NotNullByDefault
-final class JavaFXMediaQueryValidator {
+public final class JavaFXMediaQueryValidator {
     /// Prevents instantiation.
     private JavaFXMediaQueryValidator() {
     }
@@ -33,7 +33,22 @@ final class JavaFXMediaQueryValidator {
     /// @param span          the source range reported when validation fails
     /// @param compatibility the JavaFX release whose grammar is validated
     /// @throws CssSerializeException if the text is not accepted by JavaFX
-    static void validate(
+    public static void validate(
+            String queryList,
+            SourceSpan span,
+            JavaFXCompatibility compatibility
+    ) {
+        parse(queryList, span, compatibility);
+    }
+
+    /// Parses and validates a comma-separated JavaFX media-condition list.
+    ///
+    /// @param queryList     the serialized query-list contents
+    /// @param span          the source range reported when validation fails
+    /// @param compatibility the JavaFX release whose grammar is validated
+    /// @return the immutable binary-serializable query representation
+    /// @throws CssSerializeException if the text is not accepted by JavaFX
+    public static JavaFXMediaQuery parse(
             String queryList,
             SourceSpan span,
             JavaFXCompatibility compatibility
@@ -41,7 +56,7 @@ final class JavaFXMediaQueryValidator {
         Objects.requireNonNull(queryList, "queryList");
         Objects.requireNonNull(span, "span");
         Objects.requireNonNull(compatibility, "compatibility");
-        new Parser(tokenize(queryList, span), span, compatibility)
+        return new Parser(tokenize(queryList, span), span, compatibility)
                 .parseQueryList();
     }
 
@@ -301,43 +316,6 @@ final class JavaFXMediaQueryValidator {
         }
     }
 
-    /// Identifies comparison operators accepted by JavaFX range features.
-    @NotNullByDefault
-    private enum Comparison {
-        /// Strictly less than.
-        LESS(-1),
-
-        /// Less than or equal to.
-        LESS_OR_EQUAL(-1),
-
-        /// Equal to.
-        EQUAL(0),
-
-        /// Greater than or equal to.
-        GREATER_OR_EQUAL(1),
-
-        /// Strictly greater than.
-        GREATER(1);
-
-        /// Contains the direction used to validate interval expressions.
-        private final int direction;
-
-        /// Creates a comparison with its interval direction.
-        ///
-        /// @param direction negative for less, positive for greater, or zero
-        Comparison(int direction) {
-            this.direction = direction;
-        }
-
-        /// Returns whether another comparison can form a JavaFX interval.
-        ///
-        /// @param other the second interval comparison
-        /// @return whether both operators have the same nonzero direction
-        private boolean hasSameDirection(Comparison other) {
-            return direction != 0 && direction == other.direction;
-        }
-    }
-
     /// Parses and validates the JavaFX media-condition grammar.
     @NotNullByDefault
     private static final class Parser {
@@ -369,68 +347,75 @@ final class JavaFXMediaQueryValidator {
         }
 
         /// Parses a comma-separated media-condition list.
-        private void parseQueryList() {
+        private JavaFXMediaQuery parseQueryList() {
+            var alternatives = new ArrayList<JavaFXMediaQuery.Expression>();
             if (tokens.isEmpty()) {
-                return;
+                return new JavaFXMediaQuery(alternatives);
             }
-            parseMediaCondition();
+            alternatives.add(parseMediaCondition());
             while (consume(TokenType.COMMA)) {
                 if (atEnd()) {
                     fail("Expected media condition after ','");
                 }
-                parseMediaCondition();
+                alternatives.add(parseMediaCondition());
             }
             if (!atEnd()) {
                 fail("Unexpected token '" + peek().text() + "' in JavaFX media query");
             }
+            return new JavaFXMediaQuery(alternatives);
         }
 
         /// Parses one condition with `not`, `and`, or `or` logic.
-        private void parseMediaCondition() {
+        private JavaFXMediaQuery.Expression parseMediaCondition() {
             if (consumeIdentifier("not")) {
-                parseMediaInParentheses();
-                return;
+                return new JavaFXMediaQuery.Negation(parseMediaInParentheses());
             }
 
-            parseMediaInParentheses();
+            var expression = parseMediaInParentheses();
             if (consumeIdentifier("and")) {
                 do {
-                    parseMediaInParentheses();
+                    expression = new JavaFXMediaQuery.Conjunction(
+                            expression,
+                            parseMediaInParentheses()
+                    );
                 } while (consumeIdentifier("and"));
                 if (peekIdentifier("or")) {
                     fail("JavaFX media conditions cannot mix 'and' and 'or'");
                 }
             } else if (consumeIdentifier("or")) {
                 do {
-                    parseMediaInParentheses();
+                    expression = new JavaFXMediaQuery.Disjunction(
+                            expression,
+                            parseMediaInParentheses()
+                    );
                 } while (consumeIdentifier("or"));
                 if (peekIdentifier("and")) {
                     fail("JavaFX media conditions cannot mix 'or' and 'and'");
                 }
             }
+            return expression;
         }
 
         /// Parses a nested condition, discrete feature, or range feature.
-        private void parseMediaInParentheses() {
+        private JavaFXMediaQuery.Expression parseMediaInParentheses() {
             expect(TokenType.LEFT_PARENTHESIS, "Expected '('");
 
             if (matches(TokenType.IDENTIFIER, TokenType.RIGHT_PARENTHESIS)
                     || matches(TokenType.IDENTIFIER, TokenType.COLON)) {
-                parseDiscreteFeature();
-                return;
+                return parseDiscreteFeature();
             }
             if (isNumeric(peekType())
                     || peekType() == TokenType.IDENTIFIER && comparisonStarts(1)) {
-                parseRangeFeature();
-                return;
+                return parseRangeFeature();
             }
 
-            parseMediaCondition();
+            var expression = parseMediaCondition();
             expect(TokenType.RIGHT_PARENTHESIS, "Expected ')'");
+            return expression;
         }
 
         /// Parses and validates a JavaFX discrete media feature.
-        private void parseDiscreteFeature() {
+        private JavaFXMediaQuery.Expression parseDiscreteFeature() {
             var name = expect(TokenType.IDENTIFIER, "Expected media feature name")
                     .text()
                     .toLowerCase(Locale.ROOT);
@@ -443,6 +428,33 @@ final class JavaFXMediaQueryValidator {
             }
             expect(TokenType.RIGHT_PARENTHESIS, "Expected ')'");
             validateDiscreteFeature(name, value);
+            if (name.startsWith("min-")) {
+                return rangeExpression(
+                        name.substring(4),
+                        JavaFXMediaQuery.Comparison.GREATER_OR_EQUAL,
+                        Objects.requireNonNull(value, "validated media feature value")
+                );
+            }
+            if (name.startsWith("max-")) {
+                return rangeExpression(
+                        name.substring(4),
+                        JavaFXMediaQuery.Comparison.LESS_OR_EQUAL,
+                        Objects.requireNonNull(value, "validated media feature value")
+                );
+            }
+            if (name.equals("width")
+                    || name.equals("height")
+                    || name.equals("aspect-ratio")) {
+                return rangeExpression(
+                        name,
+                        JavaFXMediaQuery.Comparison.EQUAL,
+                        Objects.requireNonNull(value, "validated media feature value")
+                );
+            }
+            return new JavaFXMediaQuery.Feature(
+                    name,
+                    value == null ? null : value.text().toLowerCase(Locale.ROOT)
+            );
         }
 
         /// Validates one discrete feature name and optional value.
@@ -602,7 +614,8 @@ final class JavaFXMediaQueryValidator {
         }
 
         /// Parses and validates a name-first, value-first, or interval feature.
-        private void parseRangeFeature() {
+        private JavaFXMediaQuery.Expression parseRangeFeature() {
+            JavaFXMediaQuery.Expression expression;
             if (isNumeric(peekType())) {
                 var firstValue = consume();
                 var firstOperator = parseComparison();
@@ -610,6 +623,11 @@ final class JavaFXMediaQueryValidator {
                         .text()
                         .toLowerCase(Locale.ROOT);
                 validateRangeValue(name, firstValue);
+                expression = rangeExpression(
+                        name,
+                        firstOperator.flipped(),
+                        firstValue
+                );
                 if (comparisonStarts(0)) {
                     var secondOperator = parseComparison();
                     if (!firstOperator.hasSameDirection(secondOperator)) {
@@ -617,15 +635,64 @@ final class JavaFXMediaQueryValidator {
                     }
                     var secondValue = consumeNumeric("Expected media feature value");
                     validateRangeValue(name, secondValue);
+                    expression = new JavaFXMediaQuery.Conjunction(
+                            expression,
+                            rangeExpression(name, secondOperator, secondValue)
+                    );
                 }
             } else {
                 var name = expect(TokenType.IDENTIFIER, "Expected media feature name")
                         .text()
                         .toLowerCase(Locale.ROOT);
-                parseComparison();
-                validateRangeValue(name, consumeNumeric("Expected media feature value"));
+                var comparison = parseComparison();
+                var value = consumeNumeric("Expected media feature value");
+                validateRangeValue(name, value);
+                expression = rangeExpression(name, comparison, value);
             }
             expect(TokenType.RIGHT_PARENTHESIS, "Expected ')'");
+            return expression;
+        }
+
+        /// Creates a binary range expression from a validated numeric token.
+        ///
+        /// @param name       the normalized feature name
+        /// @param comparison the runtime-value comparison
+        /// @param value      the validated numeric token
+        /// @return the binary-serializable range expression
+        private JavaFXMediaQuery.Range rangeExpression(
+                String name,
+                JavaFXMediaQuery.Comparison comparison,
+                Token value
+        ) {
+            var text = value.text();
+            @Nullable JavaFXMediaQuery.Unit unit = null;
+            var numberEnd = text.length();
+            if (value.type() == TokenType.PERCENTAGE) {
+                unit = JavaFXMediaQuery.Unit.PERCENT;
+                numberEnd--;
+            } else if (value.type() == TokenType.LENGTH) {
+                while (numberEnd > 0
+                        && Character.isLetter(text.charAt(numberEnd - 1))) {
+                    numberEnd--;
+                }
+                unit = switch (text.substring(numberEnd).toLowerCase(Locale.ROOT)) {
+                    case "in" -> JavaFXMediaQuery.Unit.IN;
+                    case "cm" -> JavaFXMediaQuery.Unit.CM;
+                    case "mm" -> JavaFXMediaQuery.Unit.MM;
+                    case "em" -> JavaFXMediaQuery.Unit.EM;
+                    case "ex" -> JavaFXMediaQuery.Unit.EX;
+                    case "pt" -> JavaFXMediaQuery.Unit.PT;
+                    case "pc" -> JavaFXMediaQuery.Unit.PC;
+                    case "px" -> JavaFXMediaQuery.Unit.PX;
+                    default -> throw new AssertionError("Unknown JavaFX length unit");
+                };
+            }
+            return new JavaFXMediaQuery.Range(
+                    comparison,
+                    name,
+                    Double.parseDouble(text.substring(0, numberEnd)),
+                    unit
+            );
         }
 
         /// Validates a range feature value against its feature type.
@@ -652,19 +719,19 @@ final class JavaFXMediaQueryValidator {
         /// Parses one JavaFX media comparison operator.
         ///
         /// @return the parsed comparison
-        private Comparison parseComparison() {
+        private JavaFXMediaQuery.Comparison parseComparison() {
             if (consume(TokenType.GREATER)) {
                 return consume(TokenType.EQUALS)
-                        ? Comparison.GREATER_OR_EQUAL
-                        : Comparison.GREATER;
+                        ? JavaFXMediaQuery.Comparison.GREATER_OR_EQUAL
+                        : JavaFXMediaQuery.Comparison.GREATER;
             }
             if (consume(TokenType.LESS)) {
                 return consume(TokenType.EQUALS)
-                        ? Comparison.LESS_OR_EQUAL
-                        : Comparison.LESS;
+                        ? JavaFXMediaQuery.Comparison.LESS_OR_EQUAL
+                        : JavaFXMediaQuery.Comparison.LESS;
             }
             if (consume(TokenType.EQUALS)) {
-                return Comparison.EQUAL;
+                return JavaFXMediaQuery.Comparison.EQUAL;
             }
             fail("Expected JavaFX media comparison operator");
             throw new AssertionError();

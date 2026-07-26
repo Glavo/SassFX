@@ -14,47 +14,110 @@ import java.util.Set;
 /// Textual JavaFX CSS targets use the selected release to reject syntax or
 /// declarations that its CSS parser does not support. BSS targets additionally
 /// use it to select the corresponding binary stylesheet format version.
+///
+/// Each constant documents changes represented by SCSSFX's CSS and BSS
+/// capability model. A statement that a release introduces no relevant change
+/// does not imply that every JavaFX CSS implementation detail is unchanged.
 @NotNullByDefault
 public enum JavaFXCompatibility {
     /// Targets JavaFX 8 and BSS version 5.
+    ///
+    /// This baseline supports `@font-face`, unconditional `@import`, and the
+    /// internal `com.sun.javafx.css.converters` names used by BSS v5.
     JAVAFX8(8, 5),
     /// Targets JavaFX 9 and BSS version 6.
+    ///
+    /// BSS v6 moves converter names to the public `javafx.css.converter`
+    /// package.
     JAVAFX9(9, 6),
     /// Targets JavaFX 10 and BSS version 6.
+    ///
+    /// This release introduces no SCSSFX-modeled CSS or BSS capability change
+    /// from JavaFX 9.
     JAVAFX10(10, 6),
     /// Targets JavaFX 11 and BSS version 6.
+    ///
+    /// This release introduces no SCSSFX-modeled CSS or BSS capability change
+    /// from JavaFX 10.
     JAVAFX11(11, 6),
     /// Targets JavaFX 12 and BSS version 6.
+    ///
+    /// This release introduces no SCSSFX-modeled CSS or BSS capability change
+    /// from JavaFX 11.
     JAVAFX12(12, 6),
     /// Targets JavaFX 13 and BSS version 6.
+    ///
+    /// This release introduces no SCSSFX-modeled CSS or BSS capability change
+    /// from JavaFX 12.
     JAVAFX13(13, 6),
     /// Targets JavaFX 14 and BSS version 6.
+    ///
+    /// This release introduces no SCSSFX-modeled CSS or BSS capability change
+    /// from JavaFX 13.
     JAVAFX14(14, 6),
     /// Targets JavaFX 15 and BSS version 6.
+    ///
+    /// This release introduces no SCSSFX-modeled CSS or BSS capability change
+    /// from JavaFX 14.
     JAVAFX15(15, 6),
     /// Targets JavaFX 16 and BSS version 6.
+    ///
+    /// This release introduces no SCSSFX-modeled CSS or BSS capability change
+    /// from JavaFX 15.
     JAVAFX16(16, 6),
     /// Targets JavaFX 17 and BSS version 6.
+    ///
+    /// This release introduces no new modeled capability and retains the
+    /// legacy `add`, `red`, `green`, and `blue` blend-mode parsing defect.
     JAVAFX17(17, 6),
     /// Targets JavaFX 18 and BSS version 6.
+    ///
+    /// This release correctly parses the `add`, `red`, `green`, and `blue`
+    /// blend modes.
     JAVAFX18(18, 6),
     /// Targets JavaFX 19 and BSS version 6.
+    ///
+    /// This release introduces no SCSSFX-modeled CSS or BSS capability change
+    /// from JavaFX 18.
     JAVAFX19(19, 6),
     /// Targets JavaFX 20 and BSS version 6.
+    ///
+    /// This release introduces no SCSSFX-modeled CSS or BSS capability change
+    /// from JavaFX 19.
     JAVAFX20(20, 6),
     /// Targets JavaFX 21 and BSS version 6.
+    ///
+    /// This release introduces no SCSSFX-modeled CSS or BSS capability change
+    /// from JavaFX 20.
     JAVAFX21(21, 6),
     /// Targets JavaFX 22 and BSS version 6.
+    ///
+    /// This release introduces no SCSSFX-modeled CSS or BSS capability change
+    /// from JavaFX 21.
     JAVAFX22(22, 6),
     /// Targets JavaFX 23 and BSS version 6.
+    ///
+    /// This release adds CSS transition properties.
     JAVAFX23(23, 6),
     /// Targets JavaFX 24 and BSS version 6.
+    ///
+    /// This release introduces no SCSSFX-modeled CSS or BSS capability change
+    /// from JavaFX 23.
     JAVAFX24(24, 6),
     /// Targets JavaFX 25 and BSS version 7.
+    ///
+    /// BSS v7 adds user-preference media queries. JavaFX 25 cannot reliably
+    /// apply multiple style rules within one `@media` rule.
     JAVAFX25(25, 7),
     /// Targets JavaFX 26 and BSS version 8.
+    ///
+    /// BSS v8 adds viewport, range, orientation, and display-mode media
+    /// queries and fixes multiple style rules within one `@media` rule.
     JAVAFX26(26, 8),
     /// Targets JavaFX 27 and BSS version 9.
+    ///
+    /// BSS v9 adds conditional stylesheet imports. This target also adds the
+    /// `-fx-supports-conditional-feature` and `-fx-platform` media features.
     JAVAFX27(27, 9);
 
     /// Contains the JavaFX major release number.

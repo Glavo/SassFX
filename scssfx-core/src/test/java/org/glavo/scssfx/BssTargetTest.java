@@ -2,14 +2,18 @@
 package org.glavo.scssfx;
 
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -771,9 +775,9 @@ final class BssTargetTest {
         );
     }
 
-    /// Rejects media rules that bubble to the stylesheet root.
+    /// Rejects media types, which JavaFX media-condition grammar does not support.
     @Test
-    void rejectsMediaRules() {
+    void rejectsMediaTypes() {
         var failure = assertThrows(
                 SassCompilationException.class,
                 () -> new SassCompiler().compile(
@@ -792,9 +796,189 @@ final class BssTargetTest {
         );
 
         assertEquals(
-                "BSS output doesn't support @media rules.",
+                "Expected '('",
                 failure.getMessage()
         );
+    }
+
+    /// Serializes JavaFX 25 discrete media expressions into BSS version 7.
+    @Test
+    void compilesJavaFx25MediaRules() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                @media (prefers-color-scheme: dark)
+                                        and ((prefers-reduced-motion)
+                                        or (not (prefers-reduced-transparency))) {
+                                  Pane { -fx-opacity: 1; }
+                                }
+                                """,
+                        Syntax.SCSS
+                ),
+                new BssTarget(JavaFXCompatibility.JAVAFX25)
+        ).output());
+        var input = document.input();
+
+        assertEquals(7, document.version());
+        input.readShort(); // origin
+        assertEquals(1, input.readShort());
+        assertTrue(input.readBoolean());
+        assertEquals(1, input.readInt());
+        assertEquals(3, input.readUnsignedByte());
+        assertFeature(
+                input,
+                document.strings(),
+                "prefers-color-scheme",
+                "dark"
+        );
+        assertEquals(4, input.readUnsignedByte());
+        assertFeature(
+                input,
+                document.strings(),
+                "prefers-reduced-motion",
+                null
+        );
+        assertEquals(5, input.readUnsignedByte());
+        assertFeature(
+                input,
+                document.strings(),
+                "prefers-reduced-transparency",
+                null
+        );
+        assertFalse(input.readBoolean());
+    }
+
+    /// Serializes JavaFX 26 interval media expressions into BSS version 8.
+    @Test
+    void compilesJavaFx26RangeMediaRules() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                @media (400px <= width < 800px) {
+                                  Pane { -fx-opacity: 1; }
+                                }
+                                """,
+                        Syntax.SCSS
+                ),
+                new BssTarget(JavaFXCompatibility.JAVAFX26)
+        ).output());
+        var input = document.input();
+
+        assertEquals(8, document.version());
+        input.readShort(); // origin
+        assertEquals(1, input.readShort());
+        assertTrue(input.readBoolean());
+        assertEquals(1, input.readInt());
+        assertEquals(3, input.readUnsignedByte());
+        assertRange(input, document.strings(), 8, "width", 400, 8);
+        assertRange(input, document.strings(), 9, "width", 800, 8);
+        assertFalse(input.readBoolean());
+    }
+
+    /// Serializes JavaFX 27 platform media features into BSS version 9.
+    @Test
+    void compilesJavaFx27PlatformMediaRules() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                @media (-fx-platform: windows) {
+                                  Pane { -fx-opacity: 1; }
+                                }
+                                """,
+                        Syntax.SCSS
+                ),
+                new BssTarget(JavaFXCompatibility.JAVAFX27)
+        ).output());
+        var input = document.input();
+
+        assertEquals(9, document.version());
+        assertEquals(0, input.readInt());
+        input.readShort(); // origin
+        assertEquals(1, input.readShort());
+        assertTrue(input.readBoolean());
+        assertEquals(1, input.readInt());
+        assertFeature(input, document.strings(), "-fx-platform", "windows");
+        assertFalse(input.readBoolean());
+    }
+
+    /// Reads and verifies one discrete media feature expression.
+    ///
+    /// @param input   the body input
+    /// @param strings the decoded global string table
+    /// @param name    the expected feature name
+    /// @param value   the expected feature value, or `null`
+    private static void assertFeature(
+            DataInputStream input,
+            @Nullable String[] strings,
+            String name,
+            @Nullable String value
+    ) throws Exception {
+        assertEquals(2, input.readUnsignedByte());
+        assertEquals(name, strings[input.readInt()]);
+        var valueIndex = input.readInt();
+        assertEquals(value, valueIndex < 0 ? null : strings[valueIndex]);
+    }
+
+    /// Reads and verifies one range media expression.
+    ///
+    /// @param input       the body input
+    /// @param strings     the decoded global string table
+    /// @param tag         the expected comparison tag
+    /// @param name        the expected feature name
+    /// @param value       the expected numeric value
+    /// @param unitOrdinal the expected JavaFX size-unit ordinal
+    private static void assertRange(
+            DataInputStream input,
+            @Nullable String[] strings,
+            int tag,
+            String name,
+            double value,
+            int unitOrdinal
+    ) throws Exception {
+        assertEquals(tag, input.readUnsignedByte());
+        assertEquals(name, strings[input.readInt()]);
+        assertEquals(value, input.readDouble());
+        assertEquals(unitOrdinal, input.readByte());
+    }
+
+    /// Decodes a BSS header and global string table.
+    ///
+    /// @param buffer the complete BSS document
+    /// @return the BSS version, strings, and input positioned at the body
+    private static DecodedBss decodeDocument(
+            @Unmodifiable ByteBuffer buffer
+    ) throws Exception {
+        var input = new DataInputStream(
+                new ByteArrayInputStream(remainingBytes(buffer))
+        );
+        var version = input.readUnsignedShort();
+        var count = input.readUnsignedShort();
+        var nullIndex = input.readShort();
+        var strings = new String[count];
+        for (var index = 0; index < count; index++) {
+            if (index != nullIndex) {
+                strings[index] = input.readUTF();
+            }
+        }
+        return new DecodedBss(version, strings, input);
+    }
+
+    /// Stores a decoded BSS header and body input.
+    ///
+    /// @param version the BSS format version
+    /// @param strings the global string table
+    /// @param input   the input positioned at the stylesheet body
+    @NotNullByDefault
+    private record DecodedBss(
+            int version,
+            @Nullable String[] strings,
+            DataInputStream input
+    ) {
+        /// Validates decoded components.
+        private DecodedBss {
+            Objects.requireNonNull(strings, "strings");
+            Objects.requireNonNull(input, "input");
+        }
     }
 
     /// Copies all remaining output bytes without changing the supplied buffer's position.

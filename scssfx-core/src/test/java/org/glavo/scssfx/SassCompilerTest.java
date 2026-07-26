@@ -966,7 +966,7 @@ final class SassCompilerTest {
         );
     }
 
-    /// Rejects media rules for BSS until their binary representation is implemented.
+    /// Rejects media types because JavaFX accepts only media conditions.
     @Test
     void rejectsMediaRulesForBss() {
         var failure = assertThrows(
@@ -980,7 +980,7 @@ final class SassCompilerTest {
                 )
         );
 
-        assertEquals("BSS output doesn't support @media rules.", failure.getMessage());
+        assertEquals("Expected '('", failure.getMessage());
     }
 
     /// Rejects supports rules for BSS until their binary representation is implemented.
