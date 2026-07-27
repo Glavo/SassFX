@@ -1,12 +1,12 @@
 # SassFX
 
-SassFX is an independent Sass compiler implemented in Java 17. It compiles
-SCSS, indented Sass, and plain CSS through its library API to standard CSS,
-validated JavaFX CSS, or JavaFX binary stylesheets (BSS).
+SassFX is a Java 17 implementation of Sass. It compiles SCSS, indented Sass,
+and plain CSS to standard CSS, validated JavaFX CSS, or JavaFX binary
+stylesheets (BSS).
 
-Product code does not load JavaFX, invoke Dart Sass or Node.js, use FFI, or
-ship native libraries. The project is currently a `0.1.0-SNAPSHOT`
-development build.
+The compiler does not load JavaFX, invoke Dart Sass or Node.js, use FFI, or
+ship native libraries. The current version is an unpublished
+`0.1.0-SNAPSHOT`.
 
 ## Highlights
 
@@ -22,7 +22,8 @@ development build.
 - Cacheable Gradle task for CSS, JavaFX CSS, and BSS generation.
 - Embedded Sass Protocol 3.2.0 framing, version negotiation, concurrent
   compilation dispatch, diagnostics, and compile responses.
-- Fixed Dart Sass, sass-spec, and OpenJFX compatibility oracles.
+- Reproducible conformance checks against pinned Dart Sass, sass-spec, and
+  OpenJFX releases.
 
 The core runtime uses Jackson Core. The embedded endpoint additionally uses
 the generated Sass Embedded Protocol messages and Protocol Buffers Java. The
@@ -45,11 +46,11 @@ On Windows:
 .\gradlew.ps1 check
 ```
 
-Product code and artifacts target Java 17. `check` runs core, embedded, CLI,
-and Gradle plugin tests, the curated sass-spec suite, Java 17
-shaded-application smoke tests, artifact boundary checks, and source-isolation
-checks. Generating Javadoc additionally requires a JDK 25 toolchain because
-Markdown-style `///` Javadoc is used.
+Product code and artifacts target Java 17. `check` runs the module tests, the
+pinned sass-spec corpus and project-owned fixtures, shaded-application smoke
+tests, artifact boundary checks, and source-isolation checks. Generating
+Javadoc additionally requires a JDK 25 toolchain because the source uses
+Markdown-style `///` documentation comments.
 
 The build produces:
 
@@ -107,11 +108,10 @@ tasks.register<org.glavo.sassfx.gradle.SassFXCompile>("compileThemeBss") {
 }
 ```
 
-The task tracks the complete source tree and configured load-path trees,
-supports Gradle build caching and configuration caching, removes stale
-outputs, detects output-path collisions, and publishes its output tree only
-after every entrypoint compiles successfully. The snapshot plugin is not
-available from a public plugin repository yet.
+The task tracks the source and load-path trees, supports the Gradle build and
+configuration caches, removes stale files, detects output-path collisions,
+and replaces the output tree only after every entrypoint compiles
+successfully. The plugin is not yet available from a public plugin repository.
 
 ## Command Line
 
@@ -336,19 +336,20 @@ may process distinct nonzero compilation IDs concurrently. Closing stdin
 cancels all in-flight work. Protocol violations emit a fatal protocol error
 and exit with status `76`; unexpected endpoint failures use status `70`.
 
-String and path inputs, ordered load-path and Node package importers, output
-style, charset handling, source maps, loaded URLs, logs, and deprecation
-configuration are supported. Contents importers, file importers, global
-functions, host function values, and compiler-owned function and mixin values
-use synchronous host callbacks with per-compilation routing. The recursive
-value codec preserves numbers and units, strings, booleans, null, lists, maps,
-argument lists, colors, calculations, and opaque callable identities.
-Protocol-only metadata is preserved independently of CSS presentation,
-including string quoting, list separators and brackets, map order, compound
-unit order, missing color-channel presence, and request-local argument-list
-identities. Malformed values, callback IDs, result unions, and callable
-signatures follow the protocol's compilation-failure versus connection-fatal
-boundary.
+String and path inputs support load paths, Node package imports, output style,
+charset handling, source maps, loaded URLs, logs, and deprecation settings.
+Contents importers, file importers, global functions, host function values,
+and compiler-owned function and mixin values use synchronous callbacks routed
+to the compilation that requested them.
+
+The value codec preserves numbers and units, strings, booleans, null, lists,
+maps, argument lists, colors, calculations, and opaque callable identities.
+It also preserves protocol metadata that CSS cannot represent, including
+string quoting, list separators and brackets, map order, compound unit order,
+missing color channels, and request-local argument-list identities. Invalid
+values, callback IDs, result variants, and signatures follow the protocol's
+documented boundary between compilation failures and fatal connection errors.
+
 Contents-importer non-canonical schemes use Dart Sass's lowercase scheme
 grammar, control containing-URL propagation, and may not be returned as
 canonical results. Invalid descriptor placement is a fatal protocol parameter
@@ -812,9 +813,9 @@ A platform feature may still be unsupported by a particular output backend.
 The enum documentation records the detailed boundary for every individual
 release.
 
-## Current limitations
+## Limitations
 
-SassFX is still a development build. In particular:
+The current release has the following boundaries:
 
 - The BSS backend supports a validated subset of JavaFX CSS. Unsupported
   selectors, nodes, converter shapes, and values fail explicitly instead of
@@ -834,15 +835,15 @@ SassFX is still a development build. In particular:
   preserves each direct imported body and condition. Imported font faces do
   not propagate to the parent stylesheet.
 - The pinned JavaFX 8–27 property dispatch and every non-transition converter
-  family have executable CSS/BSS coverage. This does not claim compatibility
-  with converter families introduced after JavaFX 27.
+  family have executable CSS/BSS coverage. Features introduced after JavaFX
+  27 are outside this release's target range.
 - `OutputTarget` is sealed to the three built-in backends.
 
 The current fixed sass-spec run passes 13,924 enabled fixtures with no failure;
 five upstream fixtures remain disabled by their own compatibility metadata.
 This result describes the pinned suite, not unspecified future Sass behavior.
 
-## Compatibility verification
+## Verification
 
 Sass language behavior is checked against pinned Dart Sass and sass-spec
 snapshots. JavaFX behavior is verified using isolated runtime oracles for

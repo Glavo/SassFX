@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 package org.glavo.sassfx.selector;
 
 import org.glavo.sassfx.*;

@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Language-gap probes for the batch59 wave.
+/// Verifies multiline continuations and brace diagnostics in indented Sass.
 @NotNullByDefault
 final class IndentedContinuationAndBraceTest {
 

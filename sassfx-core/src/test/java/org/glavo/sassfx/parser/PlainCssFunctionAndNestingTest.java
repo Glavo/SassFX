@@ -10,8 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies batch47 CSS custom functions, keyframe nesting, and custom-property
-/// nesting diagnostics.
+/// Verifies plain-CSS function evaluation and nesting restrictions.
 @NotNullByDefault
 final class PlainCssFunctionAndNestingTest {
     @Test

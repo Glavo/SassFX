@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Language-gap probes for the batch62 wave.
+/// Verifies indented-Sass diagnostics and placeholder selector boundaries.
 @NotNullByDefault
 final class IndentedDiagnosticsAndPlaceholderTest {
 

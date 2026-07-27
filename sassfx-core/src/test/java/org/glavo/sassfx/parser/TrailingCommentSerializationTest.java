@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies batch36 silent-comment and moz-document residual fixes.
+/// Verifies trailing comment handling during serialization.
 @NotNullByDefault
 final class TrailingCommentSerializationTest {
     /// Custom properties keep trailing silent comments in indented syntax.

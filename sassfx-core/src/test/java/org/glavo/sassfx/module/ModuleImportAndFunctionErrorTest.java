@@ -13,7 +13,7 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies batch51 module import isolation, diagnostics, and calculation errors.
+/// Verifies module import isolation and function argument diagnostics.
 @NotNullByDefault
 final class ModuleImportAndFunctionErrorTest {
     @Test

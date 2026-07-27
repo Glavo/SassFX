@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Language-gap probes for the batch56 wave.
+/// Verifies numeric built-ins, color call syntax, and plain-CSS calculations.
 @NotNullByDefault
 final class ColorMathAndPlainCssMinTest {
 

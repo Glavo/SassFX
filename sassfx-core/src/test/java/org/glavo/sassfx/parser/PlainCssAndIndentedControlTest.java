@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies batch53 diagnostics and global round half-away-from-zero.
+/// Verifies control-syntax diagnostics and global rounding behavior.
 @NotNullByDefault
 final class PlainCssAndIndentedControlTest {
     @Test

@@ -15,7 +15,7 @@ import org.glavo.sassfx.internal.ast.selector.CompoundSelector;
 import org.glavo.sassfx.internal.ast.selector.CssIdentifier;
 import org.glavo.sassfx.internal.ast.selector.IdSelector;
 import org.glavo.sassfx.internal.ast.selector.NthPseudoArgument;
-import org.glavo.sassfx.internal.ast.selector.OtherSimpleSelector;
+import org.glavo.sassfx.internal.ast.selector.KeyframePercentageSelector;
 import org.glavo.sassfx.internal.ast.selector.ParentSelector;
 import org.glavo.sassfx.internal.ast.selector.PlaceholderSelector;
 import org.glavo.sassfx.internal.ast.selector.PseudoArgument;
@@ -500,7 +500,7 @@ public final class SelectorParser {
             throw error("expected selector.");
         }
         buffer.append((char) read());
-        return new OtherSimpleSelector(buffer.toString(), spanFrom(start));
+        return new KeyframePercentageSelector(buffer.toString(), spanFrom(start));
     }
 
     /// Parses a parent selector and its optional suffix.

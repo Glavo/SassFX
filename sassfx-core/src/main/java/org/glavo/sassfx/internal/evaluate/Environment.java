@@ -7,7 +7,6 @@ import org.glavo.sassfx.internal.callable.Callable;
 import org.glavo.sassfx.internal.callable.UserDefinedCallable;
 import org.glavo.sassfx.internal.module.ForwardedModuleView;
 import org.glavo.sassfx.internal.module.LoadedModule;
-import org.glavo.sassfx.internal.module.MemberNames;
 import org.glavo.sassfx.internal.value.SassValue;
 import org.glavo.sassfx.internal.value.SassValueException;
 import org.jetbrains.annotations.ApiStatus;
@@ -540,7 +539,7 @@ public final class Environment {
             result.putAll(module.variables());
         }
         for (var entry : variableFrames.get(0).entrySet()) {
-            if (MemberNames.isPublic(entry.getKey())) {
+            if (isPublicMemberName(entry.getKey())) {
                 result.put(entry.getKey(), entry.getValue());
             }
         }
@@ -556,7 +555,7 @@ public final class Environment {
             result.putAll(module.functions());
         }
         for (var entry : functionFrames.get(0).entrySet()) {
-            if (MemberNames.isPublic(entry.getKey())) {
+            if (isPublicMemberName(entry.getKey())) {
                 result.put(entry.getKey(), entry.getValue());
             }
         }
@@ -572,7 +571,7 @@ public final class Environment {
             result.putAll(module.mixins());
         }
         for (var entry : mixinFrames.get(0).entrySet()) {
-            if (MemberNames.isPublic(entry.getKey())) {
+            if (isPublicMemberName(entry.getKey())) {
                 result.put(entry.getKey(), entry.getValue());
             }
         }
@@ -844,6 +843,15 @@ public final class Environment {
             }
         }
         return -1;
+    }
+
+    /// Returns whether a normalized member name is public.
+    ///
+    /// @param name the member name
+    /// @return whether the name is nonempty and does not begin with `-` or `_`
+    private static boolean isPublicMemberName(String name) {
+        Objects.requireNonNull(name, "name");
+        return !name.isEmpty() && name.charAt(0) != '-' && name.charAt(0) != '_';
     }
 
     /// Validates a normalized name.

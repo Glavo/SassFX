@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies batch37 charset, source-map comment, and pseudo-argument fixes.
+/// Verifies charset handling, generated comments, and pseudo arguments.
 @NotNullByDefault
 final class CommentAndCharsetTest {
     @Test

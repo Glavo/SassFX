@@ -18,7 +18,7 @@ public sealed interface SimpleSelector permits
         PseudoSelector,
         PlaceholderSelector,
         ParentSelector,
-        OtherSimpleSelector {
+        KeyframePercentageSelector {
     /// Returns the source span associated with this selector.
     ///
     /// @return the selector span

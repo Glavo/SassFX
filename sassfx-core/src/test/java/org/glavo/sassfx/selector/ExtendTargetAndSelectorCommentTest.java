@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies batch38 @extend diagnostics and indented selector-comment handling.
+/// Verifies `@extend` target diagnostics and selector comments in indented Sass.
 @NotNullByDefault
 final class ExtendTargetAndSelectorCommentTest {
     @Test

@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies batch48 must-fail diagnostics and color white residual conversion.
+/// Verifies callable-name diagnostics and white conversion across color spaces.
 @NotNullByDefault
 final class ColorSpaceAndMixinNameTest {
     @Test

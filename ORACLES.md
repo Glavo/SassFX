@@ -1,8 +1,9 @@
 # JavaFX Runtime Oracles
 
 SassFX implements JavaFX CSS and BSS without linking JavaFX into the product.
-The oracle source sets are development-only verification tools and are absent
-from runtime classpaths, publication variants, and distributable JARs.
+Dedicated oracle source sets compare its output with real OpenJFX releases;
+they are excluded from runtime classpaths, publication variants, and
+distributable JARs.
 
 ## Version Matrix
 
@@ -16,10 +17,10 @@ from runtime classpaths, publication variants, and distributable JARs.
 | 26 | 26.0.2 | 8 | 24 | viewport media, multiple rules, advanced easing |
 | 27 | 27-ea+25 | 9 | 25 | conditional imports and platform media |
 
-JavaFX 17 through 27 run in isolated processes with exactly one matching
-`javafx-base` and `javafx-graphics` pair on the module path. Configure a
-non-Full JDK when the selected toolchain distribution bundles JavaFX itself;
-otherwise the boot modules can shadow or conflict with the pinned artifacts.
+JavaFX 17 through 27 run in isolated processes with one matching
+`javafx-base` and `javafx-graphics` pair on the module path. Use a JDK
+distribution that does not bundle JavaFX, because bundled modules may shadow
+or conflict with the pinned artifacts.
 
 Each task accepts a version-specific override:
 
@@ -32,8 +33,8 @@ Each task accepts a version-specific override:
 -PjavaFx27OracleJavaHome=<jdk>
 ```
 
-`-PjavaFxOracleJavaHome=<jdk>` supplies one compatible non-Full JDK for every
-modular oracle. The legacy `javaFx27OracleJavaHome` property remains accepted.
+`-PjavaFxOracleJavaHome=<jdk>` supplies one compatible JDK for every modular
+oracle. Use a distribution that does not bundle JavaFX.
 
 Run the modular matrix with:
 
@@ -64,7 +65,7 @@ Run every configured oracle with:
 ```
 
 CI should pin the JavaFX 8 vendor, update release, archive checksum, and
-`javaFx8OracleJavaHome` rather than accepting an arbitrary installed JDK.
+`javaFx8OracleJavaHome` instead of using an arbitrary installed JDK.
 
 ## Offline Artifacts
 
@@ -105,14 +106,12 @@ The byte-exact matrix currently covers:
   positions, repeats, sizes, slices, and stroke styles;
 - JavaFX 25–27 media-query framing and JavaFX 27 conditional imports.
 
-`BssTargetTest.coversEverySupportedConverterFamilyWithPinnedFixtures` scans
-the fixed OpenJFX byte fixtures and a focused composite fixture for every
-converter class emitted by the serializer. This makes complete
-non-transition converter-family coverage an executable gate rather than a
-documentation claim. The matrix includes scalar, sequence, font, enum,
-duration, string, URL, boolean, insets, paint, stop, derive, ladder, effect,
-background-layout, border-image, radii, margins, border-paint, and
-border-style converter trees.
+`BssTargetTest.coversEverySupportedConverterFamilyWithPinnedFixtures` checks
+the pinned OpenJFX bytes and a composite fixture against every converter class
+emitted by the serializer. The executable matrix covers scalar, sequence,
+font, enum, duration, string, URL, boolean, insets, paint, stop, derive,
+ladder, effect, background-layout, border-image, radii, margins, border-paint,
+and border-style converter trees.
 
 The JavaFX 8 fixture covers the same Region converter families in BSS v5 and
 also guards its observable gradient-cycle quirk: both linear and radial

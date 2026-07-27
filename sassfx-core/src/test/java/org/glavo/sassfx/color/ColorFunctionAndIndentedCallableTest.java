@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Language-gap probes for the batch57 wave.
+/// Verifies color-function errors and multiline callable syntax in indented Sass.
 @NotNullByDefault
 final class ColorFunctionAndIndentedCallableTest {
 
@@ -117,4 +117,3 @@ final class ColorFunctionAndIndentedCallableTest {
         );
     }
 }
-

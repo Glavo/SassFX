@@ -1,7 +1,7 @@
 # Upstream Compatibility Baselines
 
-SassFX is an independent Java implementation whose compatibility work is
-validated against fixed upstream snapshots.
+SassFX is an independent Java implementation. Its behavior is verified
+against the following fixed upstream releases.
 
 | Component | Baseline | Purpose |
 | --- | --- | --- |
@@ -16,9 +16,8 @@ validated against fixed upstream snapshots.
 | JavaFX | `26.0.2` | Viewport media, advanced easing, and BSS version 8 |
 | JavaFX | `27-ea+25` | Conditional imports and BSS version 9 |
 
-Upstream source checkouts are development-only references. The build,
-tests, and published artifacts must remain self-contained and must not depend
-on a local upstream checkout.
+Local upstream source checkouts are reference material only. Builds, tests,
+and published artifacts must remain self-contained.
 
 OpenJFX source code is not copied into SassFX. JavaFX CSS and BSS support is an
 independent implementation validated through public behavior and test-only
@@ -31,11 +30,10 @@ The isolated JavaFX CSS oracles are run with:
   -PjavaFx8OracleJavaHome=<javafx-8-jdk>
 ```
 
-The modular tasks resolve pinned platform-specific OpenJFX artifacts and use
-JDK launchers compatible with each release's class-file version. The JavaFX 8
-oracle uses a separate Java 8 process and a Java 17 input generator. Oracle
-source sets and dependencies are not included in product runtime or
-publication variants.
+The modular tasks resolve pinned platform-specific OpenJFX artifacts and use a
+compatible JDK for each release. The JavaFX 8 oracle combines a Java 17 input
+generator with a separate Java 8 process. Oracle source sets and dependencies
+are excluded from runtime and publication variants.
 
 See [ORACLES.md](ORACLES.md) for Java-home overrides, offline artifact layout,
 and the exact verification model.

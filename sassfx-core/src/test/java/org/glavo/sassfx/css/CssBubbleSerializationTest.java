@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Language-gap probes for the batch60 wave.
+/// Verifies bubbling and serialization of rules with sparse child content.
 @NotNullByDefault
 final class CssBubbleSerializationTest {
 

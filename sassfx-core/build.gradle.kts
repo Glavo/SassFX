@@ -136,9 +136,9 @@ tasks.test {
     }
 }
 
-val sassSpec by tasks.registering(Test::class) {
+val sassSpec = tasks.register<Test>("sassSpec") {
     group = LifecycleBasePlugin.VERIFICATION_GROUP
-    description = "Runs the curated Sass specification compatibility fixtures."
+    description = "Runs the pinned Sass specification corpus and project fixtures."
     dependsOn(tasks.testClasses)
     testClassesDirs = sourceSets.test.get().output.classesDirs
     classpath = sourceSets.test.get().runtimeClasspath
@@ -241,7 +241,6 @@ val javaFxOracleLaunchers = javaFxOracleLauncherVersions.mapValues { (_, javaVer
     }
 }
 val javaFxOracleJavaHome = providers.gradleProperty("javaFxOracleJavaHome")
-    .orElse(providers.gradleProperty("javaFx27OracleJavaHome"))
     .orNull
 
 val verifyJavaFxCssOracleTasks = javaFxOracleVersions.keys.associateWith { version ->

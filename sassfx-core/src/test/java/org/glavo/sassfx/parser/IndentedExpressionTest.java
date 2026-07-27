@@ -10,8 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies batch42 percent tokens, trailing-operator continuations, and list
-/// trailing-comma handling.
+/// Verifies percent tokens, multiline operators, and list syntax in indented Sass.
 @NotNullByDefault
 final class IndentedExpressionTest {
     @Test

@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies batch40 color-arithmetic rejection, font-face bubbling, and at-root
+/// Verifies color-arithmetic rejection, font-face bubbling, and `@at-root`
 /// comment handling.
 @NotNullByDefault
 final class FontFaceAndColorArithmeticTest {

@@ -10,11 +10,9 @@ import java.util.Objects;
 
 /// Parses indentation-based Sass into the shared stylesheet AST.
 ///
-/// The public entry is a native indented pipeline:
-/// {@link IndentedSassLexer} produces structural logical lines and indent
-/// levels; this parser owns statement structure. Expression and declaration
-/// bodies reuse the SCSS statement grammar through a private structural
-/// projection that is not part of the public compile API.
+/// The parser derives logical lines and indentation levels before projecting
+/// statement structure into the shared SCSS grammar. The projection is an
+/// internal representation and is not a public Sass-to-SCSS preprocessing API.
 ///
 /// Callers must not depend on intermediate braced text. The only supported
 /// entry is {@link #parse(SourceFile)}.
@@ -31,12 +29,6 @@ public final class IndentedSassParser {
     /// @throws ParseException if the indented structure or statement forms fail
     public static Stylesheet parse(SourceFile source) {
         Objects.requireNonNull(source, "source");
-        // Lex first so indent diagnostics use the native line model and so
-        // call sites can inspect structure without going through SCSS text.
-        var lines = IndentedSassLexer.lex(source);
-        if (lines.isEmpty()) {
-            return new ScssParser(source, false, true).parse();
-        }
         // Structural projection into the shared SCSS statement grammar. This is
         // an implementation detail of the indented parser, not a public
         // Sass→SCSS preprocessing API. Direct AST construction for simple
