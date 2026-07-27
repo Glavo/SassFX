@@ -243,6 +243,13 @@ Legacy color channel readers and the deprecated `adjust-hue`, `lighten`,
 `color-functions` diagnostics with migration suggestions. Plain-CSS filter
 forms such as one-argument `saturate()` remain unaffected.
 
+Deprecated global aliases report their exact replacement in `sass:color`,
+`sass:list`, `sass:map`, `sass:math`, `sass:meta`, `sass:selector`, or
+`sass:string`. This metadata remains attached to first-class global function
+references and is removed from module exports. Ambiguous color-filter
+functions report only when their arguments select the Sass implementation;
+percentage `abs()` uses its dedicated `abs-percent` diagnostic.
+
 Pass `--pkg-importer=node` to resolve `pkg:` URLs with Node package lookup.
 The importer starts beside the containing file, or at the process working
 directory for stdin and other URL-less roots, and searches each ancestor's

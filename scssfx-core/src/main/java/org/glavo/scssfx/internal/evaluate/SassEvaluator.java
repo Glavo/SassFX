@@ -6631,11 +6631,32 @@ public final class SassEvaluator implements
             case "abs" -> SassCalculation.singleArgument(
                     "abs",
                     unaryArg(args),
-                    number -> SassNumber.withUnits(
-                            Math.abs(number.value()),
-                            number.numeratorUnits(),
-                            number.denominatorUnits()
-                    ),
+                    number -> {
+                        if (number.numeratorUnits().equals(List.of("%"))
+                                && number.denominatorUnits().isEmpty()) {
+                            reportDeprecation(
+                                    "Passing percentage units to the global "
+                                            + "abs() function is deprecated.\n"
+                                            + "In the future, this will emit a "
+                                            + "CSS abs() function to be resolved "
+                                            + "by the browser.\n"
+                                            + "To preserve current behavior: "
+                                            + "math.abs(" + number.toCssString()
+                                            + ")\n"
+                                            + "To emit a CSS abs() now: abs(#{"
+                                            + number.toCssString() + "})\n"
+                                            + "More info: "
+                                            + "https://sass-lang.com/d/abs-percent",
+                                    "abs-percent",
+                                    span
+                            );
+                        }
+                        return SassNumber.withUnits(
+                                Math.abs(number.value()),
+                                number.numeratorUnits(),
+                                number.denominatorUnits()
+                        );
+                    },
                     false
             );
             case "exp" -> SassCalculation.singleArgument(

@@ -188,9 +188,10 @@ public final class BuiltInFunctions {
                 List.of("condition", "if-true", "if-false"),
                 BuiltInFunctions::legacyIf
         ));
-        register(functions, BuiltInCallable.of(
+        register(functions, BuiltInCallable.contextual(
                 "feature-exists",
-                List.of("feature"),
+                List.of(Param.required("feature")),
+                1,
                 BuiltInFunctions::featureExists
         ));
         register(functions, BuiltInCallable.of("unit", List.of("number"), BuiltInFunctions::unit));
@@ -210,7 +211,12 @@ public final class BuiltInFunctions {
                 List.of("number"),
                 BuiltInFunctions::percentage
         ));
-        register(functions, BuiltInCallable.of("abs", List.of("number"), BuiltInFunctions::abs));
+        register(functions, BuiltInCallable.contextual(
+                "abs",
+                List.of(Param.required("number")),
+                1,
+                BuiltInFunctions::abs
+        ));
         register(functions, BuiltInCallable.of("round", List.of("number"), BuiltInFunctions::round));
         register(functions, BuiltInCallable.of("ceil", List.of("number"), BuiltInFunctions::ceil));
         register(functions, BuiltInCallable.of("floor", List.of("number"), BuiltInFunctions::floor));
@@ -353,13 +359,19 @@ public final class BuiltInFunctions {
                 true
         ));
         // Alpha supports Microsoft filter overloads: alpha(c=d) and multi-arg forms.
-        register(functions, BuiltInCallable.withRest(
+        register(functions, BuiltInCallable.contextualWithRest(
                 "alpha",
                 List.of(),
                 "args",
+                0,
                 BuiltInFunctions::alphaChannel
         ));
-        register(functions, BuiltInCallable.of("opacity", List.of("color"), BuiltInFunctions::opacity));
+        register(functions, BuiltInCallable.contextual(
+                "opacity",
+                List.of(Param.required("color")),
+                1,
+                BuiltInFunctions::opacity
+        ));
         register(functions, deprecatedColorChannelFunction(
                 "hue",
                 ColorSpace.HSL,
@@ -401,11 +413,12 @@ public final class BuiltInFunctions {
                         Param.optional("space", SassNull.NULL)
                 ),
                 1,
-                BuiltInFunctions::colorInvert
+                BuiltInFunctions::globalColorInvert
         ));
-        register(functions, BuiltInCallable.of(
+        register(functions, BuiltInCallable.contextual(
                 "grayscale",
-                List.of("color"),
+                List.of(Param.required("color")),
+                1,
                 BuiltInFunctions::globalGrayscale
         ));
         register(functions, BuiltInCallable.of(
@@ -598,6 +611,7 @@ public final class BuiltInFunctions {
                 1,
                 BuiltInFunctions::metaCall
         ));
+        applyGlobalBuiltInDeprecations(functions);
         return freeze(functions);
     }
 
@@ -611,7 +625,11 @@ public final class BuiltInFunctions {
     public static @Unmodifiable Map<String, BuiltInCallable> mathModule() {
         var global = global();
         var functions = new LinkedHashMap<String, BuiltInCallable>();
-        moduleFunction(functions, global, "abs", "abs");
+        register(functions, BuiltInCallable.of(
+                "abs",
+                List.of("number"),
+                BuiltInFunctions::moduleAbs
+        ));
         moduleFunction(functions, global, "ceil", "ceil");
         moduleFunction(functions, global, "floor", "floor");
         moduleFunction(functions, global, "max", "max");
@@ -1180,7 +1198,159 @@ public final class BuiltInFunctions {
         if (callable == null) {
             throw new AssertionError("missing registered global function: " + globalName);
         }
-        destination.put(moduleName, callable.withName(moduleName));
+        destination.put(
+                moduleName,
+                callable.withoutDeprecationWarning().withName(moduleName)
+        );
+    }
+
+    /// Adds Dart Sass global-builtin replacement metadata to global aliases.
+    ///
+    /// Conditional aliases whose arguments may denote plain CSS functions are
+    /// handled by their callbacks and are intentionally absent from this table.
+    ///
+    /// @param functions the complete mutable global function table
+    private static void applyGlobalBuiltInDeprecations(
+            LinkedHashMap<String, BuiltInCallable> functions
+    ) {
+        deprecateGlobal(functions, "red", "color", "red");
+        deprecateGlobal(functions, "green", "color", "green");
+        deprecateGlobal(functions, "blue", "color", "blue");
+        deprecateGlobal(functions, "mix", "color", "mix");
+        deprecateGlobal(functions, "hue", "color", "hue");
+        deprecateGlobal(functions, "saturation", "color", "saturation");
+        deprecateGlobal(functions, "lightness", "color", "lightness");
+        deprecateGlobal(functions, "adjust-hue", "color", "adjust");
+        deprecateGlobal(functions, "lighten", "color", "adjust");
+        deprecateGlobal(functions, "darken", "color", "adjust");
+        deprecateGlobal(functions, "desaturate", "color", "adjust");
+        deprecateGlobal(functions, "opacify", "color", "adjust");
+        deprecateGlobal(functions, "fade-in", "color", "adjust");
+        deprecateGlobal(functions, "transparentize", "color", "adjust");
+        deprecateGlobal(functions, "fade-out", "color", "adjust");
+        deprecateGlobal(functions, "complement", "color", "complement");
+        deprecateGlobal(functions, "adjust-color", "color", "adjust");
+        deprecateGlobal(functions, "scale-color", "color", "scale");
+        deprecateGlobal(functions, "change-color", "color", "change");
+
+        deprecateGlobal(functions, "ceil", "math", "ceil");
+        deprecateGlobal(functions, "floor", "math", "floor");
+        deprecateGlobal(functions, "max", "math", "max");
+        deprecateGlobal(functions, "min", "math", "min");
+        deprecateGlobal(functions, "percentage", "math", "percentage");
+        deprecateGlobal(functions, "random", "math", "random");
+        deprecateGlobal(functions, "round", "math", "round");
+        deprecateGlobal(functions, "unit", "math", "unit");
+        deprecateGlobal(functions, "comparable", "math", "compatible");
+        deprecateGlobal(functions, "unitless", "math", "is-unitless");
+
+        deprecateGlobal(functions, "length", "list", "length");
+        deprecateGlobal(functions, "nth", "list", "nth");
+        deprecateGlobal(functions, "set-nth", "list", "set-nth");
+        deprecateGlobal(functions, "join", "list", "join");
+        deprecateGlobal(functions, "append", "list", "append");
+        deprecateGlobal(functions, "zip", "list", "zip");
+        deprecateGlobal(functions, "index", "list", "index");
+        deprecateGlobal(functions, "is-bracketed", "list", "is-bracketed");
+        deprecateGlobal(functions, "list-separator", "list", "separator");
+
+        deprecateGlobal(functions, "map-get", "map", "get");
+        deprecateGlobal(functions, "map-merge", "map", "merge");
+        deprecateGlobal(functions, "map-remove", "map", "remove");
+        deprecateGlobal(functions, "map-keys", "map", "keys");
+        deprecateGlobal(functions, "map-values", "map", "values");
+        deprecateGlobal(functions, "map-has-key", "map", "has-key");
+
+        deprecateGlobal(functions, "quote", "string", "quote");
+        deprecateGlobal(functions, "unquote", "string", "unquote");
+        deprecateGlobal(functions, "to-upper-case", "string", "to-upper-case");
+        deprecateGlobal(functions, "to-lower-case", "string", "to-lower-case");
+        deprecateGlobal(functions, "unique-id", "string", "unique-id");
+        deprecateGlobal(functions, "str-length", "string", "length");
+        deprecateGlobal(functions, "str-insert", "string", "insert");
+        deprecateGlobal(functions, "str-index", "string", "index");
+        deprecateGlobal(functions, "str-slice", "string", "slice");
+
+        deprecateGlobal(
+                functions,
+                "is-superselector",
+                "selector",
+                "is-superselector"
+        );
+        deprecateGlobal(
+                functions,
+                "simple-selectors",
+                "selector",
+                "simple-selectors"
+        );
+        deprecateGlobal(functions, "selector-parse", "selector", "parse");
+        deprecateGlobal(functions, "selector-nest", "selector", "nest");
+        deprecateGlobal(functions, "selector-append", "selector", "append");
+        deprecateGlobal(functions, "selector-extend", "selector", "extend");
+        deprecateGlobal(functions, "selector-replace", "selector", "replace");
+        deprecateGlobal(functions, "selector-unify", "selector", "unify");
+
+        deprecateGlobal(functions, "feature-exists", "meta", "feature-exists");
+        deprecateGlobal(functions, "inspect", "meta", "inspect");
+        deprecateGlobal(functions, "type-of", "meta", "type-of");
+        deprecateGlobal(functions, "keywords", "meta", "keywords");
+        deprecateGlobal(functions, "content-exists", "meta", "content-exists");
+        deprecateGlobal(functions, "variable-exists", "meta", "variable-exists");
+        deprecateGlobal(
+                functions,
+                "global-variable-exists",
+                "meta",
+                "global-variable-exists"
+        );
+        deprecateGlobal(functions, "function-exists", "meta", "function-exists");
+        deprecateGlobal(functions, "mixin-exists", "meta", "mixin-exists");
+        deprecateGlobal(functions, "get-function", "meta", "get-function");
+        deprecateGlobal(functions, "get-mixin", "meta", "get-mixin");
+        deprecateGlobal(functions, "call", "meta", "call");
+    }
+
+    /// Attaches one module replacement to a registered global function.
+    ///
+    /// @param functions the mutable global function table
+    /// @param globalName the registered global name
+    /// @param module the replacement module namespace
+    /// @param moduleName the replacement function name
+    private static void deprecateGlobal(
+            LinkedHashMap<String, BuiltInCallable> functions,
+            String globalName,
+            String module,
+            String moduleName
+    ) {
+        @Nullable var callable = functions.get(globalName);
+        if (callable == null) {
+            throw new AssertionError(
+                    "missing global function for deprecation: " + globalName
+            );
+        }
+        functions.put(
+                globalName,
+                callable.withDeprecationWarning(module, moduleName)
+        );
+    }
+
+    /// Reports one conditional deprecated global built-in invocation.
+    ///
+    /// @param context the invocation receiving the diagnostic
+    /// @param module the replacement module namespace
+    /// @param name the replacement function name
+    private static void warnGlobalBuiltIn(
+            BuiltInCallable.Context context,
+            String module,
+            String name
+    ) {
+        context.deprecate(
+                "Global built-in functions are deprecated and will be removed "
+                        + "in Dart Sass 3.0.0.\n"
+                        + "Use " + module + "." + name + " instead.\n\n"
+                        + "More info and automated migrator: "
+                        + "https://sass-lang.com/d/import",
+                "global-builtin"
+        );
     }
 
     /// Returns an insertion-ordered immutable view of a callable table.
@@ -2011,7 +2181,15 @@ public final class BuiltInFunctions {
     ///
     /// @param args the feature name
     /// @return whether the feature is known
-    private static SassValue featureExists(List<SassValue> args) {
+    private static SassValue featureExists(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
+        context.deprecate(
+                "The feature-exists() function is deprecated.\n\n"
+                        + "More info: https://sass-lang.com/d/feature-exists",
+                "feature-exists"
+        );
         if (!(args.get(0) instanceof SassString feature)) {
             throw new SassValueException("$feature: " + args.get(0) + " is not a string.");
         }
@@ -2782,9 +2960,29 @@ public final class BuiltInFunctions {
         return SassNumber.withUnits(radians * (180.0 / Math.PI), DEGREES, List.of());
     }
 
-    private static SassValue abs(List<SassValue> args) {
+    private static SassValue abs(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
         try {
             var number = args.get(0).assertNumber();
+            if (number.numeratorUnits().equals(List.of("%"))
+                    && number.denominatorUnits().isEmpty()) {
+                context.deprecate(
+                        "Passing percentage units to the global abs() function "
+                                + "is deprecated.\n"
+                                + "In the future, this will emit a CSS abs() "
+                                + "function to be resolved by the browser.\n"
+                                + "To preserve current behavior: math.abs("
+                                + number.toCssString() + ")\n"
+                                + "To emit a CSS abs() now: abs(#{"
+                                + number.toCssString() + "})\n"
+                                + "More info: https://sass-lang.com/d/abs-percent",
+                        "abs-percent"
+                );
+            } else {
+                warnGlobalBuiltIn(context, "math", "abs");
+            }
             return SassNumber.withUnits(
                     Math.abs(number.value()),
                     number.numeratorUnits(),
@@ -2797,6 +2995,19 @@ public final class BuiltInFunctions {
             }
             throw new SassValueException("$number: " + message);
         }
+    }
+
+    /// Returns the absolute value for the non-deprecated module entry point.
+    ///
+    /// @param args the one number argument
+    /// @return the number with a non-negative magnitude and unchanged units
+    private static SassValue moduleAbs(List<SassValue> args) {
+        var number = numberArgument(args.get(0), "number");
+        return SassNumber.withUnits(
+                Math.abs(number.value()),
+                number.numeratorUnits(),
+                number.denominatorUnits()
+        );
     }
 
     private static SassValue round(List<SassValue> args) {
@@ -3577,10 +3788,14 @@ public final class BuiltInFunctions {
     ///   <li>{@code alpha(c=d)} / multi-arg Microsoft filter passthrough</li>
     /// </ul>
     ///
+    /// @param context the invocation receiving global-builtin diagnostics
     /// @param args the rest argument list bound as {@code $args}
     /// @return the alpha number or an unquoted plain-CSS {@code alpha(...)} call
-    private static SassValue alphaChannel(List<SassValue> args) {
-        return alphaChannelImpl(args, false);
+    private static SassValue alphaChannel(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
+        return alphaChannelImpl(context, args, false);
     }
 
     /// Module {@code color.alpha()} with module-specific diagnostics.
@@ -3588,11 +3803,15 @@ public final class BuiltInFunctions {
     /// @param args the rest argument list bound as {@code $args}
     /// @return the alpha number or an unquoted plain-CSS {@code alpha(...)} call
     private static SassValue moduleAlphaChannel(List<SassValue> args) {
-        return alphaChannelImpl(args, true);
+        return alphaChannelImpl(null, args, true);
     }
 
     /// Shared alpha implementation for global and module entry points.
-    private static SassValue alphaChannelImpl(List<SassValue> args, boolean module) {
+    private static SassValue alphaChannelImpl(
+            @Nullable BuiltInCallable.Context context,
+            List<SassValue> args,
+            boolean module
+    ) {
         SassArgumentList rest = restArgumentList(args);
         var values = rest.asList();
         var keywords = rest.keywords();
@@ -3610,6 +3829,21 @@ public final class BuiltInFunctions {
             SassValue argument = values.get(0);
             if (isMicrosoftFilterArgument(argument)) {
                 return CssColorChannels.functionString("alpha", values);
+            }
+            if (!module
+                    && argument instanceof SassColor color
+                    && !color.isLegacy()) {
+                throw new SassValueException(
+                        "alpha() is only supported for legacy colors. Please use "
+                                + "color.channel() instead."
+                );
+            }
+            if (!module) {
+                warnGlobalBuiltIn(
+                        Objects.requireNonNull(context, "global alpha context"),
+                        "color",
+                        "alpha"
+                );
             }
             var color = colorArgument(argument, "color");
             if (!color.isLegacy()) {
@@ -3758,6 +3992,25 @@ public final class BuiltInFunctions {
         );
     }
 
+    /// Dispatches global {@code invert()} with conditional deprecation reporting.
+    ///
+    /// Plain-CSS number and special-number filter forms do not represent the
+    /// deprecated Sass global built-in.
+    ///
+    /// @param context the invocation receiving global-builtin diagnostics
+    /// @param args the color or filter argument, weight, and optional space
+    /// @return the inverted color or preserved CSS filter
+    private static SassValue globalColorInvert(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
+        var value = args.get(0);
+        if (!(value instanceof SassNumber) && !value.isSpecialNumber()) {
+            warnGlobalBuiltIn(context, "color", "invert");
+        }
+        return colorInvert(context, args);
+    }
+
     /// Parses a Color 4 weight that accepts unitless values or {@code %}.
     private static double color4Weight(SassNumber number, String name) {
         var percent = number.numeratorUnits().equals(List.of("%"))
@@ -3799,7 +4052,10 @@ public final class BuiltInFunctions {
     }
 
     /// Global {@code grayscale()} with plain-CSS number filter fallback.
-    private static SassValue globalGrayscale(List<SassValue> args) {
+    private static SassValue globalGrayscale(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
         var value = args.get(0);
         if (value instanceof SassNumber number) {
             return new SassString("grayscale(" + number.toCssString() + ")", false);
@@ -3807,6 +4063,7 @@ public final class BuiltInFunctions {
         if (value.isSpecialNumber()) {
             return CssColorChannels.functionString("grayscale", List.of(value));
         }
+        warnGlobalBuiltIn(context, "color", "grayscale");
         var color = colorArgument(value, "color");
         if (!color.isLegacy()) {
             throw new SassValueException(
@@ -3961,6 +4218,7 @@ public final class BuiltInFunctions {
         if (amount == null) {
             throw new SassValueException("Missing argument $amount.");
         }
+        warnGlobalBuiltIn(context, "color", "adjust");
         return saturateColor(context, color, amount);
     }
 
@@ -4484,7 +4742,10 @@ public final class BuiltInFunctions {
         }
     }
 
-    private static SassValue opacity(List<SassValue> args) {
+    private static SassValue opacity(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
         var value = args.get(0);
         if (value instanceof SassNumber number) {
             return new SassString("opacity(" + number.toCssString() + ")", false);
@@ -4492,6 +4753,7 @@ public final class BuiltInFunctions {
         if (value.isSpecialNumber()) {
             return CssColorChannels.functionString("opacity", List.of(value));
         }
+        warnGlobalBuiltIn(context, "color", "opacity");
         return SassNumber.of(colorArgument(value, "color").alpha(), null);
     }
 

@@ -34,6 +34,10 @@ This is the first development release.
   constructors, color weights, channel and alpha updates, and hue adjustment.
   Legacy color-function diagnostics cover global and module channel readers
   plus all nine deprecated color adjustment functions with migration guidance.
+  Global built-in diagnostics cover list, map, math, meta, selector, string,
+  and color aliases, including renamed replacements, first-class references,
+  and CSS-overload exclusions. Percentage `abs()` and `feature-exists()`
+  diagnostics follow their dedicated deprecation categories.
 - CLI load paths, ordered platform-aware `SASS_PATH` resolution across compile,
   update/watch, and interactive modes, quiet output, dependency warning
   suppression, and fatal, silence, future, and verbose deprecation options.

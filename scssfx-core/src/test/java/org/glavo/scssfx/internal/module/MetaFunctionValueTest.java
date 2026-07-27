@@ -75,9 +75,19 @@ final class MetaFunctionValueTest {
                 result.output()
         );
         assertEquals(Set.of(), result.loadedUrls());
-        assertEquals(1, result.diagnostics().size());
-        assertEquals(DiagnosticSeverity.DEPRECATION, result.diagnostics().get(0).severity());
-        assertEquals("call-string", result.diagnostics().get(0).code());
+        assertEquals(2, result.diagnostics().size());
+        assertEquals(
+                Set.of(DiagnosticSeverity.DEPRECATION),
+                result.diagnostics().stream()
+                        .map(diagnostic -> diagnostic.severity())
+                        .collect(java.util.stream.Collectors.toSet())
+        );
+        assertEquals(
+                java.util.List.of("global-builtin", "call-string"),
+                result.diagnostics().stream()
+                        .map(diagnostic -> diagnostic.code())
+                        .toList()
+        );
     }
 
     /// Rejects unresolved, incompatible, non-function, and CSS-serialized function values.
@@ -156,4 +166,4 @@ final class MetaFunctionValueTest {
                 )
         ).getMessage();
     }
-}
+}

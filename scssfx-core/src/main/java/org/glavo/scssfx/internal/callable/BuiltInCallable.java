@@ -43,6 +43,12 @@ public final class BuiltInCallable implements Callable {
     /// Records whether includes may supply a content block.
     private final boolean acceptsContent;
 
+    /// Contains the replacement module for a deprecated global function.
+    private final @Nullable String deprecationModule;
+
+    /// Contains the replacement module function for a deprecated global function.
+    private final @Nullable String deprecationName;
+
     /// Contains the implementation invoked after argument binding.
     private final ContextCallback callback;
 
@@ -66,11 +72,41 @@ public final class BuiltInCallable implements Callable {
             boolean acceptsContent,
             ContextCallback callback
     ) {
+        this(
+                name,
+                parameters,
+                restParameter,
+                minArgs,
+                acceptsContent,
+                null,
+                null,
+                callback
+        );
+    }
+
+    /// Creates a built-in callable with optional global-deprecation metadata.
+    private BuiltInCallable(
+            String name,
+            List<Param> parameters,
+            @Nullable String restParameter,
+            int minArgs,
+            boolean acceptsContent,
+            @Nullable String deprecationModule,
+            @Nullable String deprecationName,
+            ContextCallback callback
+    ) {
         this.name = Objects.requireNonNull(name, "name");
         this.parameters = List.copyOf(parameters);
         this.restParameter = restParameter;
         this.minArgs = minArgs;
         this.acceptsContent = acceptsContent;
+        if ((deprecationModule == null) != (deprecationName == null)) {
+            throw new IllegalArgumentException(
+                    "global deprecation module and name must both be present or absent"
+            );
+        }
+        this.deprecationModule = deprecationModule;
+        this.deprecationName = deprecationName;
         this.callback = Objects.requireNonNull(callback, "callback");
     }
 
@@ -320,6 +356,48 @@ public final class BuiltInCallable implements Callable {
                 restParameter,
                 minArgs,
                 acceptsContent,
+                deprecationModule,
+                deprecationName,
+                callback
+        );
+    }
+
+    /// Returns an equivalent callable that reports deprecated global use.
+    ///
+    /// Renaming the returned callable preserves this replacement metadata.
+    /// Module exports that reuse a global implementation must call
+    /// [#withoutDeprecationWarning()] before exposing it.
+    ///
+    /// @param module the built-in module namespace
+    /// @param name the replacement function name in that module
+    /// @return an equivalent callable with global-builtin diagnostics enabled
+    public BuiltInCallable withDeprecationWarning(String module, String name) {
+        return new BuiltInCallable(
+                this.name,
+                parameters,
+                restParameter,
+                minArgs,
+                acceptsContent,
+                Objects.requireNonNull(module, "module"),
+                Objects.requireNonNull(name, "name"),
+                callback
+        );
+    }
+
+    /// Returns an equivalent callable without deprecated-global diagnostics.
+    ///
+    /// @return this callable when no warning is configured, otherwise an
+    /// equivalent callable with the warning removed
+    public BuiltInCallable withoutDeprecationWarning() {
+        if (deprecationModule == null) {
+            return this;
+        }
+        return new BuiltInCallable(
+                name,
+                parameters,
+                restParameter,
+                minArgs,
+                acceptsContent,
                 callback
         );
     }
@@ -330,6 +408,17 @@ public final class BuiltInCallable implements Callable {
     /// @param bound   the bound argument values
     /// @return the function result
     public SassValue invoke(Context context, @Unmodifiable List<SassValue> bound) {
+        if (deprecationModule != null) {
+            context.deprecate(
+                    "Global built-in functions are deprecated and will be removed "
+                            + "in Dart Sass 3.0.0.\n"
+                            + "Use " + deprecationModule + "."
+                            + Objects.requireNonNull(deprecationName) + " instead.\n\n"
+                            + "More info and automated migrator: "
+                            + "https://sass-lang.com/d/import",
+                    "global-builtin"
+            );
+        }
         return callback.apply(
                 Objects.requireNonNull(context, "context"),
                 Objects.requireNonNull(bound, "bound")
