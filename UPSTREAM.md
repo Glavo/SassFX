@@ -1,6 +1,6 @@
 # Upstream Compatibility Baselines
 
-SCSSFX is an independent Java implementation whose compatibility work is
+SassFX is an independent Java implementation whose compatibility work is
 validated against fixed upstream snapshots.
 
 | Component | Baseline | Purpose |
@@ -20,14 +20,14 @@ Upstream source checkouts are development-only references. The build,
 tests, and published artifacts must remain self-contained and must not depend
 on a local upstream checkout.
 
-OpenJFX source code is not copied into SCSSFX. JavaFX CSS and BSS support is an
+OpenJFX source code is not copied into SassFX. JavaFX CSS and BSS support is an
 independent implementation validated through public behavior and test-only
 compatibility oracles.
 
 The isolated JavaFX CSS oracles are run with:
 
 ```shell
-./gradlew :scssfx-core:verifyAllJavaFxCssOracles \
+./gradlew :sassfx-core:verifyAllJavaFxCssOracles \
   -PjavaFx8OracleJavaHome=<javafx-8-jdk>
 ```
 

@@ -1,6 +1,6 @@
-# SCSSFX
+# SassFX
 
-SCSSFX is an independent Sass compiler implemented in Java 17. It compiles
+SassFX is an independent Sass compiler implemented in Java 17. It compiles
 SCSS, indented Sass, and plain CSS through its library API to standard CSS,
 validated JavaFX CSS, or JavaFX binary stylesheets (BSS).
 
@@ -55,15 +55,15 @@ The build produces:
 
 | Project | Purpose | Main artifact |
 | --- | --- | --- |
-| `scssfx-core` | Reusable compiler API | `scssfx-core/build/libs/scssfx-core-0.1.0-SNAPSHOT.jar` |
-| `scssfx-embedded` | Embedded Sass Protocol executable | `scssfx-embedded/build/libs/scssfx-embedded-0.1.0-SNAPSHOT.jar` |
-| `scssfx-cli` | Executable command-line frontend | `scssfx-cli/build/libs/scssfx-cli-0.1.0-SNAPSHOT.jar` |
-| `scssfx-gradle-plugin` | Gradle build integration | `scssfx-gradle-plugin/build/libs/scssfx-gradle-plugin-0.1.0-SNAPSHOT.jar` |
+| `sassfx-core` | Reusable compiler API | `sassfx-core/build/libs/sassfx-core-0.1.0-SNAPSHOT.jar` |
+| `sassfx-embedded` | Embedded Sass Protocol executable | `sassfx-embedded/build/libs/sassfx-embedded-0.1.0-SNAPSHOT.jar` |
+| `sassfx-cli` | Executable command-line frontend | `sassfx-cli/build/libs/sassfx-cli-0.1.0-SNAPSHOT.jar` |
+| `sassfx-gradle-plugin` | Gradle build integration | `sassfx-gradle-plugin/build/libs/sassfx-gradle-plugin-0.1.0-SNAPSHOT.jar` |
 
-The core JAR has the automatic module name `org.glavo.scssfx` and is not a fat
+The core JAR has the automatic module name `org.glavo.sassfx` and is not a fat
 JAR. The unclassified embedded and CLI JARs are self-contained shaded
-applications with automatic module names `org.glavo.scssfx.embedded` and
-`org.glavo.scssfx.cli`. They contain relocated runtime dependencies but no
+applications with automatic module names `org.glavo.sassfx.embedded` and
+`org.glavo.sassfx.cli`. They contain relocated runtime dependencies but no
 JavaFX, FFI, or native content.
 
 No public artifact repository is configured yet. Do not treat the current
@@ -71,18 +71,18 @@ group and version as published Maven coordinates.
 
 ## Gradle Plugin
 
-The `org.glavo.scssfx` plugin registers a cacheable `compileScss` task. Its
+The `org.glavo.sassfx` plugin registers a cacheable `compileScss` task. Its
 defaults compile `.scss`, `.sass`, and `.css` files under `src/main/scss` to
-`build/generated/scssfx/main`. Basenames beginning with `_` are tracked as
+`build/generated/sassfx/main`. Basenames beginning with `_` are tracked as
 inputs but are treated as partials and do not receive their own output.
 
 ```kotlin
 plugins {
     java
-    id("org.glavo.scssfx")
+    id("org.glavo.sassfx")
 }
 
-scssfx {
+sassfx {
     target.set("css/javafx@21")
     style.set("compressed")
     charset.set(true)
@@ -100,9 +100,9 @@ generated tree and depends on `compileScss`. Additional independent
 compilations may use the public task type:
 
 ```kotlin
-tasks.register<org.glavo.scssfx.gradle.ScssfxCompile>("compileThemeBss") {
+tasks.register<org.glavo.sassfx.gradle.SassFXCompile>("compileThemeBss") {
     sourceDirectory.set(layout.projectDirectory.dir("src/theme/scss"))
-    outputDirectory.set(layout.buildDirectory.dir("generated/scssfx/theme"))
+    outputDirectory.set(layout.buildDirectory.dir("generated/sassfx/theme"))
     target.set("bss/javafx@27")
 }
 ```
@@ -118,19 +118,19 @@ available from a public plugin repository yet.
 After `assemble`, run:
 
 ```shell
-java -jar scssfx-cli/build/libs/scssfx-cli-0.1.0-SNAPSHOT.jar --help
+java -jar sassfx-cli/build/libs/sassfx-cli-0.1.0-SNAPSHOT.jar --help
 ```
 
 The CLI accepts file, standard-input, mapped-file, and recursive-directory
 compilations:
 
 ```text
-Usage: scssfx [OPTIONS] INPUT [OUTPUT]
-       scssfx [OPTIONS] --stdin [OUTPUT]
-       scssfx [OPTIONS] INPUT:OUTPUT...
-       scssfx [OPTIONS] DIR[:OUTPUT_DIR]...
-       scssfx [OPTIONS] --interactive
-       scssfx --embedded
+Usage: sassfx [OPTIONS] INPUT [OUTPUT]
+       sassfx [OPTIONS] --stdin [OUTPUT]
+       sassfx [OPTIONS] INPUT:OUTPUT...
+       sassfx [OPTIONS] DIR[:OUTPUT_DIR]...
+       sassfx [OPTIONS] --interactive
+       sassfx --embedded
 ```
 
 | Option | Values and behavior |
@@ -169,7 +169,7 @@ Usage: scssfx [OPTIONS] INPUT [OUTPUT]
 Compile standard CSS:
 
 ```shell
-java -jar scssfx-cli/build/libs/scssfx-cli-0.1.0-SNAPSHOT.jar \
+java -jar sassfx-cli/build/libs/sassfx-cli-0.1.0-SNAPSHOT.jar \
   --style compressed \
   style.scss \
   -o style.css
@@ -178,7 +178,7 @@ java -jar scssfx-cli/build/libs/scssfx-cli-0.1.0-SNAPSHOT.jar \
 Compile JavaFX 27 CSS:
 
 ```shell
-java -jar scssfx-cli/build/libs/scssfx-cli-0.1.0-SNAPSHOT.jar \
+java -jar sassfx-cli/build/libs/sassfx-cli-0.1.0-SNAPSHOT.jar \
   --target css/javafx@27 \
   style.scss \
   -o style.css
@@ -187,7 +187,7 @@ java -jar scssfx-cli/build/libs/scssfx-cli-0.1.0-SNAPSHOT.jar \
 Compile JavaFX 27 BSS:
 
 ```shell
-java -jar scssfx-cli/build/libs/scssfx-cli-0.1.0-SNAPSHOT.jar \
+java -jar sassfx-cli/build/libs/sassfx-cli-0.1.0-SNAPSHOT.jar \
   --target bss/javafx@27 \
   style.scss \
   -o style.bss
@@ -320,13 +320,13 @@ The standalone endpoint serves Embedded Sass Protocol 3.2.0 over stdin and
 stdout:
 
 ```shell
-java -jar scssfx-embedded/build/libs/scssfx-embedded-0.1.0-SNAPSHOT.jar
+java -jar sassfx-embedded/build/libs/sassfx-embedded-0.1.0-SNAPSHOT.jar
 ```
 
 The shaded CLI exposes the same endpoint:
 
 ```shell
-java -jar scssfx-cli/build/libs/scssfx-cli-0.1.0-SNAPSHOT.jar --embedded
+java -jar sassfx-cli/build/libs/sassfx-cli-0.1.0-SNAPSHOT.jar --embedded
 ```
 
 Pass `--version` to either form to print a JSON version document instead of
@@ -369,11 +369,11 @@ the structured diagnostic fields.
 returns `CompileResult<String>`:
 
 ```java
-import org.glavo.scssfx.JavaFXCssTarget;
-import org.glavo.scssfx.JavaFXTarget;
-import org.glavo.scssfx.OutputStyle;
-import org.glavo.scssfx.SassCompiler;
-import org.glavo.scssfx.SassSource;
+import org.glavo.sassfx.JavaFXCssTarget;
+import org.glavo.sassfx.JavaFXTarget;
+import org.glavo.sassfx.OutputStyle;
+import org.glavo.sassfx.SassCompiler;
+import org.glavo.sassfx.SassSource;
 
 import java.nio.file.Path;
 
@@ -398,10 +398,10 @@ Its default is JavaFX 17 with expanded output.
 `BssTarget` returns a read-only `ByteBuffer` positioned at zero:
 
 ```java
-import org.glavo.scssfx.BssTarget;
-import org.glavo.scssfx.JavaFXTarget;
-import org.glavo.scssfx.SassCompiler;
-import org.glavo.scssfx.SassSource;
+import org.glavo.sassfx.BssTarget;
+import org.glavo.sassfx.JavaFXTarget;
+import org.glavo.sassfx.SassCompiler;
+import org.glavo.sassfx.SassSource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -426,11 +426,11 @@ available for BSS; requesting one fails with `SassCompilationException`.
 functions, Sass load paths, and the optional BSS retained-stylesheet resolver:
 
 ```java
-import org.glavo.scssfx.CompileOptions;
-import org.glavo.scssfx.CssTarget;
-import org.glavo.scssfx.OutputStyle;
-import org.glavo.scssfx.SassCompiler;
-import org.glavo.scssfx.SassSource;
+import org.glavo.sassfx.CompileOptions;
+import org.glavo.sassfx.CssTarget;
+import org.glavo.sassfx.OutputStyle;
+import org.glavo.sassfx.SassCompiler;
+import org.glavo.sassfx.SassSource;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -466,11 +466,11 @@ are consulted in `CompileOptions.importers()` order before filesystem load
 paths:
 
 ```java
-import org.glavo.scssfx.CompileOptions;
-import org.glavo.scssfx.SassCanonicalizeContext;
-import org.glavo.scssfx.SassImporter;
-import org.glavo.scssfx.SassImporterResult;
-import org.glavo.scssfx.Syntax;
+import org.glavo.sassfx.CompileOptions;
+import org.glavo.sassfx.SassCanonicalizeContext;
+import org.glavo.sassfx.SassImporter;
+import org.glavo.sassfx.SassImporterResult;
+import org.glavo.sassfx.Syntax;
 import org.jetbrains.annotations.Nullable;
 
 import java.net.URI;
@@ -535,7 +535,7 @@ extension, partial, import-only, and directory-index resolution and reads the
 selected file:
 
 ```java
-import org.glavo.scssfx.SassFileImporter;
+import org.glavo.sassfx.SassFileImporter;
 
 import java.nio.file.Path;
 
@@ -557,8 +557,8 @@ the request and allows the next importer to run.
 a Node.js runtime:
 
 ```java
-import org.glavo.scssfx.CompileOptions;
-import org.glavo.scssfx.SassNodePackageImporter;
+import org.glavo.sassfx.CompileOptions;
+import org.glavo.sassfx.SassNodePackageImporter;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -592,9 +592,9 @@ signature. Sass binds positional and keyword arguments, evaluates defaults, and
 passes values to the callback in declaration order:
 
 ```java
-import org.glavo.scssfx.CompileOptions;
-import org.glavo.scssfx.SassCustomFunction;
-import org.glavo.scssfx.SassValue;
+import org.glavo.sassfx.CompileOptions;
+import org.glavo.sassfx.SassCustomFunction;
+import org.glavo.sassfx.SassValue;
 
 import java.util.List;
 
@@ -642,9 +642,9 @@ the logger receives the same processed warnings, deprecations, and debug
 messages synchronously:
 
 ```java
-import org.glavo.scssfx.CompileOptions;
-import org.glavo.scssfx.SassDeprecation;
-import org.glavo.scssfx.SassDiagnosticOptions;
+import org.glavo.sassfx.CompileOptions;
+import org.glavo.sassfx.SassDeprecation;
+import org.glavo.sassfx.SassDiagnosticOptions;
 
 import java.util.List;
 import java.util.Set;
@@ -708,13 +708,13 @@ import-only files, or directory indexes, and it does not access the network.
 `JavaFXStylesheetResolver` can explicitly provide other resource schemes:
 
 ```java
-import org.glavo.scssfx.BssTarget;
-import org.glavo.scssfx.CompileOptions;
-import org.glavo.scssfx.JavaFXStylesheetResolver;
-import org.glavo.scssfx.JavaFXTarget;
-import org.glavo.scssfx.SassCompiler;
-import org.glavo.scssfx.SassSource;
-import org.glavo.scssfx.Syntax;
+import org.glavo.sassfx.BssTarget;
+import org.glavo.sassfx.CompileOptions;
+import org.glavo.sassfx.JavaFXStylesheetResolver;
+import org.glavo.sassfx.JavaFXTarget;
+import org.glavo.sassfx.SassCompiler;
+import org.glavo.sassfx.SassSource;
+import org.glavo.sassfx.Syntax;
 
 import java.net.URI;
 import java.util.List;
@@ -814,7 +814,7 @@ release.
 
 ## Current limitations
 
-SCSSFX is still a development build. In particular:
+SassFX is still a development build. In particular:
 
 - The BSS backend supports a validated subset of JavaFX CSS. Unsupported
   selectors, nodes, converter shapes, and values fail explicitly instead of
@@ -854,6 +854,6 @@ See [UPSTREAM.md](UPSTREAM.md) for compatibility baselines and
 
 ## License
 
-SCSSFX is licensed under the [Mozilla Public License 2.0](LICENSE). Third-party
+SassFX is licensed under the [Mozilla Public License 2.0](LICENSE). Third-party
 attribution and compatibility-source notices are listed in
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

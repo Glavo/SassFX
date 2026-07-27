@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-SCSSFX is licensed under the Mozilla Public License 2.0.
+SassFX is licensed under the Mozilla Public License 2.0.
 
 The project uses or derives compatibility behavior from the following works:
 

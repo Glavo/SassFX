@@ -1,6 +1,6 @@
 # JavaFX Runtime Oracles
 
-SCSSFX implements JavaFX CSS and BSS without linking JavaFX into the product.
+SassFX implements JavaFX CSS and BSS without linking JavaFX into the product.
 The oracle source sets are development-only verification tools and are absent
 from runtime classpaths, publication variants, and distributable JARs.
 
@@ -38,29 +38,29 @@ modular oracle. The legacy `javaFx27OracleJavaHome` property remains accepted.
 Run the modular matrix with:
 
 ```text
-./gradlew :scssfx-core:verifyJavaFxCssOracles
+./gradlew :sassfx-core:verifyJavaFxCssOracles
 ```
 
 ## JavaFX 8
 
-JavaFX 8 cannot load the Java 17 SCSSFX classes. Its oracle therefore uses two
+JavaFX 8 cannot load the Java 17 SassFX classes. Its oracle therefore uses two
 processes:
 
-1. A Java 17 generator writes textual CSS and SCSSFX BSS v5.
+1. A Java 17 generator writes textual CSS and SassFX BSS v5.
 2. A Java 8 helper, compiled to class-file version 52, reflectively invokes the
    JavaFX 8 BSS writer, compares both documents byte-for-byte, and loads the
-   SCSSFX document with the real v5 reader.
+   SassFX document with the real v5 reader.
 
 The Java 8 JDK must include JavaFX 8. Configure it explicitly:
 
 ```text
-./gradlew :scssfx-core:verifyJavaFx8CssOracle -PjavaFx8OracleJavaHome=<javafx-8-jdk>
+./gradlew :sassfx-core:verifyJavaFx8CssOracle -PjavaFx8OracleJavaHome=<javafx-8-jdk>
 ```
 
 Run every configured oracle with:
 
 ```text
-./gradlew :scssfx-core:verifyAllJavaFxCssOracles -PjavaFx8OracleJavaHome=<javafx-8-jdk>
+./gradlew :sassfx-core:verifyAllJavaFxCssOracles -PjavaFx8OracleJavaHome=<javafx-8-jdk>
 ```
 
 CI should pin the JavaFX 8 vendor, update release, archive checksum, and
@@ -82,7 +82,7 @@ version directory:
 
 JavaFX 23 through 27 emit expected warnings while the oracle deliberately
 loads transition BSS. Those releases write transition converter names but do
-not reconstruct the converters in `Stylesheet.loadBinary`; SCSSFX verifies
+not reconstruct the converters in `Stylesheet.loadBinary`; SassFX verifies
 this upstream limitation and rejects transition declarations for BSS output.
 
 ## Property Coverage

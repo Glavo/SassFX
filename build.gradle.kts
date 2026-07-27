@@ -6,22 +6,22 @@ group = "org.glavo"
 version = "0.1.0-SNAPSHOT"
 
 tasks.assemble {
-    dependsOn(":scssfx-core:assemble")
-    dependsOn(":scssfx-cli:assemble")
-    dependsOn(":scssfx-embedded:assemble")
-    dependsOn(":scssfx-gradle-plugin:assemble")
+    dependsOn(":sassfx-core:assemble")
+    dependsOn(":sassfx-cli:assemble")
+    dependsOn(":sassfx-embedded:assemble")
+    dependsOn(":sassfx-gradle-plugin:assemble")
 }
 
 tasks.check {
-    dependsOn(":scssfx-core:check")
-    dependsOn(":scssfx-cli:check")
-    dependsOn(":scssfx-embedded:check")
-    dependsOn(":scssfx-gradle-plugin:check")
+    dependsOn(":sassfx-core:check")
+    dependsOn(":sassfx-cli:check")
+    dependsOn(":sassfx-embedded:check")
+    dependsOn(":sassfx-gradle-plugin:check")
 }
 
 tasks.clean {
-    dependsOn(":scssfx-core:clean")
-    dependsOn(":scssfx-cli:clean")
-    dependsOn(":scssfx-embedded:clean")
-    dependsOn(":scssfx-gradle-plugin:clean")
+    dependsOn(":sassfx-core:clean")
+    dependsOn(":sassfx-cli:clean")
+    dependsOn(":sassfx-embedded:clean")
+    dependsOn(":sassfx-gradle-plugin:clean")
 }

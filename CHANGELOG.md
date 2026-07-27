@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to SCSSFX will be documented in this file.
+All notable changes to SassFX will be documented in this file.
 
 ## 0.1.0-SNAPSHOT — Unreleased
 
@@ -8,7 +8,7 @@ This is the first development release.
 
 ### Added
 
-- `org.glavo.scssfx` Gradle plugin with a cacheable `compileScss` task,
+- `org.glavo.sassfx` Gradle plugin with a cacheable `compileScss` task,
   strict CSS/JavaFX CSS/BSS targets, partial tracking, transactional output,
   stale-output cleanup, Java resources integration, and TestKit coverage.
 - Pure Java 17 compiler for SCSS, indented Sass, and plain-CSS library inputs.

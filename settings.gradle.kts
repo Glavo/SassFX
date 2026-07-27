@@ -20,9 +20,9 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "scssfx"
+rootProject.name = "sassfx"
 
-include("scssfx-core")
-include("scssfx-cli")
-include("scssfx-embedded")
-include("scssfx-gradle-plugin")
+include("sassfx-core")
+include("sassfx-cli")
+include("sassfx-embedded")
+include("sassfx-gradle-plugin")

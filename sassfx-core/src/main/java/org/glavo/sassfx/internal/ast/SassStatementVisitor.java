@@ -1,0 +1,174 @@
+// SPDX-License-Identifier: MPL-2.0
+package org.glavo.sassfx.internal.ast;
+
+import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.NotNullByDefault;
+
+/// Visits each concrete Sass statement type.
+///
+/// @param <R> the result returned for each visited statement
+@ApiStatus.Internal
+@NotNullByDefault
+public interface SassStatementVisitor<R> {
+    /// Visits a stylesheet root.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitStylesheet(Stylesheet statement);
+
+    /// Visits a style rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitStyleRule(StyleRule statement);
+
+    /// Visits a {@code @font-face} rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitFontFaceRule(FontFaceRule statement);
+
+    /// Visits a {@code @media} rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitMediaRule(MediaRule statement);
+
+    /// Visits an {@code @supports} rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitSupportsRule(SupportsRule statement);
+
+    /// Visits an opaque plain-CSS at-rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitUnknownAtRule(UnknownAtRule statement);
+
+    /// Visits a property declaration.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitDeclaration(Declaration statement);
+
+    /// Visits a variable declaration.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitVariableDeclaration(VariableDeclaration statement);
+
+    /// Visits a silent comment.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitSilentComment(SilentComment statement);
+
+    /// Visits a loud comment.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitLoudComment(LoudComment statement);
+
+    /// Visits an `@if` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitIfRule(IfRule statement);
+
+    /// Visits an `@each` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitEachRule(EachRule statement);
+
+    /// Visits a `@for` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitForRule(ForRule statement);
+
+    /// Visits a `@while` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitWhileRule(WhileRule statement);
+
+    /// Visits a `@mixin` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitMixinRule(MixinRule statement);
+
+    /// Visits a `@function` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitFunctionRule(FunctionRule statement);
+
+    /// Visits an `@include` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitIncludeRule(IncludeRule statement);
+
+    /// Visits a `@content` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitContentRule(ContentRule statement);
+
+    /// Visits a `@return` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitReturnRule(ReturnRule statement);
+
+    /// Visits a `@debug` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitDebugRule(DebugRule statement);
+
+    /// Visits a `@warn` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitWarnRule(WarnRule statement);
+
+    /// Visits an `@error` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitErrorRule(ErrorRule statement);
+
+    /// Visits an `@import` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitImportRule(ImportRule statement);
+
+    /// Visits a `@use` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitUseRule(UseRule statement);
+
+    /// Visits an `@forward` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitForwardRule(ForwardRule statement);
+
+    /// Visits an `@extend` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitExtendRule(ExtendRule statement);
+
+    /// Visits an `@at-root` rule.
+    ///
+    /// @param statement the statement to visit
+    /// @return the visit result
+    R visitAtRootRule(AtRootRule statement);
+}
