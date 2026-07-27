@@ -75,10 +75,13 @@ This is the first development release.
   freshness checks, recursive native or polling observation, debounced change
   batches, directory-entrypoint discovery, candidate-level import-resolution
   tracking, selective dependency recompilation, missing/conflicting/fallback
-  dependency recovery, and owned output/source-map deletion.
+  dependency recovery, shared-dependency fan-out, `meta.load-css()` tracking,
+  module-loop recovery, unrelated-file isolation, and owned output/source-map
+  deletion.
 - CLI `--interactive`/`-i` SassScript shell with persistent variables, modules,
   load paths, package imports, deprecation state, recoverable line failures,
-  and Dart Sass-compatible prompt, stream, and diagnostic behavior.
+  configured/global/built-in `@use`, and Dart Sass-compatible prompt, stream,
+  and diagnostic behavior.
 - Pure Java Embedded Sass Protocol 3.2.0 executable and CLI `--embedded`
   endpoint with length-delimited framing, version negotiation, concurrent
   compilation IDs, diagnostics, source maps, string or path compilation,

@@ -319,6 +319,64 @@ final class InteractiveCliTest {
         assertFalse(error.toString().contains("Error:"));
     }
 
+    /// Supports built-in functions, global modules, and configured modules.
+    @Test
+    void supportsCompleteInteractiveUseForms(@TempDir Path directory)
+            throws Exception {
+        Files.writeString(
+                directory.resolve("_theme.scss"),
+                """
+                        $base: 12 !default;
+                        $derived: $base + 13;
+                        @function doubled() {
+                          @return $base * 2;
+                        }
+                        """
+        );
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        assertEquals(
+                0,
+                commandLine(
+                        """
+                                @use "sass:math"
+                                math.abs(-1)
+                                @use "theme" with ($base: 1)
+                                theme.$base
+                                theme.$derived
+                                theme.doubled()
+                                """,
+                        directory,
+                        output,
+                        error
+                ).execute("--interactive")
+        );
+
+        var normalized = normalize(output.toString());
+        assertTrue(normalized.contains(">> math.abs(-1)\n1\n"));
+        assertTrue(normalized.contains(">> theme.$base\n1\n"));
+        assertTrue(normalized.contains(">> theme.$derived\n14\n"));
+        assertTrue(normalized.contains(">> theme.doubled()\n2\n"));
+        assertEquals("", error.toString());
+
+        var globalOutput = new StringWriter();
+        var globalError = new StringWriter();
+        assertEquals(
+                0,
+                commandLine(
+                        "@use \"theme\" as *\n$base\ndoubled()\n",
+                        directory,
+                        globalOutput,
+                        globalError
+                ).execute("--interactive")
+        );
+        assertTrue(normalize(globalOutput.toString()).endsWith(
+                ">> $base\n12\n>> doubled()\n24\n"
+        ));
+        assertEquals("", globalError.toString());
+    }
+
     /// Creates a command line with isolated standard streams and a working directory.
     ///
     /// @param input UTF-8 interactive input

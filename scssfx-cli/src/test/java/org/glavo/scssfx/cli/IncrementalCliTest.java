@@ -575,6 +575,310 @@ final class IncrementalCliTest {
         }
     }
 
+    /// Rebuilds every entrypoint that shares a modified dependency.
+    @Test
+    void updateRebuildsSharedDependencyConsumers(
+            @TempDir Path directory
+    ) throws Exception {
+        var dependency = directory.resolve("_theme.scss");
+        var first = directory.resolve("first.scss");
+        var second = directory.resolve("second.scss");
+        var firstOutput = directory.resolve("first.css");
+        var secondOutput = directory.resolve("second.css");
+        Files.writeString(dependency, "$color: red;");
+        Files.writeString(
+                first,
+                "@use 'theme'; .first { color: theme.$color; }"
+        );
+        Files.writeString(
+                second,
+                "@use 'theme'; .second { color: theme.$color; }"
+        );
+        var initial = commandLine("", new StringWriter(), new StringWriter());
+        assertEquals(0, initial.execute(
+                "--update",
+                first + ":" + firstOutput,
+                second + ":" + secondOutput
+        ));
+
+        var outputTime = Math.max(
+                Files.getLastModifiedTime(firstOutput).toMillis(),
+                Files.getLastModifiedTime(secondOutput).toMillis()
+        );
+        Files.writeString(dependency, "$color: blue;");
+        Files.setLastModifiedTime(
+                dependency,
+                FileTime.fromMillis(outputTime + 2_000)
+        );
+        var output = new StringWriter();
+        assertEquals(0, commandLine("", output, new StringWriter()).execute(
+                "--update",
+                first + ":" + firstOutput,
+                second + ":" + secondOutput
+        ));
+
+        assertTrue(Files.readString(firstOutput).contains("color: blue;"));
+        assertTrue(Files.readString(secondOutput).contains("color: blue;"));
+        assertEquals(2, countOccurrences(output.toString(), "Compiled "));
+    }
+
+    /// Leaves a fresh sibling output untouched when another root changes.
+    @Test
+    void updateLeavesFreshSiblingUntouched(@TempDir Path directory)
+            throws Exception {
+        var first = directory.resolve("first.scss");
+        var second = directory.resolve("second.scss");
+        var firstOutput = directory.resolve("first.css");
+        var secondOutput = directory.resolve("second.css");
+        Files.writeString(first, ".first { color: red; }");
+        Files.writeString(second, ".second { color: red; }");
+        Files.writeString(firstOutput, "first stale");
+        Files.writeString(secondOutput, "second preserved");
+        setModifiedTime(firstOutput, 2_000);
+        setModifiedTime(secondOutput, 2_000);
+        setModifiedTime(first, 3_000);
+        setModifiedTime(second, 1_000);
+
+        assertEquals(0, commandLine(
+                "",
+                new StringWriter(),
+                new StringWriter()
+        ).execute(
+                "--update",
+                first + ":" + firstOutput,
+                second + ":" + secondOutput
+        ));
+
+        assertTrue(Files.readString(firstOutput).contains("color: red;"));
+        assertEquals("second preserved", Files.readString(secondOutput));
+    }
+
+    /// Replaces or removes stale output when update compilation fails.
+    @Test
+    void updateAppliesErrorCssPolicies(@TempDir Path directory)
+            throws Exception {
+        var source = directory.resolve("style.scss");
+        var destination = directory.resolve("style.css");
+        Files.writeString(source, "a { color: ; }");
+        Files.writeString(destination, "stale");
+        setModifiedTime(destination, 1_000);
+        setModifiedTime(source, 2_000);
+
+        assertEquals(65, commandLine(
+                "",
+                new StringWriter(),
+                new StringWriter()
+        ).execute("--update", source + ":" + destination));
+        assertTrue(Files.readString(destination).contains(
+                "Error: Expected expression."
+        ));
+
+        Files.writeString(destination, "stale again");
+        assertEquals(65, commandLine(
+                "",
+                new StringWriter(),
+                new StringWriter()
+        ).execute(
+                "--update",
+                "--no-error-css",
+                source + ":" + destination
+        ));
+        assertFalse(Files.exists(destination));
+    }
+
+    /// Preserves a fresh destination when watch mode starts.
+    @Test
+    void pollWatchPreservesFreshDestinationOnStartup(
+            @TempDir Path directory
+    ) throws Exception {
+        var source = directory.resolve("style.scss");
+        var destination = directory.resolve("style.css");
+        Files.writeString(source, "a { color: red; }");
+        Files.writeString(destination, "preserve fresh output");
+        setModifiedTime(source, 1_000);
+        setModifiedTime(destination, 2_000);
+        var executor = Executors.newSingleThreadExecutor();
+        var output = new StringWriter();
+        try {
+            var task = executor.submit(() -> commandLine(
+                    "",
+                    output,
+                    new StringWriter()
+            ).execute("--watch", "--poll", source + ":" + destination));
+
+            awaitTextContains(output, "Sass is watching");
+            assertEquals("preserve fresh output", Files.readString(destination));
+            assertEquals(0, countOccurrences(output.toString(), "Compiled "));
+            task.cancel(true);
+        } finally {
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS));
+        }
+    }
+
+    /// Continues the initial watch batch after an error unless requested to stop.
+    @Test
+    void pollWatchControlsInitialErrorContinuation(
+            @TempDir Path directory
+    ) throws Exception {
+        var broken = directory.resolve("broken.scss");
+        var valid = directory.resolve("valid.scss");
+        var brokenOutput = directory.resolve("broken.css");
+        var validOutput = directory.resolve("valid.css");
+        Files.writeString(broken, "a { color: ; }");
+        Files.writeString(valid, "b { color: green; }");
+        var executor = Executors.newSingleThreadExecutor();
+        var output = new StringWriter();
+        var error = new StringWriter();
+        try {
+            var task = executor.submit(() -> commandLine(
+                    "",
+                    output,
+                    error
+            ).execute(
+                    "--watch",
+                    "--poll",
+                    broken + ":" + brokenOutput,
+                    valid + ":" + validOutput
+            ));
+
+            awaitTextContains(error, "Expected expression");
+            awaitContains(validOutput, "color: green;");
+            awaitTextContains(output, "Sass is watching");
+            assertTrue(Files.readString(brokenOutput).contains(
+                    "Error: Expected expression."
+            ));
+            task.cancel(true);
+        } finally {
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS));
+        }
+
+        Files.deleteIfExists(brokenOutput);
+        Files.deleteIfExists(validOutput);
+        var stoppedOutput = new StringWriter();
+        var stoppedError = new StringWriter();
+        assertEquals(
+                65,
+                commandLine("", stoppedOutput, stoppedError).execute(
+                        "--watch",
+                        "--poll",
+                        "--stop-on-error",
+                        broken + ":" + brokenOutput,
+                        valid + ":" + validOutput
+                )
+        );
+        assertTrue(stoppedError.toString().contains("Expected expression"));
+        assertTrue(Files.isRegularFile(brokenOutput));
+        assertFalse(Files.exists(validOutput));
+        assertFalse(stoppedOutput.toString().contains("Sass is watching"));
+    }
+
+    /// Deletes and recreates output as an explicit watched root disappears.
+    @Test
+    void pollWatchTracksExplicitRootReplacement(
+            @TempDir Path directory
+    ) throws Exception {
+        var source = directory.resolve("style.scss");
+        var destination = directory.resolve("style.css");
+        Files.writeString(source, "a { color: red; }");
+        var executor = Executors.newSingleThreadExecutor();
+        try {
+            var task = executor.submit(() -> commandLine(
+                    "",
+                    new StringWriter(),
+                    new StringWriter()
+            ).execute("--watch", "--poll", source + ":" + destination));
+
+            awaitContains(destination, "color: red;");
+            Files.delete(source);
+            awaitAbsent(destination);
+            Files.writeString(source, "a { color: blue; }");
+            awaitContains(destination, "color: blue;");
+            task.cancel(true);
+        } finally {
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS));
+        }
+    }
+
+    /// Tracks dynamic load-css dependencies without rebuilding for unrelated files.
+    @Test
+    void pollWatchTracksLoadCssAndIgnoresUnrelatedFiles(
+            @TempDir Path directory
+    ) throws Exception {
+        var source = directory.resolve("style.scss");
+        var dependency = directory.resolve("_theme.scss");
+        var destination = directory.resolve("style.css");
+        Files.writeString(
+                source,
+                "@use 'sass:meta'; @include meta.load-css('theme');"
+        );
+        Files.writeString(dependency, ".theme { color: red; }");
+        var executor = Executors.newSingleThreadExecutor();
+        var output = new StringWriter();
+        try {
+            var task = executor.submit(() -> commandLine(
+                    "",
+                    output,
+                    new StringWriter()
+            ).execute("--watch", "--poll", source + ":" + destination));
+
+            awaitContains(destination, "color: red;");
+            awaitTextContains(output, "Sass is watching");
+            var compiled = countOccurrences(output.toString(), "Compiled ");
+            Files.writeString(
+                    directory.resolve("unrelated.scss"),
+                    "x { color: black; }"
+            );
+            TimeUnit.MILLISECONDS.sleep(250);
+            assertEquals(
+                    compiled,
+                    countOccurrences(output.toString(), "Compiled ")
+            );
+            Files.writeString(dependency, ".theme { color: blue; }");
+            awaitContains(destination, "color: blue;");
+            task.cancel(true);
+        } finally {
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS));
+        }
+    }
+
+    /// Recovers after a dependency edit introduces and then removes a module loop.
+    @Test
+    void pollWatchRecoversDependencyLoopLifecycle(
+            @TempDir Path directory
+    ) throws Exception {
+        var source = directory.resolve("style.scss");
+        var dependency = directory.resolve("_theme.scss");
+        var destination = directory.resolve("style.css");
+        Files.writeString(source, "@use 'theme';");
+        Files.writeString(dependency, ".theme { color: red; }");
+        var executor = Executors.newSingleThreadExecutor();
+        var error = new StringWriter();
+        try {
+            var task = executor.submit(() -> commandLine(
+                    "",
+                    new StringWriter(),
+                    error
+            ).execute("--watch", "--poll", source + ":" + destination));
+
+            awaitContains(destination, "color: red;");
+            Files.writeString(
+                    dependency,
+                    "@use 'style'; .theme { color: orange; }"
+            );
+            awaitTextContains(error, "Module loop");
+            Files.writeString(dependency, ".theme { color: blue; }");
+            awaitContains(destination, "color: blue;");
+            task.cancel(true);
+        } finally {
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS));
+        }
+    }
+
     /// Sets a deterministic timestamp without relying on filesystem timestamp resolution.
     ///
     /// @param path the path whose timestamp is changed

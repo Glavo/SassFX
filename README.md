@@ -181,8 +181,11 @@ expected Sass or IO failure unless `--stop-on-error` is selected.
 Use `--update` with file or directory mappings to compile only destinations
 that are missing or older than their root or any transitive file dependency.
 Fresh destinations are left byte-for-byte unchanged and produce no status
-line. The magic stdin mapping `-:OUTPUT` is always compiled. Explicit
-`--stdin` and stdout destinations are rejected in update mode.
+line, including fresh siblings of an entrypoint that must be rebuilt. A shared
+dependency rebuilds every affected destination. Failed updates apply the same
+error-CSS or output-deletion policy as immediate compilation. The magic stdin
+mapping `-:OUTPUT` is always compiled. Explicit `--stdin` and stdout
+destinations are rejected in update mode.
 
 Use `--watch` or `-w` to perform the same initial freshness check and then
 continue recompiling affected entrypoints. Added directory entrypoints are
@@ -194,8 +197,10 @@ messages remain visible under `--quiet`; successful compilation status lines
 do not. Filesystem importer candidate paths are retained as an incremental
 resolution graph, so missing dependencies, candidate conflicts, load-path
 fallbacks, and precedence changes recover without recompiling entrypoints that
-cannot be affected. `--stop-on-error` terminates watch mode after the first
-failed batch.
+cannot be affected. Dependency tracking covers `@import`, `@use`, `@forward`,
+and `meta.load-css()`. Root replacement and module-loop introduction or
+removal are recoverable; unrelated files do not trigger recompilation.
+`--stop-on-error` terminates watch mode after the first failed batch.
 
 Use `--interactive` or `-i` to evaluate one SassScript expression, variable
 declaration, or `@use` rule per physical input line. Variables, module
@@ -207,6 +212,9 @@ deprecations, and debug messages use stderr and honor the normal diagnostic
 options. Relative modules resolve from the process working directory, and
 load paths, the Node package importer, color, Unicode, trace, quiet, and
 deprecation controls remain available.
+Interactive `@use` supports built-in modules, `as *`, and `with (...)`
+configuration with the same persistent namespace and module-cache semantics as
+file compilation.
 
 Textual file output creates a compact `<output>.map` sidecar by default and
 appends the corresponding source-map comment. `--no-source-map` disables new
