@@ -89,7 +89,7 @@ Usage: scssfx [OPTIONS] INPUT [OUTPUT]
 
 | Option | Values and behavior |
 | --- | --- |
-| `--target` | `css`, `javafx-css`, or `bss`; defaults to `css` |
+| `--target` | `css`, `css/javafx@8` through `css/javafx@27`, or `bss/javafx@8` through `bss/javafx@27`; defaults to `css` |
 | `-s`, `--style` | `expanded` or `compressed`; text targets only, defaults to `expanded` |
 | `--[no-]charset` | Emits `@charset` for expanded non-ASCII output or a UTF-8 BOM for compressed output; enabled by default |
 | `--[no-]source-map` | Generates source maps for file output; enabled by default |
@@ -103,8 +103,6 @@ Usage: scssfx [OPTIONS] INPUT [OUTPUT]
 | `--[no-]poll` | Selects metadata polling or native notifications for watch mode |
 | `-i`, `--interactive` | Runs a persistent line-oriented SassScript shell |
 | `--embedded` | Serves the binary Embedded Sass Protocol over stdin and stdout |
-| `--javafx-target` | Integer from `8` through `27`; JavaFX targets only, defaults to `17` |
-| `--javafx-compatibility` | Compatibility alias for `--javafx-target` |
 | `--[no-]stdin` | Reads the root stylesheet from standard input |
 | `--[no-]indented` | Parses root inputs using the indented Sass syntax |
 | `-I`, `--load-path` | Adds a Sass load path; may be repeated |
@@ -135,8 +133,7 @@ Compile JavaFX 27 CSS:
 
 ```shell
 java -jar scssfx-cli/build/libs/scssfx-cli-0.1.0-SNAPSHOT.jar \
-  --target javafx-css \
-  --javafx-target 27 \
+  --target css/javafx@27 \
   style.scss \
   -o style.css
 ```
@@ -145,8 +142,7 @@ Compile JavaFX 27 BSS:
 
 ```shell
 java -jar scssfx-cli/build/libs/scssfx-cli-0.1.0-SNAPSHOT.jar \
-  --target bss \
-  --javafx-target 27 \
+  --target bss/javafx@27 \
   style.scss \
   -o style.bss
 ```

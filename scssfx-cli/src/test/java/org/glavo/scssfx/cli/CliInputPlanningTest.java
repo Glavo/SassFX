@@ -503,7 +503,7 @@ final class CliInputPlanningTest {
                 commandLine("", new StringWriter(), new StringWriter())
                         .execute(
                                 "--target",
-                                "bss",
+                                "bss/javafx@17",
                                 source + ":" + destination
                         )
         );

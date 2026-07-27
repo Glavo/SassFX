@@ -137,9 +137,7 @@ final class ScssfxMainTest {
                 0,
                 commandLine.execute(
                         "--target",
-                        "javafx-css",
-                        "--javafx-target",
-                        "27",
+                        "css/javafx@27",
                         "--style",
                         "compressed",
                         input.toString()
@@ -165,9 +163,7 @@ final class ScssfxMainTest {
                 0,
                 commandLine.execute(
                         "--target",
-                        "bss",
-                        "--javafx-target",
-                        "27",
+                        "bss/javafx@27",
                         "-o",
                         destination.toString(),
                         input.toString()
@@ -194,7 +190,14 @@ final class ScssfxMainTest {
         var error = new StringWriter();
         var commandLine = commandLine(output, error);
 
-        assertEquals(64, commandLine.execute("--target", "bss", input.toString()));
+        assertEquals(
+                64,
+                commandLine.execute(
+                        "--target",
+                        "bss/javafx@17",
+                        input.toString()
+                )
+        );
         assertTrue(output.toString().contains(
                 "BSS output requires an output path"
         ));
@@ -215,7 +218,7 @@ final class ScssfxMainTest {
                 65,
                 commandLine.execute(
                         "--target",
-                        "bss",
+                        "bss/javafx@17",
                         "-o",
                         destination.toString(),
                         input.toString()
@@ -237,7 +240,7 @@ final class ScssfxMainTest {
                 64,
                 bssCommand.execute(
                         "--target",
-                        "bss",
+                        "bss/javafx@17",
                         "--style",
                         "compressed",
                         "-o",
@@ -248,15 +251,6 @@ final class ScssfxMainTest {
         assertTrue(bssOutput.toString().contains("--style is supported only"));
         assertFalse(Files.exists(destination));
 
-        var cssOutput = new StringWriter();
-        var cssCommand = commandLine(cssOutput, new StringWriter());
-        assertEquals(
-                64,
-                cssCommand.execute("--javafx-target", "27", input.toString())
-        );
-        assertTrue(cssOutput.toString().contains(
-                "--javafx-target is supported only"
-        ));
     }
 
     /// Reports unsupported output option values as usage errors.
@@ -286,9 +280,7 @@ final class ScssfxMainTest {
                     0,
                     commandLine.execute(
                             "--target",
-                            "javafx-css",
-                            "--javafx-target",
-                            version,
+                            "css/javafx@" + version,
                             input.toString()
                     )
             );
@@ -301,43 +293,55 @@ final class ScssfxMainTest {
         var input = directory.resolve("style.scss");
         Files.writeString(input, "Pane { -fx-opacity: 1; }");
 
-        for (var version : new String[]{"7", "28", "17.0", "current"}) {
+        for (var value : new String[]{
+                "css/javafx@7",
+                "css/javafx@28",
+                "css/javafx@17.0",
+                "css/javafx@current",
+                "css/javafx@08",
+                "css/javafx@017",
+                "CSS",
+                "css/JavaFX@17",
+                "BSS/javafx@17",
+                "bss",
+                "javafx-css"
+        }) {
             var output = new StringWriter();
             var commandLine = commandLine(output, new StringWriter());
             assertEquals(
                     64,
                     commandLine.execute(
                             "--target",
-                            "javafx-css",
-                            "--javafx-target",
-                            version,
+                            value,
                             input.toString()
                     )
             );
             assertTrue(output.toString().contains(
-                    "expected an integer from 8 through 27"
+                    "expected 'css', 'css/javafx@8' through 'css/javafx@27'"
             ));
         }
     }
 
-    /// Accepts the former JavaFX compatibility option as an alias.
+    /// Rejects split JavaFX target options that are not part of the CLI.
     @Test
-    void acceptsJavaFxCompatibilityAlias(@TempDir Path directory) throws Exception {
+    void rejectsSplitTargetOptions(@TempDir Path directory)
+            throws Exception {
         var input = directory.resolve("style.scss");
         Files.writeString(input, "Pane { -fx-opacity: 1; }");
 
-        var commandLine = commandLine(new StringWriter(), new StringWriter());
-
-        assertEquals(
-                0,
-                commandLine.execute(
-                        "--target",
-                        "javafx-css",
-                        "--javafx-compatibility",
-                        "27",
-                        input.toString()
-                )
-        );
+        for (var option : new String[]{
+                "--javafx-target",
+                "--javafx-compatibility"
+        }) {
+            var output = new StringWriter();
+            var commandLine = commandLine(output, new StringWriter());
+            assertFalse(commandLine.getCommandSpec()
+                    .optionsMap().containsKey(option));
+            assertEquals(
+                    64,
+                    commandLine.execute(option, "27", input.toString())
+            );
+        }
     }
 
     /// Reports structured compilation failures on stderr.

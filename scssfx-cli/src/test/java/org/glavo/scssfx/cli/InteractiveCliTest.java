@@ -253,8 +253,7 @@ final class InteractiveCliTest {
                 {"--source-map"},
                 {"--update"},
                 {"--watch"},
-                {"--target", "javafx-css"},
-                {"--javafx-target", "27"},
+                {"--target", "css/javafx@27"},
                 {"--output", directory.resolve("out.css").toString()}
         }) {
             var output = new StringWriter();

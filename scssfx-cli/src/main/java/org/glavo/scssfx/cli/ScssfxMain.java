@@ -126,7 +126,7 @@ public final class ScssfxMain implements Callable<Integer> {
             names = "--target",
             defaultValue = "css",
             paramLabel = "TARGET",
-            description = "Select output target: css, javafx-css, or bss (default: ${DEFAULT-VALUE})."
+            description = "Select css, css/javafx@8..27, or bss/javafx@8..27 (default: ${DEFAULT-VALUE})."
     )
     private String target = "css";
 
@@ -234,15 +234,6 @@ public final class ScssfxMain implements Callable<Integer> {
             description = "Stop compiling after the first error."
     )
     private boolean stopOnError;
-
-    /// The JavaFX release selected for JavaFX CSS and BSS targets.
-    @Option(
-            names = {"--javafx-target", "--javafx-compatibility"},
-            defaultValue = "17",
-            paramLabel = "VERSION",
-            description = "Select a JavaFX target from 8 through 27 (default: ${DEFAULT-VALUE})."
-    )
-    private String javaFxTargetVersion = "17";
 
     /// Additional Sass load paths in command-line order.
     @Option(
@@ -540,17 +531,23 @@ public final class ScssfxMain implements Callable<Integer> {
             return USAGE_EXIT_STATUS;
         }
 
-        var targetName = target.toLowerCase(Locale.ROOT);
-        JavaFXTarget selectedJavaFxTarget;
+        CliTarget selectedTarget;
+        CliBackend targetBackend;
         @Nullable OutputStyle selectedOutputStyle;
         CompileOptions compileOptions;
         CliCompilationPlan plan;
         OutputPolicy outputPolicy;
-        var outputExtension = "bss".equals(targetName) ? ".bss" : ".css";
+        String outputExtension;
         try {
-            selectedJavaFxTarget = selectedJavaFxTarget();
-            selectedOutputStyle = "bss".equals(targetName) ? null : selectedOutputStyle();
-            validateTargetOptions(targetName);
+            selectedTarget = selectedTarget();
+            targetBackend = selectedTarget.backend();
+            outputExtension = targetBackend == CliBackend.BSS
+                    ? ".bss"
+                    : ".css";
+            selectedOutputStyle = targetBackend == CliBackend.BSS
+                    ? null
+                    : selectedOutputStyle();
+            validateTargetOptions(selectedTarget);
             plan = CliCompilationPlan.create(
                     inputs,
                     output,
@@ -558,9 +555,9 @@ public final class ScssfxMain implements Callable<Integer> {
                     indented,
                     outputExtension
             );
-            validatePlan(targetName, plan);
+            validatePlan(targetBackend, plan);
             validateIncrementalPlan(plan);
-            outputPolicy = outputPolicy(targetName, plan);
+            outputPolicy = outputPolicy(targetBackend, plan);
             compileOptions = compileOptions(outputPolicy.sourceMap());
         } catch (IllegalArgumentException failure) {
             printUsageFailure(commandLine, Objects.requireNonNullElse(
@@ -592,8 +589,8 @@ public final class ScssfxMain implements Callable<Integer> {
                 stdinContents
         );
         var context = new ExecutionContext(
-                targetName,
-                selectedJavaFxTarget,
+                targetBackend,
+                selectedTarget.javaFXTarget(),
                 selectedOutputStyle,
                 compileOptions,
                 outputPolicy,
@@ -821,8 +818,7 @@ public final class ScssfxMain implements Callable<Integer> {
                 "--update",
                 "--watch",
                 "--output",
-                "--target",
-                "--javafx-target"
+                "--target"
         );
         for (var option : incompatibleOptions) {
             if (isOptionSpecified(option)) {
@@ -858,8 +854,8 @@ public final class ScssfxMain implements Callable<Integer> {
                                 context.stdinUrl()
                         )
                         : fileSource(job);
-                var compilation = switch (context.targetName()) {
-                    case "css" -> compileText(
+                var compilation = switch (context.targetBackend()) {
+                    case CSS -> compileText(
                             source,
                             job.source(),
                             job.destination(),
@@ -880,12 +876,14 @@ public final class ScssfxMain implements Callable<Integer> {
                             context.err(),
                             resolutionTracker
                     );
-                    case "javafx-css" -> compileText(
+                    case JAVAFX_CSS -> compileText(
                             source,
                             job.source(),
                             job.destination(),
                             new JavaFXCssTarget(
-                                    context.javaFxTarget(),
+                                    Objects.requireNonNull(
+                                            context.javaFxTarget()
+                                    ),
                                     Objects.requireNonNull(context.outputStyle()),
                                     charsetEnabled()
                             ),
@@ -902,21 +900,19 @@ public final class ScssfxMain implements Callable<Integer> {
                             context.err(),
                             resolutionTracker
                     );
-                    case "bss" -> compileBss(
+                    case BSS -> compileBss(
                             source,
                             job.source(),
                             Objects.requireNonNull(job.destination()),
-                            new BssTarget(context.javaFxTarget()),
+                            new BssTarget(Objects.requireNonNull(
+                                    context.javaFxTarget()
+                            )),
                             context.compileOptions(),
                             incremental,
                             quiet,
                             context.diagnosticPrinter(),
                             context.err(),
                             resolutionTracker
-                    );
-                    default -> throw new AssertionError(
-                            "Unsupported target was validated: "
-                                    + context.targetName()
                     );
                 };
                 if (job.source() != null) {
@@ -938,7 +934,7 @@ public final class ScssfxMain implements Callable<Integer> {
             } catch (SassCompilationException failure) {
                 try {
                     handleSassFailure(
-                            context.targetName(),
+                            context.targetBackend(),
                             job.destination(),
                             context.outputPolicy().errorCss(),
                             failure,
@@ -1699,7 +1695,7 @@ public final class ScssfxMain implements Callable<Integer> {
     ///
     /// BSS failures never replace or delete the binary destination.
     ///
-    /// @param targetName the validated output target
+    /// @param targetBackend the selected output backend
     /// @param destination the failed job destination, or {@code null}
     /// @param emitErrorCss whether an error stylesheet is enabled
     /// @param failure the Sass compilation failure
@@ -1707,14 +1703,14 @@ public final class ScssfxMain implements Callable<Integer> {
     /// @param out standard output
     /// @throws IOException if error output cannot be written
     private static void handleSassFailure(
-            String targetName,
+            CliBackend targetBackend,
             @Nullable Path destination,
             boolean emitErrorCss,
             SassCompilationException failure,
             DiagnosticPrinter diagnosticPrinter,
             java.io.PrintWriter out
     ) throws IOException {
-        if ("bss".equals(targetName)) {
+        if (targetBackend == CliBackend.BSS) {
             return;
         }
         if (!emitErrorCss) {
@@ -1953,12 +1949,12 @@ public final class ScssfxMain implements Callable<Integer> {
 
     /// Resolves source-map and failure-output behavior for a compilation plan.
     ///
-    /// @param targetName the validated lower-case target name
+    /// @param targetBackend the selected output backend
     /// @param plan the fully expanded compilation plan
     /// @return the resolved output policy
     /// @throws IllegalArgumentException if output options conflict
     private OutputPolicy outputPolicy(
-            String targetName,
+            CliBackend targetBackend,
             CliCompilationPlan plan
     ) {
         var urlMode = switch (sourceMapUrls.toLowerCase(Locale.ROOT)) {
@@ -1992,7 +1988,7 @@ public final class ScssfxMain implements Callable<Integer> {
         var writesToStdout = plan.jobs().size() == 1
                 && plan.jobs().get(0).destination() == null;
         boolean emitSourceMap;
-        if ("bss".equals(targetName)) {
+        if (targetBackend == CliBackend.BSS) {
             if (sourceMapEnabled && sourceMapParsed
                     || sourceMapUrlsParsed
                     || embedSources
@@ -2039,7 +2035,7 @@ public final class ScssfxMain implements Callable<Integer> {
 
         var hasFileDestination = plan.jobs().stream()
                 .anyMatch(job -> job.destination() != null);
-        var emitErrorCss = !"bss".equals(targetName)
+        var emitErrorCss = targetBackend != CliBackend.BSS
                 && (errorCss != null ? errorCss : hasFileDestination);
         return new OutputPolicy(
                 emitSourceMap,
@@ -2133,44 +2129,32 @@ public final class ScssfxMain implements Callable<Integer> {
 
     /// Validates options that depend on the selected output target.
     ///
-    /// @param targetName the lower-case target name
+    /// @param selectedTarget the parsed output target
     /// @throws IllegalArgumentException if the target or its options are unsupported
-    private void validateTargetOptions(String targetName) {
-        switch (targetName) {
-            case "css" -> {
-                if (isOptionSpecified("--javafx-target")
-                        || isOptionSpecified("--javafx-compatibility")) {
-                    throw new IllegalArgumentException(
-                            "--javafx-target is supported only for javafx-css and bss targets"
-                    );
-                }
+    private void validateTargetOptions(CliTarget selectedTarget) {
+        switch (selectedTarget.backend()) {
+            case CSS, JAVAFX_CSS -> {
             }
-            case "javafx-css" -> {
-            }
-            case "bss" -> {
+            case BSS -> {
                 if (isOptionSpecified("--style")) {
                     throw new IllegalArgumentException(
-                            "--style is supported only for css and javafx-css targets"
+                            "--style is supported only for css targets"
                     );
                 }
             }
-            default -> throw new IllegalArgumentException(
-                    "unsupported output target '" + target
-                            + "'; expected 'css', 'javafx-css', or 'bss'"
-            );
         }
     }
 
     /// Validates destination requirements after expanding every input.
     ///
-    /// @param targetName the validated lower-case target name
+    /// @param targetBackend the selected output backend
     /// @param plan the fully expanded compilation plan
     /// @throws IllegalArgumentException if a job cannot use its destination
     private static void validatePlan(
-            String targetName,
+            CliBackend targetBackend,
             CliCompilationPlan plan
     ) {
-        if ("bss".equals(targetName)
+        if (targetBackend == CliBackend.BSS
                 && plan.jobs().stream().anyMatch(
                         job -> job.destination() == null
                 )) {
@@ -2241,10 +2225,46 @@ public final class ScssfxMain implements Callable<Integer> {
         out.flush();
     }
 
+    /// Identifies the compiler backend selected by a command-line target.
+    @NotNullByDefault
+    private enum CliBackend {
+        /// Emits standard CSS.
+        CSS,
+
+        /// Emits JavaFX-compatible CSS.
+        JAVAFX_CSS,
+
+        /// Emits JavaFX binary CSS.
+        BSS
+    }
+
+    /// Describes one parsed command-line output target.
+    ///
+    /// @param backend the compiler backend
+    /// @param javaFXTarget the selected JavaFX release, or {@code null} for
+    /// standard CSS
+    @NotNullByDefault
+    private record CliTarget(
+            CliBackend backend,
+            @Nullable JavaFXTarget javaFXTarget
+    ) {
+        /// Validates the backend and JavaFX-version relationship.
+        private CliTarget {
+            Objects.requireNonNull(backend, "backend");
+            var requiresJavaFX = backend != CliBackend.CSS;
+            if (requiresJavaFX != (javaFXTarget != null)) {
+                throw new IllegalArgumentException(
+                        "JavaFX backends must select a JavaFX target"
+                );
+            }
+        }
+    }
+
     /// Contains immutable settings shared by every job in one invocation.
     ///
-    /// @param targetName validated output target name
-    /// @param javaFxTarget selected JavaFX release
+    /// @param targetBackend the selected output backend
+    /// @param javaFxTarget selected JavaFX release, or {@code null} for
+    /// standard CSS
     /// @param outputStyle text output style, or {@code null} for BSS
     /// @param compileOptions compiler options
     /// @param outputPolicy resolved output policy
@@ -2256,8 +2276,8 @@ public final class ScssfxMain implements Callable<Integer> {
     /// @param err standard error
     @NotNullByDefault
     private record ExecutionContext(
-            String targetName,
-            JavaFXTarget javaFxTarget,
+            CliBackend targetBackend,
+            @Nullable JavaFXTarget javaFxTarget,
             @Nullable OutputStyle outputStyle,
             CompileOptions compileOptions,
             OutputPolicy outputPolicy,
@@ -2270,8 +2290,7 @@ public final class ScssfxMain implements Callable<Integer> {
     ) {
         /// Creates a non-null execution context.
         private ExecutionContext {
-            Objects.requireNonNull(targetName, "targetName");
-            Objects.requireNonNull(javaFxTarget, "javaFxTarget");
+            Objects.requireNonNull(targetBackend, "targetBackend");
             Objects.requireNonNull(compileOptions, "compileOptions");
             Objects.requireNonNull(outputPolicy, "outputPolicy");
             Objects.requireNonNull(stdinUrl, "stdinUrl");
@@ -2364,25 +2383,48 @@ public final class ScssfxMain implements Callable<Integer> {
         }
     }
 
-    /// Resolves the JavaFX release selected by the command-line option.
+    /// Resolves the complete output target selected by the command line.
     ///
-    /// @return the selected JavaFX target
-    /// @throws IllegalArgumentException if the option value is unsupported
-    private JavaFXTarget selectedJavaFxTarget() {
-        try {
-            if (!javaFxTargetVersion.matches("[0-9]+")) {
-                throw new NumberFormatException();
-            }
-            return JavaFXTarget.forVersion(
-                    Integer.parseInt(javaFxTargetVersion)
-            );
-        } catch (IllegalArgumentException exception) {
-            throw new IllegalArgumentException(
-                    "unsupported JavaFX target '" + javaFxTargetVersion
-                            + "'; expected an integer from 8 through 27",
-                    exception
-            );
+    /// @return the parsed backend and optional JavaFX release
+    /// @throws IllegalArgumentException if the target value is unsupported
+    private CliTarget selectedTarget() {
+        if (target.equals("css")) {
+            return new CliTarget(CliBackend.CSS, null);
         }
+
+        var separator = target.indexOf("/javafx@");
+        if (separator <= 0
+                || separator != target.lastIndexOf("/javafx@")) {
+            throw unsupportedTarget();
+        }
+        var format = target.substring(0, separator);
+        var versionText = target.substring(separator + "/javafx@".length());
+        if ((!format.equals("css") && !format.equals("bss"))
+                || !versionText.matches("(?:[89]|1[0-9]|2[0-7])")) {
+            throw unsupportedTarget();
+        }
+
+        var javaFXTarget = JavaFXTarget.forVersion(
+                Integer.parseInt(versionText)
+        );
+        return new CliTarget(
+                format.equals("css")
+                        ? CliBackend.JAVAFX_CSS
+                        : CliBackend.BSS,
+                javaFXTarget
+        );
+    }
+
+    /// Creates the usage failure for an unsupported output target.
+    ///
+    /// @return the target-specific usage failure
+    private IllegalArgumentException unsupportedTarget() {
+        return new IllegalArgumentException(
+                "unsupported output target '" + target
+                        + "'; expected 'css', 'css/javafx@8' through "
+                        + "'css/javafx@27', or 'bss/javafx@8' through "
+                        + "'bss/javafx@27'"
+        );
     }
 
     /// Resolves the output style selected by the command-line option.

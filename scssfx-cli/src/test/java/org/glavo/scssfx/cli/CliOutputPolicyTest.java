@@ -464,8 +464,7 @@ final class CliOutputPolicyTest {
                 0,
                 commandLine("", directory, new StringWriter(), new StringWriter())
                         .execute(
-                                "--target=javafx-css",
-                                "--javafx-target=27",
+                                "--target=css/javafx@27",
                                 input.toString(),
                                 output.toString()
                         )
@@ -643,7 +642,7 @@ final class CliOutputPolicyTest {
         assertUsageFailure(
                 directory,
                 "source maps are not supported for the bss target",
-                "--target=bss",
+                "--target=bss/javafx@17",
                 "--source-map",
                 input.toString(),
                 output.toString()
