@@ -589,9 +589,10 @@ suppress explicit Sass `@warn` or `@debug` statements. By default, each
 deprecation type is reported at most five times and a successful compilation
 adds an omission summary; `verbose` disables that limit. Fatal deprecations
 take precedence over silencing, while dependency suppression takes precedence
-over fatal processing. Evaluation-time deprecations, including unit-bearing
-`math.random()` limits, use the same processing pipeline as parser
-deprecations.
+over fatal processing. Evaluation-time deprecations use the same processing
+pipeline as parser deprecations. This includes legacy units accepted by list
+indexes, `math.random()`, HSL/HWB constructors, color weights, color channel
+updates, alpha updates, and hue adjustment.
 
 `SassDeprecation` is the typed Dart Sass 1.101.3 deprecation registry. It
 exposes the command-line ID, activation and obsolescence versions, status, and

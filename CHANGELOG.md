@@ -30,6 +30,8 @@ This is the first development release.
 - Configurable synchronous `SassLogger` delivery, typed Dart Sass 1.101.3
   deprecation metadata, dependency warning suppression, repetitive-warning
   limits, and fatal, silence, future, and verbose deprecation policies.
+  Function-unit diagnostics cover list indexes, random limits, legacy color
+  constructors, color weights, channel and alpha updates, and hue adjustment.
 - CLI load paths, ordered platform-aware `SASS_PATH` resolution across compile,
   update/watch, and interactive modes, quiet output, dependency warning
   suppression, and fatal, silence, future, and verbose deprecation options.

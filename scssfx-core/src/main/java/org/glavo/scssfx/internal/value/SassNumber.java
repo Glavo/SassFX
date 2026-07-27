@@ -175,6 +175,36 @@ public final class SassNumber implements SassValue {
         return denominatorUnits;
     }
 
+    /// Returns Sass source that removes this number's units from a variable.
+    ///
+    /// The expression preserves the variable's numeric magnitude. When
+    /// {@code targetUnit} is non-null, the expression then applies that unit.
+    /// The variable name must not include the leading dollar sign.
+    ///
+    /// @param name the variable name without a leading dollar sign
+    /// @param targetUnit the unit to apply after removing existing units, or
+    ///                   {@code null} for a unitless result
+    /// @return the conversion expression
+    public String unitSuggestion(
+            String name,
+            @Nullable String targetUnit
+    ) {
+        Objects.requireNonNull(name, "name");
+        var result = new StringBuilder("$").append(name);
+        for (var unit : denominatorUnits) {
+            result.append(" * 1").append(unit);
+        }
+        for (var unit : numeratorUnits) {
+            result.append(" / 1").append(unit);
+        }
+        if (targetUnit != null) {
+            result.append(" * 1").append(targetUnit);
+        }
+        return numeratorUnits.isEmpty()
+                ? result.toString()
+                : "calc(" + result + ")";
+    }
+
     /// Returns whether this number has no units.
     ///
     /// @return whether both unit lists are empty

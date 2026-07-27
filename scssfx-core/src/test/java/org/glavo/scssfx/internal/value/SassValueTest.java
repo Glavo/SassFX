@@ -353,6 +353,31 @@ final class SassValueTest {
         );
     }
 
+    /// Builds migration expressions that remove and optionally replace units.
+    @Test
+    void suggestsUnitConversions() {
+        assertEquals(
+                "calc($value / 1px)",
+                SassNumber.of(1, "px").unitSuggestion("value", null)
+        );
+        assertEquals(
+                "$value * 1s",
+                SassNumber.withUnits(
+                        1,
+                        List.of(),
+                        List.of("s")
+                ).unitSuggestion("value", null)
+        );
+        assertEquals(
+                "calc($value * 1s / 1px * 1%)",
+                SassNumber.withUnits(
+                        1,
+                        List.of("px"),
+                        List.of("s")
+                ).unitSuggestion("value", "%")
+        );
+    }
+
     /// Verifies that canonical value equality provides the map duplicate-key foundation.
     @Test
     void usesCanonicalEqualityForMapKeys() {

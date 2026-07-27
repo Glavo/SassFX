@@ -63,6 +63,9 @@ public final class BuiltInFunctions {
     /// Contains the stable deprecation identifier for string-based {@code meta.call()}.
     private static final String CALL_STRING_CODE = "call-string";
 
+    /// Contains the stable deprecation identifier for invalid function units.
+    private static final String FUNCTION_UNITS_CODE = "function-units";
+
     /// Contains the caller guidance for string-based {@code meta.call()}.
     private static final String CALL_STRING_DEPRECATION_MESSAGE =
             "Passing a string to call() is deprecated and will be illegal in Dart Sass 2.0.0.\n\n"
@@ -99,10 +102,11 @@ public final class BuiltInFunctions {
         ));
         // hwb/hsl/hsla use rest-parameter dispatch so both $channels and
         // multi-arg named forms ($hue/$saturation/...) resolve correctly.
-        register(functions, BuiltInCallable.withRest(
+        register(functions, BuiltInCallable.contextualWithRest(
                 "hwb",
                 List.of(),
                 "args",
+                0,
                 BuiltInFunctions::hwbRest
         ));
         register(functions, BuiltInCallable.of(
@@ -129,22 +133,29 @@ public final class BuiltInFunctions {
                 1,
                 BuiltInFunctions::cssOklch
         ));
-        register(functions, BuiltInCallable.withRest(
+        register(functions, BuiltInCallable.contextualWithRest(
                 "hsl",
                 List.of(),
                 "args",
+                0,
                 BuiltInFunctions::hslRest
         ));
-        register(functions, BuiltInCallable.withRest(
+        register(functions, BuiltInCallable.contextualWithRest(
                 "hsla",
                 List.of(),
                 "args",
+                0,
                 BuiltInFunctions::hslaRest
         ));
         register(functions, BuiltInCallable.of("quote", List.of("string"), BuiltInFunctions::quote));
         register(functions, BuiltInCallable.of("unquote", List.of("string"), BuiltInFunctions::unquote));
         register(functions, BuiltInCallable.of("length", List.of("list"), BuiltInFunctions::length));
-        register(functions, BuiltInCallable.of("nth", List.of("list", "n"), BuiltInFunctions::nth));
+        register(functions, BuiltInCallable.contextual(
+                "nth",
+                List.of(Param.required("list"), Param.required("n")),
+                2,
+                BuiltInFunctions::nth
+        ));
         register(functions, BuiltInCallable.of(
                 "join",
                 List.of(
@@ -303,9 +314,14 @@ public final class BuiltInFunctions {
                 List.of("list", "value"),
                 BuiltInFunctions::index
         ));
-        register(functions, BuiltInCallable.of(
+        register(functions, BuiltInCallable.contextual(
                 "set-nth",
-                List.of("list", "n", "value"),
+                List.of(
+                        Param.required("list"),
+                        Param.required("n"),
+                        Param.required("value")
+                ),
+                3,
                 BuiltInFunctions::setNth
         ));
         register(functions, BuiltInCallable.withRest(
@@ -349,7 +365,7 @@ public final class BuiltInFunctions {
         ));
         // Global mix() shares the Color 4 $method parameter with color.mix();
         // non-legacy colors require $method even when called without a namespace.
-        register(functions, BuiltInCallable.of(
+        register(functions, BuiltInCallable.contextual(
                 "mix",
                 List.of(
                         Param.required("color1"),
@@ -362,7 +378,7 @@ public final class BuiltInFunctions {
         ));
         // Global invert accepts $space for Color 4 modern colors; callers are
         // still warned by the global-builtin deprecation path.
-        register(functions, BuiltInCallable.of(
+        register(functions, BuiltInCallable.contextual(
                 "invert",
                 List.of(
                         Param.required("color"),
@@ -382,9 +398,13 @@ public final class BuiltInFunctions {
                 List.of("color"),
                 BuiltInFunctions::globalComplement
         ));
-        register(functions, BuiltInCallable.of(
+        register(functions, BuiltInCallable.contextual(
                 "adjust-hue",
-                List.of("color", "degrees"),
+                List.of(
+                        Param.required("color"),
+                        Param.required("degrees")
+                ),
+                2,
                 BuiltInFunctions::adjustHue
         ));
         register(functions, BuiltInCallable.of(
@@ -431,22 +451,25 @@ public final class BuiltInFunctions {
                 List.of("color", "amount"),
                 args -> transparentizeNamed(args, "fade-out")
         ));
-        register(functions, BuiltInCallable.withRest(
+        register(functions, BuiltInCallable.contextualWithRest(
                 "adjust-color",
-                List.of("color"),
+                List.of(Param.required("color")),
                 "kwargs",
+                1,
                 BuiltInFunctions::globalAdjustColor
         ));
-        register(functions, BuiltInCallable.withRest(
+        register(functions, BuiltInCallable.contextualWithRest(
                 "scale-color",
-                List.of("color"),
+                List.of(Param.required("color")),
                 "kwargs",
+                1,
                 BuiltInFunctions::globalScaleColor
         ));
-        register(functions, BuiltInCallable.withRest(
+        register(functions, BuiltInCallable.contextualWithRest(
                 "change-color",
-                List.of("color"),
+                List.of(Param.required("color")),
                 "kwargs",
+                1,
                 BuiltInFunctions::globalChangeColor
         ));
         register(functions, BuiltInCallable.of(
@@ -753,7 +776,7 @@ public final class BuiltInFunctions {
         register(functions, removedColorFunction("fade-in", "alpha", false));
         register(functions, removedColorFunction("transparentize", "alpha", true));
         register(functions, removedColorFunction("fade-out", "alpha", true));
-        register(functions, BuiltInCallable.of(
+        register(functions, BuiltInCallable.contextual(
                 "mix",
                 List.of(
                         Param.required("color1"),
@@ -764,7 +787,7 @@ public final class BuiltInFunctions {
                 2,
                 BuiltInFunctions::colorMix
         ));
-        register(functions, BuiltInCallable.of(
+        register(functions, BuiltInCallable.contextual(
                 "invert",
                 List.of(
                         Param.required("color"),
@@ -857,22 +880,25 @@ public final class BuiltInFunctions {
                 1,
                 BuiltInFunctions::colorToGamut
         ));
-        register(functions, BuiltInCallable.withRest(
+        register(functions, BuiltInCallable.contextualWithRest(
                 "adjust",
-                List.of("color"),
+                List.of(Param.required("color")),
                 "kwargs",
+                1,
                 BuiltInFunctions::colorAdjust
         ));
-        register(functions, BuiltInCallable.withRest(
+        register(functions, BuiltInCallable.contextualWithRest(
                 "scale",
-                List.of("color"),
+                List.of(Param.required("color")),
                 "kwargs",
+                1,
                 BuiltInFunctions::colorScale
         ));
-        register(functions, BuiltInCallable.withRest(
+        register(functions, BuiltInCallable.contextualWithRest(
                 "change",
-                List.of("color"),
+                List.of(Param.required("color")),
                 "kwargs",
+                1,
                 BuiltInFunctions::colorChange
         ));
         moduleFunction(functions, global, "ie-hex-str", "ie-hex-str");
@@ -1339,12 +1365,18 @@ public final class BuiltInFunctions {
     }
 
     /// Dispatches {@code hwb(...)} overloads from a rest argument list.
-    private static SassValue hwbRest(List<SassValue> args) {
-        return hwbOrChannels(restArgumentList(args));
+    private static SassValue hwbRest(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
+        return hwbOrChannels(context, restArgumentList(args));
     }
 
     /// Implements hwb positional and named overload selection.
-    private static SassValue hwbOrChannels(SassArgumentList rest) {
+    private static SassValue hwbOrChannels(
+            BuiltInCallable.Context context,
+            SassArgumentList rest
+    ) {
         var values = new ArrayList<>(rest.asList());
         var keywords = new LinkedHashMap<>(rest.keywords());
         if (keywords.containsKey("channels")) {
@@ -1360,6 +1392,7 @@ public final class BuiltInFunctions {
                 );
             }
             return CssColorChannels.parseFixedSpace(
+                    context,
                     "hwb",
                     Objects.requireNonNull(channels),
                     ColorSpace.HWB
@@ -1383,11 +1416,18 @@ public final class BuiltInFunctions {
                                 + (4 + values.size()) + " were passed."
                 );
             }
-            return hwbChannels(hue, whiteness, blackness, alphaArg);
+            return hwbChannels(
+                    context,
+                    hue,
+                    whiteness,
+                    blackness,
+                    alphaArg
+            );
         }
         if (!keywords.isEmpty()) {
             if (keywords.size() == 1 && keywords.containsKey("alpha") && values.size() == 3) {
                 return hwbChannels(
+                        context,
                         values.get(0),
                         values.get(1),
                         values.get(2),
@@ -1402,7 +1442,12 @@ public final class BuiltInFunctions {
             throw new SassValueException("Missing argument $channels.");
         }
         if (values.size() == 1) {
-            return CssColorChannels.parseFixedSpace("hwb", values.get(0), ColorSpace.HWB);
+            return CssColorChannels.parseFixedSpace(
+                    context,
+                    "hwb",
+                    values.get(0),
+                    ColorSpace.HWB
+            );
         }
         if (values.size() == 2) {
             // dart-sass rejects two-arg hwb() with a fixed-arity message.
@@ -1411,10 +1456,17 @@ public final class BuiltInFunctions {
             );
         }
         if (values.size() == 3) {
-            return hwbChannels(values.get(0), values.get(1), values.get(2), null);
+            return hwbChannels(
+                    context,
+                    values.get(0),
+                    values.get(1),
+                    values.get(2),
+                    null
+            );
         }
         if (values.size() == 4) {
             return hwbChannels(
+                    context,
                     values.get(0),
                     values.get(1),
                     values.get(2),
@@ -1428,6 +1480,7 @@ public final class BuiltInFunctions {
 
     /// Builds an HWB color from individual channel arguments.
     private static SassValue hwbChannels(
+            BuiltInCallable.Context context,
             @Nullable SassValue hueValue,
             @Nullable SassValue whitenessValue,
             @Nullable SassValue blacknessValue,
@@ -1455,7 +1508,11 @@ public final class BuiltInFunctions {
             }
             return new SassString(builder.append(')').toString(), false);
         }
-        double hue = angleValueLenient(channelTypeNumber(hueValue, "hue"), "hue");
+        double hue = angleValue(
+                context,
+                channelTypeNumber(hueValue, "hue"),
+                "hue"
+        );
         SassNumber whitenessNumber = channelTypeNumber(whitenessValue, "whiteness");
         SassNumber blacknessNumber = channelTypeNumber(blacknessValue, "blackness");
         assertPercentUnit(whitenessNumber, "whiteness");
@@ -1502,17 +1559,27 @@ public final class BuiltInFunctions {
     }
 
     /// Dispatches {@code hsl(...)} overloads from a rest argument list.
-    private static SassValue hslRest(List<SassValue> args) {
-        return hslOrHsla("hsl", restArgumentList(args));
+    private static SassValue hslRest(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
+        return hslOrHsla(context, "hsl", restArgumentList(args));
     }
 
     /// Dispatches {@code hsla(...)} overloads from a rest argument list.
-    private static SassValue hslaRest(List<SassValue> args) {
-        return hslOrHsla("hsla", restArgumentList(args));
+    private static SassValue hslaRest(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
+        return hslOrHsla(context, "hsla", restArgumentList(args));
     }
 
     /// Implements hsl/hsla positional and named overload selection.
-    private static SassValue hslOrHsla(String name, SassArgumentList rest) {
+    private static SassValue hslOrHsla(
+            BuiltInCallable.Context context,
+            String name,
+            SassArgumentList rest
+    ) {
         var values = new ArrayList<>(rest.asList());
         var keywords = new LinkedHashMap<>(rest.keywords());
         if (keywords.containsKey("channels")) {
@@ -1528,6 +1595,7 @@ public final class BuiltInFunctions {
                 );
             }
             return CssColorChannels.parseFixedSpace(
+                    context,
                     name,
                     Objects.requireNonNull(channels),
                     ColorSpace.HSL
@@ -1551,11 +1619,19 @@ public final class BuiltInFunctions {
                                 + (4 + values.size()) + " were passed."
                 );
             }
-            return hslChannels(name, hue, saturation, lightness, alphaArg);
+            return hslChannels(
+                    context,
+                    name,
+                    hue,
+                    saturation,
+                    lightness,
+                    alphaArg
+            );
         }
         if (!keywords.isEmpty()) {
             if (keywords.size() == 1 && keywords.containsKey("alpha") && values.size() == 3) {
                 return hslChannels(
+                        context,
                         name,
                         values.get(0),
                         values.get(1),
@@ -1575,7 +1651,12 @@ public final class BuiltInFunctions {
             throw new SassValueException("Missing argument $channels.");
         }
         if (values.size() == 1) {
-            return CssColorChannels.parseFixedSpace(name, values.get(0), ColorSpace.HSL);
+            return CssColorChannels.parseFixedSpace(
+                    context,
+                    name,
+                    values.get(0),
+                    ColorSpace.HSL
+            );
         }
         if (values.size() == 2) {
             // hsl(123, var(--foo)) is valid CSS because --foo might expand.
@@ -1585,10 +1666,18 @@ public final class BuiltInFunctions {
             throw new SassValueException("Missing argument $lightness.");
         }
         if (values.size() == 3) {
-            return hslChannels(name, values.get(0), values.get(1), values.get(2), null);
+            return hslChannels(
+                    context,
+                    name,
+                    values.get(0),
+                    values.get(1),
+                    values.get(2),
+                    null
+            );
         }
         if (values.size() == 4) {
             return hslChannels(
+                    context,
                     name,
                     values.get(0),
                     values.get(1),
@@ -1603,6 +1692,7 @@ public final class BuiltInFunctions {
 
     /// Builds an HSL color from individual channel arguments.
     private static SassValue hslChannels(
+            BuiltInCallable.Context context,
             String name,
             @Nullable SassValue hueValue,
             @Nullable SassValue saturationValue,
@@ -1631,21 +1721,32 @@ public final class BuiltInFunctions {
             }
             return CssColorChannels.functionString(name, specialArgs);
         }
-        double hue = angleValueLenient(numberArgument(hueValue, "hue"), "hue");
+        double hue = angleValue(
+                context,
+                numberArgument(hueValue, "hue"),
+                "hue"
+        );
+        var saturationNumber = numberArgument(
+                saturationValue,
+                "saturation"
+        );
+        checkPercent(context, saturationNumber, "saturation");
         // Saturation is lower-clamped so negative values become 0% rather than
         // inverting the hue via forSpace preprocessing.
         double saturation = Math.max(
                 0.0,
                 percentageOrUnitlessChannel(
-                        numberArgument(saturationValue, "saturation"),
+                        saturationNumber,
                         "saturation"
                 )
         );
         if (Double.isNaN(saturation)) {
             saturation = 0.0;
         }
+        var lightnessNumber = numberArgument(lightnessValue, "lightness");
+        checkPercent(context, lightnessNumber, "lightness");
         double lightness = percentageOrUnitlessChannel(
-                numberArgument(lightnessValue, "lightness"),
+                lightnessNumber,
                 "lightness"
         );
         double alphaValue = alphaArg != null ? alpha(alphaArg) : 1.0;
@@ -1707,8 +1808,12 @@ public final class BuiltInFunctions {
         return SassNumber.of(args.get(0).lengthAsList(), null);
     }
 
-    private static SassValue nth(List<SassValue> args) {
+    private static SassValue nth(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
         var list = args.get(0);
+        deprecateUnitfulIndex(context, args.get(1), "n");
         var index = list.sassIndexToListIndex(args.get(1), list.lengthAsList());
         return list.asList().get(index);
     }
@@ -2542,7 +2647,7 @@ public final class BuiltInFunctions {
                             + "To preserve current behavior: "
                             + "math.random(math.div($limit, 1" + units + "))\n\n"
                             + "More info: https://sass-lang.com/d/function-units",
-                    "function-units"
+                    FUNCTION_UNITS_CODE
             );
         }
         int limitScalar;
@@ -3291,9 +3396,13 @@ public final class BuiltInFunctions {
         return SassNull.NULL;
     }
 
-    private static SassValue setNth(List<SassValue> args) {
+    private static SassValue setNth(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
         var list = args.get(0);
         var contents = new ArrayList<>(list.asList());
+        deprecateUnitfulIndex(context, args.get(1), "n");
         var index = list.sassIndexToListIndex(args.get(1), contents.size());
         contents.set(index, args.get(2));
         var separator = list.separator() == ListSeparator.UNDECIDED
@@ -3442,7 +3551,10 @@ public final class BuiltInFunctions {
     ///
     /// @param args the two colors, weight, and optional interpolation method
     /// @return the mixed color
-    private static SassValue colorMix(List<SassValue> args) {
+    private static SassValue colorMix(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
         var first = colorArgument(args.get(0), "color1");
         var second = colorArgument(args.get(1), "color2");
         var weight = numberArgument(args.get(2), "weight");
@@ -3457,6 +3569,7 @@ public final class BuiltInFunctions {
                     false
             );
         }
+        checkPercent(context, weight, "weight");
         if (!first.isLegacy()) {
             throw new SassValueException(
                     "$color1: To use color.mix() with non-legacy color " + first
@@ -3477,7 +3590,10 @@ public final class BuiltInFunctions {
     ///
     /// @param args the color or number, weight, and optional output space
     /// @return the inverted color or an unquoted CSS {@code invert()} function
-    private static SassValue colorInvert(List<SassValue> args) {
+    private static SassValue colorInvert(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
         var weightNumber = numberArgument(args.get(1), "weight");
         var value = args.get(0);
         if (value instanceof SassNumber number) {
@@ -3506,6 +3622,7 @@ public final class BuiltInFunctions {
                                 + ", you must provide a $space."
                 );
             }
+            checkPercent(context, weightNumber, "weight");
             return color.inverted().mixedWith(color, legacyWeight(weightNumber, "weight"));
         }
 
@@ -3639,10 +3756,17 @@ public final class BuiltInFunctions {
     }
 
     /// Implements the deprecated global {@code adjust-hue()} function.
-    private static SassValue adjustHue(List<SassValue> args) {
+    private static SassValue adjustHue(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
         var color = colorArgument(args.get(0), "color");
         requireLegacyColorFunction(color, "adjust-hue");
-        double degrees = angleValue(args.get(1), "degrees");
+        double degrees = angleValue(
+                context,
+                numberArgument(args.get(1), "degrees"),
+                "degrees"
+        );
         return color.changeHsl(color.hue() + degrees, null, null, null);
     }
 
@@ -3771,18 +3895,27 @@ public final class BuiltInFunctions {
     }
 
     /// Global {@code adjust-color()} keyword form.
-    private static SassValue globalAdjustColor(List<SassValue> args) {
-        return updateColorComponents(args, ColorUpdateMode.ADJUST);
+    private static SassValue globalAdjustColor(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
+        return updateColorComponents(context, args, ColorUpdateMode.ADJUST);
     }
 
     /// Global {@code scale-color()} keyword form.
-    private static SassValue globalScaleColor(List<SassValue> args) {
-        return updateColorComponents(args, ColorUpdateMode.SCALE);
+    private static SassValue globalScaleColor(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
+        return updateColorComponents(context, args, ColorUpdateMode.SCALE);
     }
 
     /// Global {@code change-color()} keyword form.
-    private static SassValue globalChangeColor(List<SassValue> args) {
-        return updateColorComponents(args, ColorUpdateMode.CHANGE);
+    private static SassValue globalChangeColor(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
+        return updateColorComponents(context, args, ColorUpdateMode.CHANGE);
     }
 
     /// Implements {@code ie-hex-str($color)}.
@@ -3836,11 +3969,6 @@ public final class BuiltInFunctions {
     ///
     /// Unknown units are accepted as bare magnitudes during the function-units
     /// deprecation period, matching dart-sass.
-    private static double angleValue(SassValue value, String name) {
-        var number = numberArgument(value, name);
-        return angleValueLenient(number, name);
-    }
-
     /// Returns a grayscale legacy RGB color or preserves a plain-CSS number filter.
     ///
     /// @param args the one color or number argument
@@ -4296,24 +4424,33 @@ public final class BuiltInFunctions {
     ///
     /// @param args the color and keyword argument list
     /// @return the adjusted color
-    private static SassValue colorAdjust(List<SassValue> args) {
-        return updateColorComponents(args, ColorUpdateMode.ADJUST);
+    private static SassValue colorAdjust(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
+        return updateColorComponents(context, args, ColorUpdateMode.ADJUST);
     }
 
     /// Scales legacy RGB or HSL channels toward their channel extremes.
     ///
     /// @param args the color and keyword argument list
     /// @return the scaled color
-    private static SassValue colorScale(List<SassValue> args) {
-        return updateColorComponents(args, ColorUpdateMode.SCALE);
+    private static SassValue colorScale(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
+        return updateColorComponents(context, args, ColorUpdateMode.SCALE);
     }
 
     /// Replaces legacy RGB or HSL channels with absolute values.
     ///
     /// @param args the color and keyword argument list
     /// @return the changed color
-    private static SassValue colorChange(List<SassValue> args) {
-        return updateColorComponents(args, ColorUpdateMode.CHANGE);
+    private static SassValue colorChange(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
+        return updateColorComponents(context, args, ColorUpdateMode.CHANGE);
     }
 
     /// Identifies how {@code color.adjust}, {@code color.scale}, and
@@ -4337,6 +4474,7 @@ public final class BuiltInFunctions {
     /// @param mode the update algorithm
     /// @return the rewritten color in the original space
     private static SassValue updateColorComponents(
+            BuiltInCallable.Context context,
             List<SassValue> args,
             ColorUpdateMode mode
     ) {
@@ -4398,8 +4536,22 @@ public final class BuiltInFunctions {
         }
 
         SassColor result = switch (mode) {
-            case CHANGE -> changeColor(color, channel0Arg, channel1Arg, channel2Arg, alphaArg);
-            case ADJUST -> adjustColor(color, channel0Arg, channel1Arg, channel2Arg, alphaArg);
+            case CHANGE -> changeColor(
+                    context,
+                    color,
+                    channel0Arg,
+                    channel1Arg,
+                    channel2Arg,
+                    alphaArg
+            );
+            case ADJUST -> adjustColor(
+                    context,
+                    color,
+                    channel0Arg,
+                    channel1Arg,
+                    channel2Arg,
+                    alphaArg
+            );
             case SCALE -> scaleColor(color, channel0Arg, channel1Arg, channel2Arg, alphaArg);
         };
         return result.toSpace(originalColor.space(), false);
@@ -4407,6 +4559,7 @@ public final class BuiltInFunctions {
 
     /// Implements absolute channel replacement.
     private static SassColor changeColor(
+            BuiltInCallable.Context context,
             SassColor color,
             @Nullable SassValue channel0Arg,
             @Nullable SassValue channel1Arg,
@@ -4415,15 +4568,16 @@ public final class BuiltInFunctions {
     ) {
         return SassColor.forSpace(
                 color.space(),
-                channelValueForChange(channel0Arg, color, 0),
-                channelValueForChange(channel1Arg, color, 1),
-                channelValueForChange(channel2Arg, color, 2),
-                alphaValueForChange(color, alphaArg)
+                channelValueForChange(context, channel0Arg, color, 0),
+                channelValueForChange(context, channel1Arg, color, 1),
+                channelValueForChange(context, channel2Arg, color, 2),
+                alphaValueForChange(context, color, alphaArg)
         );
     }
 
     /// Implements additive channel adjustment.
     private static SassColor adjustColor(
+            BuiltInCallable.Context context,
             SassColor color,
             @Nullable SassValue channel0Arg,
             @Nullable SassValue channel1Arg,
@@ -4432,6 +4586,7 @@ public final class BuiltInFunctions {
     ) {
         var channels = color.space().channels();
         @Nullable Double alpha = adjustChannel(
+                context,
                 color,
                 ColorChannel.ALPHA,
                 color.alphaOrNull(),
@@ -4443,18 +4598,21 @@ public final class BuiltInFunctions {
         return SassColor.forSpace(
                 color.space(),
                 adjustChannel(
+                        context,
                         color,
                         channels.get(0),
                         color.channel0OrNull(),
                         channel0Arg == null ? null : numberArgument(channel0Arg, channels.get(0).name())
                 ),
                 adjustChannel(
+                        context,
                         color,
                         channels.get(1),
                         color.channel1OrNull(),
                         channel1Arg == null ? null : numberArgument(channel1Arg, channels.get(1).name())
                 ),
                 adjustChannel(
+                        context,
                         color,
                         channels.get(2),
                         color.channel2OrNull(),
@@ -4504,6 +4662,7 @@ public final class BuiltInFunctions {
 
     /// Resolves one absolute channel value for {@code color.change()}.
     private static @Nullable Double channelValueForChange(
+            BuiltInCallable.Context context,
             @Nullable SassValue argument,
             SassColor color,
             int index
@@ -4529,11 +4688,12 @@ public final class BuiltInFunctions {
         // period, matching dart-sass {@code _colorFromChannels}.
         if (channel.isPolarAngle()
                 && (color.space() == ColorSpace.HSL || color.space() == ColorSpace.HWB)) {
-            return angleValueLenient(number, channel.name());
+            return angleValue(context, number, channel.name());
         }
         if (color.space() == ColorSpace.HSL
                 && channel instanceof ColorChannel.Linear
                 && ("saturation".equals(channel.name()) || "lightness".equals(channel.name()))) {
+            checkPercent(context, number, channel.name());
             return channelFromValue(channel, forcePercent(number), false);
         }
         if (color.space() == ColorSpace.HWB
@@ -4552,6 +4712,7 @@ public final class BuiltInFunctions {
 
     /// Resolves alpha for {@code color.change()}.
     private static @Nullable Double alphaValueForChange(
+            BuiltInCallable.Context context,
             SassColor color,
             @Nullable SassValue alphaArg
     ) {
@@ -4572,6 +4733,7 @@ public final class BuiltInFunctions {
         if (number.numeratorUnits().equals(List.of("%")) && number.denominatorUnits().isEmpty()) {
             return number.valueInRange(0.0, 100.0, "alpha") / 100.0;
         }
+        deprecateChangeAlpha(context, number);
         // Preserve historical unitless interpretation for non-percent units.
         return number.valueInRange(0.0, 1.0, "alpha");
     }
@@ -4584,22 +4746,130 @@ public final class BuiltInFunctions {
         return SassNumber.of(number.value(), "%");
     }
 
-    /// Converts an angle argument to degrees, accepting unknown units as bare magnitudes.
+    /// Converts an angle to degrees and reports legacy non-angle units.
     ///
-    /// Matches dart-sass {@code _angleValue} during the function-units deprecation period.
-    private static double angleValueLenient(SassNumber number, String name) {
+    /// @param context the invocation receiving a possible deprecation
+    /// @param number the angle argument
+    /// @param name the parameter name without a leading dollar sign
+    /// @return the degree value or legacy bare magnitude
+    static double angleValue(
+            BuiltInCallable.Context context,
+            SassNumber number,
+            String name
+    ) {
         if (number.isUnitless()) {
             return number.value();
         }
         try {
             return number.coerce(List.of("deg"), List.of()).value();
         } catch (SassValueException exception) {
+            context.deprecate(
+                    "$" + name + ": Passing a unit other than deg ("
+                            + number + ") is deprecated.\n\n"
+                            + "To preserve current behavior: "
+                            + number.unitSuggestion(name, null) + "\n\n"
+                            + "See https://sass-lang.com/d/function-units",
+                    FUNCTION_UNITS_CODE
+            );
             return number.value();
         }
     }
 
+    /// Reports a number that legacy color behavior treats as a percentage.
+    ///
+    /// @param context the invocation receiving a possible deprecation
+    /// @param number the percentage argument
+    /// @param name the parameter name without a leading dollar sign
+    static void checkPercent(
+            BuiltInCallable.Context context,
+            SassNumber number,
+            String name
+    ) {
+        if (hasPercentUnit(number)) {
+            return;
+        }
+        context.deprecate(
+                "$" + name + ": Passing a number without unit % ("
+                        + number + ") is deprecated.\n\n"
+                        + "To preserve current behavior: "
+                        + number.unitSuggestion(name, "%") + "\n\n"
+                        + "More info: https://sass-lang.com/d/function-units",
+                FUNCTION_UNITS_CODE
+        );
+    }
+
+    /// Reports a unitful list index accepted for legacy compatibility.
+    ///
+    /// @param context the invocation receiving the deprecation
+    /// @param value the list index argument
+    /// @param name the parameter name without a leading dollar sign
+    private static void deprecateUnitfulIndex(
+            BuiltInCallable.Context context,
+            SassValue value,
+            String name
+    ) {
+        var number = numberArgument(value, name);
+        if (number.isUnitless()) {
+            return;
+        }
+        context.deprecate(
+                "$" + name + ": Passing a number with unit "
+                        + number.unitString() + " is deprecated.\n\n"
+                        + "To preserve current behavior: "
+                        + number.unitSuggestion(name, null) + "\n\n"
+                        + "More info: https://sass-lang.com/d/function-units",
+                FUNCTION_UNITS_CODE
+        );
+    }
+
+    /// Reports a non-percent alpha replacement accepted by color.change().
+    ///
+    /// @param context the invocation receiving the deprecation
+    /// @param number the alpha argument
+    private static void deprecateChangeAlpha(
+            BuiltInCallable.Context context,
+            SassNumber number
+    ) {
+        context.deprecate(
+                "$alpha: Passing a unit other than % (" + number
+                        + ") is deprecated.\n\n"
+                        + "To preserve current behavior: "
+                        + number.unitSuggestion("alpha", null) + "\n\n"
+                        + "See https://sass-lang.com/d/function-units",
+                FUNCTION_UNITS_CODE
+        );
+    }
+
+    /// Reports a unitful alpha delta accepted by color.adjust().
+    ///
+    /// @param context the invocation receiving the deprecation
+    /// @param number the alpha adjustment
+    private static void deprecateAdjustAlpha(
+            BuiltInCallable.Context context,
+            SassNumber number
+    ) {
+        context.deprecate(
+                "$alpha: Passing a number with unit "
+                        + number.unitString() + " is deprecated.\n\n"
+                        + "To preserve current behavior: "
+                        + number.unitSuggestion("alpha", null) + "\n\n"
+                        + "More info: https://sass-lang.com/d/function-units",
+                FUNCTION_UNITS_CODE
+        );
+    }
+
+    /// Returns whether a number has exactly one percent numerator unit.
+    ///
+    /// @param number the number to inspect
+    /// @return whether the number's sole unit is percent
+    private static boolean hasPercentUnit(SassNumber number) {
+        return number.numeratorUnits().equals(List.of("%"))
+                && number.denominatorUnits().isEmpty();
+    }
+
     /// Adjusts one channel by an additive delta.
     private static @Nullable Double adjustChannel(
+            BuiltInCallable.Context context,
             SassColor color,
             ColorChannel channel,
             @Nullable Double oldValue,
@@ -4615,15 +4885,20 @@ public final class BuiltInFunctions {
         if (channel.isPolarAngle()
                 && (color.space() == ColorSpace.HSL || color.space() == ColorSpace.HWB)) {
             // Legacy HSL/HWB still accept non-angle units during deprecation.
-            delta = SassNumber.of(angleValueLenient(adjustment, channel.name()), null);
+            delta = SassNumber.of(
+                    angleValue(context, adjustment, channel.name()),
+                    null
+            );
         } else if ((color.space() == ColorSpace.HSL)
                 && channel instanceof ColorChannel.Linear
                 && ("saturation".equals(channel.name()) || "lightness".equals(channel.name()))) {
             // Legacy HSL treats the numeric magnitude as a percentage regardless of
             // the original unit (dart-sass deprecation period behavior).
+            checkPercent(context, delta, channel.name());
             delta = forcePercent(delta);
         } else if (channel == ColorChannel.ALPHA && !delta.isUnitless()) {
             // Legacy alpha treats any unit (including %) as unitless magnitude.
+            deprecateAdjustAlpha(context, delta);
             delta = SassNumber.of(delta.value(), null);
         }
         var result = oldValue + channelFromValue(channel, delta, false);

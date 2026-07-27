@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.function;
 
+import org.glavo.scssfx.internal.callable.BuiltInCallable;
 import org.glavo.scssfx.internal.value.ListSeparator;
 import org.glavo.scssfx.internal.value.RgbFunctionColorFormat;
 import org.glavo.scssfx.internal.value.SassColor;
@@ -46,10 +47,32 @@ final class CssColorChannels {
             SassValue channels,
             ColorSpace space
     ) {
+        return parseFixedSpace(null, functionName, channels, space);
+    }
+
+    /// Creates a fixed-space color and reports legacy channel-unit usage.
+    ///
+    /// @param context the invocation receiving deprecations, or {@code null}
+    /// @param functionName the constructor name
+    /// @param channels the space-separated channel list, optionally slash-alpha
+    /// @param space the destination color space
+    /// @return the constructed color or plain-CSS function string
+    static SassValue parseFixedSpace(
+            @Nullable BuiltInCallable.Context context,
+            String functionName,
+            SassValue channels,
+            ColorSpace space
+    ) {
         Objects.requireNonNull(functionName, "functionName");
         Objects.requireNonNull(channels, "channels");
         Objects.requireNonNull(space, "space");
-        return parseChannels(functionName, channels, space, "channels");
+        return parseChannels(
+                context,
+                functionName,
+                channels,
+                space,
+                "channels"
+        );
     }
 
     /// Creates a color from {@code color($description)}.
@@ -58,11 +81,18 @@ final class CssColorChannels {
     /// @return the constructed color or plain-CSS function string
     static SassValue parseColorDescription(SassValue description) {
         Objects.requireNonNull(description, "description");
-        return parseChannels("color", description, null, "description");
+        return parseChannels(
+                null,
+                "color",
+                description,
+                null,
+                "description"
+        );
     }
 
     /// Parses a channels argument, preserving special CSS number forms.
     private static SassValue parseChannels(
+            @Nullable BuiltInCallable.Context context,
             String functionName,
             SassValue input,
             @Nullable ColorSpace fixedSpace,
@@ -176,6 +206,7 @@ final class CssColorChannels {
         }
 
         return colorFromChannels(
+                context,
                 functionName,
                 space,
                 new SassList(channels, ListSeparator.SPACE, false),
@@ -362,6 +393,7 @@ final class CssColorChannels {
     }
 
     private static SassColor colorFromChannels(
+            @Nullable BuiltInCallable.Context context,
             String functionName,
             ColorSpace space,
             SassValue channelsValue,
@@ -410,9 +442,24 @@ final class CssColorChannels {
             }
         }
 
-        @Nullable Double channel0 = channelNumber(channels.get(0), space.channels().get(0));
-        @Nullable Double channel1 = channelNumber(channels.get(1), space.channels().get(1));
-        @Nullable Double channel2 = channelNumber(channels.get(2), space.channels().get(2));
+        @Nullable Double channel0 = channelNumber(
+                context,
+                channels.get(0),
+                space,
+                space.channels().get(0)
+        );
+        @Nullable Double channel1 = channelNumber(
+                context,
+                channels.get(1),
+                space,
+                space.channels().get(1)
+        );
+        @Nullable Double channel2 = channelNumber(
+                context,
+                channels.get(2),
+                space,
+                space.channels().get(2)
+        );
         if (fromRgbFunction || space == ColorSpace.RGB) {
             // Legacy RGB constructors clamp channels into 0..255 like CSS Color 3.
             double red = clampLikeCss(channel0 != null ? channel0 : 0.0, 0.0, 255.0);
@@ -453,7 +500,12 @@ final class CssColorChannels {
         return SassColor.forSpace(space, channel0, channel1, channel2, alpha);
     }
 
-    private static @Nullable Double channelNumber(SassValue value, ColorChannel channel) {
+    private static @Nullable Double channelNumber(
+            @Nullable BuiltInCallable.Context context,
+            SassValue value,
+            ColorSpace space,
+            ColorChannel channel
+    ) {
         if (isNone(value)) {
             return null;
         }
@@ -463,6 +515,14 @@ final class CssColorChannels {
             );
         }
         if (channel.isPolarAngle()) {
+            if (context != null
+                    && (space == ColorSpace.HSL || space == ColorSpace.HWB)) {
+                return BuiltInFunctions.angleValue(
+                        context,
+                        number,
+                        channel.name()
+                );
+            }
             return hueDegrees(number);
         }
         if (!(channel instanceof ColorChannel.Linear linear)) {
@@ -478,8 +538,11 @@ final class CssColorChannels {
                 return number.value();
             }
             String name = channel.name();
-            if (number.isUnitless()
-                    && ("saturation".equals(name) || "lightness".equals(name))) {
+            if (context != null
+                    && space == ColorSpace.HSL
+                    && ("saturation".equals(name)
+                    || "lightness".equals(name))) {
+                BuiltInFunctions.checkPercent(context, number, name);
                 return number.value();
             }
             throw new SassValueException(
