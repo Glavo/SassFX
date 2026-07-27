@@ -150,6 +150,39 @@ final class ScssParser extends SassExpressionParser {
         this.fromIndented = fromIndented;
     }
 
+    /// Parses the complete source as one interactive variable declaration.
+    ///
+    /// @return the parsed declaration
+    /// @throws ParseException if the source is not exactly one declaration
+    VariableDeclaration parseInteractiveVariableDeclaration() {
+        VariableDeclaration result;
+        if (lookingAtIdentifier()) {
+            @Nullable VariableDeclaration namespaced =
+                    tryNamespacedVariableDeclaration();
+            if (namespaced == null) {
+                throw scanner.error("Expected variable.");
+            }
+            result = namespaced;
+        } else {
+            result = variableDeclarationWithoutNamespace();
+        }
+        scanner.expectDone();
+        return result;
+    }
+
+    /// Parses the complete source as one interactive {@code @use} rule.
+    ///
+    /// @return the parsed use rule
+    /// @throws ParseException if the source is not exactly one use rule
+    UseRule parseInteractiveUseRule() {
+        var start = scanner.state();
+        scanner.expect('@');
+        expectIdentifier("use");
+        var result = useRule(start, StatementContext.ROOT, true);
+        scanner.expectDone();
+        return result;
+    }
+
     /// {@inheritDoc}
     @Override
     protected boolean isPlainCssSource() {

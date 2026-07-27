@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.JsonFactory;
 import org.glavo.scssfx.SourceMap;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.StringWriter;
@@ -32,7 +33,11 @@ public final class SourceMapGenerator {
             return null;
         }
         try {
-            return new SourceMap(toJson(buffer.sources(), buffer.entries()));
+            return new SourceMap(toJson(
+                    buffer.sources(),
+                    buffer.entries(),
+                    buffer.sourceContents()
+            ));
         } catch (IOException failure) {
             throw new IllegalStateException("Unable to encode source map JSON", failure);
         }
@@ -46,6 +51,28 @@ public final class SourceMapGenerator {
     /// @throws IOException if JSON encoding fails
     static String toJson(List<String> sources, List<SourceMapBuffer.Entry> entries)
             throws IOException {
+        return toJson(sources, entries, null);
+    }
+
+    /// Encodes sources, entries, and optional source contents as a version-3
+    /// source-map document.
+    ///
+    /// @param sources the ordered source identifiers
+    /// @param entries the map entries
+    /// @param sourceContents source text aligned with {@code sources}, or
+    ///                       {@code null} to omit {@code sourcesContent}
+    /// @return the JSON text
+    /// @throws IOException if JSON encoding fails
+    static String toJson(
+            List<String> sources,
+            List<SourceMapBuffer.Entry> entries,
+            @Nullable List<@Nullable String> sourceContents
+    ) throws IOException {
+        if (sourceContents != null && sourceContents.size() != sources.size()) {
+            throw new IllegalArgumentException(
+                    "sourceContents must be aligned with sources"
+            );
+        }
         var writer = new StringWriter();
         try (var generator = JSON_FACTORY.createGenerator(writer)) {
             generator.writeStartObject();
@@ -55,6 +82,17 @@ public final class SourceMapGenerator {
                 generator.writeString(source);
             }
             generator.writeEndArray();
+            if (sourceContents != null) {
+                generator.writeArrayFieldStart("sourcesContent");
+                for (@Nullable var sourceContent : sourceContents) {
+                    if (sourceContent == null) {
+                        generator.writeNull();
+                    } else {
+                        generator.writeString(sourceContent);
+                    }
+                }
+                generator.writeEndArray();
+            }
             generator.writeArrayFieldStart("names");
             generator.writeEndArray();
             generator.writeStringField("mappings", encodeMappings(entries));

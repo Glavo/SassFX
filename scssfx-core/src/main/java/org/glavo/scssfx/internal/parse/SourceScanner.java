@@ -72,7 +72,7 @@ final class SourceScanner {
     /// @throws ParseException if an unconsumed code unit remains
     void expectDone() {
         if (!isDone()) {
-            throw error("Expected end of input.");
+            throw error("expected no more input.");
         }
     }
 

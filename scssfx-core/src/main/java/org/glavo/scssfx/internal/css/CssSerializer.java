@@ -11,7 +11,10 @@ import org.glavo.scssfx.internal.value.SassValueException;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 
+import java.net.URI;
+import java.util.Map;
 import java.util.Objects;
 
 /// Converts CSS IR into plain or JavaFX-targeted CSS text.
@@ -61,17 +64,83 @@ public final class CssSerializer {
             CssTarget target,
             boolean sourceMap
     ) {
+        return serialize(stylesheet, target, sourceMap, Map.of());
+    }
+
+    /// Serializes a stylesheet with source URL substitutions.
+    ///
+    /// @param stylesheet the evaluated CSS IR root
+    /// @param target the public CSS output options
+    /// @param sourceMap whether a version-3 source map should be generated
+    /// @param sourceMapUrls alternate source URLs keyed by canonical URL
+    /// @return the CSS text and optional source map
+    /// @throws CssSerializeException if a value cannot be represented in CSS
+    public static CssSerializeResult serialize(
+            CssStylesheet stylesheet,
+            CssTarget target,
+            boolean sourceMap,
+            @Unmodifiable Map<URI, URI> sourceMapUrls
+    ) {
+        return serialize(
+                stylesheet,
+                target,
+                sourceMap,
+                sourceMapUrls,
+                false,
+                Map.of(),
+                null
+        );
+    }
+
+    /// Serializes a stylesheet with complete source-map input metadata.
+    ///
+    /// @param stylesheet the evaluated CSS IR root
+    /// @param target the public CSS output options
+    /// @param sourceMap whether a version-3 source map should be generated
+    /// @param sourceMapUrls alternate source URLs keyed by canonical URL
+    /// @param sourceMapIncludeSources whether original sources are embedded
+    /// @param sourceContents original text keyed by canonical source URL
+    /// @param stdinContents URL-less root source text, or {@code null}
+    /// @return the CSS text and optional source map
+    /// @throws CssSerializeException if a value cannot be represented in CSS
+    public static CssSerializeResult serialize(
+            CssStylesheet stylesheet,
+            CssTarget target,
+            boolean sourceMap,
+            @Unmodifiable Map<URI, URI> sourceMapUrls,
+            boolean sourceMapIncludeSources,
+            @Unmodifiable Map<URI, String> sourceContents,
+            @Nullable String stdinContents
+    ) {
         Objects.requireNonNull(target, "target");
-        var result = serialize(stylesheet, target.style(), sourceMap, false);
-        if (target.charset()
-                && target.style() == OutputStyle.EXPANDED
-                && containsNonAscii(result.css())) {
-            return new CssSerializeResult(
-                    "@charset \"UTF-8\";\n" + result.css(),
-                    result.sourceMap()
-            );
+        var result = serialize(
+                stylesheet,
+                target.style(),
+                sourceMap,
+                false,
+                sourceMapUrls,
+                sourceMapIncludeSources,
+                sourceContents,
+                stdinContents,
+                ""
+        );
+        if (!target.charset() || !containsNonAscii(result.css())) {
+            return result;
         }
-        return result;
+        var prefix = charsetPrefix(target.style());
+        return sourceMap
+                ? serialize(
+                        stylesheet,
+                        target.style(),
+                        true,
+                        false,
+                        sourceMapUrls,
+                        sourceMapIncludeSources,
+                        sourceContents,
+                        stdinContents,
+                        prefix
+                )
+                : new CssSerializeResult(prefix + result.css(), null);
     }
 
     /// Serializes a stylesheet for JavaFX with an optional source map.
@@ -86,10 +155,85 @@ public final class CssSerializer {
             JavaFXCssTarget target,
             boolean sourceMap
     ) {
+        return serialize(stylesheet, target, sourceMap, Map.of());
+    }
+
+    /// Serializes a JavaFX stylesheet with source URL substitutions.
+    ///
+    /// @param stylesheet the evaluated CSS IR root
+    /// @param target the JavaFX CSS output options
+    /// @param sourceMap whether a version-3 source map should be generated
+    /// @param sourceMapUrls alternate source URLs keyed by canonical URL
+    /// @return the CSS text and optional source map
+    /// @throws CssSerializeException if a value cannot be represented in CSS
+    public static CssSerializeResult serialize(
+            CssStylesheet stylesheet,
+            JavaFXCssTarget target,
+            boolean sourceMap,
+            @Unmodifiable Map<URI, URI> sourceMapUrls
+    ) {
+        return serialize(
+                stylesheet,
+                target,
+                sourceMap,
+                sourceMapUrls,
+                false,
+                Map.of(),
+                null
+        );
+    }
+
+    /// Serializes a JavaFX stylesheet with complete source-map input metadata.
+    ///
+    /// @param stylesheet the evaluated CSS IR root
+    /// @param target the JavaFX CSS output options
+    /// @param sourceMap whether a version-3 source map should be generated
+    /// @param sourceMapUrls alternate source URLs keyed by canonical URL
+    /// @param sourceMapIncludeSources whether original sources are embedded
+    /// @param sourceContents original text keyed by canonical source URL
+    /// @param stdinContents URL-less root source text, or {@code null}
+    /// @return the CSS text and optional source map
+    /// @throws CssSerializeException if a value cannot be represented in CSS
+    public static CssSerializeResult serialize(
+            CssStylesheet stylesheet,
+            JavaFXCssTarget target,
+            boolean sourceMap,
+            @Unmodifiable Map<URI, URI> sourceMapUrls,
+            boolean sourceMapIncludeSources,
+            @Unmodifiable Map<URI, String> sourceContents,
+            @Nullable String stdinContents
+    ) {
         Objects.requireNonNull(stylesheet, "stylesheet");
         Objects.requireNonNull(target, "target");
         JavaFXCssValidator.validate(stylesheet, target.javaFXTarget());
-        return serialize(stylesheet, target.style(), sourceMap, true);
+        var result = serialize(
+                stylesheet,
+                target.style(),
+                sourceMap,
+                true,
+                sourceMapUrls,
+                sourceMapIncludeSources,
+                sourceContents,
+                stdinContents,
+                ""
+        );
+        if (!target.charset() || !containsNonAscii(result.css())) {
+            return result;
+        }
+        var prefix = charsetPrefix(target.style());
+        return sourceMap
+                ? serialize(
+                        stylesheet,
+                        target.style(),
+                        true,
+                        true,
+                        sourceMapUrls,
+                        sourceMapIncludeSources,
+                        sourceContents,
+                        stdinContents,
+                        prefix
+                )
+                : new CssSerializeResult(prefix + result.css(), null);
     }
 
     /// Serializes a stylesheet with the selected layout and grammar profile.
@@ -98,27 +242,56 @@ public final class CssSerializer {
     /// @param style      the output layout
     /// @param sourceMap  whether source-map entries are recorded
     /// @param javaFX     whether JavaFX-required token separators are emitted
+    /// @param sourceMapUrls alternate source URLs keyed by canonical URL
+    /// @param sourceMapIncludeSources whether original sources are embedded
+    /// @param sourceContents original text keyed by canonical source URL
+    /// @param stdinContents URL-less root source text, or {@code null}
+    /// @param prefix text emitted before the first mapped node
     /// @return the serialized CSS and optional source map
     private static CssSerializeResult serialize(
             CssStylesheet stylesheet,
             OutputStyle style,
             boolean sourceMap,
-            boolean javaFX
+            boolean javaFX,
+            @Unmodifiable Map<URI, URI> sourceMapUrls,
+            boolean sourceMapIncludeSources,
+            @Unmodifiable Map<URI, String> sourceContents,
+            @Nullable String stdinContents,
+            String prefix
     ) {
         Objects.requireNonNull(stylesheet, "stylesheet");
         Objects.requireNonNull(style, "style");
-        var buffer = new SourceMapBuffer(sourceMap);
+        Objects.requireNonNull(prefix, "prefix");
+        var buffer = new SourceMapBuffer(
+                sourceMap,
+                sourceMapUrls,
+                sourceMapIncludeSources,
+                sourceContents,
+                stdinContents
+        );
+        buffer.append(prefix);
         switch (style) {
-            case EXPANDED -> writeExpandedStylesheet(stylesheet, buffer);
+            case EXPANDED -> writeExpandedStylesheet(stylesheet, buffer, javaFX);
             case COMPRESSED -> writeCompressedStylesheet(stylesheet, buffer, javaFX);
         }
         return new CssSerializeResult(buffer.css(), SourceMapGenerator.generate(buffer));
     }
 
+    /// Returns the charset marker used by a non-ASCII output style.
+    ///
+    /// @param style the selected output style
+    /// @return an expanded charset declaration or compressed UTF-8 BOM
+    private static String charsetPrefix(OutputStyle style) {
+        return style == OutputStyle.EXPANDED
+                ? "@charset \"UTF-8\";\n"
+                : "\uFEFF";
+    }
+
     /// Writes the top-level stylesheet children using expanded layout.
     private static void writeExpandedStylesheet(
             CssStylesheet stylesheet,
-            SourceMapBuffer buffer
+            SourceMapBuffer buffer,
+            boolean javaFX
     ) {
         @Nullable CssNode previous = null;
         for (var child : stylesheet.children()) {
@@ -142,10 +315,10 @@ public final class CssSerializer {
                     if (previous.isGroupEnd()) {
                         buffer.append('\n');
                     }
-                    writeExpandedNode(child, buffer, 0);
+                    writeExpandedNode(child, buffer, 0, javaFX);
                 }
             } else {
-                writeExpandedNode(child, buffer, 0);
+                writeExpandedNode(child, buffer, 0, javaFX);
             }
             previous = child;
         }
@@ -158,24 +331,25 @@ public final class CssSerializer {
     private static void writeExpandedNode(
             CssNode node,
             SourceMapBuffer buffer,
-            int indentation
+            int indentation,
+            boolean javaFX
     ) {
         if (node instanceof CssImport importRule) {
             writeIndentation(buffer, indentation);
             buffer.forSpan(importRule.span(), () ->
                     buffer.append("@import ").append(importRule.argument()));
         } else if (node instanceof CssMediaRule mediaRule) {
-            writeExpandedMediaRule(mediaRule, buffer, indentation);
+            writeExpandedMediaRule(mediaRule, buffer, indentation, javaFX);
         } else if (node instanceof CssSupportsRule supportsRule) {
-            writeExpandedSupportsRule(supportsRule, buffer, indentation);
+            writeExpandedSupportsRule(supportsRule, buffer, indentation, javaFX);
         } else if (node instanceof CssUnknownAtRule unknownAtRule) {
-            writeExpandedUnknownAtRule(unknownAtRule, buffer, indentation);
+            writeExpandedUnknownAtRule(unknownAtRule, buffer, indentation, javaFX);
         } else if (node instanceof CssFontFace fontFace) {
-            writeExpandedFontFace(fontFace, buffer, indentation);
+            writeExpandedFontFace(fontFace, buffer, indentation, javaFX);
         } else if (node instanceof CssStyleRule rule) {
-            writeExpandedStyleRule(rule, buffer, indentation);
+            writeExpandedStyleRule(rule, buffer, indentation, javaFX);
         } else if (node instanceof CssDeclaration declaration) {
-            writeExpandedDeclaration(declaration, buffer, indentation);
+            writeExpandedDeclaration(declaration, buffer, indentation, javaFX);
         } else if (node instanceof CssComment comment) {
             writeExpandedComment(comment, buffer, indentation, true);
         } else {
@@ -324,7 +498,8 @@ public final class CssSerializer {
     private static void writeExpandedUnknownAtRule(
             CssUnknownAtRule rule,
             SourceMapBuffer buffer,
-            int indentation
+            int indentation,
+            boolean javaFX
     ) {
         writeIndentation(buffer, indentation);
         buffer.forSpan(rule.span(), () -> {
@@ -339,7 +514,13 @@ public final class CssSerializer {
         buffer.append(" {");
         // Empty bubbled {@code @keyframes {/**/}} matches dart-sass compact form.
         boolean compactCommentOnly = isKeyframesAtRuleName(rule.name());
-        writeExpandedChildren(rule, buffer, indentation, compactCommentOnly);
+        writeExpandedChildren(
+                rule,
+                buffer,
+                indentation,
+                compactCommentOnly,
+                javaFX
+        );
         buffer.append('}');
     }
 
@@ -359,7 +540,8 @@ public final class CssSerializer {
     private static void writeExpandedStyleRule(
             CssStyleRule rule,
             SourceMapBuffer buffer,
-            int indentation
+            int indentation,
+            boolean javaFX
     ) {
         writeIndentation(buffer, indentation);
         // Preserve source line breaks between selector complexes; indent the
@@ -368,7 +550,7 @@ public final class CssSerializer {
         buffer.forSpan(rule.selector().span(), () ->
                 buffer.append(rule.selector().value().toCssString(false, indentSpaces)));
         buffer.append(" {");
-        writeExpandedChildren(rule, buffer, indentation);
+        writeExpandedChildren(rule, buffer, indentation, javaFX);
         buffer.append('}');
     }
 
@@ -376,7 +558,8 @@ public final class CssSerializer {
     private static void writeExpandedMediaRule(
             CssMediaRule mediaRule,
             SourceMapBuffer buffer,
-            int indentation
+            int indentation,
+            boolean javaFX
     ) {
         writeIndentation(buffer, indentation);
         buffer.forSpan(mediaRule.span(), () -> {
@@ -384,7 +567,7 @@ public final class CssSerializer {
             appendMediaQueries(mediaRule, buffer, false);
         });
         buffer.append(" {");
-        writeExpandedChildren(mediaRule, buffer, indentation);
+        writeExpandedChildren(mediaRule, buffer, indentation, javaFX);
         buffer.append('}');
     }
 
@@ -392,7 +575,8 @@ public final class CssSerializer {
     private static void writeExpandedSupportsRule(
             CssSupportsRule supportsRule,
             SourceMapBuffer buffer,
-            int indentation
+            int indentation,
+            boolean javaFX
     ) {
         writeIndentation(buffer, indentation);
         buffer.forSpan(supportsRule.span(), () -> {
@@ -400,7 +584,7 @@ public final class CssSerializer {
             buffer.append(supportsRule.condition());
         });
         buffer.append(" {");
-        writeExpandedChildren(supportsRule, buffer, indentation);
+        writeExpandedChildren(supportsRule, buffer, indentation, javaFX);
         buffer.append('}');
     }
 
@@ -408,13 +592,14 @@ public final class CssSerializer {
     private static void writeExpandedFontFace(
             CssFontFace fontFace,
             SourceMapBuffer buffer,
-            int indentation
+            int indentation,
+            boolean javaFX
     ) {
         writeIndentation(buffer, indentation);
         buffer.forSpan(fontFace.span(), () -> buffer.append("@font-face {"));
         // Bubbled empty font-face with only a comment uses compact spacing
         // ({@code @font-face { /**/ }}), matching dart-sass.
-        writeExpandedChildren(fontFace, buffer, indentation, true);
+        writeExpandedChildren(fontFace, buffer, indentation, true, javaFX);
         buffer.append('}');
     }
 
@@ -422,9 +607,10 @@ public final class CssSerializer {
     private static void writeExpandedChildren(
             CssParentNode parent,
             SourceMapBuffer buffer,
-            int indentation
+            int indentation,
+            boolean javaFX
     ) {
-        writeExpandedChildren(parent, buffer, indentation, false);
+        writeExpandedChildren(parent, buffer, indentation, false, javaFX);
     }
 
     /// Writes the braced children of a parent node using expanded layout.
@@ -437,7 +623,8 @@ public final class CssSerializer {
             CssParentNode parent,
             SourceMapBuffer buffer,
             int indentation,
-            boolean compactCommentOnly
+            boolean compactCommentOnly,
+            boolean javaFX
     ) {
         var visible = new java.util.ArrayList<CssNode>();
         for (var child : parent.children()) {
@@ -474,7 +661,7 @@ public final class CssSerializer {
                 writeExpandedComment((CssComment) child, buffer, indentation + 1, false);
             } else {
                 buffer.append('\n');
-                writeExpandedNode(child, buffer, indentation + 1);
+                writeExpandedNode(child, buffer, indentation + 1, javaFX);
             }
             prePrevious = previous;
             previous = child;
@@ -549,7 +736,8 @@ public final class CssSerializer {
     private static void writeExpandedDeclaration(
             CssDeclaration declaration,
             SourceMapBuffer buffer,
-            int indentation
+            int indentation,
+            boolean javaFX
     ) {
         writeIndentation(buffer, indentation);
         buffer.forSpan(declaration.name().span(), () ->
@@ -558,7 +746,13 @@ public final class CssSerializer {
         if (declaration.parsedAsSassScript()) {
             buffer.append(' ');
         }
-        appendDeclarationValue(declaration, buffer, indentation, false);
+        appendDeclarationValue(
+                declaration,
+                buffer,
+                indentation,
+                false,
+                javaFX
+        );
     }
 
     /// Writes all visible top-level nodes using compressed layout.
@@ -639,7 +833,7 @@ public final class CssSerializer {
             writeCompressedChildren(rule, buffer, javaFX);
             buffer.append('}');
         } else if (node instanceof CssDeclaration declaration) {
-            writeCompressedDeclaration(declaration, buffer);
+            writeCompressedDeclaration(declaration, buffer, javaFX);
         } else if (node instanceof CssComment comment) {
             if (comment.isPreserved() && !isSourceMapComment(comment.text())) {
                 buffer.forSpan(comment.span(), () -> buffer.append(comment.text()));
@@ -690,12 +884,13 @@ public final class CssSerializer {
     /// Writes one declaration using compressed layout.
     private static void writeCompressedDeclaration(
             CssDeclaration declaration,
-            SourceMapBuffer buffer
+            SourceMapBuffer buffer,
+            boolean javaFX
     ) {
         buffer.forSpan(declaration.name().span(), () ->
                 buffer.append(declaration.name().value()));
         buffer.append(':');
-        appendDeclarationValue(declaration, buffer, 0, true);
+        appendDeclarationValue(declaration, buffer, 0, true, javaFX);
     }
 
     /// Returns whether a CSS comment is a source-map or source-URL directive.
@@ -735,11 +930,13 @@ public final class CssSerializer {
     /// @param buffer      the serialization buffer
     /// @param indentation expanded indentation depth of the declaration
     /// @param compressed  whether compressed layout is active
+    /// @param javaFX      whether JavaFX-specific legacy syntax is restored
     private static void appendDeclarationValue(
             CssDeclaration declaration,
             SourceMapBuffer buffer,
             int indentation,
-            boolean compressed
+            boolean compressed,
+            boolean javaFX
     ) {
         if (!declaration.parsedAsSassScript()) {
             // Raw CSS custom-property / declaration values keep author whitespace;
@@ -750,7 +947,13 @@ public final class CssSerializer {
             return;
         }
         try {
-            var css = declaration.value().value().toCssString();
+            var value = declaration.value().value();
+            @Nullable var legacyGradient = javaFX
+                    ? JavaFxLegacyGradient.serialize(value)
+                    : null;
+            var css = legacyGradient != null
+                    ? legacyGradient
+                    : value.toCssString();
             buffer.forSpan(declaration.value().span(), () -> buffer.append(css));
         } catch (SassValueException cause) {
             throw new CssSerializeException(

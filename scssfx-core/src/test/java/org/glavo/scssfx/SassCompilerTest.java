@@ -14,6 +14,7 @@ import java.util.Objects;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -167,16 +168,16 @@ final class SassCompilerTest {
         assertEquals("a{color:red;/*! retained */margin:0}", result.output());
     }
 
-    /// Omits charset declarations from compressed CSS output.
+    /// Emits a UTF-8 BOM for non-ASCII compressed CSS when requested.
     @Test
-    void omitsCharsetForCompressedCss() throws Exception {
+    void emitsBomForCompressedCss() throws Exception {
         var compiler = new SassCompiler();
         var result = compiler.compile(
                 SassSource.fromString("a { content: \"你好\"; }", Syntax.SCSS),
                 new CssTarget(OutputStyle.COMPRESSED, true)
         );
 
-        assertEquals("a{content:\"你好\"}", result.output());
+        assertEquals("\uFEFFa{content:\"你好\"}", result.output());
     }
 
     /// Compiles a JavaFX CSS target without a JavaFX runtime dependency.
@@ -193,6 +194,61 @@ final class SassCompilerTest {
 
         assertEquals("a{-fx-text-fill:#f00}", result.output());
         assertNull(result.sourceMap());
+    }
+
+    /// Restores legacy JavaFX gradient grouping only for JavaFX CSS targets.
+    @Test
+    void serializesDirectLegacyJavaFxGradients() throws Exception {
+        var source = SassSource.fromString(
+                """
+                        Pane {
+                          -fx-background-color:
+                              linear (0%,0%) to (100%,100%) stops (0,red) (1,blue) repeat,
+                              radial focus-angle 45deg center (50%,50%) 25px stops (0,white) (1,black) no-cycle;
+                          -fx-text-fill:
+                              ladder -fx-base stops (0,black) (1,derive(-fx-base, 20%));
+                        }
+                        """,
+                Syntax.SCSS
+        );
+        var compiler = new SassCompiler();
+        var expanded = compiler.compile(
+                source,
+                new JavaFXCssTarget(
+                        JavaFXTarget.JAVAFX27,
+                        OutputStyle.EXPANDED
+                )
+        ).output();
+        var compressed = compiler.compile(
+                source,
+                new JavaFXCssTarget(
+                        JavaFXTarget.JAVAFX27,
+                        OutputStyle.COMPRESSED
+                )
+        ).output();
+        var ordinaryCss = compiler.compile(
+                source,
+                new CssTarget(OutputStyle.EXPANDED, true)
+        ).output();
+
+        assertTrue(expanded.contains(
+                "linear (0%, 0%) to (100%, 100%)"
+        ));
+        assertTrue(expanded.contains(
+                "radial focus-angle 45deg center (50%, 50%)"
+        ));
+        assertTrue(compressed.contains(
+                "stops (0, red) (1, blue) repeat"
+        ));
+        assertTrue(compressed.contains(
+                "stops (0, white) (1, black) no-cycle"
+        ));
+        assertTrue(expanded.contains(
+                "ladder -fx-base stops (0, black) (1, derive(-fx-base, 20%))"
+        ));
+        assertFalse(ordinaryCss.contains("linear ("));
+        assertFalse(ordinaryCss.contains("radial focus-angle 45deg center ("));
+        assertFalse(ordinaryCss.contains("ladder -fx-base stops ("));
     }
 
     /// Preserves declaration meaning across JavaFX compatibility levels.

@@ -32,8 +32,9 @@ import java.util.Set;
 public enum JavaFXTarget {
     /// Targets JavaFX 8 and BSS version 5.
     ///
-    /// This baseline supports `@font-face`, unconditional `@import`, and the
-    /// internal `com.sun.javafx.css.converters` names used by BSS v5.
+    /// This baseline supports `@font-face`, unconditional `@import`, legacy
+    /// token-series gradients, and the internal
+    /// `com.sun.javafx.css.converters` names used by BSS v5.
     JAVAFX8(8, 5),
     /// Targets JavaFX 9 and BSS version 6.
     ///

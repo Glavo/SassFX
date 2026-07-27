@@ -347,9 +347,11 @@ tasks.register("verifyAllJavaFxCssOracles") {
 val referenceSensitiveFiles = fileTree(rootProject.layout.projectDirectory) {
     include("scssfx-core/src/**")
     include("scssfx-cli/src/**")
+    include("scssfx-embedded/src/**")
     include("*.gradle.kts")
     include("scssfx-core/*.gradle.kts")
     include("scssfx-cli/*.gradle.kts")
+    include("scssfx-embedded/*.gradle.kts")
     include("*.md")
 }
 

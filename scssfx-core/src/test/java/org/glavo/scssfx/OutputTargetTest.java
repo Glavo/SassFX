@@ -88,7 +88,8 @@ final class OutputTargetTest {
         assertEquals(
                 Set.of(
                         JavaFXFeature.FONT_FACE,
-                        JavaFXFeature.UNCONDITIONAL_STYLESHEET_IMPORTS
+                        JavaFXFeature.UNCONDITIONAL_STYLESHEET_IMPORTS,
+                        JavaFXFeature.LEGACY_GRADIENT_SYNTAX
                 ),
                 JavaFXTarget.JAVAFX8.features()
         );

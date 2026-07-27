@@ -11,6 +11,10 @@ The project uses or derives compatibility behavior from the following works:
   Apache License 2.0.
 - Jackson Core is Copyright FasterXML, LLC and contributors and is available
   under the Apache License 2.0.
+- Sass Embedded Protocol Java messages are generated and distributed by
+  Lars Grefer and contributors under the MIT License.
+- Protocol Buffers Java is Copyright Google LLC and is available under the
+  BSD 3-Clause License.
 - JetBrains Java Annotations is Copyright JetBrains s.r.o. and is available
   under the Apache License 2.0. It is not included as a runtime dependency.
 

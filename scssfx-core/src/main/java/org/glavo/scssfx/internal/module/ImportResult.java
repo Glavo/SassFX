@@ -14,13 +14,29 @@ import java.util.Objects;
 /// @param source       the indexed source text
 /// @param syntax       the syntax of the loaded file
 /// @param canonicalUrl the absolute canonical URL of the file
+/// @param dependency whether compiler warnings from this stylesheet are
+///                   dependency warnings
 @ApiStatus.Internal
 @NotNullByDefault
 public record ImportResult(
         SourceFile source,
         Syntax syntax,
-        URI canonicalUrl
+        URI canonicalUrl,
+        boolean dependency
 ) {
+    /// Creates a first-party import result.
+    ///
+    /// @param source the indexed source text
+    /// @param syntax the parsed syntax
+    /// @param canonicalUrl the absolute canonical URL
+    public ImportResult(
+            SourceFile source,
+            Syntax syntax,
+            URI canonicalUrl
+    ) {
+        this(source, syntax, canonicalUrl, false);
+    }
+
     /// Creates an import result.
     public ImportResult {
         Objects.requireNonNull(source, "source");
@@ -29,5 +45,15 @@ public record ImportResult(
         if (!canonicalUrl.isAbsolute()) {
             throw new IllegalArgumentException("canonicalUrl must be absolute");
         }
+    }
+
+    /// Returns this result with dependency provenance applied.
+    ///
+    /// @param dependency whether compiler warnings are dependency warnings
+    /// @return this result when unchanged, otherwise an equivalent result
+    public ImportResult withDependency(boolean dependency) {
+        return this.dependency == dependency
+                ? this
+                : new ImportResult(source, syntax, canonicalUrl, dependency);
     }
 }

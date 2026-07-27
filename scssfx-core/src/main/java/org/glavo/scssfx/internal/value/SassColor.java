@@ -339,6 +339,27 @@ public final class SassColor implements SassValue {
         return space.isLegacy();
     }
 
+    /// Returns the canonical CSS name for this color when one exists.
+    ///
+    /// Equivalent opaque named colors use the alphabetically first name, and
+    /// transparent black uses {@code transparent}. Other colors return
+    /// {@code null}.
+    ///
+    /// @return the canonical name, or {@code null}
+    public @Nullable String canonicalName() {
+        var rgb = toSpace(ColorSpace.RGB, false);
+        if (!canUseHex(rgb)) {
+            return null;
+        }
+        if (SassFuzzy.equals(alpha(), 1.0)) {
+            return CANONICAL_NAMES_BY_RGB.get(rgb.packedRgb());
+        }
+        return SassFuzzy.equals(alpha(), 0.0)
+                && rgb.packedRgb() == 0
+                ? "transparent"
+                : null;
+    }
+
     /// Returns the first channel, treating missing values as zero.
     ///
     /// @return the first channel

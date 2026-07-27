@@ -6,6 +6,7 @@ validated against fixed upstream snapshots.
 | Component | Baseline | Purpose |
 | --- | --- | --- |
 | Dart Sass | `1.101.3` (`e8c12331ea5304a1d641d6a6bd4cb526cb3800b9`) | Sass language and diagnostic behavior |
+| Embedded Sass Protocol | `3.2.0` (`embedded-protocol-3.2.0`) | Binary host protocol and message schema |
 | sass-spec | `24e61bf508f5b48968546fbf1a4c16af61048709` | Sass language conformance suite |
 | JavaFX | `8u352` | JavaFX CSS and BSS version 5 oracle |
 | JavaFX | `17.0.20` | JavaFX CSS and BSS version 6 baseline |

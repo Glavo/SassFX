@@ -52,7 +52,7 @@ final class ScssfxMainTest {
         var output = new StringWriter();
         var commandLine = commandLine(output, new StringWriter());
 
-        assertEquals(2, commandLine.execute());
+        assertEquals(64, commandLine.execute());
         assertTrue(output.toString().contains("Usage: scssfx"));
     }
 
@@ -116,9 +116,12 @@ final class ScssfxMainTest {
                         a {
                           width: 3px;
                         }
+
+                        /*# sourceMappingURL=style.css.map */
                         """.replace("\r\n", "\n"),
                 Files.readString(destination).replace("\r\n", "\n")
         );
+        assertTrue(Files.exists(Path.of(destination + ".map")));
     }
 
     /// Compiles compressed JavaFX CSS to stdout.
@@ -191,9 +194,11 @@ final class ScssfxMainTest {
         var error = new StringWriter();
         var commandLine = commandLine(output, error);
 
-        assertEquals(2, commandLine.execute("--target", "bss", input.toString()));
-        assertEquals("", output.toString());
-        assertTrue(error.toString().contains("BSS output requires an output path"));
+        assertEquals(64, commandLine.execute("--target", "bss", input.toString()));
+        assertTrue(output.toString().contains(
+                "BSS output requires an output path"
+        ));
+        assertEquals("", error.toString());
     }
 
     /// Leaves the BSS destination absent when serialization rejects the stylesheet.
@@ -207,7 +212,7 @@ final class ScssfxMainTest {
         var commandLine = commandLine(new StringWriter(), error);
 
         assertEquals(
-                1,
+                65,
                 commandLine.execute(
                         "--target",
                         "bss",
@@ -226,10 +231,10 @@ final class ScssfxMainTest {
         var destination = directory.resolve("style.bss");
         Files.writeString(input, "Pane { -fx-opacity: 0.5; }");
 
-        var bssError = new StringWriter();
-        var bssCommand = commandLine(new StringWriter(), bssError);
+        var bssOutput = new StringWriter();
+        var bssCommand = commandLine(bssOutput, new StringWriter());
         assertEquals(
-                2,
+                64,
                 bssCommand.execute(
                         "--target",
                         "bss",
@@ -240,16 +245,18 @@ final class ScssfxMainTest {
                         input.toString()
                 )
         );
-        assertTrue(bssError.toString().contains("--style is supported only"));
+        assertTrue(bssOutput.toString().contains("--style is supported only"));
         assertFalse(Files.exists(destination));
 
-        var cssError = new StringWriter();
-        var cssCommand = commandLine(new StringWriter(), cssError);
+        var cssOutput = new StringWriter();
+        var cssCommand = commandLine(cssOutput, new StringWriter());
         assertEquals(
-                2,
+                64,
                 cssCommand.execute("--javafx-target", "27", input.toString())
         );
-        assertTrue(cssError.toString().contains("--javafx-target is supported only"));
+        assertTrue(cssOutput.toString().contains(
+                "--javafx-target is supported only"
+        ));
     }
 
     /// Reports unsupported output option values as usage errors.
@@ -258,11 +265,13 @@ final class ScssfxMainTest {
         var input = directory.resolve("style.scss");
         Files.writeString(input, "a { color: red; }");
 
-        var error = new StringWriter();
-        var commandLine = commandLine(new StringWriter(), error);
+        var output = new StringWriter();
+        var commandLine = commandLine(output, new StringWriter());
 
-        assertEquals(2, commandLine.execute("--style", "dense", input.toString()));
-        assertTrue(error.toString().contains("unsupported output style 'dense'"));
+        assertEquals(64, commandLine.execute("--style", "dense", input.toString()));
+        assertTrue(output.toString().contains(
+                "unsupported output style 'dense'"
+        ));
     }
 
     /// Accepts every boundary of the configurable JavaFX target range.
@@ -293,10 +302,10 @@ final class ScssfxMainTest {
         Files.writeString(input, "Pane { -fx-opacity: 1; }");
 
         for (var version : new String[]{"7", "28", "17.0", "current"}) {
-            var error = new StringWriter();
-            var commandLine = commandLine(new StringWriter(), error);
+            var output = new StringWriter();
+            var commandLine = commandLine(output, new StringWriter());
             assertEquals(
-                    2,
+                    64,
                     commandLine.execute(
                             "--target",
                             "javafx-css",
@@ -305,7 +314,7 @@ final class ScssfxMainTest {
                             input.toString()
                     )
             );
-            assertTrue(error.toString().contains(
+            assertTrue(output.toString().contains(
                     "expected an integer from 8 through 27"
             ));
         }
@@ -340,7 +349,7 @@ final class ScssfxMainTest {
         var error = new StringWriter();
         var commandLine = commandLine(new StringWriter(), error);
 
-        assertEquals(1, commandLine.execute(input.toString()));
+        assertEquals(65, commandLine.execute(input.toString()));
         assertTrue(error.toString().contains("Error: Undefined variable."));
         assertTrue(error.toString().contains("$missing"));
     }
@@ -352,7 +361,7 @@ final class ScssfxMainTest {
         var error = new StringWriter();
         var commandLine = commandLine(new StringWriter(), error);
 
-        assertEquals(1, commandLine.execute(missing.toString()));
+        assertEquals(66, commandLine.execute(missing.toString()));
         assertTrue(error.toString().startsWith("scssfx:"));
     }
 

@@ -34,6 +34,9 @@ public final class UserDefinedCallable implements Callable {
     /// Records whether a mixin body accepts content blocks.
     private final boolean acceptsContent;
 
+    /// Records whether the definition originated in a dependency stylesheet.
+    private final boolean inDependency;
+
     /// Creates a user-defined callable.
     ///
     /// @param name            the normalized name
@@ -42,13 +45,15 @@ public final class UserDefinedCallable implements Callable {
     /// @param environment     the definition-time closure
     /// @param span            the declaration span
     /// @param acceptsContent  whether content blocks are accepted
+    /// @param inDependency whether compiler warnings in the body are dependency warnings
     public UserDefinedCallable(
             String name,
             ParameterList parameters,
             List<SassStatement> children,
             Environment environment,
             SourceSpan span,
-            boolean acceptsContent
+            boolean acceptsContent,
+            boolean inDependency
     ) {
         this.name = Objects.requireNonNull(name, "name");
         if (name.isEmpty()) {
@@ -59,6 +64,7 @@ public final class UserDefinedCallable implements Callable {
         this.environment = Objects.requireNonNull(environment, "environment");
         this.span = Objects.requireNonNull(span, "span");
         this.acceptsContent = acceptsContent;
+        this.inDependency = inDependency;
     }
 
     /// Returns the normalized callable name.
@@ -102,5 +108,12 @@ public final class UserDefinedCallable implements Callable {
     /// @return whether content is accepted
     public boolean acceptsContent() {
         return acceptsContent;
+    }
+
+    /// Returns whether the definition originated in a dependency stylesheet.
+    ///
+    /// @return whether compiler warnings in the body are dependency warnings
+    public boolean inDependency() {
+        return inDependency;
     }
 }

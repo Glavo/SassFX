@@ -155,6 +155,25 @@ public final class JavaFxCssOracle {
                 Syntax.SCSS
         ));
         fixtures.add(new Fixture(
+                "font-size-keywords",
+                """
+                        Pane {
+                          -fx-a-font-size: inherit;
+                          -fx-b-font-size: xx-small;
+                          -fx-c-font-size: x-small;
+                          -fx-d-font-size: small;
+                          -fx-e-font-size: medium;
+                          -fx-f-font-size: large;
+                          -fx-g-font-size: x-large;
+                          -fx-h-font-size: xx-large;
+                          -fx-i-font-size: smaller;
+                          -fx-j-font-size: larger;
+                          -fx-font: italic large/medium "Example Sans";
+                        }
+                        """,
+                Syntax.SCSS
+        ));
+        fixtures.add(new Fixture(
                 "region-geometry",
                 """
                         Pane {
@@ -236,6 +255,32 @@ public final class JavaFxCssOracle {
                               regionXYZ(".escaped\\6f"),
                               region(".first", ".ignored"),
                               region(".series" ".ignored");
+                        }
+                        """,
+                Syntax.SCSS
+        ));
+        fixtures.add(new Fixture(
+                "legacy-gradients",
+                """
+                        LegacyLinear {
+                          -fx-background-color:
+                              linear (0%,0%) to (100%,100%) stops (0.0,red) (0.5,rgba(0, 255, 0, 0.5)) (1.0,blue) repeat;
+                        }
+                        LegacyRadial {
+                          -fx-background-color:
+                              radial focus-angle 45deg focus-distance 20% center (30%,40%) 50% stops (0.0,red) (0.5,green) (1.0,blue) no-cycle;
+                        }
+                        LegacyLookup {
+                          -fx-background-color:
+                              linear (-fx-start-x,-fx-start-y) to (-fx-end-x,-fx-end-y)
+                              stops (-fx-stop-offset,-fx-base) (1.0,blue);
+                        }
+                        LegacyLadder {
+                          -fx-fill:
+                              ladder -fx-base stops
+                              (0.0,black) (1.0,derive(-fx-base, 20%));
+                          -fx-stroke:
+                              ladder #123456 stops (0.5,white);
                         }
                         """,
                 Syntax.SCSS
@@ -486,10 +531,12 @@ public final class JavaFxCssOracle {
                  "duration-scalars",
                  "quoted-strings",
                  "generic-size-sequence",
+                 "font-size-keywords",
                  "region-geometry",
                  "region-images",
                  "region-paints-and-styles",
                  "region-references",
+                 "legacy-gradients",
                  "extended-blend-mode",
                  "media-preferences",
                  "media-multiple-rules",

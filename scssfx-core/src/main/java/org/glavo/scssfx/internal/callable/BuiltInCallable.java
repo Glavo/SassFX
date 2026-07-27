@@ -430,8 +430,8 @@ public final class BuiltInCallable implements Callable {
         /// Contains the live lexical and module environment.
         private final Environment environment;
 
-        /// Contains global built-ins keyed by normalized name.
-        private final @Unmodifiable Map<String, BuiltInCallable> globalFunctions;
+        /// Contains configured and built-in global functions by normalized name.
+        private final @Unmodifiable Map<String, Callable> globalFunctions;
 
         /// Contains the stylesheet URL active at the call site, or {@code null}.
         private final @Nullable URI currentUrl;
@@ -457,7 +457,7 @@ public final class BuiltInCallable implements Callable {
         /// Creates an invocation context with immutable global-function lookup.
         ///
         /// @param environment       the active lexical and module environment
-        /// @param globalFunctions   immutable global built-ins keyed by normalized name
+        /// @param globalFunctions   immutable global functions keyed by normalized name
         /// @param currentUrl        the active stylesheet URL, or {@code null}
         /// @param span              the complete call span
         /// @param compilationContext the active compilation identity token
@@ -467,7 +467,7 @@ public final class BuiltInCallable implements Callable {
         /// @param loadCssInvoker loads and injects stylesheet CSS at the call site
         public Context(
                 Environment environment,
-                @Unmodifiable Map<String, BuiltInCallable> globalFunctions,
+                @Unmodifiable Map<String, Callable> globalFunctions,
                 @Nullable URI currentUrl,
                 SourceSpan span,
                 Object compilationContext,
@@ -529,7 +529,7 @@ public final class BuiltInCallable implements Callable {
             return environment.globalVariableExists(name, module);
         }
 
-        /// Returns whether a function exists in the active environment or global built-ins.
+        /// Returns whether a function exists in the active environment or global function table.
         ///
         /// An empty name returns {@code false} after checking a supplied module exists.
         ///
@@ -584,7 +584,7 @@ public final class BuiltInCallable implements Callable {
         /// Resolves a visible Sass function as a first-class function reference.
         ///
         /// A named module restricts lookup to that explicit namespace. An
-        /// unqualified lookup falls back to global built-ins only after lexical
+        /// unqualified lookup falls back to global functions only after lexical
         /// and {@code as *} module lookup has failed.
         ///
         /// @param name   the non-empty normalized function name

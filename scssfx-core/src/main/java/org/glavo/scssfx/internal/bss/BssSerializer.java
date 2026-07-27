@@ -27,6 +27,7 @@ import org.glavo.scssfx.internal.css.CssUnknownAtRule;
 import org.glavo.scssfx.internal.css.JavaFXMediaQuery;
 import org.glavo.scssfx.internal.css.JavaFXMediaQueryValidator;
 import org.glavo.scssfx.internal.css.JavaFXCssImport;
+import org.glavo.scssfx.internal.css.JavaFxLegacyGradient;
 import org.glavo.scssfx.internal.value.ListSeparator;
 import org.glavo.scssfx.internal.value.SassBoolean;
 import org.glavo.scssfx.internal.value.SassColor;
@@ -1114,6 +1115,10 @@ public final class BssSerializer {
             writeStringValue(output, property, string, strings);
             return;
         }
+        if (isFontSizeProperty(property)) {
+            writeFontSizeValue(output, value, span, strings);
+            return;
+        }
         if (property.equals("-fx-blend-mode")
                 && value instanceof SassColor color
                 && isExtendedBlendModeColor(color)) {
@@ -1361,6 +1366,14 @@ public final class BssSerializer {
         return property.endsWith("font-weight");
     }
 
+    /// Returns whether a property consumes a font-size scalar.
+    ///
+    /// @param property the CSS property name
+    /// @return whether the property uses the font-size converter
+    private static boolean isFontSizeProperty(String property) {
+        return property.endsWith("font-size");
+    }
+
     /// Returns whether a property consumes the JavaFX font shorthand grammar.
     ///
     /// @param property the CSS property name
@@ -1589,6 +1602,56 @@ public final class BssSerializer {
         writeParsedHeader(output, false, converter, strings);
         output.writeByte(NESTED_VALUE);
         writeSizeValue(output, number, span, strings);
+    }
+
+    /// Writes a JavaFX font size after expanding its CSS keyword, if any.
+    ///
+    /// @param output  the declaration output stream
+    /// @param value   the evaluated numeric size or font-size keyword
+    /// @param span    the source value span
+    /// @param strings the shared string table
+    /// @throws IOException if an in-memory output stream rejects a write
+    private static void writeFontSizeValue(
+            DataOutputStream output,
+            SassValue value,
+            SourceSpan span,
+            StringStore strings
+    ) throws IOException {
+        @Nullable var size = normalizedFontSize(value);
+        if (size == null) {
+            throw new BssSerializeException(
+                    "BSS font sizes require a JavaFX size or font-size keyword.",
+                    span,
+                    null
+            );
+        }
+        writeNumberValue(output, "-fx-font-size", size, span, strings);
+    }
+
+    /// Returns the OpenJFX numeric representation of a font-size value.
+    ///
+    /// @param value the evaluated size or keyword
+    /// @return the accepted number, or {@code null} when the value is invalid
+    private static @Nullable SassNumber normalizedFontSize(SassValue value) {
+        if (value instanceof SassNumber number) {
+            return isFontSize(number) ? number : null;
+        }
+        if (!(value instanceof SassString keyword) || keyword.hasQuotes()) {
+            return null;
+        }
+        var percentage = switch (keyword.text().toLowerCase(Locale.ROOT)) {
+            case "xx-small" -> 60.0;
+            case "x-small" -> 75.0;
+            case "small", "smaller" -> 80.0;
+            case "inherit", "medium" -> 100.0;
+            case "large", "larger" -> 120.0;
+            case "x-large" -> 150.0;
+            case "xx-large" -> 200.0;
+            default -> Double.NaN;
+        };
+        return Double.isNaN(percentage)
+                ? null
+                : SassNumber.of(percentage, "%");
     }
 
     /// Returns whether a Sass number has one JavaFX time unit.
@@ -1925,6 +1988,7 @@ public final class BssSerializer {
         writeNestedGradientSize(output, gradient.endX(), span, strings);
         writeNestedGradientSize(output, gradient.endY(), span, strings);
         var cycleMethod = strings.version() == VERSION_5
+                && !gradient.legacySyntax()
                 && gradient.cycleMethod().equals("REPEAT")
                 ? "REFLECT"
                 : gradient.cycleMethod();
@@ -1956,6 +2020,7 @@ public final class BssSerializer {
         writeNullableGradientSize(output, gradient.centerY(), span, strings);
         writeNestedGradientSize(output, gradient.radius(), span, strings);
         var cycleMethod = strings.version() == VERSION_5
+                && !gradient.legacySyntax()
                 && gradient.cycleMethod().equals("REPEAT")
                 ? "REFLECT"
                 : gradient.cycleMethod();
@@ -1975,7 +2040,7 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeNullableGradientSize(
             DataOutputStream output,
-            @Nullable SassNumber size,
+            @Nullable JavaFxPaintParser.GradientSize size,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
@@ -1984,6 +2049,31 @@ public final class BssSerializer {
             return;
         }
         writeNestedGradientSize(output, size, span, strings);
+    }
+
+    /// Writes one nested raw or property-lookup JavaFX gradient size.
+    ///
+    /// @param output  the declaration output stream
+    /// @param size    the gradient size to serialize
+    /// @param span    the source value span
+    /// @param strings the shared string table
+    /// @throws IOException if an in-memory output stream rejects a write
+    private static void writeNestedGradientSize(
+            DataOutputStream output,
+            JavaFxPaintParser.GradientSize size,
+            SourceSpan span,
+            StringStore strings
+    ) throws IOException {
+        if (size instanceof JavaFxPaintParser.RawGradientSize raw) {
+            writeNestedGradientSize(output, raw.size(), span, strings);
+            return;
+        }
+        if (size instanceof JavaFxPaintParser.LookupGradientSize lookup) {
+            output.writeByte(NESTED_VALUE);
+            writeLookupValue(output, lookup.key(), strings);
+            return;
+        }
+        throw new AssertionError("unsupported JavaFX gradient size type");
     }
 
     /// Writes one nested raw JavaFX Size parsed value.
@@ -2109,6 +2199,10 @@ public final class BssSerializer {
             SourceSpan span
     ) {
         if (!(value instanceof SassList list)) {
+            return List.of(JavaFxPaintParser.parse(value, span));
+        }
+        if (list.separator() == ListSeparator.SPACE
+                && JavaFxLegacyGradient.serialize(value) != null) {
             return List.of(JavaFxPaintParser.parse(value, span));
         }
         if (list.hasBrackets()
@@ -3288,13 +3382,31 @@ public final class BssSerializer {
         }
         if (list.hasBrackets()
                 || list.separator() != ListSeparator.SPACE
-                || list.contents().isEmpty()
-                || list.contents().size() > 4) {
+                || list.contents().isEmpty()) {
             throw invalidBorderPaints(span);
         }
-        var paints = new ArrayList<JavaFxPaintParser.Paint>(list.contents().size());
-        for (var item : list.contents()) {
-            paints.add(JavaFxPaintParser.parse(item, span));
+        var paints = new ArrayList<JavaFxPaintParser.Paint>(4);
+        for (var index = 0; index < list.contents().size();) {
+            @Nullable var legacyGradient = JavaFxLegacyGradient.consume(
+                    list.contents(),
+                    index
+            );
+            if (legacyGradient != null) {
+                paints.add(JavaFxPaintParser.parse(
+                        new SassString(legacyGradient.css(), false),
+                        span
+                ));
+                index = legacyGradient.nextIndex();
+            } else {
+                paints.add(JavaFxPaintParser.parse(
+                        list.contents().get(index),
+                        span
+                ));
+                index++;
+            }
+            if (paints.size() > 4) {
+                throw invalidBorderPaints(span);
+            }
         }
         return List.copyOf(paints);
     }
@@ -4192,20 +4304,44 @@ public final class BssSerializer {
                 }
                 return numerator;
             }
-            if (!isFontSize(number)) {
-                throw invalidFontShorthand(span);
+            @Nullable var size = normalizedFontSize(number);
+            if (size != null) {
+                return size;
             }
-            return number;
         }
         if (value instanceof SassList slash
                 && !slash.hasBrackets()
                 && slash.separator() == ListSeparator.SLASH
-                && slash.contents().size() == 2
-                && slash.contents().get(0) instanceof SassNumber size
-                && slash.contents().get(1) instanceof SassNumber lineHeight
-                && isFontSize(size)
-                && isFontSize(lineHeight)) {
-            return size;
+                && slash.contents().size() == 2) {
+            @Nullable var size = normalizedFontSize(slash.contents().get(0));
+            @Nullable var lineHeight = normalizedFontSize(
+                    slash.contents().get(1)
+            );
+            if (size != null && lineHeight != null) {
+                return size;
+            }
+        }
+        if (value instanceof SassString slashText && !slashText.hasQuotes()) {
+            var separator = slashText.text().indexOf('/');
+            if (separator > 0
+                    && separator == slashText.text().lastIndexOf('/')
+                    && separator < slashText.text().length() - 1) {
+                @Nullable var size = normalizedFontSize(new SassString(
+                        slashText.text().substring(0, separator).trim(),
+                        false
+                ));
+                @Nullable var lineHeight = normalizedFontSize(new SassString(
+                        slashText.text().substring(separator + 1).trim(),
+                        false
+                ));
+                if (size != null && lineHeight != null) {
+                    return size;
+                }
+            }
+        }
+        @Nullable var keywordSize = normalizedFontSize(value);
+        if (keywordSize != null) {
+            return keywordSize;
         }
         throw invalidFontShorthand(span);
     }
@@ -5004,8 +5140,17 @@ public final class BssSerializer {
         /// @return the value adjusted for BSS v5 when it names a converter
         private String converterClassName(String value) {
             if (version == VERSION_5) {
-                if (value.equals("javafx.css.converter.StopConverter")) {
-                    return "com.sun.javafx.css.parser.StopConverter";
+                if (value.equals("javafx.css.converter.StopConverter")
+                        || value.equals(
+                                "javafx.css.converter.LadderConverter"
+                        )
+                        || value.equals(
+                                "javafx.css.converter.DeriveColorConverter"
+                        )) {
+                    return "com.sun.javafx.css.parser."
+                            + value.substring(
+                                    "javafx.css.converter.".length()
+                            );
                 }
                 if (value.startsWith("javafx.css.converter.")) {
                     return "com.sun.javafx.css.converters."

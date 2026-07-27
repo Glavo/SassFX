@@ -2,6 +2,7 @@
 package org.glavo.scssfx.internal.bss;
 
 import org.glavo.scssfx.SourceSpan;
+import org.glavo.scssfx.internal.css.JavaFxLegacyGradient;
 import org.glavo.scssfx.internal.value.SassColor;
 import org.glavo.scssfx.internal.value.SassNumber;
 import org.glavo.scssfx.internal.value.SassString;
@@ -65,6 +66,10 @@ final class JavaFxPaintParser {
         if (value instanceof SassColor color) {
             return new SolidPaint(color);
         }
+        @Nullable var legacyGradient = JavaFxLegacyGradient.serialize(value);
+        if (legacyGradient != null) {
+            return parseTextPaint(legacyGradient, span);
+        }
         if (!(value instanceof SassString string) || string.hasQuotes()) {
             throw invalidPaint(span);
         }
@@ -80,6 +85,9 @@ final class JavaFxPaintParser {
     /// @param value the evaluated Sass value
     /// @return whether the value begins with a supported unquoted paint function
     static boolean isPaintFunction(SassValue value) {
+        if (JavaFxLegacyGradient.serialize(value) != null) {
+            return true;
+        }
         if (!(value instanceof SassString string) || string.hasQuotes()) {
             return false;
         }
@@ -93,7 +101,9 @@ final class JavaFxPaintParser {
             return true;
         }
         return switch (functionName) {
-            case "linear-gradient",
+            case "linear",
+                 "radial",
+                 "linear-gradient",
                  "radial-gradient",
                  "image-pattern",
                  "repeating-image-pattern",
@@ -114,6 +124,15 @@ final class JavaFxPaintParser {
         if (isLookupIdentifier(trimmed)) {
             return new LookupPaint(trimmed);
         }
+        if (beginsLegacyGradient(trimmed, "linear")) {
+            return parseLegacyLinearGradient(trimmed, span);
+        }
+        if (beginsLegacyGradient(trimmed, "radial")) {
+            return parseLegacyRadialGradient(trimmed, span);
+        }
+        if (beginsLegacyGradient(trimmed, "ladder")) {
+            return parseLegacyLadderColor(trimmed, span);
+        }
         var function = parseFunctionInvocation(trimmed, span);
         var functionName = function.name().toLowerCase(Locale.ROOT);
         if (functionName.startsWith("region")) {
@@ -128,6 +147,190 @@ final class JavaFxPaintParser {
             case "ladder" -> parseLadderColor(function.arguments(), span);
             default -> throw invalidPaint(span);
         };
+    }
+
+    /// Returns whether text begins with one legacy gradient keyword followed
+    /// by a separate token.
+    ///
+    /// @param text the complete paint text
+    /// @param keyword the lower-case legacy gradient keyword
+    /// @return whether the legacy grammar should parse the text
+    private static boolean beginsLegacyGradient(
+            String text,
+            String keyword
+    ) {
+        return text.length() > keyword.length()
+                && text.regionMatches(true, 0, keyword, 0, keyword.length())
+                && Character.isWhitespace(text.charAt(keyword.length()));
+    }
+
+    /// Parses JavaFX's deprecated `linear (...) to (...) stops ...` grammar.
+    ///
+    /// @param text the complete legacy gradient text
+    /// @param span the source range associated with the declaration
+    /// @return the normalized linear gradient
+    /// @throws BssSerializeException if the legacy grammar is invalid
+    private static LinearGradientPaint parseLegacyLinearGradient(
+            String text,
+            SourceSpan span
+    ) {
+        var cursor = new LegacyGradientCursor(text, span);
+        cursor.requireKeyword("linear");
+        var start = parseLegacyPoint(cursor.parenthesized(), span);
+        cursor.requireKeyword("to");
+        var end = parseLegacyPoint(cursor.parenthesized(), span);
+        cursor.requireKeyword("stops");
+        var stops = parseLegacyStops(cursor, span);
+        var cycleMethod = parseLegacyCycleMethod(cursor, span);
+        return new LinearGradientPaint(
+                start.x(),
+                start.y(),
+                end.x(),
+                end.y(),
+                cycleMethod,
+                stops,
+                true
+        );
+    }
+
+    /// Parses JavaFX's deprecated `radial ... stops ...` grammar.
+    ///
+    /// @param text the complete legacy gradient text
+    /// @param span the source range associated with the declaration
+    /// @return the normalized radial gradient
+    /// @throws BssSerializeException if the legacy grammar is invalid
+    private static RadialGradientPaint parseLegacyRadialGradient(
+            String text,
+            SourceSpan span
+    ) {
+        var cursor = new LegacyGradientCursor(text, span);
+        cursor.requireKeyword("radial");
+        @Nullable GradientSize focusAngle = null;
+        @Nullable GradientSize focusDistance = null;
+        @Nullable GradientSize centerX = null;
+        @Nullable GradientSize centerY = null;
+        if (cursor.consumeKeyword("focus-angle")) {
+            focusAngle = parseGradientSize(cursor.token(), span);
+        }
+        if (cursor.consumeKeyword("focus-distance")) {
+            focusDistance = parseGradientSize(cursor.token(), span);
+        }
+        if (cursor.consumeKeyword("center")) {
+            var center = parseLegacyPoint(cursor.parenthesized(), span);
+            centerX = center.x();
+            centerY = center.y();
+        }
+        var radius = parseGradientSize(cursor.token(), span);
+        cursor.requireKeyword("stops");
+        var stops = parseLegacyStops(cursor, span);
+        var cycleMethod = parseLegacyCycleMethod(cursor, span);
+        return new RadialGradientPaint(
+                focusAngle,
+                focusDistance,
+                centerX,
+                centerY,
+                radius,
+                cycleMethod,
+                stops,
+                true
+        );
+    }
+
+    /// Parses JavaFX's deprecated `ladder color stops ...` grammar.
+    ///
+    /// @param text the complete legacy ladder text
+    /// @param span the source range associated with the declaration
+    /// @return the normalized ladder color
+    /// @throws BssSerializeException if the legacy grammar is invalid
+    private static LadderPaint parseLegacyLadderColor(
+            String text,
+            SourceSpan span
+    ) {
+        var cursor = new LegacyGradientCursor(text, span);
+        cursor.requireKeyword("ladder");
+        var base = parseColorPaint(cursor.valueBeforeKeyword("stops"), span);
+        var stops = parseLegacyStops(cursor, span);
+        cursor.requireEnd();
+        return new LadderPaint(base, stops);
+    }
+
+    /// Parses a comma-separated legacy gradient point.
+    ///
+    /// @param text the point body without parentheses
+    /// @param span the source range associated with the declaration
+    /// @return the two parsed coordinates
+    /// @throws BssSerializeException if the point is malformed
+    private static LegacyPoint parseLegacyPoint(
+            String text,
+            SourceSpan span
+    ) {
+        var components = splitTopLevelCommas(text, span);
+        if (components.size() < 2) {
+            throw invalidPaint(span);
+        }
+        return new LegacyPoint(
+                parseGradientSize(components.get(0), span),
+                parseGradientSize(components.get(1), span)
+        );
+    }
+
+    /// Parses consecutive legacy `(offset, color)` stops.
+    ///
+    /// @param cursor the cursor positioned at the first stop
+    /// @param span the source range associated with the declaration
+    /// @return immutable stops in source order
+    /// @throws BssSerializeException if no stop or an invalid stop is present
+    private static @Unmodifiable List<GradientStop> parseLegacyStops(
+            LegacyGradientCursor cursor,
+            SourceSpan span
+    ) {
+        var result = new ArrayList<GradientStop>();
+        while (cursor.nextIsParenthesized()) {
+            var components = splitTopLevelCommas(
+                    cursor.parenthesized(),
+                    span
+            );
+            if (components.size() < 2) {
+                throw invalidPaint(span);
+            }
+            result.add(new GradientStop(
+                    parseGradientSize(components.get(0), span),
+                    parseGradientColor(components.get(1), span)
+            ));
+        }
+        if (result.isEmpty()) {
+            throw invalidPaint(span);
+        }
+        return List.copyOf(result);
+    }
+
+    /// Parses the optional trailing legacy cycle method and requires EOF.
+    ///
+    /// @param cursor the cursor after the final stop
+    /// @param span the source range associated with the declaration
+    /// @return the normalized cycle-method constant
+    /// @throws BssSerializeException if trailing text is invalid
+    private static String parseLegacyCycleMethod(
+            LegacyGradientCursor cursor,
+            SourceSpan span
+    ) {
+        var cycleMethod = NO_CYCLE;
+        if (cursor.hasMore()) {
+            var token = cursor.token();
+            if (token.equalsIgnoreCase("no-cycle")) {
+                cycleMethod = NO_CYCLE;
+            } else {
+                @Nullable var parsed = gradientCycleMethod(token);
+                if (parsed == null) {
+                    throw invalidPaint(span);
+                }
+                cycleMethod = parsed;
+            }
+        }
+        if (cursor.hasMore()) {
+            throw invalidPaint(span);
+        }
+        return cycleMethod;
     }
 
     /// Parses JavaFX's `region("selector")` paint reference.
@@ -293,6 +496,27 @@ final class JavaFxPaintParser {
         throw invalidPaint(span);
     }
 
+    /// Parses one JavaFX gradient coordinate, radius, angle, or stop offset.
+    ///
+    /// @param argument the complete size token
+    /// @param span     the source range associated with the declaration
+    /// @return a raw size or a deferred property lookup
+    /// @throws BssSerializeException if the size grammar is invalid
+    private static GradientSize parseGradientSize(
+            String argument,
+            SourceSpan span
+    ) {
+        @Nullable SassNumber rawSize = tryParseSize(argument);
+        if (rawSize != null) {
+            return new RawGradientSize(rawSize);
+        }
+        var trimmed = argument.trim();
+        if (isLookupIdentifier(trimmed)) {
+            return new LookupGradientSize(trimmed);
+        }
+        throw invalidPaint(span);
+    }
+
     /// Parses JavaFX's {@code linear-gradient(...)} grammar.
     ///
     /// @param arguments the function body without its parentheses
@@ -327,12 +551,13 @@ final class JavaFxPaintParser {
 
         var stops = parseGradientStops(argumentsList.subList(index, argumentsList.size()), span);
         return new LinearGradientPaint(
-                direction.startX(),
-                direction.startY(),
-                direction.endX(),
-                direction.endY(),
+                new RawGradientSize(direction.startX()),
+                new RawGradientSize(direction.startY()),
+                new RawGradientSize(direction.endX()),
+                new RawGradientSize(direction.endY()),
                 cycleMethod,
-                stops
+                stops,
+                false
         );
     }
 
@@ -397,13 +622,16 @@ final class JavaFxPaintParser {
 
         var stops = parseGradientStops(argumentsList.subList(index, argumentsList.size()), span);
         return new RadialGradientPaint(
-                focusAngle,
-                focusDistance,
-                centerX,
-                centerY,
-                radius,
+                focusAngle == null ? null : new RawGradientSize(focusAngle),
+                focusDistance == null
+                        ? null
+                        : new RawGradientSize(focusDistance),
+                centerX == null ? null : new RawGradientSize(centerX),
+                centerY == null ? null : new RawGradientSize(centerY),
+                new RawGradientSize(radius),
                 cycleMethod,
-                stops
+                stops,
+                false
         );
     }
 
@@ -636,7 +864,10 @@ final class JavaFxPaintParser {
             if (offset == null) {
                 throw new AssertionError("gradient stop normalization left an offset unset");
             }
-            normalized.add(new GradientStop(offset, rawStops.get(index).color()));
+            normalized.add(new GradientStop(
+                    new RawGradientSize(offset),
+                    rawStops.get(index).color()
+            ));
         }
         return List.copyOf(normalized);
     }
@@ -1440,6 +1671,241 @@ final class JavaFxPaintParser {
         );
     }
 
+    /// Contains one point from a legacy JavaFX gradient.
+    ///
+    /// @param x the horizontal coordinate
+    /// @param y the vertical coordinate
+    @NotNullByDefault
+    private record LegacyPoint(GradientSize x, GradientSize y) {
+        /// Creates a validated legacy point.
+        private LegacyPoint {
+            x = Objects.requireNonNull(x, "x");
+            y = Objects.requireNonNull(y, "y");
+        }
+    }
+
+    /// Scans the token sequence used by deprecated JavaFX gradient syntax.
+    @NotNullByDefault
+    private static final class LegacyGradientCursor {
+        /// Contains the complete legacy paint text.
+        private final String text;
+
+        /// Contains the source span used for syntax failures.
+        private final SourceSpan span;
+
+        /// Contains the next unconsumed UTF-16 offset.
+        private int index;
+
+        /// Creates a cursor at the beginning of a legacy paint.
+        ///
+        /// @param text the complete paint text
+        /// @param span the source range associated with the declaration
+        private LegacyGradientCursor(String text, SourceSpan span) {
+            this.text = Objects.requireNonNull(text, "text");
+            this.span = Objects.requireNonNull(span, "span");
+        }
+
+        /// Consumes one case-insensitive standalone keyword when present.
+        ///
+        /// @param keyword the expected keyword
+        /// @return whether the keyword was consumed
+        private boolean consumeKeyword(String keyword) {
+            Objects.requireNonNull(keyword, "keyword");
+            skipWhitespace();
+            if (!text.regionMatches(
+                    true,
+                    index,
+                    keyword,
+                    0,
+                    keyword.length()
+            )) {
+                return false;
+            }
+            var end = index + keyword.length();
+            if (end < text.length()
+                    && !Character.isWhitespace(text.charAt(end))
+                    && text.charAt(end) != '(') {
+                return false;
+            }
+            index = end;
+            return true;
+        }
+
+        /// Requires and consumes one case-insensitive standalone keyword.
+        ///
+        /// @param keyword the required keyword
+        /// @throws BssSerializeException if the keyword is absent
+        private void requireKeyword(String keyword) {
+            if (!consumeKeyword(keyword)) {
+                throw invalidPaint(span);
+            }
+        }
+
+        /// Returns and consumes one non-whitespace token.
+        ///
+        /// @return the token spelling
+        /// @throws BssSerializeException if no ordinary token is present
+        private String token() {
+            skipWhitespace();
+            if (index >= text.length() || text.charAt(index) == '(') {
+                throw invalidPaint(span);
+            }
+            var start = index;
+            while (index < text.length()
+                    && !Character.isWhitespace(text.charAt(index))) {
+                index++;
+            }
+            return text.substring(start, index);
+        }
+
+        /// Returns text through the next standalone keyword and consumes that
+        /// keyword.
+        ///
+        /// Parenthesized functions and quoted strings are scanned as part of
+        /// the preceding value, so their contents cannot terminate the scan.
+        ///
+        /// @param keyword the keyword that terminates the value
+        /// @return the non-empty text before the keyword
+        /// @throws BssSerializeException if the keyword is absent or the value
+        ///                               is empty or unbalanced
+        private String valueBeforeKeyword(String keyword) {
+            Objects.requireNonNull(keyword, "keyword");
+            skipWhitespace();
+            var start = index;
+            var depth = 0;
+            var quote = '\0';
+            var escaped = false;
+            while (index < text.length()) {
+                var character = text.charAt(index);
+                if (quote != '\0') {
+                    index++;
+                    if (escaped) {
+                        escaped = false;
+                    } else if (character == '\\') {
+                        escaped = true;
+                    } else if (character == quote) {
+                        quote = '\0';
+                    }
+                    continue;
+                }
+                if (character == '\'' || character == '"') {
+                    quote = character;
+                    index++;
+                    continue;
+                }
+                if (character == '(') {
+                    depth++;
+                    index++;
+                    continue;
+                }
+                if (character == ')') {
+                    if (depth == 0) {
+                        throw invalidPaint(span);
+                    }
+                    depth--;
+                    index++;
+                    continue;
+                }
+                if (depth == 0
+                        && text.regionMatches(
+                                true,
+                                index,
+                                keyword,
+                                0,
+                                keyword.length()
+                        )
+                        && index > start
+                        && Character.isWhitespace(text.charAt(index - 1))) {
+                    var end = index + keyword.length();
+                    if (end == text.length()
+                            || Character.isWhitespace(text.charAt(end))
+                            || text.charAt(end) == '(') {
+                        var value = text.substring(start, index).trim();
+                        if (value.isEmpty()) {
+                            throw invalidPaint(span);
+                        }
+                        index = end;
+                        return value;
+                    }
+                }
+                index++;
+            }
+            throw invalidPaint(span);
+        }
+
+        /// Returns and consumes one balanced parenthesized value.
+        ///
+        /// Nested functions and quoted strings remain part of the returned
+        /// body.
+        ///
+        /// @return the text between the outer parentheses
+        /// @throws BssSerializeException if the value is absent or unbalanced
+        private String parenthesized() {
+            skipWhitespace();
+            if (index >= text.length() || text.charAt(index) != '(') {
+                throw invalidPaint(span);
+            }
+            var start = ++index;
+            var depth = 1;
+            var quote = '\0';
+            var escaped = false;
+            while (index < text.length()) {
+                var character = text.charAt(index++);
+                if (quote != '\0') {
+                    if (escaped) {
+                        escaped = false;
+                    } else if (character == '\\') {
+                        escaped = true;
+                    } else if (character == quote) {
+                        quote = '\0';
+                    }
+                    continue;
+                }
+                if (character == '\'' || character == '"') {
+                    quote = character;
+                } else if (character == '(') {
+                    depth++;
+                } else if (character == ')' && --depth == 0) {
+                    return text.substring(start, index - 1);
+                }
+            }
+            throw invalidPaint(span);
+        }
+
+        /// Returns whether the next non-whitespace token is parenthesized.
+        ///
+        /// @return whether another legacy point or stop follows
+        private boolean nextIsParenthesized() {
+            skipWhitespace();
+            return index < text.length() && text.charAt(index) == '(';
+        }
+
+        /// Returns whether any non-whitespace text remains.
+        ///
+        /// @return whether another token follows
+        private boolean hasMore() {
+            skipWhitespace();
+            return index < text.length();
+        }
+
+        /// Requires that no non-whitespace text remains.
+        ///
+        /// @throws BssSerializeException if another token follows
+        private void requireEnd() {
+            if (hasMore()) {
+                throw invalidPaint(span);
+            }
+        }
+
+        /// Advances past whitespace at the current position.
+        private void skipWhitespace() {
+            while (index < text.length()
+                    && Character.isWhitespace(text.charAt(index))) {
+                index++;
+            }
+        }
+    }
+
     /// Represents one paint that can be serialized by the BSS paint converters.
     @NotNullByDefault
     sealed interface Paint permits ColorPaint, LinearGradientPaint, RadialGradientPaint,
@@ -1504,8 +1970,8 @@ final class JavaFxPaintParser {
         LadderPaint {
             base = Objects.requireNonNull(base, "base");
             stops = List.copyOf(stops);
-            if (stops.size() < 2) {
-                throw new IllegalArgumentException("a ladder requires at least two stops");
+            if (stops.isEmpty()) {
+                throw new IllegalArgumentException("a ladder requires at least one stop");
             }
         }
     }
@@ -1518,14 +1984,16 @@ final class JavaFxPaintParser {
     /// @param endY        the end y coordinate
     /// @param cycleMethod the JavaFX {@code CycleMethod} enum spelling
     /// @param stops       the normalized color stops
+    /// @param legacySyntax whether the deprecated token-series grammar was used
     @NotNullByDefault
     record LinearGradientPaint(
-            SassNumber startX,
-            SassNumber startY,
-            SassNumber endX,
-            SassNumber endY,
+            GradientSize startX,
+            GradientSize startY,
+            GradientSize endX,
+            GradientSize endY,
             String cycleMethod,
-            @Unmodifiable List<GradientStop> stops
+            @Unmodifiable List<GradientStop> stops,
+            boolean legacySyntax
     ) implements Paint {
         /// Creates an immutable linear gradient paint.
         LinearGradientPaint {
@@ -1547,15 +2015,17 @@ final class JavaFxPaintParser {
     /// @param radius        the required radius
     /// @param cycleMethod   the JavaFX {@code CycleMethod} enum spelling
     /// @param stops         the normalized color stops
+    /// @param legacySyntax  whether the deprecated token-series grammar was used
     @NotNullByDefault
     record RadialGradientPaint(
-            @Nullable SassNumber focusAngle,
-            @Nullable SassNumber focusDistance,
-            @Nullable SassNumber centerX,
-            @Nullable SassNumber centerY,
-            SassNumber radius,
+            @Nullable GradientSize focusAngle,
+            @Nullable GradientSize focusDistance,
+            @Nullable GradientSize centerX,
+            @Nullable GradientSize centerY,
+            GradientSize radius,
             String cycleMethod,
-            @Unmodifiable List<GradientStop> stops
+            @Unmodifiable List<GradientStop> stops,
+            boolean legacySyntax
     ) implements Paint {
         /// Creates an immutable radial gradient paint.
         RadialGradientPaint {
@@ -1654,12 +2124,39 @@ final class JavaFxPaintParser {
         }
     }
 
+    /// Represents one JavaFX gradient size value.
+    @NotNullByDefault
+    sealed interface GradientSize permits RawGradientSize, LookupGradientSize {
+    }
+
+    /// Represents one concrete JavaFX gradient size.
+    ///
+    /// @param size the raw JavaFX size
+    @NotNullByDefault
+    record RawGradientSize(SassNumber size) implements GradientSize {
+        /// Creates an immutable raw gradient size.
+        RawGradientSize {
+            size = Objects.requireNonNull(size, "size");
+        }
+    }
+
+    /// Represents one JavaFX property lookup used as a gradient size.
+    ///
+    /// @param key the unquoted property key
+    @NotNullByDefault
+    record LookupGradientSize(String key) implements GradientSize {
+        /// Creates an immutable lookup gradient size.
+        LookupGradientSize {
+            key = requireNonEmpty(key, "key");
+        }
+    }
+
     /// Represents one normalized gradient color stop.
     ///
     /// @param offset the normalized stop offset
     /// @param color  the stop color
     @NotNullByDefault
-    record GradientStop(SassNumber offset, ColorPaint color) {
+    record GradientStop(GradientSize offset, ColorPaint color) {
         /// Creates an immutable gradient color stop.
         GradientStop {
             offset = Objects.requireNonNull(offset, "offset");

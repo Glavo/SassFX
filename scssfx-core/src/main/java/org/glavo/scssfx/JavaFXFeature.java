@@ -15,6 +15,9 @@ public enum JavaFXFeature {
     /// Supports unconditional stylesheet `@import` rules.
     UNCONDITIONAL_STYLESHEET_IMPORTS(8),
 
+    /// Supports the deprecated token-series linear and radial gradient syntax.
+    LEGACY_GRADIENT_SYNTAX(8),
+
     /// Correctly parses the `add`, `red`, `green`, and `blue` blend modes.
     EXTENDED_BLEND_MODES(18),
 

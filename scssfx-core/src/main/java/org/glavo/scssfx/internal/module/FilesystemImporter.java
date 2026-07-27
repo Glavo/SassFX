@@ -25,16 +25,32 @@ public final class FilesystemImporter {
     /// Contains absolute load-path directories.
     private final @Unmodifiable List<Path> loadPaths;
 
+    /// Receives filesystem candidates for incremental dependency tracking.
+    private final @Nullable SassResolutionTracker resolutionTracker;
+
     /// Creates an importer.
     ///
     /// @param loadPaths additional directories searched after the base URL
     public FilesystemImporter(List<Path> loadPaths) {
+        this(loadPaths, null);
+    }
+
+    /// Creates an importer that records filesystem resolution candidates.
+    ///
+    /// @param loadPaths additional directories searched after the base URL
+    /// @param resolutionTracker the tracker receiving candidate paths, or
+    /// `null` when tracking is disabled
+    public FilesystemImporter(
+            List<Path> loadPaths,
+            @Nullable SassResolutionTracker resolutionTracker
+    ) {
         Objects.requireNonNull(loadPaths, "loadPaths");
         var normalized = new ArrayList<Path>(loadPaths.size());
         for (var path : loadPaths) {
             normalized.add(path.toAbsolutePath().normalize());
         }
         this.loadPaths = List.copyOf(normalized);
+        this.resolutionTracker = resolutionTracker;
     }
 
     /// Canonicalizes and loads a stylesheet URL.
@@ -70,6 +86,152 @@ public final class FilesystemImporter {
         return canonicalizeAndLoad(url, baseUrl, true);
     }
 
+    /// Resolves a stylesheet only beside its containing file.
+    ///
+    /// @param url the unresolved stylesheet URL
+    /// @param baseUrl the canonical file URL of the containing stylesheet
+    /// @param forImport whether import-only candidates take precedence
+    /// @return the loaded stylesheet, or {@code null} when no relative candidate exists
+    /// @throws IOException if an existing candidate cannot be canonicalized or read
+    public @Nullable ImportResult canonicalizeAndLoadRelative(
+            String url,
+            URI baseUrl,
+            boolean forImport
+    ) throws IOException {
+        Objects.requireNonNull(url, "url");
+        Objects.requireNonNull(baseUrl, "baseUrl");
+        if (!"file".equalsIgnoreCase(baseUrl.getScheme()) || hasNonFileScheme(url)) {
+            return null;
+        }
+        if (url.isEmpty()) {
+            var current = Path.of(baseUrl).normalize();
+            return Files.isRegularFile(current) ? load(current) : null;
+        }
+        var basePath = Path.of(baseUrl).getParent();
+        if (basePath == null) {
+            return null;
+        }
+        @Nullable Path candidate = resolveAt(
+                basePath.resolve(url).normalize(),
+                forImport,
+                resolutionTracker
+        );
+        return candidate == null ? null : load(candidate);
+    }
+
+    /// Resolves a stylesheet only through configured load paths.
+    ///
+    /// @param url the unresolved stylesheet URL
+    /// @param forImport whether import-only candidates take precedence
+    /// @return the loaded stylesheet, or {@code null} when no load path matches
+    /// @throws IOException if an existing candidate cannot be canonicalized or read
+    public @Nullable ImportResult canonicalizeAndLoadFromLoadPaths(
+            String url,
+            boolean forImport
+    ) throws IOException {
+        Objects.requireNonNull(url, "url");
+        if (hasNonFileScheme(url)) {
+            return null;
+        }
+        for (var loadPath : loadPaths) {
+            @Nullable Path candidate = resolveAt(
+                    loadPath.resolve(url).normalize(),
+                    forImport,
+                    resolutionTracker
+            );
+            if (candidate != null) {
+                return load(candidate);
+            }
+        }
+        return null;
+    }
+
+    /// Resolves an absolute file URL using standard Sass candidate rules.
+    ///
+    /// @param fileUrl the absolute file URL returned by a file importer
+    /// @param forImport whether import-only candidates take precedence
+    /// @return the loaded stylesheet, or {@code null} when no candidate exists
+    /// @throws IOException if an existing candidate cannot be canonicalized or read
+    /// @throws IllegalArgumentException if the URL is not a plain absolute file URL
+    public @Nullable ImportResult canonicalizeAndLoadFileUrl(
+            URI fileUrl,
+            boolean forImport
+    ) throws IOException {
+        @Nullable URI canonicalUrl = canonicalizeFileUrl(
+                fileUrl,
+                forImport,
+                resolutionTracker
+        );
+        return canonicalUrl == null ? null : loadCanonicalFileUrl(canonicalUrl);
+    }
+
+    /// Resolves an absolute file URL using standard Sass candidate rules
+    /// without reading its contents.
+    ///
+    /// @param fileUrl the absolute file URL returned by a file importer
+    /// @param forImport whether import-only candidates take precedence
+    /// @return the canonical file URL, or {@code null} when no candidate exists
+    /// @throws IOException if an existing candidate cannot be canonicalized
+    /// @throws IllegalArgumentException if the URL is not a plain absolute file URL
+    static @Nullable URI canonicalizeFileUrl(
+            URI fileUrl,
+            boolean forImport
+    ) throws IOException {
+        return canonicalizeFileUrl(fileUrl, forImport, null);
+    }
+
+    /// Canonicalizes an absolute file URL while recording candidate paths.
+    ///
+    /// @param fileUrl the absolute file URL
+    /// @param forImport whether import-only candidates take precedence
+    /// @param resolutionTracker the candidate tracker, or `null`
+    /// @return the canonical file URL, or `null`
+    /// @throws IOException if an existing candidate cannot be canonicalized
+    private static @Nullable URI canonicalizeFileUrl(
+            URI fileUrl,
+            boolean forImport,
+            @Nullable SassResolutionTracker resolutionTracker
+    ) throws IOException {
+        Objects.requireNonNull(fileUrl, "fileUrl");
+        if (!fileUrl.isAbsolute()
+                || !"file".equalsIgnoreCase(fileUrl.getScheme())
+                || fileUrl.getQuery() != null
+                || fileUrl.getFragment() != null) {
+            throw new IllegalArgumentException(
+                    "fileUrl must be an absolute file URL without a query or fragment"
+            );
+        }
+        @Nullable Path candidate = resolveAt(
+                Path.of(fileUrl).normalize(),
+                forImport,
+                resolutionTracker
+        );
+        return candidate == null ? null : candidate.toRealPath().toUri();
+    }
+
+    /// Loads a previously canonicalized stylesheet file URL without applying
+    /// candidate inference again.
+    ///
+    /// @param canonicalUrl the plain canonical file URL
+    /// @return the loaded stylesheet, or {@code null} if the file disappeared
+    /// @throws IOException if the existing file cannot be read
+    /// @throws IllegalArgumentException if the URL is not a plain absolute file URL
+    static @Nullable ImportResult loadCanonicalFileUrl(
+            URI canonicalUrl
+    ) throws IOException {
+        Objects.requireNonNull(canonicalUrl, "canonicalUrl");
+        if (!canonicalUrl.isAbsolute()
+                || !"file".equalsIgnoreCase(canonicalUrl.getScheme())
+                || canonicalUrl.getQuery() != null
+                || canonicalUrl.getFragment() != null) {
+            throw new IllegalArgumentException(
+                    "canonicalUrl must be an absolute file URL without a query or fragment"
+            );
+        }
+        var path = Path.of(canonicalUrl).normalize();
+        return Files.isRegularFile(path) ? load(path) : null;
+    }
+
     /// Canonicalizes and loads an exact plain-CSS resource.
     ///
     /// Unlike Sass module resolution, this method does not infer extensions,
@@ -88,6 +250,7 @@ public final class FilesystemImporter {
         Objects.requireNonNull(resource, "resource");
         @Nullable Path absolute = absoluteFileResource(resource);
         if (absolute != null) {
+            recordCandidate(absolute);
             return Files.isRegularFile(absolute) ? loadCss(absolute) : null;
         }
         if (hasNonFileScheme(resource)) {
@@ -100,6 +263,7 @@ public final class FilesystemImporter {
                         && resolvedUrl.getQuery() == null
                         && resolvedUrl.getFragment() == null) {
                     var resolvedPath = Path.of(resolvedUrl).normalize();
+                    recordCandidate(resolvedPath);
                     if (Files.isRegularFile(resolvedPath)) {
                         return loadCss(resolvedPath);
                     }
@@ -110,6 +274,7 @@ public final class FilesystemImporter {
             var basePath = Path.of(baseUrl).getParent();
             if (basePath != null) {
                 var candidate = basePath.resolve(resource).normalize();
+                recordCandidate(candidate);
                 if (Files.isRegularFile(candidate)) {
                     return loadCss(candidate);
                 }
@@ -117,11 +282,21 @@ public final class FilesystemImporter {
         }
         for (var loadPath : loadPaths) {
             var candidate = loadPath.resolve(resource).normalize();
+            recordCandidate(candidate);
             if (Files.isRegularFile(candidate)) {
                 return loadCss(candidate);
             }
         }
         return null;
+    }
+
+    /// Records an exact filesystem candidate when tracking is enabled.
+    ///
+    /// @param path the candidate path
+    private void recordCandidate(Path path) {
+        if (resolutionTracker != null) {
+            resolutionTracker.recordCandidate(path);
+        }
     }
 
     /// Returns an absolute path represented by a file URI or absolute path.
@@ -165,29 +340,16 @@ public final class FilesystemImporter {
             return null;
         }
         if (baseUrl != null && "file".equalsIgnoreCase(baseUrl.getScheme())) {
-            // Empty import path reloads the current file (indented {@code @import}
-            // with no URL), matching dart-sass.
-            if (url.isEmpty()) {
-                var current = Path.of(baseUrl).normalize();
-                if (Files.isRegularFile(current)) {
-                    return load(current);
-                }
-            }
-            var basePath = Path.of(baseUrl).getParent();
-            if (basePath != null) {
-                @Nullable Path candidate = resolveAt(basePath.resolve(url).normalize(), forImport);
-                if (candidate != null) {
-                    return load(candidate);
-                }
+            @Nullable ImportResult relative = canonicalizeAndLoadRelative(
+                    url,
+                    baseUrl,
+                    forImport
+            );
+            if (relative != null) {
+                return relative;
             }
         }
-        for (var loadPath : loadPaths) {
-            @Nullable Path candidate = resolveAt(loadPath.resolve(url).normalize(), forImport);
-            if (candidate != null) {
-                return load(candidate);
-            }
-        }
-        return null;
+        return canonicalizeAndLoadFromLoadPaths(url, forImport);
     }
 
     /// Returns whether {@code url} names a non-filesystem scheme that cannot be
@@ -214,15 +376,30 @@ public final class FilesystemImporter {
     /// @param forImport whether import-only candidates take precedence
     /// @return the sole matching file, or {@code null} when this location has no match
     /// @throws IllegalStateException if this location produces multiple candidates
-    private static @Nullable Path resolveAt(Path path, boolean forImport) {
+    public static @Nullable Path resolveAt(Path path, boolean forImport) {
+        return resolveAt(path, forImport, null);
+    }
+
+    /// Resolves one path stem and records exactly the candidate groups consulted
+    /// before resolution succeeds or is exhausted.
+    ///
+    /// @param path the path stem to resolve
+    /// @param forImport whether import-only candidates take precedence
+    /// @param resolutionTracker the candidate tracker, or `null`
+    /// @return the sole matching file, or `null`
+    private static @Nullable Path resolveAt(
+            Path path,
+            boolean forImport,
+            @Nullable SassResolutionTracker resolutionTracker
+    ) {
         var candidates = new ArrayList<Path>();
         if (forImport) {
-            addImportOnlyCandidates(candidates, path);
+            addImportOnlyCandidates(candidates, path, resolutionTracker);
             if (!candidates.isEmpty()) {
                 return exactlyOne(candidates);
             }
         }
-        addCandidates(candidates, path);
+        addCandidates(candidates, path, resolutionTracker);
         if (!candidates.isEmpty()) {
             return exactlyOne(candidates);
         }
@@ -233,12 +410,16 @@ public final class FilesystemImporter {
             return null;
         }
         if (forImport) {
-            addImportOnlyIndexCandidates(candidates, path);
+            addImportOnlyIndexCandidates(
+                    candidates,
+                    path,
+                    resolutionTracker
+            );
             if (!candidates.isEmpty()) {
                 return exactlyOne(candidates);
             }
         }
-        addIndexCandidates(candidates, path);
+        addIndexCandidates(candidates, path, resolutionTracker);
         if (!candidates.isEmpty()) {
             return exactlyOne(candidates);
         }
@@ -393,7 +574,11 @@ public final class FilesystemImporter {
     ///
     /// @param candidates the mutable destination list
     /// @param path       the path stem to inspect
-    private static void addCandidates(List<Path> candidates, Path path) {
+    private static void addCandidates(
+            List<Path> candidates,
+            Path path,
+            @Nullable SassResolutionTracker resolutionTracker
+    ) {
         var fileName = path.getFileName();
         if (fileName == null) {
             return;
@@ -404,55 +589,135 @@ public final class FilesystemImporter {
         if (lowerName.endsWith(".scss")
                 || lowerName.endsWith(".sass")
                 || lowerName.endsWith(".css")) {
-            addIfRegular(candidates, path);
+            addIfRegular(candidates, path, resolutionTracker);
             if (parent != null && !name.startsWith("_")) {
-                addIfRegular(candidates, parent.resolve("_" + name));
+                addIfRegular(
+                        candidates,
+                        parent.resolve("_" + name),
+                        resolutionTracker
+                );
             }
             return;
         }
         if (parent == null) {
-            addIfRegular(candidates, Path.of(name + ".scss"));
-            addIfRegular(candidates, Path.of("_" + name + ".scss"));
-            addIfRegular(candidates, Path.of(name + ".sass"));
-            addIfRegular(candidates, Path.of("_" + name + ".sass"));
+            addIfRegular(
+                    candidates,
+                    Path.of(name + ".scss"),
+                    resolutionTracker
+            );
+            addIfRegular(
+                    candidates,
+                    Path.of("_" + name + ".scss"),
+                    resolutionTracker
+            );
+            addIfRegular(
+                    candidates,
+                    Path.of(name + ".sass"),
+                    resolutionTracker
+            );
+            addIfRegular(
+                    candidates,
+                    Path.of("_" + name + ".sass"),
+                    resolutionTracker
+            );
             if (!candidates.isEmpty()) {
                 return;
             }
-            addIfRegular(candidates, Path.of(name + ".css"));
-            addIfRegular(candidates, Path.of("_" + name + ".css"));
+            addIfRegular(
+                    candidates,
+                    Path.of(name + ".css"),
+                    resolutionTracker
+            );
+            addIfRegular(
+                    candidates,
+                    Path.of("_" + name + ".css"),
+                    resolutionTracker
+            );
             return;
         }
-        addIfRegular(candidates, parent.resolve(name + ".scss"));
-        addIfRegular(candidates, parent.resolve("_" + name + ".scss"));
-        addIfRegular(candidates, parent.resolve(name + ".sass"));
-        addIfRegular(candidates, parent.resolve("_" + name + ".sass"));
+        addIfRegular(
+                candidates,
+                parent.resolve(name + ".scss"),
+                resolutionTracker
+        );
+        addIfRegular(
+                candidates,
+                parent.resolve("_" + name + ".scss"),
+                resolutionTracker
+        );
+        addIfRegular(
+                candidates,
+                parent.resolve(name + ".sass"),
+                resolutionTracker
+        );
+        addIfRegular(
+                candidates,
+                parent.resolve("_" + name + ".sass"),
+                resolutionTracker
+        );
         if (!candidates.isEmpty()) {
             return;
         }
-        addIfRegular(candidates, parent.resolve(name + ".css"));
-        addIfRegular(candidates, parent.resolve("_" + name + ".css"));
+        addIfRegular(
+                candidates,
+                parent.resolve(name + ".css"),
+                resolutionTracker
+        );
+        addIfRegular(
+                candidates,
+                parent.resolve("_" + name + ".css"),
+                resolutionTracker
+        );
     }
 
     /// Adds ordinary directory-index candidates for one extensionless path.
     ///
     /// @param candidates the mutable destination list
     /// @param path       the path stem to inspect
-    private static void addIndexCandidates(List<Path> candidates, Path path) {
+    private static void addIndexCandidates(
+            List<Path> candidates,
+            Path path,
+            @Nullable SassResolutionTracker resolutionTracker
+    ) {
         var fileName = path.getFileName();
         var parent = path.getParent();
         if (fileName == null || parent == null) {
             return;
         }
         var directory = parent.resolve(fileName.toString());
-        addIfRegular(candidates, directory.resolve("index.scss"));
-        addIfRegular(candidates, directory.resolve("_index.scss"));
-        addIfRegular(candidates, directory.resolve("index.sass"));
-        addIfRegular(candidates, directory.resolve("_index.sass"));
+        addIfRegular(
+                candidates,
+                directory.resolve("index.scss"),
+                resolutionTracker
+        );
+        addIfRegular(
+                candidates,
+                directory.resolve("_index.scss"),
+                resolutionTracker
+        );
+        addIfRegular(
+                candidates,
+                directory.resolve("index.sass"),
+                resolutionTracker
+        );
+        addIfRegular(
+                candidates,
+                directory.resolve("_index.sass"),
+                resolutionTracker
+        );
         if (!candidates.isEmpty()) {
             return;
         }
-        addIfRegular(candidates, directory.resolve("index.css"));
-        addIfRegular(candidates, directory.resolve("_index.css"));
+        addIfRegular(
+                candidates,
+                directory.resolve("index.css"),
+                resolutionTracker
+        );
+        addIfRegular(
+                candidates,
+                directory.resolve("_index.css"),
+                resolutionTracker
+        );
     }
 
     /// Adds import-only directory-index candidates for one extensionless path.
@@ -461,7 +726,8 @@ public final class FilesystemImporter {
     /// @param path       the path stem to inspect
     private static void addImportOnlyIndexCandidates(
             List<Path> candidates,
-            Path path
+            Path path,
+            @Nullable SassResolutionTracker resolutionTracker
     ) {
         var fileName = path.getFileName();
         var parent = path.getParent();
@@ -469,19 +735,38 @@ public final class FilesystemImporter {
             return;
         }
         var directory = parent.resolve(fileName.toString());
-        addImportPair(candidates, directory, "index.import.scss");
-        addImportPair(candidates, directory, "index.import.sass");
+        addImportPair(
+                candidates,
+                directory,
+                "index.import.scss",
+                resolutionTracker
+        );
+        addImportPair(
+                candidates,
+                directory,
+                "index.import.sass",
+                resolutionTracker
+        );
         if (!candidates.isEmpty()) {
             return;
         }
-        addImportPair(candidates, directory, "index.import.css");
+        addImportPair(
+                candidates,
+                directory,
+                "index.import.css",
+                resolutionTracker
+        );
     }
 
     /// Adds import-only SCSS, Sass, and CSS candidates for one path stem.
     ///
     /// @param candidates the mutable destination list
     /// @param path       the path stem to inspect
-    private static void addImportOnlyCandidates(List<Path> candidates, Path path) {
+    private static void addImportOnlyCandidates(
+            List<Path> candidates,
+            Path path,
+            @Nullable SassResolutionTracker resolutionTracker
+    ) {
         var fileName = path.getFileName();
         if (fileName == null) {
             return;
@@ -496,16 +781,36 @@ public final class FilesystemImporter {
             var importName = name.substring(0, extensionIndex)
                     + ".import"
                     + name.substring(extensionIndex);
-            addImportPair(candidates, parent, importName);
+            addImportPair(
+                    candidates,
+                    parent,
+                    importName,
+                    resolutionTracker
+            );
             return;
         }
 
-        addImportPair(candidates, parent, name + ".import.scss");
-        addImportPair(candidates, parent, name + ".import.sass");
+        addImportPair(
+                candidates,
+                parent,
+                name + ".import.scss",
+                resolutionTracker
+        );
+        addImportPair(
+                candidates,
+                parent,
+                name + ".import.sass",
+                resolutionTracker
+        );
         if (!candidates.isEmpty()) {
             return;
         }
-        addImportPair(candidates, parent, name + ".import.css");
+        addImportPair(
+                candidates,
+                parent,
+                name + ".import.css",
+                resolutionTracker
+        );
     }
 
     /// Adds a regular and partial import-only candidate pair.
@@ -516,15 +821,17 @@ public final class FilesystemImporter {
     private static void addImportPair(
             List<Path> candidates,
             @Nullable Path parent,
-            String name
+            String name,
+            @Nullable SassResolutionTracker resolutionTracker
     ) {
         var regular = parent == null ? Path.of(name) : parent.resolve(name);
-        addIfRegular(candidates, regular);
+        addIfRegular(candidates, regular, resolutionTracker);
         if (!name.startsWith("_")) {
             var partial = "_" + name;
             addIfRegular(
                     candidates,
-                    parent == null ? Path.of(partial) : parent.resolve(partial)
+                    parent == null ? Path.of(partial) : parent.resolve(partial),
+                    resolutionTracker
             );
         }
     }
@@ -533,7 +840,14 @@ public final class FilesystemImporter {
     ///
     /// @param candidates the mutable destination list
     /// @param path       the candidate path
-    private static void addIfRegular(List<Path> candidates, Path path) {
+    private static void addIfRegular(
+            List<Path> candidates,
+            Path path,
+            @Nullable SassResolutionTracker resolutionTracker
+    ) {
+        if (resolutionTracker != null) {
+            resolutionTracker.recordCandidate(path);
+        }
         if (Files.isRegularFile(path) && !candidates.contains(path)) {
             candidates.add(path);
         }

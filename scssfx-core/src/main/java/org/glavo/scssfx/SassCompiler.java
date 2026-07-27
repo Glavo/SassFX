@@ -4,24 +4,29 @@ package org.glavo.scssfx;
 import org.glavo.scssfx.internal.bss.BssImportResolver;
 import org.glavo.scssfx.internal.bss.BssSerializeException;
 import org.glavo.scssfx.internal.bss.BssSerializer;
+import org.glavo.scssfx.internal.callable.CustomFunctionCallable;
 import org.glavo.scssfx.internal.css.CssSerializeException;
 import org.glavo.scssfx.internal.css.CssSerializer;
+import org.glavo.scssfx.internal.diagnostic.CompilationDiagnostics;
 import org.glavo.scssfx.internal.evaluate.EvaluationException;
 import org.glavo.scssfx.internal.evaluate.SassEvaluator;
 import org.glavo.scssfx.internal.module.FilesystemImporter;
 import org.glavo.scssfx.internal.module.ModuleRegistry;
+import org.glavo.scssfx.internal.module.SassResolutionTracker;
 import org.glavo.scssfx.internal.parse.ParseException;
 import org.glavo.scssfx.internal.parse.StylesheetParser;
 import org.glavo.scssfx.internal.source.SourceFile;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
+import org.jetbrains.annotations.ApiStatus;
 
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -63,11 +68,59 @@ public final class SassCompiler {
     /// @throws IOException              if the root source cannot be read
     /// @throws SassCompilationException if parsing, evaluation, serialization,
     ///                                  or dependent stylesheet resolution fails
-    @SuppressWarnings("unchecked")
     public <T> CompileResult<T> compile(
             SassSource source,
             OutputTarget<T> target,
             CompileOptions options
+    ) throws IOException, SassCompilationException {
+        return compileInternal(source, target, options, null);
+    }
+
+    /// Compiles a source while recording mutable import-resolution inputs.
+    ///
+    /// This overload supports incremental frontends and is not part of the
+    /// stable compiler API.
+    ///
+    /// @param source the root stylesheet source
+    /// @param target the output representation to produce
+    /// @param options shared compilation options
+    /// @param resolutionTracker the tracker receiving filesystem candidates
+    /// @param <T> the output representation type
+    /// @return the compilation result
+    /// @throws IOException if the root source cannot be read
+    /// @throws SassCompilationException if compilation fails
+    @ApiStatus.Internal
+    public <T> CompileResult<T> compile(
+            SassSource source,
+            OutputTarget<T> target,
+            CompileOptions options,
+            SassResolutionTracker resolutionTracker
+    ) throws IOException, SassCompilationException {
+        Objects.requireNonNull(resolutionTracker, "resolutionTracker");
+        return compileInternal(
+                source,
+                target,
+                options,
+                resolutionTracker
+        );
+    }
+
+    /// Implements compilation with optional resolution tracking.
+    ///
+    /// @param source the root stylesheet source
+    /// @param target the output representation to produce
+    /// @param options shared compilation options
+    /// @param resolutionTracker the tracker, or `null`
+    /// @param <T> the output representation type
+    /// @return the compilation result
+    /// @throws IOException if the root source cannot be read
+    /// @throws SassCompilationException if compilation fails
+    @SuppressWarnings("unchecked")
+    private <T> CompileResult<T> compileInternal(
+            SassSource source,
+            OutputTarget<T> target,
+            CompileOptions options,
+            @Nullable SassResolutionTracker resolutionTracker
     ) throws IOException, SassCompilationException {
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(target, "target");
@@ -80,23 +133,52 @@ public final class SassCompiler {
             );
         }
 
+        var customFunctions = options.functions().stream()
+                .map(CustomFunctionCallable::parse)
+                .toList();
+        var diagnosticReporter = new CompilationDiagnostics(
+                options.diagnosticOptions()
+        );
         var loaded = readSource(source);
-        var registry = new ModuleRegistry(options.loadPaths());
-        var evaluator = new SassEvaluator(registry);
-        var importedDiagnostics = new ArrayList<Diagnostic>();
+        var registry = new ModuleRegistry(
+                options.loadPaths(),
+                options.importers(),
+                resolutionTracker
+        );
+        var evaluator = new SassEvaluator(
+                registry,
+                customFunctions,
+                diagnosticReporter
+        );
         var urls = new LinkedHashSet<URI>();
         urls.addAll(loaded.loadedUrls());
+        var sourceContents = new LinkedHashMap<URI, String>();
+        if (loaded.file().url() != null) {
+            sourceContents.put(
+                    loaded.file().url(),
+                    loaded.file().content()
+            );
+        }
         try {
             var stylesheet = StylesheetParser.parse(loaded.file(), loaded.syntax());
             var root = evaluator.executeRoot(stylesheet, loaded.file().url());
             urls.addAll(registry.loadedUrls());
+            sourceContents.putAll(registry.sourceContents());
+            @Nullable String stdinContents = null;
+            if (loaded.file().url() == null) {
+                stdinContents = loaded.file().content();
+            }
             T output;
             org.glavo.scssfx.SourceMap sourceMap = null;
             if (target instanceof CssTarget cssTarget) {
                 var serialized = CssSerializer.serialize(
                         root.css(),
                         cssTarget,
-                        options.sourceMap()
+                        options.sourceMap(),
+                        registry.sourceMapUrls(),
+                        options.sourceMapIncludeSources(),
+                        sourceContents,
+                        stdinContents
                 );
                 output = (T) serialized.css();
                 sourceMap = serialized.sourceMap();
@@ -104,12 +186,19 @@ public final class SassCompiler {
                 var serialized = CssSerializer.serialize(
                         root.css(),
                         javaFXCssTarget,
-                        options.sourceMap()
+                        options.sourceMap(),
+                        registry.sourceMapUrls(),
+                        options.sourceMapIncludeSources(),
+                        sourceContents,
+                        stdinContents
                 );
                 output = (T) serialized.css();
                 sourceMap = serialized.sourceMap();
             } else if (target instanceof BssTarget bssTarget) {
-                var cssImporter = new FilesystemImporter(options.loadPaths());
+                var cssImporter = new FilesystemImporter(
+                        options.loadPaths(),
+                        resolutionTracker
+                );
                 @Nullable JavaFXStylesheetResolver stylesheetResolver =
                         options.javaFXStylesheetResolver();
                 BssImportResolver resolver = (resource, baseUrl, span) -> {
@@ -124,6 +213,9 @@ public final class SassCompiler {
                     SourceFile importedSource;
                     URI canonicalUrl;
                     if (custom != null) {
+                        if (resolutionTracker != null) {
+                            resolutionTracker.markIncomplete();
+                        }
                         canonicalUrl = custom.canonicalUrl();
                         importedSource = new SourceFile(custom.content(), canonicalUrl);
                     } else {
@@ -140,8 +232,20 @@ public final class SassCompiler {
                         importedSource = imported.source();
                     }
                     urls.add(canonicalUrl);
-                    var childRegistry = new ModuleRegistry(options.loadPaths());
-                    var childEvaluator = new SassEvaluator(childRegistry);
+                    sourceContents.put(
+                            canonicalUrl,
+                            importedSource.content()
+                    );
+                    var childRegistry = new ModuleRegistry(
+                            options.loadPaths(),
+                            options.importers(),
+                            resolutionTracker
+                    );
+                    var childEvaluator = new SassEvaluator(
+                            childRegistry,
+                            customFunctions,
+                            diagnosticReporter
+                    );
                     try {
                         var childAst = StylesheetParser.parse(
                                 importedSource,
@@ -157,80 +261,80 @@ public final class SassCompiler {
                         );
                     } finally {
                         urls.addAll(childRegistry.loadedUrls());
-                        importedDiagnostics.addAll(childEvaluator.diagnostics());
+                        sourceContents.putAll(
+                                childRegistry.sourceContents()
+                        );
                     }
                 };
                 output = (T) BssSerializer.serialize(root.css(), bssTarget, resolver);
             } else {
                 throw unsupportedTarget(target);
             }
-            var diagnostics = new ArrayList<Diagnostic>(
-                    evaluator.diagnostics().size() + importedDiagnostics.size()
-            );
-            diagnostics.addAll(evaluator.diagnostics());
-            diagnostics.addAll(importedDiagnostics);
+            evaluator.finishDiagnostics();
             return new CompileResult<>(
                     output,
                     sourceMap,
                     urls,
-                    diagnostics
+                    evaluator.diagnostics()
             );
         } catch (ParseException failure) {
+            urls.addAll(registry.loadedUrls());
+            sourceContents.putAll(registry.sourceContents());
             var code = failure.code() == null
                     ? null
                     : failure.code().name();
-            throw new SassCompilationException(
-                    List.of(new Diagnostic(
+            var primary = new Diagnostic(
                             DiagnosticSeverity.ERROR,
                             Objects.requireNonNull(failure.getMessage(), "parse failure message"),
                             failure.span(),
                             code
-                    )),
+                    );
+            throw new SassCompilationException(
+                    failureDiagnostics(primary, evaluator.diagnostics()),
+                    urls,
+                    sourceContents,
                     failure
             );
         } catch (EvaluationException failure) {
+            urls.addAll(registry.loadedUrls());
+            sourceContents.putAll(registry.sourceContents());
             throw new SassCompilationException(
                     failureDiagnostics(
                             failure.primaryDiagnostic(),
-                            combinedDiagnostics(evaluator.diagnostics(), importedDiagnostics)
+                            evaluator.diagnostics()
                     ),
                     failure.sassTrace(),
+                    urls,
+                    sourceContents,
                     failure
             );
         } catch (CssSerializeException failure) {
+            urls.addAll(registry.loadedUrls());
+            sourceContents.putAll(registry.sourceContents());
             throw new SassCompilationException(
                     failureDiagnostics(
                             failure.primaryDiagnostic(),
-                            combinedDiagnostics(evaluator.diagnostics(), importedDiagnostics)
+                            evaluator.diagnostics()
                     ),
                     failure.sassTrace(),
+                    urls,
+                    sourceContents,
                     failure
             );
         } catch (BssSerializeException failure) {
+            urls.addAll(registry.loadedUrls());
+            sourceContents.putAll(registry.sourceContents());
             throw new SassCompilationException(
                     failureDiagnostics(
                             failure.primaryDiagnostic(),
-                            combinedDiagnostics(evaluator.diagnostics(), importedDiagnostics)
+                            evaluator.diagnostics()
                     ),
                     failure.sassTrace(),
+                    urls,
+                    sourceContents,
                     failure
             );
         }
-    }
-
-    /// Combines root and imported-stylesheet diagnostics in evaluation order.
-    ///
-    /// @param root     diagnostics emitted while evaluating the root graph
-    /// @param imported diagnostics emitted while resolving retained CSS imports
-    /// @return one immutable diagnostic sequence
-    private static @Unmodifiable List<Diagnostic> combinedDiagnostics(
-            List<? extends Diagnostic> root,
-            List<? extends Diagnostic> imported
-    ) {
-        var result = new ArrayList<Diagnostic>(root.size() + imported.size());
-        result.addAll(root);
-        result.addAll(imported);
-        return List.copyOf(result);
     }
 
     /// Combines a primary failure with diagnostics emitted before the failure.

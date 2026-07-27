@@ -24,3 +24,4 @@ rootProject.name = "scssfx"
 
 include("scssfx-core")
 include("scssfx-cli")
+include("scssfx-embedded")

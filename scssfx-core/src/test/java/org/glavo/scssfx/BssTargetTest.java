@@ -439,6 +439,109 @@ final class BssTargetTest {
         assertFalse(javaFx17Text.contains("REFLECT"));
     }
 
+    /// Serializes JavaFX's deprecated gradient and ladder grammars.
+    @Test
+    void compilesLegacyGradientPaints() throws Exception {
+        var source = SassSource.fromString(
+                """
+                        Pane {
+                          -fx-background-color:
+                              linear (0%,0%) to (100%,100%) stops (0.0,red) (1.0,rgba(0, 0, 255, 0.5)) reflect,
+                              radial focus-angle 45deg focus-distance 20% center (30%,40%) 50% stops (0.0,red) (0.5,green) (1.0,blue) repeat;
+                          -fx-border-color:
+                              linear (0%,0%) to (100%,100%) stops (0.0,red) (1.0,blue) no-cycle
+                              green blue black;
+                        }
+                        Shape {
+                          -fx-fill:
+                              radial 50% stops (0.0,red) (1.0,blue) no-cycle;
+                        }
+                        LookupPane {
+                          -fx-background-color:
+                              linear (-fx-start-x,-fx-start-y) to (-fx-end-x,-fx-end-y)
+                              stops (-fx-stop-offset,-fx-base) (1.0,blue);
+                        }
+                        LadderShape {
+                          -fx-fill:
+                              ladder -fx-base stops
+                              (0.0,black) (1.0,derive(-fx-base, 20%));
+                          -fx-stroke:
+                              ladder #123456 stops (0.5,white);
+                        }
+                        """,
+                Syntax.SCSS
+        );
+        var javaFx8 = new SassCompiler().compile(
+                source,
+                new BssTarget(JavaFXTarget.JAVAFX8)
+        ).output();
+        var javaFx17 = new SassCompiler().compile(
+                source,
+                new BssTarget(JavaFXTarget.JAVAFX17)
+        ).output();
+        var javaFx8Text = new String(
+                remainingBytes(javaFx8),
+                StandardCharsets.ISO_8859_1
+        );
+        var javaFx17Text = new String(
+                remainingBytes(javaFx17),
+                StandardCharsets.ISO_8859_1
+        );
+
+        assertTrue(javaFx8Text.contains(
+                "com.sun.javafx.css.converters.PaintConverter"
+                        + "$LinearGradientConverter"
+        ));
+        assertTrue(javaFx8Text.contains(
+                "com.sun.javafx.css.converters.PaintConverter"
+                        + "$RadialGradientConverter"
+        ));
+        assertTrue(javaFx17Text.contains(
+                "javafx.css.converter.PaintConverter"
+                        + "$LinearGradientConverter"
+        ));
+        assertTrue(javaFx17Text.contains(
+                "javafx.css.converter.PaintConverter"
+                        + "$RadialGradientConverter"
+        ));
+        assertTrue(javaFx8Text.contains("REFLECT"));
+        assertTrue(javaFx8Text.contains("REPEAT"));
+        assertTrue(javaFx17Text.contains("REFLECT"));
+        assertTrue(javaFx17Text.contains("REPEAT"));
+        assertTrue(javaFx8Text.contains("-fx-start-x"));
+        assertTrue(javaFx8Text.contains("-fx-stop-offset"));
+        assertTrue(javaFx17Text.contains("-fx-end-y"));
+        assertTrue(javaFx17Text.contains("-fx-base"));
+        assertTrue(javaFx8Text.contains(
+                "com.sun.javafx.css.parser.LadderConverter"
+        ));
+        assertTrue(javaFx17Text.contains(
+                "javafx.css.converter.LadderConverter"
+        ));
+    }
+
+    /// Rejects an incomplete legacy gradient.
+    @Test
+    void rejectsInvalidLegacyGradient() {
+        var failure = assertThrows(
+                SassCompilationException.class,
+                () -> new SassCompiler().compile(
+                        SassSource.fromString(
+                                """
+                                        Pane {
+                                          -fx-background-color:
+                                              linear (0%,0%) to (100%,100%) stops;
+                                        }
+                                        """,
+                                Syntax.SCSS
+                        ),
+                        BssTarget.DEFAULT
+                )
+        );
+
+        assertTrue(failure.getMessage().contains("BSS"));
+    }
+
     /// Serializes JavaFX scalar converters with the JavaFX 17 BSS wire format.
     @Test
     void compilesTypedScalarConverters() throws Exception {
@@ -896,6 +999,73 @@ final class BssTargetTest {
                         "javafx.css.converter.FontConverter"
                 )
         );
+    }
+
+    /// Encodes every OpenJFX font-size keyword with its parser semantics.
+    @Test
+    void compilesFontSizeKeywords() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                Pane {
+                                  -fx-a-font-size: inherit;
+                                  -fx-b-font-size: xx-small;
+                                  -fx-c-font-size: x-small;
+                                  -fx-d-font-size: small;
+                                  -fx-e-font-size: medium;
+                                  -fx-f-font-size: large;
+                                  -fx-g-font-size: x-large;
+                                  -fx-h-font-size: xx-large;
+                                  -fx-i-font-size: smaller;
+                                  -fx-j-font-size: larger;
+                                  -fx-font: italic large/medium "Example Sans";
+                                }
+                                """,
+                        Syntax.SCSS
+                ),
+                BssTarget.DEFAULT
+        ).output());
+        var strings = java.util.Arrays.asList(document.strings());
+
+        assertTrue(strings.contains(
+                "javafx.css.converter.FontConverter$FontSizeConverter"
+        ));
+        assertTrue(strings.contains("PERCENT"));
+        assertTrue(strings.contains("inherit"));
+        for (var keyword : new String[]{
+                "xx-small", "x-small", "small", "medium", "large",
+                "x-large", "xx-large", "smaller", "larger"
+        }) {
+            assertFalse(strings.contains(keyword), keyword);
+        }
+    }
+
+    /// Rejects values outside OpenJFX's font-size grammar.
+    @Test
+    void rejectsInvalidFontSizes() {
+        for (var value : new String[]{
+                "\"large\"",
+                "extra-large",
+                "1s",
+                "45deg"
+        }) {
+            var failure = assertThrows(
+                    SassCompilationException.class,
+                    () -> new SassCompiler().compile(
+                            SassSource.fromString(
+                                    "Pane { -fx-font-size: " + value + "; }",
+                                    Syntax.SCSS
+                            ),
+                            BssTarget.DEFAULT
+                    ),
+                    value
+            );
+
+            assertEquals(
+                    "BSS font sizes require a JavaFX size or font-size keyword.",
+                    failure.getMessage()
+            );
+        }
     }
 
     /// Encodes scalar and nested derived and ladder colors with JavaFX converters.

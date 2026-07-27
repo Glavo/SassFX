@@ -7,6 +7,10 @@ import org.glavo.scssfx.JavaFXTarget;
 import org.glavo.scssfx.JavaFXCssTarget;
 import org.glavo.scssfx.OutputStyle;
 import org.glavo.scssfx.SassCompiler;
+import org.glavo.scssfx.SassCanonicalizeContext;
+import org.glavo.scssfx.SassDiagnosticOptions;
+import org.glavo.scssfx.SassImporter;
+import org.glavo.scssfx.SassImporterResult;
 import org.glavo.scssfx.SassSource;
 import org.glavo.scssfx.SourceMap;
 import org.glavo.scssfx.Syntax;
@@ -16,6 +20,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -131,6 +136,44 @@ final class SourceMapTest {
         );
     }
 
+    /// Accounts for charset and BOM prefixes in generated coordinates.
+    @Test
+    void mapsAfterCharsetPrefixes() throws Exception {
+        var compiler = new SassCompiler();
+        var options = new CompileOptions(true, List.of());
+        var expanded = compiler.compile(
+                SassSource.fromString("a { content: \"你好\"; }", Syntax.SCSS),
+                new CssTarget(OutputStyle.EXPANDED, true),
+                options
+        );
+        var compressed = compiler.compile(
+                SassSource.fromString("a { content: \"你好\"; }", Syntax.SCSS),
+                new CssTarget(OutputStyle.COMPRESSED, true),
+                options
+        );
+
+        var expandedMap = expanded.sourceMap();
+        var compressedMap = compressed.sourceMap();
+        assertNotNull(expandedMap);
+        assertNotNull(compressedMap);
+        assertTrue(expanded.output().startsWith("@charset \"UTF-8\";\n"));
+        assertTrue(hasMapping(
+                decode(expandedMap),
+                1,
+                0,
+                0,
+                0
+        ));
+        assertTrue(compressed.output().startsWith("\uFEFF"));
+        assertTrue(hasMapping(
+                decode(compressedMap),
+                0,
+                1,
+                0,
+                0
+        ));
+    }
+
     /// Records multiple source files loaded through the module system.
     @Test
     void mapsMultipleSourceFiles(@TempDir Path directory) throws Exception {
@@ -153,6 +196,82 @@ final class SourceMapTest {
         assertTrue(json.contains("main.scss") || json.contains("main.scss".replace('\\', '/')), json);
         assertTrue(json.contains("theme"), json);
         assertFalse(decode(map).isEmpty());
+    }
+
+    /// Embeds source text captured during compilation without dereferencing a
+    /// custom importer's display URL.
+    ///
+    /// @param directory the isolated directory used for an unreadable display
+    ///                  URL
+    @Test
+    void embedsLoadedSourceContents(@TempDir Path directory) throws Exception {
+        var displayUrl = directory.resolve("never-created.scss").toUri();
+        SassImporter importer = new SassImporter() {
+            /// Canonicalizes the test module.
+            @Override
+            public URI canonicalize(
+                    URI url,
+                    SassCanonicalizeContext context
+            ) {
+                return URI.create("custom:module");
+            }
+
+            /// Returns source text with a distinct source-map display URL.
+            @Override
+            public SassImporterResult load(URI canonicalUrl) {
+                return new SassImporterResult(
+                        ".imported { value: café; }",
+                        Syntax.SCSS,
+                        displayUrl
+                );
+            }
+        };
+        var options = new CompileOptions(
+                true,
+                List.of(),
+                null,
+                List.of(importer),
+                List.of(),
+                SassDiagnosticOptions.DEFAULT,
+                true
+        );
+        var result = new SassCompiler().compile(
+                SassSource.fromString(
+                        "@use \"module\";\n.root { value: naïve; }",
+                        Syntax.SCSS,
+                        URI.create("custom:root")
+                ),
+                CssTarget.DEFAULT,
+                options
+        );
+
+        var map = result.sourceMap();
+        assertNotNull(map);
+        assertTrue(map.json().contains("\"sourcesContent\""), map.json());
+        assertTrue(
+                map.json().contains(".imported { value: café; }"),
+                map.json()
+        );
+        assertTrue(
+                map.json().contains("@use \\\"module\\\";\\n.root"),
+                map.json()
+        );
+        assertTrue(map.json().contains(displayUrl.toString()), map.json());
+        assertFalse(Files.exists(directory.resolve("never-created.scss")));
+    }
+
+    /// Omits source contents unless explicitly requested.
+    @Test
+    void omitsSourceContentsByDefault() throws Exception {
+        var result = new SassCompiler().compile(
+                SassSource.fromString(".a { value: one; }", Syntax.SCSS),
+                CssTarget.DEFAULT,
+                new CompileOptions(true, List.of())
+        );
+
+        var map = result.sourceMap();
+        assertNotNull(map);
+        assertFalse(map.json().contains("\"sourcesContent\""));
     }
 
     /// Keeps CSS identical when source maps are disabled.

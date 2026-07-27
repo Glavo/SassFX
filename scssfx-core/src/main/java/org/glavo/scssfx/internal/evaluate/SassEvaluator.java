@@ -3,6 +3,8 @@ package org.glavo.scssfx.internal.evaluate;
 
 import org.glavo.scssfx.Diagnostic;
 import org.glavo.scssfx.DiagnosticSeverity;
+import org.glavo.scssfx.SassDiagnosticOptions;
+import org.glavo.scssfx.SassStackFrame;
 import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.ast.BinaryOperationExpression;
 import org.glavo.scssfx.internal.ast.BinaryOperator;
@@ -79,9 +81,12 @@ import org.glavo.scssfx.internal.ast.WarnRule;
 import org.glavo.scssfx.internal.ast.WhileRule;
 import org.glavo.scssfx.internal.callable.BuiltInCallable;
 import org.glavo.scssfx.internal.callable.Callable;
+import org.glavo.scssfx.internal.callable.CustomFunctionCallable;
+import org.glavo.scssfx.internal.callable.FatalSassCallbackException;
 import org.glavo.scssfx.internal.callable.PlainCssCallable;
 import org.glavo.scssfx.internal.css.CssImport;
 import org.glavo.scssfx.internal.callable.UserDefinedCallable;
+import org.glavo.scssfx.internal.diagnostic.CompilationDiagnostics;
 import org.glavo.scssfx.internal.ast.selector.ComplexSelector;
 import org.glavo.scssfx.internal.ast.selector.PlaceholderSelector;
 import org.glavo.scssfx.internal.ast.selector.PseudoSelector;
@@ -109,6 +114,7 @@ import org.glavo.scssfx.internal.value.ListSeparator;
 import org.glavo.scssfx.internal.value.SassArgumentList;
 import org.glavo.scssfx.internal.value.SassBoolean;
 import org.glavo.scssfx.internal.value.SassCalculation;
+import org.glavo.scssfx.internal.value.SassColor;
 import org.glavo.scssfx.internal.value.SassFunction;
 import org.glavo.scssfx.internal.value.SassMixin;
 import org.glavo.scssfx.internal.value.SassList;
@@ -159,6 +165,10 @@ public final class SassEvaluator implements
     /// Loud comments inside function bodies must not emit CSS (dart-sass).
     private int functionCallDepth;
 
+    /// Contains active user-defined call sites from outermost to innermost.
+    private final ArrayList<ActiveSassCall> activeSassCalls =
+            new ArrayList<>();
+
     /// Contains the global built-in function table.
     private static final @Unmodifiable Map<String, BuiltInCallable> BUILT_IN_FUNCTIONS =
             BuiltInFunctions.global();
@@ -195,8 +205,14 @@ public final class SassEvaluator implements
     /// Contains the module loader for this compilation, or {@code null}.
     private final @Nullable ModuleRegistry moduleRegistry;
 
-    /// Contains parse-time and evaluation-time diagnostics in reporting order.
-    private final ArrayList<Diagnostic> diagnostics;
+    /// Contains configured custom functions followed by overriding core built-ins.
+    private final @Unmodifiable Map<String, Callable> globalFunctions;
+
+    /// Processes diagnostics for this compilation.
+    private final CompilationDiagnostics diagnosticReporter;
+
+    /// Records whether compiler warnings originate in a dependency stylesheet.
+    private boolean inDependency;
 
     /// Contains the stylesheet being executed, or {@code null} before execution.
     private @Nullable Stylesheet stylesheet;
@@ -243,6 +259,9 @@ public final class SassEvaluator implements
     /// Calculations are left unsimplified in that context so CSS sees the original
     /// function form.
     private boolean inSupportsDeclaration;
+
+    /// Records whether named colors in interpolation require a warning.
+    private boolean warnForColorInterpolation;
 
     /// Contains the number of active style-rule ancestors.
     private int styleRuleDepth;
@@ -335,21 +354,74 @@ public final class SassEvaluator implements
 
     /// Creates an evaluator with an empty environment and no module loader.
     public SassEvaluator() {
-        this(new Environment(), null);
+        this(
+                new Environment(),
+                null,
+                List.of(),
+                new CompilationDiagnostics(SassDiagnosticOptions.DEFAULT)
+        );
     }
 
     /// Creates an evaluator that uses an existing environment.
     ///
     /// @param environment the mutable evaluation environment
     public SassEvaluator(Environment environment) {
-        this(environment, null);
+        this(
+                environment,
+                null,
+                List.of(),
+                new CompilationDiagnostics(SassDiagnosticOptions.DEFAULT)
+        );
     }
 
     /// Creates an evaluator with a module registry.
     ///
     /// @param moduleRegistry the compilation module registry
     public SassEvaluator(ModuleRegistry moduleRegistry) {
-        this(new Environment(), Objects.requireNonNull(moduleRegistry, "moduleRegistry"));
+        this(
+                new Environment(),
+                Objects.requireNonNull(moduleRegistry, "moduleRegistry"),
+                List.of(),
+                new CompilationDiagnostics(SassDiagnosticOptions.DEFAULT)
+        );
+    }
+
+    /// Creates an evaluator with a module registry and custom global functions.
+    ///
+    /// Later custom definitions replace earlier definitions with the same
+    /// normalized name. Core global built-ins replace same-named custom
+    /// definitions.
+    ///
+    /// @param moduleRegistry the compilation module registry
+    /// @param customFunctions custom callables in declaration order
+    public SassEvaluator(
+            ModuleRegistry moduleRegistry,
+            List<CustomFunctionCallable> customFunctions
+    ) {
+        this(
+                new Environment(),
+                Objects.requireNonNull(moduleRegistry, "moduleRegistry"),
+                customFunctions,
+                new CompilationDiagnostics(SassDiagnosticOptions.DEFAULT)
+        );
+    }
+
+    /// Creates an evaluator that shares a compilation diagnostic processor.
+    ///
+    /// @param moduleRegistry the compilation module registry
+    /// @param customFunctions custom callables in declaration order
+    /// @param diagnosticReporter the per-compilation diagnostic processor
+    public SassEvaluator(
+            ModuleRegistry moduleRegistry,
+            List<CustomFunctionCallable> customFunctions,
+            CompilationDiagnostics diagnosticReporter
+    ) {
+        this(
+                new Environment(),
+                Objects.requireNonNull(moduleRegistry, "moduleRegistry"),
+                customFunctions,
+                diagnosticReporter
+        );
     }
 
     /// Creates an evaluator with an environment and optional module registry.
@@ -357,11 +429,69 @@ public final class SassEvaluator implements
     /// @param environment    the mutable evaluation environment
     /// @param moduleRegistry the module registry, or {@code null}
     public SassEvaluator(Environment environment, @Nullable ModuleRegistry moduleRegistry) {
+        this(
+                environment,
+                moduleRegistry,
+                List.of(),
+                new CompilationDiagnostics(SassDiagnosticOptions.DEFAULT)
+        );
+    }
+
+    /// Creates an evaluator with explicit state and custom global functions.
+    ///
+    /// @param environment the mutable evaluation environment
+    /// @param moduleRegistry the module registry, or {@code null}
+    /// @param customFunctions custom callables in declaration order
+    public SassEvaluator(
+            Environment environment,
+            @Nullable ModuleRegistry moduleRegistry,
+            List<CustomFunctionCallable> customFunctions
+    ) {
+        this(
+                environment,
+                moduleRegistry,
+                customFunctions,
+                new CompilationDiagnostics(SassDiagnosticOptions.DEFAULT)
+        );
+    }
+
+    /// Creates an evaluator with explicit state and diagnostic processing.
+    ///
+    /// @param environment the mutable evaluation environment
+    /// @param moduleRegistry the module registry, or {@code null}
+    /// @param customFunctions custom callables in declaration order
+    /// @param diagnosticReporter the per-compilation diagnostic processor
+    public SassEvaluator(
+            Environment environment,
+            @Nullable ModuleRegistry moduleRegistry,
+            List<CustomFunctionCallable> customFunctions,
+            CompilationDiagnostics diagnosticReporter
+    ) {
         this.compilationContext = new Object();
         this.environment = Objects.requireNonNull(environment, "environment");
         this.moduleRegistry = moduleRegistry;
-        this.diagnostics = new ArrayList<>();
+        this.globalFunctions = globalFunctions(customFunctions);
+        this.diagnosticReporter = Objects.requireNonNull(
+                diagnosticReporter,
+                "diagnosticReporter"
+        );
         this.currentConfiguration = ModuleConfiguration.empty();
+    }
+
+    /// Merges custom functions and overriding core built-ins.
+    private static @Unmodifiable Map<String, Callable> globalFunctions(
+            List<CustomFunctionCallable> customFunctions
+    ) {
+        Objects.requireNonNull(customFunctions, "customFunctions");
+        var result = new LinkedHashMap<String, Callable>();
+        for (var function : customFunctions) {
+            result.put(
+                    Objects.requireNonNull(function, "custom function").name(),
+                    function
+            );
+        }
+        result.putAll(BUILT_IN_FUNCTIONS);
+        return Map.copyOf(result);
     }
 
     /// Returns the environment used by this evaluator.
@@ -378,7 +508,12 @@ public final class SassEvaluator implements
     ///
     /// @return diagnostics in reporting order
     public @Unmodifiable List<Diagnostic> diagnostics() {
-        return List.copyOf(diagnostics);
+        return diagnosticReporter.snapshot();
+    }
+
+    /// Adds the deprecation-repetition summary after successful evaluation.
+    public void finishDiagnostics() {
+        diagnosticReporter.finishSuccess();
     }
 
     /// Returns the CSS IR root produced by stylesheet execution.
@@ -395,6 +530,30 @@ public final class SassEvaluator implements
     /// @throws EvaluationException if evaluation fails
     public SassValue evaluate(SassExpression expression) {
         return Objects.requireNonNull(expression, "expression").accept(this);
+    }
+
+    /// Executes one interactive {@code @use} rule relative to a synthetic root.
+    ///
+    /// The supplied URL affects only module resolution. The rule's own source
+    /// span remains URL-less so an interactive client can present compact
+    /// input-line diagnostics.
+    ///
+    /// @param statement the use rule to execute
+    /// @param baseUrl the synthetic root URL used for relative resolution
+    /// @throws EvaluationException if loading or namespace registration fails
+    public void executeInteractiveUse(
+            UseRule statement,
+            URI baseUrl
+    ) {
+        Objects.requireNonNull(statement, "statement");
+        Objects.requireNonNull(baseUrl, "baseUrl");
+        var previousUrl = currentUrl;
+        currentUrl = baseUrl;
+        try {
+            visitUseRule(statement);
+        } finally {
+            currentUrl = previousUrl;
+        }
     }
 
     /// Executes one stylesheet in source order and builds CSS IR.
@@ -422,7 +581,8 @@ public final class SassEvaluator implements
                 stylesheet,
                 url,
                 ModuleConfiguration.empty(),
-                true
+                true,
+                false
         );
         cssStylesheet = ModuleCss.combine(module);
         cssParent = cssStylesheet;
@@ -474,11 +634,29 @@ public final class SassEvaluator implements
             @Nullable URI url,
             ModuleConfiguration configuration
     ) {
+        return executeAsModule(stylesheet, url, configuration, false);
+    }
+
+    /// Executes a stylesheet as a module with dependency provenance.
+    ///
+    /// @param stylesheet the stylesheet to execute
+    /// @param url the canonical module URL, or {@code null}
+    /// @param configuration values available to root defaults
+    /// @param dependency whether compiler warnings are dependency warnings
+    /// @return the loaded module
+    /// @throws EvaluationException if evaluation fails
+    public LoadedModule executeAsModule(
+            Stylesheet stylesheet,
+            @Nullable URI url,
+            ModuleConfiguration configuration,
+            boolean dependency
+    ) {
         return executeModuleBody(
                 stylesheet,
                 url,
                 Objects.requireNonNull(configuration, "configuration"),
-                false
+                false,
+                dependency
         );
     }
 
@@ -493,6 +671,20 @@ public final class SassEvaluator implements
     /// @param url      the imported stylesheet's canonical URL
     /// @throws EvaluationException if the imported stylesheet cannot be evaluated
     public void executeLegacyImport(Stylesheet imported, URI url) {
+        executeLegacyImport(imported, url, false);
+    }
+
+    /// Executes a legacy import with dependency provenance.
+    ///
+    /// @param imported the parsed imported stylesheet
+    /// @param url the imported stylesheet's canonical URL
+    /// @param dependency whether compiler warnings are dependency warnings
+    /// @throws EvaluationException if evaluation fails
+    public void executeLegacyImport(
+            Stylesheet imported,
+            URI url,
+            boolean dependency
+    ) {
         Objects.requireNonNull(imported, "imported");
         Objects.requireNonNull(url, "url");
         if (!stylesheetActive) {
@@ -501,6 +693,7 @@ public final class SassEvaluator implements
         var previousStylesheet = stylesheet;
         var previousUrl = currentUrl;
         var previousConfiguration = currentConfiguration;
+        var previousDependency = inDependency;
         // Nested {@code @use} members stay local to the imported file: CSS is still
         // emitted, but namespaces and {@code as *} exports are restored afterward
         // so transitive members do not leak through {@code @import}. Clear the
@@ -510,6 +703,7 @@ public final class SassEvaluator implements
         environment.clearModuleNamespaces();
         stylesheet = imported;
         currentUrl = url;
+        inDependency = dependency;
         legacyImportDepth++;
         var previousImportGeneration = currentImportGeneration;
         var previousAttribution = styleRuleAttributionUrl;
@@ -537,7 +731,9 @@ public final class SassEvaluator implements
                     ? ModuleConfiguration.empty()
                     : previousConfiguration;
         }
-        diagnostics.addAll(imported.parseTimeWarnings());
+        for (var warning : imported.parseTimeWarnings()) {
+            diagnosticReporter.compilerWarning(warning, inDependency);
+        }
         try {
             for (var child : imported.children()) {
                 if (child instanceof ForwardRule forward) {
@@ -579,6 +775,7 @@ public final class SassEvaluator implements
             stylesheet = previousStylesheet;
             currentUrl = previousUrl;
             currentConfiguration = previousConfiguration;
+            inDependency = previousDependency;
         }
     }
 
@@ -705,12 +902,14 @@ public final class SassEvaluator implements
     /// @param url        the canonical module URL, or {@code null}
     /// @param configuration values available to root defaults
     /// @param retainState whether to keep this module's environment installed
+    /// @param dependency whether compiler warnings are dependency warnings
     /// @return the loaded module
     private LoadedModule executeModuleBody(
             Stylesheet stylesheet,
             @Nullable URI url,
             ModuleConfiguration configuration,
-            boolean retainState
+            boolean retainState,
+            boolean dependency
     ) {
         Objects.requireNonNull(stylesheet, "stylesheet");
         var previousEnvironment = environment;
@@ -726,6 +925,7 @@ public final class SassEvaluator implements
         var previousDeclarationName = declarationName;
         var previousUrl = currentUrl;
         var previousConfiguration = currentConfiguration;
+        var previousDependency = inDependency;
         var previousActive = stylesheetActive;
         var previousStyleRuleDepth = styleRuleDepth;
         var previousNestedDepth = nestedDeclarationDepth;
@@ -746,6 +946,7 @@ public final class SassEvaluator implements
         mediaQuerySources = null;
         declarationName = null;
         currentUrl = url;
+        inDependency = dependency;
         currentConfiguration = Objects.requireNonNull(
                 configuration,
                 "configuration"
@@ -771,7 +972,9 @@ public final class SassEvaluator implements
         extendableStyleRules.clear();
         pendingExtensions.clear();
         extensionVisibilityModules.clear();
-        diagnostics.addAll(stylesheet.parseTimeWarnings());
+        for (var warning : stylesheet.parseTimeWarnings()) {
+            diagnosticReporter.compilerWarning(warning, inDependency);
+        }
 
         try {
             for (var child : stylesheet.children()) {
@@ -815,6 +1018,7 @@ public final class SassEvaluator implements
             declarationName = previousDeclarationName;
             currentUrl = previousUrl;
             currentConfiguration = previousConfiguration;
+            inDependency = previousDependency;
             stylesheetActive = previousActive;
             styleRuleDepth = previousStyleRuleDepth;
             nestedDeclarationDepth = previousNestedDepth;
@@ -845,6 +1049,7 @@ public final class SassEvaluator implements
                 declarationName = previousDeclarationName;
                 currentUrl = previousUrl;
                 currentConfiguration = previousConfiguration;
+                inDependency = previousDependency;
                 stylesheetActive = previousActive;
                 styleRuleDepth = previousStyleRuleDepth;
                 styleRuleAttributionUrl = previousAttribution;
@@ -1290,7 +1495,7 @@ public final class SassEvaluator implements
             // Plain (non-interpolated) media queries normalize nested and/or/not
             // keywords like dart-sass; interpolated text keeps author casing.
             queries = CssMediaQuery.parseList(
-                    performInterpolation(statement.query()),
+                    performInterpolation(statement.query(), true),
                     statement.query().asPlain() != null
             );
         } catch (SassValueException cause) {
@@ -1631,7 +1836,7 @@ public final class SassEvaluator implements
         var name = performInterpolation(statement.name()).strip();
         var rule = new CssUnknownAtRule(
                 name,
-                performInterpolation(statement.value()).strip(),
+                performInterpolation(statement.value(), true).strip(),
                 statement.hasChildren(),
                 statement.span()
         );
@@ -1728,7 +1933,7 @@ public final class SassEvaluator implements
             );
         }
 
-        var selectorText = performInterpolation(statement.selector());
+        var selectorText = performInterpolation(statement.selector(), true);
         // Empty interpolation such as {@code #{&}} outside a style rule yields
         // an empty selector, which dart-sass reports as "expected selector."
         if (selectorText.isBlank()) {
@@ -1914,7 +2119,10 @@ public final class SassEvaluator implements
                     statement.span()
             );
         }
-        var selectorText = performInterpolation(statement.selector()).strip();
+        var selectorText = performInterpolation(
+                statement.selector(),
+                true
+        ).strip();
         SelectorList target;
         try {
             target = SelectorList.parse(selectorText, statement.selector().span());
@@ -1966,7 +2174,9 @@ public final class SassEvaluator implements
         try {
             query = statement.query() == null
                     ? AtRootQuery.DEFAULT
-                    : AtRootQuery.parse(performInterpolation(statement.query()).strip());
+                    : AtRootQuery.parse(
+                            performInterpolation(statement.query(), true).strip()
+                    );
         } catch (SassValueException cause) {
             throw new EvaluationException(
                     Objects.requireNonNull(cause.getMessage(), "at-root query failure"),
@@ -3231,7 +3441,7 @@ public final class SassEvaluator implements
             );
         }
 
-        var resolvedName = performInterpolation(statement.name());
+        var resolvedName = performInterpolation(statement.name(), true);
         if (declarationName != null) {
             resolvedName = declarationName + "-" + resolvedName;
         }
@@ -3322,12 +3532,12 @@ public final class SassEvaluator implements
                 statement.span(),
                 () -> environment.globalVariableExists(statement.name(), null)
         )) {
-            diagnostics.add(new Diagnostic(
+            diagnosticReporter.compilerWarning(new Diagnostic(
                     DiagnosticSeverity.DEPRECATION,
                     newGlobalMessage(statement),
                     statement.span(),
                     NEW_GLOBAL_CODE
-            ));
+            ), inDependency);
         }
 
         var value = evaluate(statement.expression()).withoutSlash();
@@ -3513,7 +3723,8 @@ public final class SassEvaluator implements
                 statement.children(),
                 environment.closure(),
                 statement.span(),
-                statement.hasContent()
+                statement.hasContent(),
+                inDependency
         ));
         return StatementResult.CONTINUE;
     }
@@ -3530,7 +3741,8 @@ public final class SassEvaluator implements
                 statement.children(),
                 environment.closure(),
                 statement.span(),
-                false
+                false,
+                inDependency
         ));
         return StatementResult.CONTINUE;
     }
@@ -3560,7 +3772,8 @@ public final class SassEvaluator implements
                     statement.content().children(),
                     environment.closure(),
                     statement.content().span(),
-                    false
+                    false,
+                    inDependency
             );
         }
         runMixinCallable(mixin, statement.arguments(), contentCallable, statement.span());
@@ -3601,7 +3814,7 @@ public final class SassEvaluator implements
     public StatementResult visitDebugRule(DebugRule statement) {
         var value = evaluate(statement.expression());
         var message = value instanceof SassString string ? string.text() : value.toString();
-        diagnostics.add(new Diagnostic(
+        diagnosticReporter.debug(new Diagnostic(
                 DiagnosticSeverity.DEBUG,
                 message,
                 statement.span(),
@@ -3624,12 +3837,16 @@ public final class SassEvaluator implements
         var message = value instanceof SassString string
                 ? string.text()
                 : valueOperation(statement.expression().span(), value::toCssString);
-        diagnostics.add(new Diagnostic(
+        var diagnostic = new Diagnostic(
                 DiagnosticSeverity.WARNING,
                 message,
                 statement.span(),
                 null
-        ));
+        );
+        diagnosticReporter.userWarning(
+                diagnostic,
+                List.of(new SassStackFrame("root stylesheet", statement.span()))
+        );
         return StatementResult.CONTINUE;
     }
 
@@ -3652,7 +3869,13 @@ public final class SassEvaluator implements
     /// @return the semantic Sass string
     @Override
     public SassString visitStringExpression(StringExpression expression) {
-        return new SassString(performInterpolation(expression.text()), expression.hasQuotes());
+        return new SassString(
+                performInterpolation(
+                        expression.text(),
+                        warnForColorInterpolation
+                ),
+                expression.hasQuotes()
+        );
     }
 
     /// Evaluates a number literal.
@@ -3931,7 +4154,7 @@ public final class SassEvaluator implements
                 return visitCalculation(expression, lowerName);
             }
             if (!forcePlainCss) {
-                callable = BUILT_IN_FUNCTIONS.get(expression.name());
+                callable = globalFunctions.get(expression.name());
             }
         }
         if (callable == null && expression.namespace() == null) {
@@ -4342,7 +4565,7 @@ public final class SassEvaluator implements
             return number.withSlash(leftNumber, rightNumber);
         }
 
-        diagnostics.add(new Diagnostic(
+        diagnosticReporter.compilerWarning(new Diagnostic(
                 DiagnosticSeverity.DEPRECATION,
                 "Using / for division outside of calc() is deprecated and will be removed "
                         + "in Dart Sass 2.0.0.\n\n"
@@ -4351,7 +4574,7 @@ public final class SassEvaluator implements
                         + "More info and automated migrator: https://sass-lang.com/d/slash-div",
                 expression.span(),
                 SLASH_DIV_CODE
-        ));
+        ), inDependency);
         return result;
     }
 
@@ -4520,6 +4743,18 @@ public final class SassEvaluator implements
     /// @param interpolation the interpolation to evaluate
     /// @return the concatenated text
     private String performInterpolation(Interpolation interpolation) {
+        return performInterpolation(interpolation, false);
+    }
+
+    /// Evaluates interpolation with optional named-color warnings.
+    ///
+    /// @param interpolation the interpolation to evaluate
+    /// @param warnForColor whether named color values emit a compiler warning
+    /// @return the concatenated text
+    private String performInterpolation(
+            Interpolation interpolation,
+            boolean warnForColor
+    ) {
         var result = new StringBuilder();
         for (var part : interpolation.parts()) {
             if (part instanceof TextInterpolationPart text) {
@@ -4528,12 +4763,35 @@ public final class SassEvaluator implements
             }
             var expression = ((ExpressionInterpolationPart) part).expression();
             var previousSupports = inSupportsDeclaration;
+            var previousWarnForColor = warnForColorInterpolation;
             inSupportsDeclaration = false;
+            warnForColorInterpolation =
+                    previousWarnForColor || warnForColor;
             SassValue value;
             try {
                 value = evaluate(expression);
             } finally {
                 inSupportsDeclaration = previousSupports;
+                warnForColorInterpolation = previousWarnForColor;
+            }
+            if (warnForColor && value instanceof SassColor color) {
+                @Nullable String name = color.canonicalName();
+                if (name != null) {
+                    diagnosticReporter.compilerWarning(new Diagnostic(
+                            DiagnosticSeverity.WARNING,
+                            "You probably don't mean to use the color value "
+                                    + name + " in interpolation here.\n"
+                                    + "It may end up represented as " + value
+                                    + ", which will likely produce invalid CSS.\n"
+                                    + "Always quote color names when using them "
+                                    + "as strings or map keys (for example, \""
+                                    + name + "\").\n"
+                                    + "If you really want to use the color value "
+                                    + "here, use '\"\" + " + expression + "'.",
+                            expression.span(),
+                            null
+                    ), inDependency);
+                }
             }
             if (value instanceof SassString string) {
                 result.append(string.text());
@@ -4697,13 +4955,40 @@ public final class SassEvaluator implements
             EvaluatedArguments evaluated,
             SourceSpan span
     ) {
+        if (callable instanceof CustomFunctionCallable custom) {
+            var scope = environment.scope(ScopeSemantics.LEXICAL, true);
+            try {
+                var bound = bindForCustom(custom, evaluated, span);
+                org.glavo.scssfx.internal.value.SassValue result;
+                try {
+                    result = custom.invoke(bound.values(), compilationContext);
+                } catch (FatalSassCallbackException failure) {
+                    throw failure;
+                } catch (Exception failure) {
+                    var message = failure.getMessage();
+                    if (message == null || message.isBlank()) {
+                        message = failure.toString();
+                    }
+                    throw new EvaluationException(
+                            message,
+                            span,
+                            List.of(),
+                            failure
+                    );
+                }
+                checkUnusedKeywords(bound.rest(), span);
+                return result instanceof SassNumber ? result.withoutSlash() : result;
+            } finally {
+                scope.close();
+            }
+        }
         if (callable instanceof BuiltInCallable builtIn) {
             return valueOperation(span, () -> {
                 var bound = bindForBuiltin(builtIn, evaluated, span);
                 var result = builtIn.invoke(
                         new BuiltInCallable.Context(
                                 environment,
-                                BUILT_IN_FUNCTIONS,
+                                globalFunctions,
                                 currentUrl,
                                 span,
                                 compilationContext,
@@ -4799,7 +5084,15 @@ public final class SassEvaluator implements
     /// @param code    the stable deprecation identifier
     /// @param span    the source span that triggered the deprecation
     private void reportDeprecation(String message, String code, SourceSpan span) {
-        diagnostics.add(new Diagnostic(DiagnosticSeverity.DEPRECATION, message, span, code));
+        diagnosticReporter.compilerWarning(
+                new Diagnostic(
+                        DiagnosticSeverity.DEPRECATION,
+                        message,
+                        span,
+                        code
+                ),
+                inDependency
+        );
     }
 
     /// Loads a stylesheet and injects its combined CSS at the current include point.
@@ -5297,7 +5590,14 @@ public final class SassEvaluator implements
             EvaluatedArguments evaluated,
             SourceSpan span
     ) {
-        return withEnvironment(function.environment().closure(), () -> {
+        return withSassCall(
+                function.name() + "()",
+                span,
+                () -> withDependency(
+                        function.inDependency(),
+                        () -> withEnvironment(
+                                function.environment().closure(),
+                                () -> {
             var scope = environment.scope(ScopeSemantics.LEXICAL, true);
             functionCallDepth++;
             try {
@@ -5319,7 +5619,7 @@ public final class SassEvaluator implements
                 functionCallDepth--;
                 scope.close();
             }
-        });
+        })));
     }
 
     /// Includes a mixin with unevaluated call-site arguments.
@@ -5414,7 +5714,14 @@ public final class SassEvaluator implements
             @Nullable UserDefinedCallable content,
             SourceSpan span
     ) {
-        withEnvironment(mixin.environment().closure(), () -> {
+        withSassCall(
+                mixin.name() + "()",
+                span,
+                () -> withDependency(
+                        mixin.inDependency(),
+                        () -> withEnvironment(
+                                mixin.environment().closure(),
+                                () -> {
             environment.withContent(content, () -> environment.withMixin(() -> {
                 var scope = environment.scope(ScopeSemantics.LEXICAL, true);
                 try {
@@ -5431,7 +5738,7 @@ public final class SassEvaluator implements
                 }
             }));
             return null;
-        });
+        })));
     }
 
     /// Executes a content block without masking its captured outer content.
@@ -5459,7 +5766,14 @@ public final class SassEvaluator implements
     ) {
         // Content blocks run in the include site's environment without the
         // mixin flag, so meta.content-exists() fails inside {@code @content}.
-        withEnvironment(content.environment().closure(), () -> {
+        withSassCall(
+                content.name(),
+                span,
+                () -> withDependency(
+                        content.inDependency(),
+                        () -> withEnvironment(
+                                content.environment().closure(),
+                                () -> {
             var scope = environment.scope(ScopeSemantics.LEXICAL, true);
             try {
                 @Nullable SassArgumentList rest = bindParameters(
@@ -5473,7 +5787,7 @@ public final class SassEvaluator implements
             } finally {
                 scope.close();
             }
-        });
+        })));
     }
 
     /// Evaluates an argument invocation into positional and named values.
@@ -5699,6 +6013,89 @@ public final class SassEvaluator implements
         return rest;
     }
 
+    /// Binds evaluated arguments for a public Java custom function.
+    ///
+    /// Declared values are installed in the temporary call frame so later
+    /// default expressions can reference earlier parameters.
+    ///
+    /// @param custom    the custom function
+    /// @param evaluated the evaluated invocation arguments
+    /// @param span      the invocation span
+    /// @return immutable callback values and the optional rest argument list
+    private BoundCustomArguments bindForCustom(
+            CustomFunctionCallable custom,
+            EvaluatedArguments evaluated,
+            SourceSpan span
+    ) {
+        var parameters = custom.parameters();
+        var declared = parameters.parameters();
+        var positional = new ArrayList<>(evaluated.positional());
+        var named = new LinkedHashMap<>(evaluated.named());
+        var bound = new ArrayList<SassValue>(declared.size() + 1);
+
+        for (var index = 0; index < declared.size(); index++) {
+            var parameter = declared.get(index);
+            if (index < positional.size() && named.containsKey(parameter.name())) {
+                throw new EvaluationException(
+                        "Argument $" + parameter.name()
+                                + " was passed both by position and by name.",
+                        span
+                );
+            }
+        }
+
+        if (parameters.restParameter() == null && positional.size() > declared.size()) {
+            throw new EvaluationException(
+                    "Only " + declared.size() + " "
+                            + (declared.size() == 1 ? "argument" : "arguments")
+                            + " allowed, but " + positional.size() + " "
+                            + (positional.size() == 1 ? "was" : "were")
+                            + " passed.",
+                    span
+            );
+        }
+
+        for (var index = 0; index < declared.size(); index++) {
+            var parameter = declared.get(index);
+            SassValue value;
+            if (index < positional.size()) {
+                value = positional.get(index);
+            } else {
+                @Nullable SassValue namedValue = named.remove(parameter.name());
+                if (namedValue != null) {
+                    value = namedValue;
+                } else if (parameter.defaultValue() != null) {
+                    value = evaluate(parameter.defaultValue()).withoutSlash();
+                } else {
+                    throw new EvaluationException(
+                            "Missing argument $" + parameter.name() + ".",
+                            span
+                    );
+                }
+            }
+            bound.add(value);
+            environment.setLocalVariable(parameter.name(), value, span);
+        }
+
+        if (parameters.restParameter() == null) {
+            if (!named.isEmpty()) {
+                throw unknownNamed(named.keySet(), span);
+            }
+            return new BoundCustomArguments(List.copyOf(bound), null);
+        }
+
+        var restPositional = positional.size() > declared.size()
+                ? List.copyOf(positional.subList(declared.size(), positional.size()))
+                : List.<SassValue>of();
+        var separator = evaluated.separator() == ListSeparator.UNDECIDED
+                ? ListSeparator.COMMA
+                : evaluated.separator();
+        var rest = new SassArgumentList(restPositional, separator, named);
+        bound.add(rest);
+        environment.setLocalVariable(parameters.restParameter(), rest, span);
+        return new BoundCustomArguments(List.copyOf(bound), rest);
+    }
+
     /// Converts evaluated arguments into bound values for a built-in callable.
     private BoundBuiltInArguments bindForBuiltin(
             BuiltInCallable builtIn,
@@ -5804,6 +6201,17 @@ public final class SassEvaluator implements
     ) {
     }
 
+    /// Contains bound values and an optional rest list for one custom call.
+    ///
+    /// @param values the immutable values passed to the public callback
+    /// @param rest   the rest argument list whose keywords must be consumed, or {@code null}
+    @NotNullByDefault
+    private record BoundCustomArguments(
+            @Unmodifiable List<SassValue> values,
+            @Nullable SassArgumentList rest
+    ) {
+    }
+
     /// Contains evaluated invocation arguments.
     ///
     /// @param positional the evaluated positional arguments
@@ -5830,6 +6238,22 @@ public final class SassEvaluator implements
             return body.get();
         } finally {
             environment = previous;
+        }
+    }
+
+    /// Runs a body with the dependency provenance captured by its definition.
+    ///
+    /// @param dependency whether compiler warnings are dependency warnings
+    /// @param body the body to run
+    /// @param <T> the result type
+    /// @return the body result
+    private <T> T withDependency(boolean dependency, Supplier<T> body) {
+        var previous = inDependency;
+        inDependency = dependency;
+        try {
+            return body.get();
+        } finally {
+            inDependency = previous;
         }
     }
 
@@ -6587,6 +7011,92 @@ public final class SassEvaluator implements
             // operands; fall through to normal evaluation paths that already
             // reject interpolation in plain CSS.
             return;
+        }
+    }
+
+    /// Runs an operation within one user-defined Sass call frame.
+    ///
+    /// The first evaluation failure crossing the innermost active call is
+    /// expanded into the complete Sass trace. Outer calls preserve that trace.
+    ///
+    /// @param member the member label shown in the trace
+    /// @param callSpan the invocation span in the caller
+    /// @param operation the call body
+    /// @param <T> the call result type
+    /// @return the operation result
+    /// @throws EvaluationException if the operation fails
+    private <T> T withSassCall(
+            String member,
+            SourceSpan callSpan,
+            Supplier<T> operation
+    ) {
+        activeSassCalls.add(new ActiveSassCall(member, callSpan));
+        try {
+            return operation.get();
+        } catch (EvaluationException failure) {
+            throw enrichSassTrace(failure);
+        } finally {
+            activeSassCalls.remove(activeSassCalls.size() - 1);
+        }
+    }
+
+    /// Adds active user-call frames to a root-only evaluation failure.
+    ///
+    /// @param failure the failure crossing a user-call boundary
+    /// @return the original failure when already enriched, otherwise a failure
+    /// with frames from the innermost member to the root stylesheet
+    private EvaluationException enrichSassTrace(
+            EvaluationException failure
+    ) {
+        if (activeSassCalls.isEmpty()
+                || failure.sassTrace().size() != 1
+                || !"root stylesheet".equals(
+                        failure.sassTrace().get(0).member()
+                )
+                || failure.primaryDiagnostic().span() == null) {
+            return failure;
+        }
+        var trace = new ArrayList<SassStackFrame>(
+                activeSassCalls.size() + 1
+        );
+        var innermost = activeSassCalls.get(
+                activeSassCalls.size() - 1
+        );
+        trace.add(new SassStackFrame(
+                innermost.member(),
+                Objects.requireNonNull(
+                        failure.primaryDiagnostic().span(),
+                        "validated failure span"
+                )
+        ));
+        for (var index = activeSassCalls.size() - 1; index > 0; index--) {
+            var caller = activeSassCalls.get(index - 1);
+            trace.add(new SassStackFrame(
+                    caller.member(),
+                    activeSassCalls.get(index).callSpan()
+            ));
+        }
+        trace.add(new SassStackFrame(
+                "root stylesheet",
+                activeSassCalls.get(0).callSpan()
+        ));
+        return new EvaluationException(
+                failure.primaryDiagnostic(),
+                failure.relatedSpans(),
+                trace,
+                failure
+        );
+    }
+
+    /// Describes one active user-defined Sass invocation.
+    ///
+    /// @param member the member label shown in stack traces
+    /// @param callSpan the invocation span in the caller
+    private record ActiveSassCall(String member, SourceSpan callSpan) {
+        /// Creates a validated active call.
+        private ActiveSassCall {
+            member = Objects.requireNonNull(member, "member");
+            callSpan = Objects.requireNonNull(callSpan, "callSpan");
         }
     }
 

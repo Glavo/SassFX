@@ -10,6 +10,8 @@ version = rootProject.version
 
 dependencies {
     implementation(project(":scssfx-core"))
+    implementation(project(":scssfx-embedded"))
+    implementation("com.fasterxml.jackson.core:jackson-core:2.22.1")
     implementation("info.picocli:picocli:4.7.7")
 
     compileOnly("org.jetbrains:annotations:26.1.0")
@@ -73,6 +75,11 @@ tasks.shadowJar {
     }
     relocate("com.fasterxml.jackson", "org.glavo.scssfx.internal.thirdparty.jackson")
     relocate("picocli", "org.glavo.scssfx.internal.thirdparty.picocli")
+    relocate("com.google.protobuf", "org.glavo.scssfx.internal.thirdparty.protobuf")
+    relocate(
+        "com.sass_lang.embedded_protocol",
+        "org.glavo.scssfx.internal.thirdparty.embedded_protocol",
+    )
     manifest {
         attributes(
             "Automatic-Module-Name" to "org.glavo.scssfx.cli",
@@ -97,6 +104,8 @@ val verifyShadedJar = tasks.register("verifyShadedJar") {
         val forbiddenEntryPatterns = listOf(
             Regex("(^|/)javafx/", RegexOption.IGNORE_CASE),
             Regex("(^|/)com/sun/javafx/", RegexOption.IGNORE_CASE),
+            Regex("^com/google/protobuf/.*"),
+            Regex("^com/sass_lang/embedded_protocol/.*"),
             Regex(".*\\.(a|dll|dylib|exe|jnilib|lib|node|wasm)$", RegexOption.IGNORE_CASE),
             Regex(".*\\.so(?:\\.\\d+)*$", RegexOption.IGNORE_CASE),
             Regex(".*\\.(dart|js|mjs|cjs)$", RegexOption.IGNORE_CASE),
@@ -113,8 +122,22 @@ val verifyShadedJar = tasks.register("verifyShadedJar") {
         )
         val forbiddenEntries = mutableListOf<String>()
         val forbiddenReferences = mutableListOf<String>()
+        val requiredEntries = listOf(
+            "org/glavo/scssfx/embedded/EmbeddedCompiler.class",
+            "org/glavo/scssfx/internal/thirdparty/protobuf/Message.class",
+            "org/glavo/scssfx/internal/thirdparty/embedded_protocol/InboundMessage.class",
+        )
 
         ZipFile(archive).use { zipFile ->
+            val missingEntries = requiredEntries.filter { entry ->
+                zipFile.getEntry(entry) == null
+            }
+            if (missingEntries.isNotEmpty()) {
+                throw GradleException(
+                    "The distributable JAR is missing embedded-protocol entries: " +
+                        missingEntries.joinToString(),
+                )
+            }
             val entries = zipFile.entries()
             while (entries.hasMoreElements()) {
                 val entry = entries.nextElement()
@@ -183,6 +206,19 @@ val smokeTestShadedCli = tasks.register<JavaExec>("smokeTestShadedCli") {
     args("--version")
 }
 
+val smokeTestShadedEmbeddedCli = tasks.register<JavaExec>(
+    "smokeTestShadedEmbeddedCli",
+) {
+    group = LifecycleBasePlugin.VERIFICATION_GROUP
+    description = "Runs the shaded CLI embedded version command on Java 17."
+    dependsOn(tasks.shadowJar)
+    dependsOn(verifyJava17Toolchain)
+    javaLauncher.set(java17Launcher)
+    classpath = files(tasks.shadowJar.flatMap { it.archiveFile })
+    mainClass.set(application.mainClass)
+    args("--embedded", "--version")
+}
+
 tasks.assemble {
     dependsOn(tasks.shadowJar)
 }
@@ -190,4 +226,5 @@ tasks.assemble {
 tasks.check {
     dependsOn(verifyShadedJar)
     dependsOn(smokeTestShadedCli)
+    dependsOn(smokeTestShadedEmbeddedCli)
 }

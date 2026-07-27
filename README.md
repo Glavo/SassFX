@@ -17,11 +17,16 @@ development build.
 - BSS versions 5 through 9 without a JavaFX runtime dependency.
 - Explicit resolver API for retained JavaFX CSS imports from application
   resource schemes.
-- Structured diagnostics, loaded-URL metadata, and CSS source maps.
+- Structured diagnostics, configurable logging and deprecation processing,
+  loaded-URL metadata, and CSS source maps.
+- Embedded Sass Protocol 3.2.0 framing, version negotiation, concurrent
+  compilation dispatch, diagnostics, and compile responses.
 - Fixed Dart Sass, sass-spec, and OpenJFX compatibility oracles.
 
-The core runtime uses Jackson Core. The command-line application additionally
-uses Picocli; both are pure Java dependencies.
+The core runtime uses Jackson Core. The embedded endpoint additionally uses
+the generated Sass Embedded Protocol messages and Protocol Buffers Java. The
+command-line application uses Picocli and includes the endpoint. All runtime
+dependencies are pure Java.
 
 ## Building
 
@@ -39,22 +44,25 @@ On Windows:
 .\gradlew.ps1 check
 ```
 
-Product code and artifacts target Java 17. `check` runs core and CLI unit
-tests, the curated sass-spec suite, the Java 17 shaded-CLI smoke test, artifact
-boundary checks, and source-isolation checks. Generating Javadoc additionally
-requires a JDK 25 toolchain because Markdown-style `///` Javadoc is used.
+Product code and artifacts target Java 17. `check` runs core, embedded, and
+CLI unit tests, the curated sass-spec suite, Java 17 shaded-application smoke
+tests, artifact boundary checks, and source-isolation checks. Generating
+Javadoc additionally requires a JDK 25 toolchain because Markdown-style
+`///` Javadoc is used.
 
 The build produces:
 
 | Project | Purpose | Main artifact |
 | --- | --- | --- |
 | `scssfx-core` | Reusable compiler API | `scssfx-core/build/libs/scssfx-core-0.1.0-SNAPSHOT.jar` |
+| `scssfx-embedded` | Embedded Sass Protocol executable | `scssfx-embedded/build/libs/scssfx-embedded-0.1.0-SNAPSHOT.jar` |
 | `scssfx-cli` | Executable command-line frontend | `scssfx-cli/build/libs/scssfx-cli-0.1.0-SNAPSHOT.jar` |
 
 The core JAR has the automatic module name `org.glavo.scssfx` and is not a fat
-JAR. The unclassified CLI JAR is a self-contained shaded application with the
-automatic module name `org.glavo.scssfx.cli`. It contains relocated Jackson
-and Picocli classes but no JavaFX, FFI, or native content.
+JAR. The unclassified embedded and CLI JARs are self-contained shaded
+applications with automatic module names `org.glavo.scssfx.embedded` and
+`org.glavo.scssfx.cli`. They contain relocated runtime dependencies but no
+JavaFX, FFI, or native content.
 
 No public artifact repository is configured yet. Do not treat the current
 group and version as published Maven coordinates.
@@ -67,18 +75,49 @@ After `assemble`, run:
 java -jar scssfx-cli/build/libs/scssfx-cli-0.1.0-SNAPSHOT.jar --help
 ```
 
-The CLI accepts one `.scss` or `.sass` input:
+The CLI accepts file, standard-input, mapped-file, and recursive-directory
+compilations:
 
 ```text
 Usage: scssfx [OPTIONS] INPUT [OUTPUT]
+       scssfx [OPTIONS] --stdin [OUTPUT]
+       scssfx [OPTIONS] INPUT:OUTPUT...
+       scssfx [OPTIONS] DIR[:OUTPUT_DIR]...
+       scssfx [OPTIONS] --interactive
+       scssfx --embedded
 ```
 
 | Option | Values and behavior |
 | --- | --- |
 | `--target` | `css`, `javafx-css`, or `bss`; defaults to `css` |
-| `--style` | `expanded` or `compressed`; text targets only, defaults to `expanded` |
+| `-s`, `--style` | `expanded` or `compressed`; text targets only, defaults to `expanded` |
+| `--[no-]charset` | Emits `@charset` for expanded non-ASCII output or a UTF-8 BOM for compressed output; enabled by default |
+| `--[no-]source-map` | Generates source maps for file output; enabled by default |
+| `--source-map-urls` | Uses `relative` or `absolute` source URLs; defaults to `relative` |
+| `--[no-]embed-sources` | Includes original source text in generated maps |
+| `--[no-]embed-source-map` | Embeds the map as a UTF-8 JSON data URL |
+| `--[no-]error-css` | Controls browser-readable error stylesheets; defaults on for file output and off for stdout |
+| `--[no-]stop-on-error` | Stops a multi-input invocation after its first Sass or IO failure |
+| `--update` | Compiles only mapped destinations older than their dependencies |
+| `-w`, `--watch` | Recompiles affected mapped entrypoints after filesystem changes |
+| `--[no-]poll` | Selects metadata polling or native notifications for watch mode |
+| `-i`, `--interactive` | Runs a persistent line-oriented SassScript shell |
+| `--embedded` | Serves the binary Embedded Sass Protocol over stdin and stdout |
 | `--javafx-target` | Integer from `8` through `27`; JavaFX targets only, defaults to `17` |
 | `--javafx-compatibility` | Compatibility alias for `--javafx-target` |
+| `--[no-]stdin` | Reads the root stylesheet from standard input |
+| `--[no-]indented` | Parses root inputs using the indented Sass syntax |
+| `-I`, `--load-path` | Adds a Sass load path; may be repeated |
+| `-p`, `--pkg-importer` | Enables the built-in `node` importer for `pkg:` URLs; may be repeated |
+| `-q`, `--[no-]quiet` | Suppresses warnings, deprecations, and debug messages |
+| `--[no-]quiet-deps` | Suppresses compiler warnings from load-path dependencies |
+| `--[no-]verbose` | Prints every repeated deprecation warning |
+| `--fatal-deprecation` | Promotes an ID, or every ID active by a Sass version, to an error |
+| `--silence-deprecation` | Suppresses a deprecation ID |
+| `--future-deprecation` | Explicitly enables a future deprecation ID |
+| `-c`, `--[no-]color` | Controls ANSI styling for messages; defaults on when stdout has an attached console |
+| `--[no-]unicode` | Controls Unicode diagnostic frame glyphs; enabled by default |
+| `--[no-]trace` | Appends Java implementation stack traces to Sass and IO failures |
 | `-o`, `--output` | Writes to a file instead of standard output |
 | `-h`, `--help` | Prints command help |
 | `-V`, `--version` | Prints the development version |
@@ -112,14 +151,148 @@ java -jar scssfx-cli/build/libs/scssfx-cli-0.1.0-SNAPSHOT.jar \
   -o style.bss
 ```
 
-Text output uses standard output when no destination is supplied. BSS always
-requires a destination file. A positional destination may replace `-o`, but
-the two forms cannot be combined. Destination parent directories are created
-automatically.
+Explicit file inputs use indented Sass for lowercase `.sass`, plain CSS for
+lowercase `.css`, and SCSS for every other extension. The magic input `-` is
+equivalent to stdin; stdin-relative loads resolve from the process working
+directory.
 
-The CLI currently has no stdin, watch, batch-directory, load-path, source-map,
-or custom-resolver options. Its exit statuses are `0` for success, `1` for
-compilation or I/O failure, and `2` for invalid usage.
+`SASS_PATH` adds filesystem load paths separated by the platform path
+separator (`;` on Windows and `:` elsewhere). Explicit `-I`/`--load-path`
+entries take precedence, followed by `SASS_PATH` entries in declaration order.
+Relative paths and empty entries resolve from the process working directory.
+The same resolution order applies to ordinary compilation, update/watch mode,
+and the interactive shell; `--quiet-deps` classifies environment-loaded
+stylesheets as load-path dependencies.
+
+Multiple roots use `INPUT:OUTPUT` mappings. A mapped directory is traversed
+recursively while preserving its relative tree; lowercase `.scss`, `.sass`,
+and `.css` entrypoints are compiled, while basenames beginning with `_` and
+other extensions are ignored. A standalone directory compiles Sass
+entrypoints in place and leaves existing CSS files unchanged. Windows drive
+colons are not treated as mapping separators.
+
+Text output uses standard output only for one root without a destination. BSS
+always requires a destination file and directory-derived BSS destinations use
+the `.bss` extension. A positional destination may replace `-o`, but `-o`
+cannot be combined with mappings or directory batches. Destination parent
+directories are created automatically. Batch compilation continues after an
+expected Sass or IO failure unless `--stop-on-error` is selected.
+
+Use `--update` with file or directory mappings to compile only destinations
+that are missing or older than their root or any transitive file dependency.
+Fresh destinations are left byte-for-byte unchanged and produce no status
+line. The magic stdin mapping `-:OUTPUT` is always compiled. Explicit
+`--stdin` and stdout destinations are rejected in update mode.
+
+Use `--watch` or `-w` to perform the same initial freshness check and then
+continue recompiling affected entrypoints. Added directory entrypoints are
+discovered recursively; removing an entrypoint deletes its exact output and
+source-map sidecar. Native recursive filesystem notifications are used by
+default, while `--poll` selects pure-Java metadata polling. `--poll` and
+`--no-poll` are valid only with `--watch`. The watch-ready banner and deletion
+messages remain visible under `--quiet`; successful compilation status lines
+do not. Filesystem importer candidate paths are retained as an incremental
+resolution graph, so missing dependencies, candidate conflicts, load-path
+fallbacks, and precedence changes recover without recompiling entrypoints that
+cannot be affected. `--stop-on-error` terminates watch mode after the first
+failed batch.
+
+Use `--interactive` or `-i` to evaluate one SassScript expression, variable
+declaration, or `@use` rule per physical input line. Variables, module
+namespaces, module caches, and deprecation state persist until stdin closes.
+Each input line is echoed with the `>> ` prompt; expressions and declarations
+print their inspected value, while `@use` and blank lines produce no value.
+Errors are reported to stdout and do not terminate the session. Warnings,
+deprecations, and debug messages use stderr and honor the normal diagnostic
+options. Relative modules resolve from the process working directory, and
+load paths, the Node package importer, color, Unicode, trace, quiet, and
+deprecation controls remain available.
+
+Textual file output creates a compact `<output>.map` sidecar by default and
+appends the corresponding source-map comment. `--no-source-map` disables new
+map output without deleting an existing sidecar. Embedded maps use percent-
+encoded UTF-8 JSON. Source contents may be embedded independently, and stdin
+is represented by a UTF-8 contents data URL. Source-map options that cannot
+produce a usable stdout result are rejected as usage errors. BSS does not
+support source maps or charset markers.
+
+On a Sass failure, textual file output is replaced with a browser-readable
+error stylesheet by default. Stdout remains empty unless `--error-css` is
+explicitly selected. `--no-error-css` removes an existing failed textual
+destination but leaves an existing map sidecar unchanged. Error CSS is not
+available for BSS. Error stylesheets use an ASCII diagnostic frame in their
+leading comment, independently serialize the displayed diagnostic with Dart
+Sass's quote and escape rules, and leave an existing map sidecar untouched
+until a later successful compilation replaces it.
+
+Diagnostics use complete UTF-8 source lines for file and stdin roots. Unicode
+frames are enabled by default; `--no-unicode` selects the equivalent ASCII
+gutter. Buffered and redirected output is uncolored by default, while
+`--color` and `--no-color` provide deterministic overrides. `--trace` appends
+Java implementation frames after ordinary Sass and IO errors without changing
+their exit status. Unexpected implementation failures always include a trace
+and exit with status `255`. Error CSS never contains ANSI escapes. Named colors
+interpolated into selectors, declaration names, media queries, at-root
+queries, extend targets, or unknown at-rule values produce Dart
+Sass-compatible compiler warnings; ordinary SassScript strings and declaration
+values do not.
+
+Pass `--pkg-importer=node` to resolve `pkg:` URLs with Node package lookup.
+The importer starts beside the containing file, or at the process working
+directory for stdin and other URL-less roots, and searches each ancestor's
+`node_modules` directory. It honors Sass package `exports`, `sass`, and `style`
+metadata without executing JavaScript or package scripts.
+
+The CLI does not expose application-defined importer and function callbacks;
+those are Java API features. Its exit statuses are `0` for success, `64` for
+invalid usage, `65` for Sass data errors, `66` for IO failures, and `255` for
+unexpected implementation failures. Interactive line failures are recoverable
+and the shell exits with status `0` when stdin closes. Invalid-usage
+diagnostics and the following usage text are written to standard output, while
+Sass compilation and IO failures are written to standard error.
+
+## Embedded Sass Protocol
+
+The standalone endpoint serves Embedded Sass Protocol 3.2.0 over stdin and
+stdout:
+
+```shell
+java -jar scssfx-embedded/build/libs/scssfx-embedded-0.1.0-SNAPSHOT.jar
+```
+
+The shaded CLI exposes the same endpoint:
+
+```shell
+java -jar scssfx-cli/build/libs/scssfx-cli-0.1.0-SNAPSHOT.jar --embedded
+```
+
+Pass `--version` to either form to print a JSON version document instead of
+opening the binary protocol stream. The endpoint accepts length-delimited
+protobuf messages, reserves compilation ID zero for version negotiation, and
+may process distinct nonzero compilation IDs concurrently. Closing stdin
+cancels all in-flight work. Protocol violations emit a fatal protocol error
+and exit with status `76`; unexpected endpoint failures use status `70`.
+
+String and path inputs, ordered load-path and Node package importers, output
+style, charset handling, source maps, loaded URLs, logs, and deprecation
+configuration are supported. Contents importers, file importers, global
+functions, host function values, and compiler-owned function and mixin values
+use synchronous host callbacks with per-compilation routing. The recursive
+value codec preserves numbers and units, strings, booleans, null, lists, maps,
+argument lists, colors, calculations, and opaque callable identities.
+Contents-importer non-canonical schemes use Dart Sass's lowercase scheme
+grammar, control containing-URL propagation, and may not be returned as
+canonical results. Invalid descriptor placement is a fatal protocol parameter
+error, while invalid scheme text is a compilation failure. Contents and file
+callback results preserve declared importer order, validate absolute and
+`file:` URL requirements with protocol-compatible failures, propagate null and
+host errors without closing the connection, and give the importer that loaded
+a stylesheet first chance to resolve its relative dependencies.
+Source-map contents are captured from the sources actually loaded for the
+compilation and never recovered by dereferencing importer display URLs.
+`source_map_include_sources`, `alert_color`, and `alert_ascii` control embedded
+source text and terminal-oriented diagnostic presentation independently of
+the structured diagnostic fields.
 
 ## Java API
 
@@ -180,8 +353,8 @@ available for BSS; requesting one fails with `SassCompilationException`.
 
 ### Compile options and source maps
 
-`CompileOptions` configures CSS source maps, Sass load paths, and the optional
-BSS retained-stylesheet resolver:
+`CompileOptions` configures CSS source maps, ordered custom Sass importers and
+functions, Sass load paths, and the optional BSS retained-stylesheet resolver:
 
 ```java
 import org.glavo.scssfx.CompileOptions;
@@ -213,6 +386,216 @@ compiler does not write a map file or append a source-map URL automatically.
 File sources infer `.scss`, `.sass`, or `.css` syntax. Other extensions require
 an explicit `Syntax`. A string source may supply an absolute canonical URI so
 that relative dependencies and diagnostics have a stable base.
+
+### Custom Sass importers
+
+`SassImporter` provides the synchronous `canonicalize`/`load` contract used by
+`@use`, `@forward`, dynamic `@import`, and `meta.load-css()`. Custom importers
+are consulted in `CompileOptions.importers()` order before filesystem load
+paths:
+
+```java
+import org.glavo.scssfx.CompileOptions;
+import org.glavo.scssfx.SassCanonicalizeContext;
+import org.glavo.scssfx.SassImporter;
+import org.glavo.scssfx.SassImporterResult;
+import org.glavo.scssfx.Syntax;
+import org.jetbrains.annotations.Nullable;
+
+import java.net.URI;
+import java.util.List;
+import java.util.Map;
+
+Map<URI, SassImporterResult> sources = Map.of(
+        URI.create("memory:///theme.scss"),
+        new SassImporterResult("$accent: royalblue;", Syntax.SCSS)
+);
+
+SassImporter importer = new SassImporter() {
+    @Override
+    public @Nullable URI canonicalize(
+            URI url,
+            SassCanonicalizeContext context
+    ) {
+        if (url.equals(URI.create("theme"))) {
+            return URI.create("memory:///theme.scss");
+        }
+        return sources.containsKey(url) ? url : null;
+    }
+
+    @Override
+    public @Nullable SassImporterResult load(URI canonicalUrl) {
+        return sources.get(canonicalUrl);
+    }
+};
+
+var options = new CompileOptions(
+        false,
+        List.of(),
+        null,
+        List.of(importer)
+);
+```
+
+A canonical URL must be absolute and stable. It is the identity used for
+module caching, cycle detection, relative-load ownership, and
+`CompileResult.loadedUrls()`. Returning `null` from `canonicalize` delegates to
+the next importer; returning `null` from `load` is a terminal not-found result.
+`SassCanonicalizeContext.fromImport()` distinguishes legacy `@import`, and
+`containingUrl()` supplies the canonical containing URL when applicable.
+
+`SassImporterResult.sourceMapUrl()` may provide a separate absolute URL for
+source maps. When omitted, the compiler generates a UTF-8 `data:` URL from the
+returned contents. Importer callbacks are synchronous, may be repeated, and
+may run concurrently when one options instance is shared across compilations.
+
+`SassFileImporter` is the filesystem-backed variant. Its `findFileUrl` callback
+maps a Sass URL to an absolute `file:` URL, while the compiler performs standard
+extension, partial, import-only, and directory-index resolution and reads the
+selected file:
+
+```java
+import org.glavo.scssfx.SassFileImporter;
+
+import java.nio.file.Path;
+
+Path packages = Path.of("packages").toAbsolutePath();
+SassFileImporter packageFiles = (url, context) -> {
+    if (!"pkg".equals(url.getScheme())) {
+        return null;
+    }
+    return packages.resolve(url.getSchemeSpecificPart()).toUri();
+};
+```
+
+File importers and contents importers share the same ordered
+`CompileOptions.importers()` list. Absolute `file:` requests bypass
+`findFileUrl`; a returned file URL that has no matching Sass candidate declines
+the request and allows the next importer to run.
+
+`SassNodePackageImporter` provides the built-in `pkg:` implementation without
+a Node.js runtime:
+
+```java
+import org.glavo.scssfx.CompileOptions;
+import org.glavo.scssfx.SassNodePackageImporter;
+
+import java.nio.file.Path;
+import java.util.List;
+
+var options = new CompileOptions(
+        false,
+        List.of(),
+        null,
+        List.of(new SassNodePackageImporter(Path.of(".")))
+);
+```
+
+For each request, lookup begins beside its containing file when that file has a
+canonical `file:` URL; otherwise it begins at the configured entry-point
+directory. The closest ancestor containing
+`node_modules/<package>/package.json` owns the request. Package `exports` take
+precedence over root `sass`, `style`, and `index` entry points and over
+filesystem subpaths. Export conditions are evaluated in manifest order for
+`sass`, `style`, and `default`; exact and wildcard subpaths, arrays, partials,
+directory indexes, and legacy import-only files are supported.
+
+The importer reads UTF-8 manifests and stylesheets directly from the local
+filesystem. It does not execute JavaScript, resolve Node `main` entries, run
+package scripts, access the network, or consult Sass load paths. Instances are
+immutable and safe to share across concurrent compilations.
+
+### Custom Sass functions
+
+`SassCustomFunction` registers a synchronous Java callback with a complete Sass
+signature. Sass binds positional and keyword arguments, evaluates defaults, and
+passes values to the callback in declaration order:
+
+```java
+import org.glavo.scssfx.CompileOptions;
+import org.glavo.scssfx.SassCustomFunction;
+import org.glavo.scssfx.SassValue;
+
+import java.util.List;
+
+var pow = new SassCustomFunction(
+        "java-pow($base, $exponent: 2)",
+        arguments -> SassValue.number(Math.pow(
+                arguments.get(0).numberValue(),
+                arguments.get(1).numberValue()
+        ))
+);
+
+var options = new CompileOptions(
+        false,
+        List.of(),
+        null,
+        List.of(),
+        List.of(pow)
+);
+```
+
+A rest parameter is passed as the final `SassValueType.ARGUMENT_LIST` value.
+Callbacks that accept leftover keywords must call `SassValue.keywords()` to
+mark them consumed. Custom functions are visible from loaded Sass modules and
+through `sass:meta`; stylesheet functions and built-in calculation behavior
+retain Sass precedence. Plain CSS sources do not invoke custom functions.
+
+`SassValue` preserves every evaluator value kind without converting through
+CSS text. It provides factories and typed accessors for common scalar, list,
+and map values; opaque colors, calculations, functions, and mixins may be
+returned directly. A callback must return a non-null value. Thrown exceptions
+become source-associated compilation failures and remain in the cause chain.
+One callback instance may run concurrently when compile options are shared, so
+callback implementations must be thread-safe.
+
+### Logging and deprecation controls
+
+`SassDiagnosticOptions` controls event delivery and deprecation policy for one
+compilation. Retained events remain available in `CompileResult.diagnostics()`;
+the logger receives the same processed warnings, deprecations, and debug
+messages synchronously:
+
+```java
+import org.glavo.scssfx.CompileOptions;
+import org.glavo.scssfx.SassDeprecation;
+import org.glavo.scssfx.SassDiagnosticOptions;
+
+import java.util.List;
+import java.util.Set;
+
+var diagnostics = new SassDiagnosticOptions(
+        event -> System.err.println(event.diagnostic().message()),
+        true,
+        false,
+        Set.of(SassDeprecation.SLASH_DIV),
+        Set.of(),
+        Set.of()
+);
+
+var options = new CompileOptions(
+        false,
+        List.of(),
+        null,
+        List.of(),
+        List.of(),
+        diagnostics
+);
+```
+
+`quietDeps` applies to compiler warnings emitted by custom-importer and
+load-path dependencies, including transitively loaded modules. It does not
+suppress explicit Sass `@warn` or `@debug` statements. By default, each
+deprecation type is reported at most five times and a successful compilation
+adds an omission summary; `verbose` disables that limit. Fatal deprecations
+take precedence over silencing, while dependency suppression takes precedence
+over fatal processing.
+
+`SassDeprecation` is the typed Dart Sass 1.101.3 deprecation registry. It
+exposes the command-line ID, activation and obsolescence versions, status, and
+description for each entry. Logger callbacks may run concurrently when compile
+options are shared and must be thread-safe. A runtime exception thrown by a
+logger aborts compilation and propagates unchanged.
 
 ### Retained JavaFX CSS imports
 
@@ -297,7 +680,10 @@ Root-source I/O failures throw `IOException`. Parse, evaluation, serialization,
 and dependency-resolution failures throw `SassCompilationException`. Its
 `primaryDiagnostic()` is the first error; `diagnostics()` also retains
 non-error diagnostics emitted before failure, and `sassTrace()` runs from the
-innermost active Sass member outward.
+innermost active Sass member outward. `sourceContents()` is an immutable
+snapshot of URL-addressable root and dependency text loaded before failure, so
+diagnostic consumers can render the original source without re-reading a file
+or invoking an importer again.
 
 Diagnostic codes and source spans may be absent. Source locations use
 zero-based UTF-16 line, column, and offset values, and spans are half-open.
@@ -310,7 +696,7 @@ A platform feature may still be unsupported by a particular output backend.
 
 | JavaFX target | Modeled changes | BSS |
 | --- | --- | --- |
-| 8 | Baseline font faces and unconditional imports | v5 |
+| 8 | Baseline font faces, unconditional imports, and legacy gradients | v5 |
 | 9 | Public converter package names | v6 |
 | 10–16 | No additional modeled change | v6 |
 | 17 | No additional modeled change; extended blend modes unavailable | v6 |

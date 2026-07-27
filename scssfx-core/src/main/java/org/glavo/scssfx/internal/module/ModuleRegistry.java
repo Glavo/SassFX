@@ -2,6 +2,7 @@
 package org.glavo.scssfx.internal.module;
 
 import org.glavo.scssfx.SourceSpan;
+import org.glavo.scssfx.SassImporter;
 import org.glavo.scssfx.internal.ast.Stylesheet;
 import org.glavo.scssfx.internal.evaluate.EvaluationException;
 import org.glavo.scssfx.internal.evaluate.SassEvaluator;
@@ -20,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Map;
 import java.util.Set;
 
 /// Loads modules and legacy imports for one compilation.
@@ -27,7 +29,7 @@ import java.util.Set;
 @NotNullByDefault
 public final class ModuleRegistry {
     /// Resolves stylesheet files.
-    private final FilesystemImporter importer;
+    private final SassImportResolver importer;
 
     /// Resolves known Sass built-in module URLs.
     private final BuiltInModules builtInModules;
@@ -50,9 +52,28 @@ public final class ModuleRegistry {
 
     /// Creates a registry.
     ///
-    /// @param loadPaths directories searched after the containing file
-    public ModuleRegistry(List<Path> loadPaths) {
-        this.importer = new FilesystemImporter(loadPaths);
+    /// @param loadPaths directories searched after custom importers
+    /// @param importers custom importers in precedence order
+    public ModuleRegistry(List<Path> loadPaths, List<SassImporter> importers) {
+        this(loadPaths, importers, null);
+    }
+
+    /// Creates a registry that records incremental resolution metadata.
+    ///
+    /// @param loadPaths directories searched after custom importers
+    /// @param importers custom importers in precedence order
+    /// @param resolutionTracker the tracker receiving resolution metadata, or
+    /// `null` when tracking is disabled
+    public ModuleRegistry(
+            List<Path> loadPaths,
+            List<SassImporter> importers,
+            @Nullable SassResolutionTracker resolutionTracker
+    ) {
+        this.importer = new SassImportResolver(
+                importers,
+                loadPaths,
+                resolutionTracker
+        );
         this.builtInModules = new BuiltInModules();
     }
 
@@ -133,7 +154,7 @@ public final class ModuleRegistry {
         ImportResult imported;
         try {
             imported = importer.canonicalizeAndLoad(url, baseUrl);
-        } catch (IOException | IllegalStateException failure) {
+        } catch (IOException | RuntimeException failure) {
             throw new EvaluationException(
                     Objects.requireNonNullElse(failure.getMessage(), "Can't find stylesheet to import."),
                     loadSpan,
@@ -188,7 +209,8 @@ public final class ModuleRegistry {
             var module = evaluator.executeAsModule(
                     stylesheet,
                     canonical,
-                    configuration
+                    configuration,
+                    imported.dependency()
             );
             loaded.put(canonical, module);
             loadedConfigurations.put(canonical, configuration);
@@ -265,7 +287,7 @@ public final class ModuleRegistry {
             imported = forImport
                     ? importer.canonicalizeAndLoadImport(url, baseUrl)
                     : importer.canonicalizeAndLoad(url, baseUrl);
-        } catch (IOException | IllegalStateException failure) {
+        } catch (IOException | RuntimeException failure) {
             throw new EvaluationException(
                     Objects.requireNonNullElse(
                             failure.getMessage(),
@@ -308,7 +330,11 @@ public final class ModuleRegistry {
             if (cached == null) {
                 parsedImports.put(canonical, stylesheet);
             }
-            evaluator.executeLegacyImport(stylesheet, canonical);
+            evaluator.executeLegacyImport(
+                    stylesheet,
+                    canonical,
+                    imported.dependency()
+            );
         } finally {
             active.remove(canonical);
         }
@@ -331,6 +357,20 @@ public final class ModuleRegistry {
     /// @return the loaded URLs in first-seen order
     public @Unmodifiable Set<URI> loadedUrls() {
         return Collections.unmodifiableSet(new LinkedHashSet<>(loadedUrls));
+    }
+
+    /// Returns alternate source-map URLs reported by custom importers.
+    ///
+    /// @return an immutable map keyed by canonical stylesheet URL
+    public @Unmodifiable Map<URI, URI> sourceMapUrls() {
+        return importer.sourceMapUrls();
+    }
+
+    /// Returns source text for every loaded canonical stylesheet.
+    ///
+    /// @return an immutable map keyed by canonical stylesheet URL
+    public @Unmodifiable Map<URI, String> sourceContents() {
+        return importer.sourceContents();
     }
 
     /// Returns a short display name for a canonical stylesheet URL.
