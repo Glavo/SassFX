@@ -209,6 +209,120 @@ final class EmbeddedValueCodecWireTest {
         }
     }
 
+    /// Preserves protocol metadata that is not always visible in CSS output.
+    ///
+    /// This covers string quoting, compound units, empty-list separators and
+    /// brackets, singleton-list separators, map entry order, and every color
+    /// channel presence bit using exact protobuf equality.
+    @Test
+    void preservesExactProtocolValueMetadata() throws Exception {
+        var values = List.of(
+                Value.newBuilder()
+                        .setString(Value.String.newBuilder()
+                                .setText("")
+                                .setQuoted(false))
+                        .build(),
+                Value.newBuilder()
+                        .setNumber(Value.Number.newBuilder()
+                                .setValue(1.25)
+                                .addNumerators("px")
+                                .addNumerators("s")
+                                .addDenominators("deg"))
+                        .build(),
+                Value.newBuilder()
+                        .setList(Value.List.newBuilder()
+                                .setSeparator(ListSeparator.UNDECIDED)
+                                .setHasBrackets(true))
+                        .build(),
+                Value.newBuilder()
+                        .setList(Value.List.newBuilder()
+                                .setSeparator(ListSeparator.SLASH)
+                                .setHasBrackets(false)
+                                .addContents(Value.newBuilder()
+                                        .setSingleton(SingletonValue.TRUE)))
+                        .build(),
+                Value.newBuilder()
+                        .setMap(Value.Map.newBuilder()
+                                .addEntries(Value.Map.Entry.newBuilder()
+                                        .setKey(Value.newBuilder()
+                                                .setString(Value.String.newBuilder()
+                                                        .setText("first")
+                                                        .setQuoted(false)))
+                                        .setValue(Value.newBuilder()
+                                                .setSingleton(SingletonValue.TRUE)))
+                                .addEntries(Value.Map.Entry.newBuilder()
+                                        .setKey(Value.newBuilder()
+                                                .setString(Value.String.newBuilder()
+                                                        .setText("second")
+                                                        .setQuoted(false)))
+                                        .setValue(Value.newBuilder()
+                                                .setSingleton(SingletonValue.FALSE))))
+                        .build(),
+                Value.newBuilder()
+                        .setColor(Value.Color.newBuilder()
+                                .setSpace("oklch")
+                                .setChannel2(0.2))
+                        .build()
+        );
+
+        try (var harness = new CompilerHarness()) {
+            for (var index = 0; index < values.size(); index++) {
+                var compilationId = 200L + index;
+                harness.send(
+                        compilationId,
+                        compileString(
+                                """
+                                        @use "sass:meta";
+                                        a {
+                                          value: meta.inspect(
+                                            round-trip(make-value())
+                                          );
+                                        }
+                                        """,
+                                List.of("make-value()", "round-trip($value)")
+                        )
+                );
+
+                var makeRequest = functionRequest(
+                        harness.receive(),
+                        compilationId
+                );
+                harness.send(
+                        compilationId,
+                        functionSuccess(
+                                makeRequest.getId(),
+                                values.get(index),
+                                List.of()
+                        )
+                );
+
+                var roundTripRequest = functionRequest(
+                        harness.receive(),
+                        compilationId
+                );
+                assertEquals(
+                        values.get(index),
+                        roundTripRequest.getArguments(0)
+                );
+                harness.send(
+                        compilationId,
+                        functionSuccess(
+                                roundTripRequest.getId(),
+                                roundTripRequest.getArguments(0),
+                                List.of()
+                        )
+                );
+                assertTrue(compileResponse(
+                        harness.receive(),
+                        compilationId
+                ).hasSuccess());
+            }
+
+            harness.closeInput();
+            assertEquals(0, harness.awaitStatus());
+        }
+    }
+
     /// Verifies reporting an accessed argument-list ID consumes rest keywords.
     @Test
     void marksAccessedArgumentListIds() throws Exception {

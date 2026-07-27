@@ -105,6 +105,15 @@ The byte-exact matrix currently covers:
   positions, repeats, sizes, slices, and stroke styles;
 - JavaFX 25–27 media-query framing and JavaFX 27 conditional imports.
 
+`BssTargetTest.coversEverySupportedConverterFamilyWithPinnedFixtures` scans
+the fixed OpenJFX byte fixtures and a focused composite fixture for every
+converter class emitted by the serializer. This makes complete
+non-transition converter-family coverage an executable gate rather than a
+documentation claim. The matrix includes scalar, sequence, font, enum,
+duration, string, URL, boolean, insets, paint, stop, derive, ladder, effect,
+background-layout, border-image, radii, margins, border-paint, and
+border-style converter trees.
+
 The JavaFX 8 fixture covers the same Region converter families in BSS v5 and
 also guards its observable gradient-cycle quirk: both linear and radial
 `repeat` gradients are stored as `REFLECT`.

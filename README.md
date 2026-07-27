@@ -301,6 +301,12 @@ functions, host function values, and compiler-owned function and mixin values
 use synchronous host callbacks with per-compilation routing. The recursive
 value codec preserves numbers and units, strings, booleans, null, lists, maps,
 argument lists, colors, calculations, and opaque callable identities.
+Protocol-only metadata is preserved independently of CSS presentation,
+including string quoting, list separators and brackets, map order, compound
+unit order, missing color-channel presence, and request-local argument-list
+identities. Malformed values, callback IDs, result unions, and callable
+signatures follow the protocol's compilation-failure versus connection-fatal
+boundary.
 Contents-importer non-canonical schemes use Dart Sass's lowercase scheme
 grammar, control containing-URL propagation, and may not be returned as
 canonical results. Invalid descriptor placement is a fatal protocol parameter
@@ -575,10 +581,15 @@ retain Sass precedence. Plain CSS sources do not invoke custom functions.
 
 `SassValue` preserves every evaluator value kind without converting through
 CSS text. It provides factories and typed accessors for common scalar, list,
-and map values; opaque colors, calculations, functions, and mixins may be
-returned directly. A callback must return a non-null value. Thrown exceptions
-become source-associated compilation failures and remain in the cause chain.
-One callback instance may run concurrently when compile options are shared, so
+map, and Color Level 4 values. `SassColorSpace` exposes all 16 public Sass
+spaces; `SassValue.color(...)` preserves missing channels and requires an
+explicit space. Requiring the space avoids the ambiguous legacy constructor
+forms covered by Dart Sass's `null-alpha` and `color-4-api` deprecations, so
+those deprecated overloads are intentionally absent from the Java API.
+Opaque calculations, functions, and mixins may be returned directly. A
+callback must return a non-null value. Thrown exceptions become
+source-associated compilation failures and remain in the cause chain. One
+callback instance may run concurrently when compile options are shared, so
 callback implementations must be thread-safe.
 
 ### Logging and deprecation controls
@@ -780,9 +791,9 @@ SCSSFX is still a development build. In particular:
 - JavaFX 8 through 26 flatten unconditional retained imports. JavaFX 27 BSS v9
   preserves each direct imported body and condition. Imported font faces do
   not propagate to the parent stylesheet.
-- The JavaFX property/value oracle matrix continues to expand. Passing the
-  current fixed validation matrix is not a claim about every future JavaFX
-  property, converter, or release.
+- The pinned JavaFX 8–27 property dispatch and every non-transition converter
+  family have executable CSS/BSS coverage. This does not claim compatibility
+  with converter families introduced after JavaFX 27.
 - `OutputTarget` is sealed to the three built-in backends.
 
 The current fixed sass-spec run passes 13,924 enabled fixtures with no failure;

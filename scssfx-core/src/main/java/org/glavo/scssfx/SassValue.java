@@ -12,6 +12,8 @@ import org.glavo.scssfx.internal.value.SassMixin;
 import org.glavo.scssfx.internal.value.SassNull;
 import org.glavo.scssfx.internal.value.SassNumber;
 import org.glavo.scssfx.internal.value.SassString;
+import org.glavo.scssfx.internal.value.SassValueException;
+import org.glavo.scssfx.internal.value.color.ColorSpace;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -149,6 +151,38 @@ public final class SassValue {
             );
         }
         return new SassValue(new SassMap(internal));
+    }
+
+    /// Creates a Sass color in an explicitly selected color space.
+    ///
+    /// A `null` channel represents the CSS missing-channel value `none`.
+    /// Non-alpha channels may be outside the nominal gamut. This modern
+    /// factory deliberately requires a color space, so the deprecated
+    /// `null-alpha` and legacy `color-4-api` constructor ambiguities do not
+    /// apply to the Java API.
+    ///
+    /// @param space the represented color space
+    /// @param channel1 the first channel, or `null` for a missing channel
+    /// @param channel2 the second channel, or `null` for a missing channel
+    /// @param channel3 the third channel, or `null` for a missing channel
+    /// @param alpha the alpha channel, or `null` for a missing channel
+    /// @return the Sass color
+    /// @throws IllegalArgumentException if alpha is outside zero through one
+    public static SassValue color(
+            SassColorSpace space,
+            @Nullable Double channel1,
+            @Nullable Double channel2,
+            @Nullable Double channel3,
+            @Nullable Double alpha
+    ) {
+        Objects.requireNonNull(space, "space");
+        return new SassValue(SassColor.forSpace(
+                (ColorSpace) space.bridgeToInternal(),
+                channel1,
+                channel2,
+                channel3,
+                alpha
+        ));
     }
 
     /// Returns this value's runtime kind.
@@ -308,6 +342,54 @@ public final class SassValue {
             result.put(wrap(entry.getKey()), wrap(entry.getValue()));
         }
         return Collections.unmodifiableMap(result);
+    }
+
+    /// Returns this color's color space.
+    ///
+    /// @return the represented public color space
+    /// @throws IllegalStateException if this is not a color
+    public SassColorSpace colorSpace() {
+        return SassColorSpace.bridgeFromInternal(
+                require(SassColor.class, SassValueType.COLOR).space()
+        );
+    }
+
+    /// Returns a named color channel.
+    ///
+    /// Missing channels return zero, matching Sass value semantics. Use
+    /// [#isColorChannelMissing(String)] to distinguish a missing channel from
+    /// an explicit zero. The accepted names are the three channels of
+    /// [#colorSpace()] and `alpha`.
+    ///
+    /// @param name the lowercase channel name
+    /// @return the channel value
+    /// @throws IllegalStateException if this is not a color
+    /// @throws IllegalArgumentException if the channel is unknown in this space
+    public double colorChannel(String name) {
+        try {
+            return require(SassColor.class, SassValueType.COLOR)
+                    .channel(Objects.requireNonNull(name, "name"));
+        } catch (SassValueException failure) {
+            throw new IllegalArgumentException(failure.getMessage(), failure);
+        }
+    }
+
+    /// Returns whether a named color channel is missing.
+    ///
+    /// The accepted names are the three channels of [#colorSpace()] and
+    /// `alpha`.
+    ///
+    /// @param name the lowercase channel name
+    /// @return whether the channel has the CSS missing value `none`
+    /// @throws IllegalStateException if this is not a color
+    /// @throws IllegalArgumentException if the channel is unknown in this space
+    public boolean isColorChannelMissing(String name) {
+        try {
+            return require(SassColor.class, SassValueType.COLOR)
+                    .isChannelMissing(Objects.requireNonNull(name, "name"));
+        } catch (SassValueException failure) {
+            throw new IllegalArgumentException(failure.getMessage(), failure);
+        }
     }
 
     /// Returns the CSS representation of this value.

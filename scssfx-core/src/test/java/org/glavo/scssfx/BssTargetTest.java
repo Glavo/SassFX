@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.List;
 import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -356,6 +357,100 @@ final class BssTargetTest {
                 Base64.getDecoder().decode(JAVAFX27_FIXTURE),
                 remainingBytes(output)
         );
+    }
+
+    /// Requires the fixed OpenJFX byte fixtures to exercise every supported
+    /// non-transition converter family.
+    ///
+    /// This turns the converter inventory into an executable coverage
+    /// contract. A new serializer branch must add a pinned OpenJFX fixture,
+    /// and removing the last fixture for a supported converter fails here.
+    @Test
+    void coversEverySupportedConverterFamilyWithPinnedFixtures()
+            throws Exception {
+        var fixtureBytes = new StringBuilder();
+        for (var field : BssTargetTest.class.getDeclaredFields()) {
+            if (field.getType() == String.class
+                    && (field.getName().equals("JAVAFX17_FIXTURE")
+                    || field.getName().endsWith("_JAVAFX17_FIXTURE"))) {
+                var encoded = (String) field.get(null);
+                fixtureBytes.append(new String(
+                        Base64.getDecoder().decode(encoded),
+                        StandardCharsets.ISO_8859_1
+                ));
+            }
+        }
+        fixtureBytes.append(new String(
+                remainingBytes(new SassCompiler().compile(
+                        SassSource.fromString(
+                                """
+                                        Pane {
+                                          -fx-show-delay: 1s;
+                                          -fx-font: italic bold 12px "System";
+                                          -fx-effect: dropshadow(gaussian, red, 10px, 0.2, 1px, 2px);
+                                          -fx-fill: derive(red, 10%);
+                                          -fx-stroke: ladder(red, black 0%, white 100%);
+                                        }
+                                        Label {
+                                          -fx-effect: innershadow(gaussian, blue, 8px, 0.1, 0, 1px);
+                                        }
+                                        """,
+                                Syntax.SCSS
+                        ),
+                        BssTarget.DEFAULT
+                ).output()),
+                StandardCharsets.ISO_8859_1
+        ));
+
+        var converters = List.of(
+                "javafx.css.converter.SizeConverter",
+                "javafx.css.converter.SizeConverter$SequenceConverter",
+                "javafx.css.converter.FontConverter",
+                "javafx.css.converter.FontConverter$FontSizeConverter",
+                "javafx.css.converter.FontConverter$FontStyleConverter",
+                "javafx.css.converter.FontConverter$FontWeightConverter",
+                "javafx.css.converter.EnumConverter",
+                "javafx.css.converter.DurationConverter",
+                "javafx.css.converter.StringConverter",
+                "javafx.css.converter.URLConverter",
+                "javafx.css.converter.URLConverter$SequenceConverter",
+                "javafx.css.converter.BooleanConverter",
+                "javafx.css.converter.InsetsConverter",
+                "javafx.css.converter.InsetsConverter$SequenceConverter",
+                "javafx.css.converter.PaintConverter$SequenceConverter",
+                "javafx.css.converter.PaintConverter$LinearGradientConverter",
+                "javafx.css.converter.PaintConverter$RadialGradientConverter",
+                "javafx.css.converter.PaintConverter$ImagePatternConverter",
+                "javafx.css.converter.PaintConverter$RepeatingImagePatternConverter",
+                "javafx.css.converter.StopConverter",
+                "javafx.css.converter.DeriveColorConverter",
+                "javafx.css.converter.LadderConverter",
+                "javafx.css.converter.EffectConverter$DropShadowConverter",
+                "javafx.css.converter.EffectConverter$InnerShadowConverter",
+                "com.sun.javafx.scene.layout.region.LayeredBackgroundPositionConverter",
+                "com.sun.javafx.scene.layout.region.BackgroundPositionConverter",
+                "com.sun.javafx.scene.layout.region.RepeatStructConverter",
+                "com.sun.javafx.scene.layout.region.LayeredBackgroundSizeConverter",
+                "com.sun.javafx.scene.layout.region.BackgroundSizeConverter",
+                "com.sun.javafx.scene.layout.region.SliceSequenceConverter",
+                "com.sun.javafx.scene.layout.region.BorderImageSliceConverter",
+                "com.sun.javafx.scene.layout.region.BorderImageWidthsSequenceConverter",
+                "com.sun.javafx.scene.layout.region.BorderImageWidthConverter",
+                "com.sun.javafx.scene.layout.region.CornerRadiiConverter",
+                "com.sun.javafx.scene.layout.region.LayeredBorderPaintConverter",
+                "com.sun.javafx.scene.layout.region.StrokeBorderPaintConverter",
+                "com.sun.javafx.scene.layout.region.Margins$Converter",
+                "com.sun.javafx.scene.layout.region.Margins$SequenceConverter",
+                "com.sun.javafx.scene.layout.region.LayeredBorderStyleConverter",
+                "com.sun.javafx.scene.layout.region.BorderStrokeStyleSequenceConverter",
+                "com.sun.javafx.scene.layout.region.BorderStyleConverter"
+        );
+        for (var converter : converters) {
+            assertTrue(
+                    fixtureBytes.indexOf(converter) >= 0,
+                    () -> "No pinned fixture covers " + converter
+            );
+        }
     }
 
     /// Emits every JavaFX target with its corresponding BSS header version.
