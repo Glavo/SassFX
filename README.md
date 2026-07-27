@@ -605,7 +605,10 @@ take precedence over silencing, while dependency suppression takes precedence
 over fatal processing. Evaluation-time deprecations use the same processing
 pipeline as parser deprecations. This includes legacy units accepted by list
 indexes, `math.random()`, HSL/HWB constructors, color weights, color channel
-updates, alpha updates, and hue adjustment.
+updates, alpha updates, and hue adjustment. The `sass:color` plain-CSS
+compatibility fallbacks for numeric `invert()`, `grayscale()`, and `opacity()`,
+plus Microsoft-filter `alpha()` calls, report the `color-module-compat`
+category while preserving their CSS output.
 
 `SassDeprecation` is the typed Dart Sass 1.101.3 deprecation registry. It
 exposes the command-line ID, activation and obsolescence versions, status, and

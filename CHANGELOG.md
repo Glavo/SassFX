@@ -37,7 +37,10 @@ This is the first development release.
   Global built-in diagnostics cover list, map, math, meta, selector, string,
   and color aliases, including renamed replacements, first-class references,
   and CSS-overload exclusions. Percentage `abs()` and `feature-exists()`
-  diagnostics follow their dedicated deprecation categories.
+  diagnostics follow their dedicated deprecation categories. Color-module
+  compatibility diagnostics cover numeric `invert()`, `grayscale()`, and
+  `opacity()` fallbacks plus both Microsoft-filter `alpha()` forms while
+  preserving their plain-CSS output.
 - CLI load paths, ordered platform-aware `SASS_PATH` resolution across compile,
   update/watch, and interactive modes, quiet output, dependency warning
   suppression, and fatal, silence, future, and verbose deprecation options.

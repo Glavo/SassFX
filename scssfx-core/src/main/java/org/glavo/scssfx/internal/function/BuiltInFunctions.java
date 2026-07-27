@@ -69,6 +69,9 @@ public final class BuiltInFunctions {
     /// Contains the stable deprecation identifier for legacy color functions.
     private static final String COLOR_FUNCTIONS_CODE = "color-functions";
 
+    /// Contains the stable deprecation identifier for color-module CSS fallbacks.
+    private static final String COLOR_MODULE_COMPAT_CODE = "color-module-compat";
+
     /// Contains the caller guidance for string-based {@code meta.call()}.
     private static final String CALL_STRING_DEPRECATION_MESSAGE =
             "Passing a string to call() is deprecated and will be illegal in Dart Sass 2.0.0.\n\n"
@@ -834,15 +837,17 @@ public final class BuiltInFunctions {
                 false
         ));
         // Module alpha uses distinct diagnostics from the global Microsoft-filter form.
-        register(functions, BuiltInCallable.withRest(
+        register(functions, BuiltInCallable.contextualWithRest(
                 "alpha",
                 List.of(),
                 "args",
+                0,
                 BuiltInFunctions::moduleAlphaChannel
         ));
-        register(functions, BuiltInCallable.of(
+        register(functions, BuiltInCallable.contextual(
                 "opacity",
-                List.of("color"),
+                List.of(Param.required("color")),
+                1,
                 BuiltInFunctions::moduleOpacity
         ));
         // color.hwb is the only multi-arg space constructor re-exported from sass:color.
@@ -876,7 +881,7 @@ public final class BuiltInFunctions {
                         Param.optional("space", SassNull.NULL)
                 ),
                 1,
-                BuiltInFunctions::colorInvert
+                BuiltInFunctions::moduleColorInvert
         ));
         register(functions, deprecatedColorChannelFunction(
                 "hue",
@@ -908,9 +913,10 @@ public final class BuiltInFunctions {
                 "%",
                 false
         ));
-        register(functions, BuiltInCallable.of(
+        register(functions, BuiltInCallable.contextual(
                 "grayscale",
-                List.of("color"),
+                List.of(Param.required("color")),
+                1,
                 BuiltInFunctions::colorGrayscale
         ));
         register(functions, BuiltInCallable.of(
@@ -3800,15 +3806,24 @@ public final class BuiltInFunctions {
 
     /// Module {@code color.alpha()} with module-specific diagnostics.
     ///
+    /// @param context the invocation receiving module-compatibility diagnostics
     /// @param args the rest argument list bound as {@code $args}
     /// @return the alpha number or an unquoted plain-CSS {@code alpha(...)} call
-    private static SassValue moduleAlphaChannel(List<SassValue> args) {
-        return alphaChannelImpl(null, args, true);
+    private static SassValue moduleAlphaChannel(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
+        return alphaChannelImpl(context, args, true);
     }
 
     /// Shared alpha implementation for global and module entry points.
+    ///
+    /// @param context the invocation receiving applicable diagnostics
+    /// @param args the rest argument list bound as {@code $args}
+    /// @param module whether this is the {@code sass:color} entry point
+    /// @return the alpha number or a preserved Microsoft filter call
     private static SassValue alphaChannelImpl(
-            @Nullable BuiltInCallable.Context context,
+            BuiltInCallable.Context context,
             List<SassValue> args,
             boolean module
     ) {
@@ -3828,7 +3843,14 @@ public final class BuiltInFunctions {
         if (values.size() == 1) {
             SassValue argument = values.get(0);
             if (isMicrosoftFilterArgument(argument)) {
-                return CssColorChannels.functionString("alpha", values);
+                var result = CssColorChannels.functionString("alpha", values);
+                if (module) {
+                    warnColorModuleMicrosoftFilter(
+                            context,
+                            result
+                    );
+                }
+                return result;
             }
             if (!module
                     && argument instanceof SassColor color
@@ -3860,7 +3882,12 @@ public final class BuiltInFunctions {
             // attempts Microsoft-filter serialization and fails with the empty
             // list CSS error, matching dart-sass.
             if (values.stream().allMatch(BuiltInFunctions::isMicrosoftFilterArgument)) {
-                return CssColorChannels.functionString("alpha", List.of(rest));
+                var result = CssColorChannels.functionString("alpha", List.of(rest));
+                warnColorModuleMicrosoftFilter(
+                        context,
+                        result
+                );
+                return result;
             }
             throw new SassValueException(
                     "Only 1 argument allowed, but " + values.size() + " were passed."
@@ -3882,6 +3909,21 @@ public final class BuiltInFunctions {
         return value instanceof SassString string
                 && !string.hasQuotes()
                 && MICROSOFT_FILTER_START.matcher(string.text()).find();
+    }
+
+    /// Reports use of {@code color.alpha()} as a Microsoft filter.
+    ///
+    /// @param context the invocation receiving the diagnostic
+    /// @param result the preserved plain-CSS function value
+    private static void warnColorModuleMicrosoftFilter(
+            BuiltInCallable.Context context,
+            SassValue result
+    ) {
+        context.deprecate(
+                "Using color.alpha() for a Microsoft filter is deprecated.\n\n"
+                        + "Recommendation: " + result.toCssString(),
+                COLOR_MODULE_COMPAT_CODE
+        );
     }
 
     /// Extracts the rest argument list bound to a {@code withRest} parameter.
@@ -3990,6 +4032,27 @@ public final class BuiltInFunctions {
                 1.0 - weight,
                 false
         );
+    }
+
+    /// Dispatches module {@code color.invert()} with compatibility reporting.
+    ///
+    /// @param context the invocation receiving module-compatibility diagnostics
+    /// @param args the color or filter argument, weight, and optional space
+    /// @return the inverted color or preserved CSS filter
+    private static SassValue moduleColorInvert(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
+        var result = colorInvert(context, args);
+        if (result instanceof SassString) {
+            context.deprecate(
+                    "Passing a number (" + args.get(0)
+                            + ") to color.invert() is deprecated.\n\n"
+                            + "Recommendation: " + result.toCssString(),
+                    COLOR_MODULE_COMPAT_CODE
+            );
+        }
+        return result;
     }
 
     /// Dispatches global {@code invert()} with conditional deprecation reporting.
@@ -4484,12 +4547,25 @@ public final class BuiltInFunctions {
     /// deprecation period, matching dart-sass.
     /// Returns a grayscale legacy RGB color or preserves a plain-CSS number filter.
     ///
+    /// @param context the invocation receiving module-compatibility diagnostics
     /// @param args the one color or number argument
     /// @return the grayscale color or an unquoted CSS {@code grayscale()} function
-    private static SassValue colorGrayscale(List<SassValue> args) {
+    private static SassValue colorGrayscale(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
         var value = args.get(0);
         if (value instanceof SassNumber number) {
-            return new SassString("grayscale(" + number.toCssString() + ")", false);
+            var result = new SassString(
+                    "grayscale(" + number.toCssString() + ")",
+                    false
+            );
+            context.deprecate(
+                    "Passing a number (" + value + ") to color.grayscale() is deprecated.\n\n"
+                            + "Recommendation: " + result.toCssString(),
+                    COLOR_MODULE_COMPAT_CODE
+            );
+            return result;
         }
         return colorArgument(value, "color").grayscale();
     }
@@ -4761,10 +4837,26 @@ public final class BuiltInFunctions {
     ///
     /// Numbers still serialize as a CSS {@code opacity()} filter for
     /// compatibility, matching dart-sass {@code color-module-compat}.
-    private static SassValue moduleOpacity(List<SassValue> args) {
+    ///
+    /// @param context the invocation receiving module-compatibility diagnostics
+    /// @param args the one color or number argument
+    /// @return the alpha channel or an unquoted CSS {@code opacity()} function
+    private static SassValue moduleOpacity(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
         var value = args.get(0);
         if (value instanceof SassNumber number) {
-            return new SassString("opacity(" + number.toCssString() + ")", false);
+            var result = new SassString(
+                    "opacity(" + number.toCssString() + ")",
+                    false
+            );
+            context.deprecate(
+                    "Passing a number (" + value + " to color.opacity() is deprecated.\n\n"
+                            + "Recommendation: " + result.toCssString(),
+                    COLOR_MODULE_COMPAT_CODE
+            );
+            return result;
         }
         return SassNumber.of(colorArgument(value, "color").alpha(), null);
     }
