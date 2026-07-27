@@ -33,6 +33,9 @@ This is the first development release.
 - CLI load paths, ordered platform-aware `SASS_PATH` resolution across compile,
   update/watch, and interactive modes, quiet output, dependency warning
   suppression, and fatal, silence, future, and verbose deprecation options.
+  Parser and evaluation-time deprecations use the same policy in immediate,
+  watch, and interactive modes; option warnings are emitted once per
+  invocation.
 - Dart Sass-compatible CLI `-s` style alias, negatable input, source-map
   content, quiet, quiet-dependency, and verbose flags, plus hidden
   `--precision` and `--async` compatibility switches used by upstream tooling.

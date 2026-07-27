@@ -212,7 +212,7 @@ public final class BuiltInFunctions {
                 "numbers",
                 BuiltInFunctions::max
         ));
-        register(functions, BuiltInCallable.of(
+        register(functions, BuiltInCallable.contextual(
                 "random",
                 List.of(Param.optional("limit", SassNull.NULL)),
                 0,
@@ -2521,13 +2521,30 @@ public final class BuiltInFunctions {
 
     /// Returns a random unitless number, optionally bounded by a positive integer limit.
     ///
+    /// @param context the invocation context used for unit deprecations
     /// @param args the optional limit
     /// @return a number in {@code [0, 1)} or an integer in {@code 1..limit}
-    private static SassValue random(List<SassValue> args) {
+    private static SassValue random(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
         if (args.isEmpty() || args.get(0) instanceof SassNull) {
             return SassNumber.of(RANDOM.nextDouble(), null);
         }
         var limit = numberArgument(args.get(0), "limit");
+        if (!limit.isUnitless()) {
+            var units = limit.unitString();
+            context.deprecate(
+                    "math.random() will no longer ignore $limit units ("
+                            + limit + ") in a future release.\n\n"
+                            + "Recommendation: math.random(math.div($limit, 1"
+                            + units + ")) * 1" + units + "\n\n"
+                            + "To preserve current behavior: "
+                            + "math.random(math.div($limit, 1" + units + "))\n\n"
+                            + "More info: https://sass-lang.com/d/function-units",
+                    "function-units"
+            );
+        }
         int limitScalar;
         try {
             limitScalar = limit.assertInt();

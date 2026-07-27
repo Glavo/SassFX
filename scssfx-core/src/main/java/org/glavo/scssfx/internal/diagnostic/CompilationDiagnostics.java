@@ -55,6 +55,88 @@ public final class CompilationDiagnostics {
         validateOptions();
     }
 
+    /// Returns non-fatal warnings produced by one diagnostic configuration.
+    ///
+    /// The returned diagnostics have no source span or deprecation identifier.
+    /// This method does not publish the warnings to the configured logger.
+    ///
+    /// @param options immutable diagnostic configuration
+    /// @return configuration warnings in Sass registry order
+    public static @Unmodifiable List<Diagnostic> configurationWarnings(
+            SassDiagnosticOptions options
+    ) {
+        Objects.requireNonNull(options, "options");
+        var warnings = new ArrayList<Diagnostic>();
+        for (var deprecation : SassDeprecation.values()) {
+            if (!options.fatalDeprecations().contains(deprecation)) {
+                continue;
+            }
+            if (deprecation.isFuture()
+                    && !options.futureDeprecations().contains(deprecation)) {
+                warnings.add(configurationWarning(
+                        "Future " + deprecation.id()
+                                + " deprecation must be enabled before it can "
+                                + "be made fatal."
+                ));
+            } else if (deprecation.obsoleteIn() != null) {
+                warnings.add(configurationWarning(
+                        deprecation.id()
+                                + " deprecation is obsolete, so does not need "
+                                + "to be made fatal."
+                ));
+            } else if (options.silenceDeprecations().contains(deprecation)) {
+                warnings.add(configurationWarning(
+                        "Ignoring setting to silence " + deprecation.id()
+                                + " deprecation, since it has also been made fatal."
+                ));
+            }
+        }
+
+        for (var deprecation : SassDeprecation.values()) {
+            if (!options.silenceDeprecations().contains(deprecation)) {
+                continue;
+            }
+            if (deprecation == SassDeprecation.USER_AUTHORED) {
+                warnings.add(configurationWarning(
+                        "User-authored deprecations should not be silenced."
+                ));
+            } else if (deprecation.obsoleteIn() != null) {
+                warnings.add(configurationWarning(
+                        deprecation.id()
+                                + " deprecation is obsolete. If you were previously "
+                                + "silencing it, your code may now behave in "
+                                + "unexpected ways."
+                ));
+            } else if (deprecation.isFuture()
+                    && options.futureDeprecations().contains(deprecation)) {
+                warnings.add(configurationWarning(
+                        "Conflicting options for future " + deprecation.id()
+                                + " deprecation cancel each other out."
+                ));
+            } else if (deprecation.isFuture()) {
+                warnings.add(configurationWarning(
+                        "Future " + deprecation.id()
+                                + " deprecation is not yet active, so silencing "
+                                + "it is unnecessary."
+                ));
+            }
+        }
+
+        for (var deprecation : SassDeprecation.values()) {
+            if (!options.futureDeprecations().contains(deprecation)) {
+                continue;
+            }
+            if (!deprecation.isFuture()) {
+                warnings.add(configurationWarning(
+                        deprecation.id()
+                                + " is not a future deprecation, so it does not "
+                                + "need to be explicitly enabled."
+                ));
+            }
+        }
+        return List.copyOf(warnings);
+    }
+
     /// Returns retained diagnostics as an immutable snapshot.
     ///
     /// @return diagnostics in delivery order
@@ -234,76 +316,20 @@ public final class CompilationDiagnostics {
 
     /// Reports non-fatal configuration conflicts in Sass registry order.
     private void validateOptions() {
-        for (var deprecation : options.fatalDeprecations()) {
-            if (deprecation.isFuture()
-                    && !options.futureDeprecations().contains(deprecation)) {
-                configurationWarning(
-                        "Future " + deprecation.id()
-                                + " deprecation must be enabled before it can "
-                                + "be made fatal."
-                );
-            } else if (deprecation.obsoleteIn() != null) {
-                configurationWarning(
-                        deprecation.id()
-                                + " deprecation is obsolete, so does not need "
-                                + "to be made fatal."
-                );
-            } else if (options.silenceDeprecations().contains(deprecation)) {
-                configurationWarning(
-                        "Ignoring setting to silence " + deprecation.id()
-                                + " deprecation, since it has also been made fatal."
-                );
-            }
-        }
-
-        for (var deprecation : options.silenceDeprecations()) {
-            if (deprecation == SassDeprecation.USER_AUTHORED) {
-                configurationWarning(
-                        "User-authored deprecations should not be silenced."
-                );
-            } else if (deprecation.obsoleteIn() != null) {
-                configurationWarning(
-                        deprecation.id()
-                                + " deprecation is obsolete. If you were previously "
-                                + "silencing it, your code may now behave in "
-                                + "unexpected ways."
-                );
-            } else if (deprecation.isFuture()
-                    && options.futureDeprecations().contains(deprecation)) {
-                configurationWarning(
-                        "Conflicting options for future " + deprecation.id()
-                                + " deprecation cancel each other out."
-                );
-            } else if (deprecation.isFuture()) {
-                configurationWarning(
-                        "Future " + deprecation.id()
-                                + " deprecation is not yet active, so silencing "
-                                + "it is unnecessary."
-                );
-            }
-        }
-
-        for (var deprecation : options.futureDeprecations()) {
-            if (!deprecation.isFuture()) {
-                configurationWarning(
-                        deprecation.id()
-                                + " is not a future deprecation, so it does not "
-                                + "need to be explicitly enabled."
-                );
-            }
+        for (var warning : configurationWarnings(options)) {
+            retain(warning, List.of(), null);
         }
     }
 
-    /// Retains and publishes one span-free ordinary configuration warning.
-    private void configurationWarning(String message) {
-        retain(
-                new Diagnostic(
-                        DiagnosticSeverity.WARNING,
-                        message,
-                        null,
-                        null
-                ),
-                List.of(),
+    /// Creates one span-free ordinary configuration warning.
+    ///
+    /// @param message complete warning text
+    /// @return the warning diagnostic
+    private static Diagnostic configurationWarning(String message) {
+        return new Diagnostic(
+                DiagnosticSeverity.WARNING,
+                message,
+                null,
                 null
         );
     }

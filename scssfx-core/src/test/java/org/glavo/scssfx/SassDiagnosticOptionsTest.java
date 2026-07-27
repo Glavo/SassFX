@@ -121,6 +121,58 @@ final class SassDiagnosticOptionsTest {
         );
     }
 
+    /// Processes evaluation-time function-unit deprecations through the same
+    /// silence and fatal pipeline as parser diagnostics.
+    @Test
+    void processesFunctionUnitDeprecations() throws Exception {
+        var ordinary = compile(
+                "@use 'sass:math'; a { value: math.random(1px); }",
+                options(SassDiagnosticOptions.DEFAULT)
+        );
+        assertEquals(1, ordinary.diagnostics().size());
+        var warning = ordinary.diagnostics().get(0);
+        assertEquals("function-units", warning.code());
+        assertTrue(warning.message().contains(
+                "math.random() will no longer ignore $limit units (1px)"
+        ));
+        assertTrue(warning.message().contains(
+                "math.random(math.div($limit, 1px)) * 1px"
+        ));
+
+        var silenced = new SassDiagnosticOptions(
+                SassLogger.NO_OP,
+                false,
+                false,
+                Set.of(SassDeprecation.FUNCTION_UNITS),
+                Set.of(),
+                Set.of()
+        );
+        assertTrue(compile(
+                "@use 'sass:math'; a { value: math.random(1px); }",
+                options(silenced)
+        ).diagnostics().isEmpty());
+
+        var fatal = new SassDiagnosticOptions(
+                SassLogger.NO_OP,
+                false,
+                false,
+                Set.of(),
+                Set.of(SassDeprecation.FUNCTION_UNITS),
+                Set.of()
+        );
+        var failure = assertThrows(
+                SassCompilationException.class,
+                () -> compile(
+                        "@use 'sass:math'; a { value: math.random(1px); }",
+                        options(fatal)
+                )
+        );
+        assertEquals("function-units", failure.primaryDiagnostic().code());
+        assertTrue(failure.getMessage().contains(
+                "function-units deprecation to be fatal"
+        ));
+    }
+
     /// Limits each deprecation category to five events and summarizes omissions.
     @Test
     void limitsRepeatedDeprecationsAndSupportsVerboseMode() throws Exception {

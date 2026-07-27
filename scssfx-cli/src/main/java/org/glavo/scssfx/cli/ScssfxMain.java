@@ -23,6 +23,7 @@ import org.glavo.scssfx.SassSource;
 import org.glavo.scssfx.SassStringSource;
 import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.embedded.EmbeddedCompiler;
+import org.glavo.scssfx.internal.diagnostic.CompilationDiagnostics;
 import org.glavo.scssfx.internal.repl.SassInteractiveSession;
 import org.glavo.scssfx.internal.module.SassResolutionTracker;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -373,6 +374,15 @@ public final class ScssfxMain implements Callable<Integer> {
     /// The raw `SASS_PATH` value captured for this invocation, or `null` when
     /// the variable is absent.
     private final @Nullable String sassPathEnvironment;
+
+    /// Identifies span-free option warnings for invocation-level output
+    /// deduplication.
+    private final Set<String> configurationWarningMessages =
+            new LinkedHashSet<>();
+
+    /// Records configuration warnings already printed by this invocation.
+    private final Set<String> emittedConfigurationWarningMessages =
+            new LinkedHashSet<>();
 
     /// Creates a command-line entry point that reads the process standard input.
     public ScssfxMain() {
@@ -1283,7 +1293,7 @@ public final class ScssfxMain implements Callable<Integer> {
     /// @return the dependency snapshot and whether output was written
     /// @throws IOException if the destination cannot be written
     /// @throws SassCompilationException if Sass evaluation or serialization fails
-    private static JobCompilation compileText(
+    private JobCompilation compileText(
             SassSource source,
             @Nullable Path sourcePath,
             @Nullable Path destination,
@@ -1386,7 +1396,7 @@ public final class ScssfxMain implements Callable<Integer> {
     /// @return the dependency snapshot and whether output was written
     /// @throws IOException if the destination cannot be written
     /// @throws SassCompilationException if Sass evaluation or BSS serialization fails
-    private static JobCompilation compileBss(
+    private JobCompilation compileBss(
             SassSource source,
             @Nullable Path sourcePath,
             Path destination,
@@ -1778,7 +1788,7 @@ public final class ScssfxMain implements Callable<Integer> {
     /// @param result the completed compilation result
     /// @param diagnosticPrinter the command-line diagnostic formatter
     /// @param err the standard-error writer
-    private static void printNonErrorDiagnostics(
+    private void printNonErrorDiagnostics(
             CompileResult<?> result,
             DiagnosticPrinter diagnosticPrinter,
             java.io.PrintWriter err
@@ -1795,16 +1805,29 @@ public final class ScssfxMain implements Callable<Integer> {
     /// @param diagnostics diagnostics in their container-defined order
     /// @param diagnosticPrinter the command-line diagnostic formatter
     /// @param err the standard-error writer
-    private static void printNonErrorDiagnostics(
+    private void printNonErrorDiagnostics(
             List<Diagnostic> diagnostics,
             DiagnosticPrinter diagnosticPrinter,
             java.io.PrintWriter err
     ) {
         for (var diagnostic : diagnostics) {
-            if (diagnostic.severity() != DiagnosticSeverity.ERROR) {
+            if (diagnostic.severity() != DiagnosticSeverity.ERROR
+                    && shouldPrintDiagnostic(diagnostic)) {
                 err.println(diagnosticPrinter.format(diagnostic));
             }
         }
+    }
+
+    /// Returns whether one diagnostic has not already been emitted as an
+    /// invocation-level configuration warning.
+    ///
+    /// @param diagnostic the diagnostic considered for output
+    /// @return {@code true} if the diagnostic should be printed
+    private boolean shouldPrintDiagnostic(Diagnostic diagnostic) {
+        if (!configurationWarningMessages.contains(diagnostic.message())) {
+            return true;
+        }
+        return emittedConfigurationWarningMessages.add(diagnostic.message());
     }
 
     /// Writes the Java implementation trace associated with one failure.
@@ -1846,20 +1869,29 @@ public final class ScssfxMain implements Callable<Integer> {
         var fatal = fatalDeprecations(fatalDeprecations);
         var silence = deprecations(silenceDeprecations);
         var future = deprecations(futureDeprecations);
+        var diagnosticOptions = new SassDiagnosticOptions(
+                SassLogger.NO_OP,
+                quietDeps,
+                verbose,
+                silence,
+                fatal,
+                future
+        );
+        configurationWarningMessages.clear();
+        emittedConfigurationWarningMessages.clear();
+        for (var warning
+                : CompilationDiagnostics.configurationWarnings(
+                        diagnosticOptions
+                )) {
+            configurationWarningMessages.add(warning.message());
+        }
         return new CompileOptions(
                 emitSourceMap,
                 effectiveLoadPaths(),
                 null,
                 packageImporters(),
                 List.of(),
-                new SassDiagnosticOptions(
-                        SassLogger.NO_OP,
-                        quietDeps,
-                        verbose,
-                        silence,
-                        fatal,
-                        future
-                ),
+                diagnosticOptions,
                 embedSources
         );
     }

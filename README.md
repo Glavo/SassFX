@@ -589,13 +589,19 @@ suppress explicit Sass `@warn` or `@debug` statements. By default, each
 deprecation type is reported at most five times and a successful compilation
 adds an omission summary; `verbose` disables that limit. Fatal deprecations
 take precedence over silencing, while dependency suppression takes precedence
-over fatal processing.
+over fatal processing. Evaluation-time deprecations, including unit-bearing
+`math.random()` limits, use the same processing pipeline as parser
+deprecations.
 
 `SassDeprecation` is the typed Dart Sass 1.101.3 deprecation registry. It
 exposes the command-line ID, activation and obsolescence versions, status, and
 description for each entry. Logger callbacks may run concurrently when compile
 options are shared and must be thread-safe. A runtime exception thrown by a
 logger aborts compilation and propagates unchanged.
+
+The CLI applies these controls consistently to immediate compilation, watch
+recompilation, and the interactive shell. Non-fatal warnings about conflicting
+or unnecessary deprecation options are printed once per CLI invocation.
 
 ### Retained JavaFX CSS imports
 
