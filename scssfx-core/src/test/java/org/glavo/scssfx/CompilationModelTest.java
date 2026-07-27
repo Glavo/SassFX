@@ -36,7 +36,7 @@ final class CompilationModelTest {
         );
     }
 
-    /// Verifies string-source canonical URL constraints.
+    /// Verifies string-source canonical URL storage.
     @Test
     void createsStringSources() {
         var withoutUrl = SassSource.fromString("a {}", Syntax.SCSS);
@@ -45,9 +45,14 @@ final class CompilationModelTest {
         var url = URI.create("memory:style.scss");
         var withUrl = SassSource.fromString("a {}", Syntax.SCSS, url);
         assertEquals(url, withUrl.canonicalUrl());
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> SassSource.fromString("a {}", Syntax.SCSS, URI.create("style.scss"))
+        var relativeUrl = URI.create("style.scss");
+        assertEquals(
+                relativeUrl,
+                SassSource.fromString(
+                        "a {}",
+                        Syntax.SCSS,
+                        relativeUrl
+                ).canonicalUrl()
         );
     }
 

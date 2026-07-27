@@ -37,17 +37,20 @@ public interface SassImporter {
         return false;
     }
 
-    /// Converts a requested URL into the absolute URL that uniquely identifies
+    /// Converts a requested URL into the URL that uniquely identifies
     /// the stylesheet.
     ///
     /// Returning {@code null} declines the request and allows the next
     /// configured importer or load path to handle it. A non-{@code null}
-    /// result must be absolute. Once a URL is returned, this importer's
+    /// result must be absolute. For Dart Sass 1.x compatibility, the compiler
+    /// currently accepts relative results, reports the `relative-canonical`
+    /// deprecation, and passes the same relative URL to [#load(URI)]. A future
+    /// release may reject them. Once a URL is returned, this importer's
     /// [#load(URI)] method is used and no later importer is considered.
     ///
     /// @param url the requested URL, which may be relative
     /// @param context contextual information about the load
-    /// @return the absolute canonical URL, or {@code null} to decline the request
+    /// @return the canonical URL, or {@code null} to decline the request
     /// @throws IOException if canonicalization fails
     @Nullable URI canonicalize(
             URI url,
@@ -60,7 +63,7 @@ public interface SassImporter {
     /// Returning {@code null} reports the stylesheet as unavailable. The
     /// compiler will not try a later importer for the original request.
     ///
-    /// @param canonicalUrl the absolute canonical URL returned by this importer
+    /// @param canonicalUrl the canonical URL returned by this importer
     /// @return the stylesheet contents and syntax, or {@code null} when unavailable
     /// @throws IOException if loading fails
     @Nullable SassImporterResult load(URI canonicalUrl) throws IOException;

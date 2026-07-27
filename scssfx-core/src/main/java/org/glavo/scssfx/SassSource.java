@@ -39,9 +39,12 @@ public sealed interface SassSource permits SassFileSource, SassStringSource {
 
     /// Creates a string source with an optional canonical URL.
     ///
+    /// A relative URL is retained but reports the
+    /// `compile-string-relative-url` deprecation when compiled.
+    ///
     /// @param content the complete stylesheet text
     /// @param syntax the syntax used to parse the text
-    /// @param canonicalUrl the absolute canonical URL, or {@code null} when unavailable
+    /// @param canonicalUrl the canonical URL, or {@code null} when unavailable
     /// @return the string source
     static SassStringSource fromString(
             String content,

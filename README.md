@@ -397,8 +397,10 @@ The source map is returned separately as one version 3 JSON document. The
 compiler does not write a map file or append a source-map URL automatically.
 
 File sources infer `.scss`, `.sass`, or `.css` syntax. Other extensions require
-an explicit `Syntax`. A string source may supply an absolute canonical URI so
-that relative dependencies and diagnostics have a stable base.
+an explicit `Syntax`. A string source may supply a canonical URI so that
+relative dependencies and diagnostics have a stable base. Relative URIs remain
+accepted for Dart Sass 1.x compatibility but report
+`compile-string-relative-url`; callers should use an absolute URI.
 
 ### Custom Sass importers
 
@@ -452,10 +454,19 @@ var options = new CompileOptions(
 
 A canonical URL must be absolute and stable. It is the identity used for
 module caching, cycle detection, relative-load ownership, and
-`CompileResult.loadedUrls()`. Returning `null` from `canonicalize` delegates to
-the next importer; returning `null` from `load` is a terminal not-found result.
+`CompileResult.loadedUrls()`. Relative results remain loadable for Dart Sass
+1.x compatibility but report `relative-canonical` before `load()` is invoked.
+Returning `null` from `canonicalize` delegates to the next importer; returning
+`null` from `load` is a terminal not-found result.
 `SassCanonicalizeContext.fromImport()` distinguishes legacy `@import`, and
 `containingUrl()` supplies the canonical containing URL when applicable.
+
+After containing-file lookup, custom importers, and explicit load paths decline
+a relative request, the compiler retains Dart Sass's compatibility fallback
+through the process current working directory. A successful fallback reports
+`fs-importer-cwd`. Add `Path.of(".")` explicitly to
+`CompileOptions.loadPaths()` to preserve that search behavior without the
+deprecation.
 
 `SassImporterResult.sourceMapUrl()` may provide a separate absolute URL for
 source maps. When omitted, the compiler generates a UTF-8 `data:` URL from the
@@ -612,6 +623,9 @@ category while preserving their CSS output. Parser and selector processing
 also reports deprecated Mozilla document rules, private module configuration,
 arguments placed after rest expansion, adjacent compounds, and bogus
 combinators across style rules, `@extend`, and selector operations.
+Importer and compile API processing reports relative string URLs, relative
+canonical importer results, and successful implicit current-working-directory
+loads at their Dart Sass trigger points.
 
 `SassDeprecation` is the typed Dart Sass 1.101.3 deprecation registry. It
 exposes the command-line ID, activation and obsolescence versions, status, and

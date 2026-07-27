@@ -318,6 +318,42 @@ final class EmbeddedCompilerWireTest {
         }
     }
 
+    /// Maps relative string input URLs to protocol deprecation events.
+    @Test
+    void reportsRelativeStringInputUrl() throws Exception {
+        var input = InboundMessage.CompileRequest.StringInput.newBuilder()
+                .setSource("a { b: c; }")
+                .setSyntax(Syntax.SCSS)
+                .setUrl("styles/input.scss");
+        var request = InboundMessage.newBuilder()
+                .setCompileRequest(
+                        InboundMessage.CompileRequest.newBuilder()
+                                .setString(input)
+                )
+                .build();
+
+        try (var harness = new CompilerHarness()) {
+            harness.send(45, request);
+
+            var logEvent = harness.receive().message().getLogEvent();
+            assertEquals(
+                    LogEventType.DEPRECATION_WARNING,
+                    logEvent.getType()
+            );
+            assertEquals(
+                    "compile-string-relative-url",
+                    logEvent.getDeprecationType()
+            );
+            assertTrue(logEvent.getMessage().contains(
+                    "(styles/input.scss)"
+            ));
+            assertTrue(compileResponse(harness.receive(), 45).hasSuccess());
+
+            harness.closeInput();
+            assertEquals(0, harness.awaitStatus());
+        }
+    }
+
     /// Applies output style and charset options, including the pinned
     /// compiler's expanded fallback for an unknown style enum.
     @Test

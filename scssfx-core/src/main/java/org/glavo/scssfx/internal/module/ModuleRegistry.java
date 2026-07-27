@@ -153,7 +153,18 @@ public final class ModuleRegistry {
 
         ImportResult imported;
         try {
-            imported = importer.canonicalizeAndLoad(url, baseUrl);
+            imported = importer.canonicalizeAndLoad(
+                    url,
+                    baseUrl,
+                    (deprecation, dependency) ->
+                            evaluator.reportImportDeprecation(
+                                    deprecation,
+                                    loadSpan,
+                                    dependency
+                            )
+            );
+        } catch (EvaluationException failure) {
+            throw failure;
         } catch (IOException | RuntimeException failure) {
             throw new EvaluationException(
                     Objects.requireNonNullElse(failure.getMessage(), "Can't find stylesheet to import."),
@@ -165,7 +176,6 @@ public final class ModuleRegistry {
         if (imported == null) {
             throw new EvaluationException("Can't find stylesheet to import.", loadSpan);
         }
-
         var canonical = imported.canonicalUrl();
         loadedUrls.add(canonical);
         @Nullable LoadedModule existing = loaded.get(canonical);
@@ -285,8 +295,28 @@ public final class ModuleRegistry {
         ImportResult imported;
         try {
             imported = forImport
-                    ? importer.canonicalizeAndLoadImport(url, baseUrl)
-                    : importer.canonicalizeAndLoad(url, baseUrl);
+                    ? importer.canonicalizeAndLoadImport(
+                            url,
+                            baseUrl,
+                            (deprecation, dependency) ->
+                                    evaluator.reportImportDeprecation(
+                                            deprecation,
+                                            loadSpan,
+                                            dependency
+                                    )
+                    )
+                    : importer.canonicalizeAndLoad(
+                            url,
+                            baseUrl,
+                            (deprecation, dependency) ->
+                                    evaluator.reportImportDeprecation(
+                                            deprecation,
+                                            loadSpan,
+                                            dependency
+                                    )
+                    );
+        } catch (EvaluationException failure) {
+            throw failure;
         } catch (IOException | RuntimeException failure) {
             throw new EvaluationException(
                     Objects.requireNonNullElse(
@@ -301,7 +331,6 @@ public final class ModuleRegistry {
         if (imported == null) {
             throw new EvaluationException("Can't find stylesheet to import.", loadSpan);
         }
-
         var canonical = imported.canonicalUrl();
         loadedUrls.add(canonical);
         if (active.containsKey(canonical)) {

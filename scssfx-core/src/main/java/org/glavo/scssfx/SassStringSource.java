@@ -11,22 +11,20 @@ import java.util.Objects;
 ///
 /// @param content the complete stylesheet text
 /// @param syntax the syntax used to parse the text
-/// @param canonicalUrl the absolute canonical URL, or {@code null} when unavailable
+/// @param canonicalUrl the canonical URL, or {@code null} when unavailable
+///
+/// A relative canonical URL is accepted for compatibility, but compiling the
+/// source reports the `compile-string-relative-url` deprecation.
 @NotNullByDefault
 public record SassStringSource(
         String content,
         Syntax syntax,
         @Nullable URI canonicalUrl
 ) implements SassSource {
-    /// Creates a string source after validating its canonical URL.
-    ///
-    /// @throws IllegalArgumentException if {@code canonicalUrl} is relative
+    /// Creates a string source.
     public SassStringSource {
         Objects.requireNonNull(content, "content");
         Objects.requireNonNull(syntax, "syntax");
-        if (canonicalUrl != null && !canonicalUrl.isAbsolute()) {
-            throw new IllegalArgumentException("canonicalUrl must be absolute");
-        }
     }
 
     /// Creates a string source without a stable canonical URL.

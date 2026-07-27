@@ -51,6 +51,7 @@ import org.glavo.scssfx.internal.ast.SassExpression;
 import org.glavo.scssfx.internal.module.ConfiguredValue;
 import org.glavo.scssfx.internal.module.ForwardedModuleView;
 import org.glavo.scssfx.internal.module.LoadedModule;
+import org.glavo.scssfx.internal.module.ImportDeprecation;
 import org.glavo.scssfx.internal.module.ModuleCss;
 import org.glavo.scssfx.internal.module.ModuleConfiguration;
 import org.glavo.scssfx.internal.module.ModuleRegistry;
@@ -512,6 +513,29 @@ public final class SassEvaluator implements
     /// @return diagnostics in reporting order
     public @Unmodifiable List<Diagnostic> diagnostics() {
         return diagnosticReporter.snapshot();
+    }
+
+    /// Reports a deprecation produced while resolving a stylesheet.
+    ///
+    /// @param deprecation the import-resolution deprecation
+    /// @param span the load directive span
+    /// @param dependency whether the resolution belongs to a dependency
+    public void reportImportDeprecation(
+            ImportDeprecation deprecation,
+            SourceSpan span,
+            boolean dependency
+    ) {
+        Objects.requireNonNull(deprecation, "deprecation");
+        Objects.requireNonNull(span, "span");
+        diagnosticReporter.compilerWarning(
+                new Diagnostic(
+                        DiagnosticSeverity.DEPRECATION,
+                        deprecation.message(),
+                        span,
+                        deprecation.deprecation().id()
+                ),
+                dependency
+        );
     }
 
     /// Adds the deprecation-repetition summary after successful evaluation.

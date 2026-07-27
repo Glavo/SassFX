@@ -13,7 +13,7 @@ import java.util.Objects;
 ///
 /// @param source       the indexed source text
 /// @param syntax       the syntax of the loaded file
-/// @param canonicalUrl the absolute canonical URL of the file
+/// @param canonicalUrl the canonical URL of the file
 /// @param dependency whether compiler warnings from this stylesheet are
 ///                   dependency warnings
 @ApiStatus.Internal
@@ -42,9 +42,6 @@ public record ImportResult(
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(syntax, "syntax");
         Objects.requireNonNull(canonicalUrl, "canonicalUrl");
-        if (!canonicalUrl.isAbsolute()) {
-            throw new IllegalArgumentException("canonicalUrl must be absolute");
-        }
     }
 
     /// Returns this result with dependency provenance applied.

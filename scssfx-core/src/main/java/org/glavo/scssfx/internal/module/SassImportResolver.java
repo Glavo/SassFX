@@ -2,6 +2,7 @@
 package org.glavo.scssfx.internal.module;
 
 import org.glavo.scssfx.SassCanonicalizeContext;
+import org.glavo.scssfx.SassDeprecation;
 import org.glavo.scssfx.SassFileImporter;
 import org.glavo.scssfx.SassImporter;
 import org.glavo.scssfx.SassImporterResult;
@@ -27,6 +28,11 @@ import java.util.Objects;
 @ApiStatus.Internal
 @NotNullByDefault
 public final class SassImportResolver {
+    /// Ignores import deprecations for direct resolver tests and utilities.
+    private static final ImportDeprecationHandler NO_DEPRECATIONS =
+            (deprecation, dependency) -> {
+            };
+
     /// Contains custom importers in user-defined precedence order.
     private final @Unmodifiable List<SassImporter> importers;
 
@@ -90,7 +96,32 @@ public final class SassImportResolver {
             String url,
             @Nullable URI baseUrl
     ) throws IOException {
-        return canonicalizeAndLoad(url, baseUrl, false);
+        return canonicalizeAndLoad(
+                url,
+                baseUrl,
+                false,
+                NO_DEPRECATIONS
+        );
+    }
+
+    /// Resolves and loads a module-style request while reporting deprecations.
+    ///
+    /// @param url the unresolved stylesheet URL
+    /// @param baseUrl the containing canonical URL, or {@code null}
+    /// @param deprecationHandler receives resolution deprecations
+    /// @return the loaded stylesheet, or {@code null} when unresolved
+    /// @throws IOException if an importer or filesystem read fails
+    public @Nullable ImportResult canonicalizeAndLoad(
+            String url,
+            @Nullable URI baseUrl,
+            ImportDeprecationHandler deprecationHandler
+    ) throws IOException {
+        return canonicalizeAndLoad(
+                url,
+                baseUrl,
+                false,
+                deprecationHandler
+        );
     }
 
     /// Resolves and loads a legacy-import request.
@@ -103,7 +134,32 @@ public final class SassImportResolver {
             String url,
             @Nullable URI baseUrl
     ) throws IOException {
-        return canonicalizeAndLoad(url, baseUrl, true);
+        return canonicalizeAndLoad(
+                url,
+                baseUrl,
+                true,
+                NO_DEPRECATIONS
+        );
+    }
+
+    /// Resolves and loads a legacy import while reporting deprecations.
+    ///
+    /// @param url the unresolved stylesheet URL
+    /// @param baseUrl the containing canonical URL, or {@code null}
+    /// @param deprecationHandler receives resolution deprecations
+    /// @return the loaded stylesheet, or {@code null} when unresolved
+    /// @throws IOException if an importer or filesystem read fails
+    public @Nullable ImportResult canonicalizeAndLoadImport(
+            String url,
+            @Nullable URI baseUrl,
+            ImportDeprecationHandler deprecationHandler
+    ) throws IOException {
+        return canonicalizeAndLoad(
+                url,
+                baseUrl,
+                true,
+                deprecationHandler
+        );
     }
 
     /// Returns source-map URL substitutions reported by custom importers.
@@ -132,9 +188,11 @@ public final class SassImportResolver {
     private @Nullable ImportResult canonicalizeAndLoad(
             String url,
             @Nullable URI baseUrl,
-            boolean fromImport
+            boolean fromImport,
+            ImportDeprecationHandler deprecationHandler
     ) throws IOException {
         Objects.requireNonNull(url, "url");
+        Objects.requireNonNull(deprecationHandler, "deprecationHandler");
         var requestedUrl = parseUrl(url);
 
         if (baseUrl != null && !requestedUrl.isAbsolute()) {
@@ -144,7 +202,8 @@ public final class SassImportResolver {
                         owner,
                         resolveAgainstCanonicalUrl(baseUrl, requestedUrl),
                         new SassCanonicalizeContext(null, fromImport),
-                        dependencyOf(baseUrl)
+                        dependencyOf(baseUrl),
+                        deprecationHandler
                 );
                 if (relativeResult != null) {
                     return relativeResult;
@@ -177,7 +236,13 @@ public final class SassImportResolver {
                     passContainingUrl ? baseUrl : null,
                     fromImport
             );
-            var result = tryImporter(importer, requestedUrl, context, true);
+            var result = tryImporter(
+                    importer,
+                    requestedUrl,
+                    context,
+                    true,
+                    deprecationHandler
+            );
             if (result != null) {
                 return result;
             }
@@ -202,7 +267,32 @@ public final class SassImportResolver {
                         url,
                         fromImport
                 );
-        return loaded == null ? null : cacheFilesystem(loaded, true);
+        if (loaded != null) {
+            return cacheFilesystem(loaded, true);
+        }
+
+        @Nullable ImportResult currentWorkingDirectory =
+                filesystemImporter.canonicalizeAndLoadFromCurrentWorkingDirectory(
+                        url,
+                        fromImport
+                );
+        if (currentWorkingDirectory == null) {
+            return null;
+        }
+        var deprecation = new ImportDeprecation(
+                SassDeprecation.FS_IMPORTER_CWD,
+                "Using the current working directory as an implicit load path is "
+                        + "deprecated. Either add it as an explicit load path or "
+                        + "importer, or load this stylesheet from a different URL."
+        );
+        deprecationHandler.report(
+                deprecation,
+                baseUrl != null && dependencyOf(baseUrl)
+        );
+        return cacheFilesystem(
+                currentWorkingDirectory,
+                baseUrl != null && dependencyOf(baseUrl)
+        );
     }
 
     /// Attempts one importer and loads a claimed canonical URL.
@@ -210,7 +300,8 @@ public final class SassImportResolver {
             SassImporter importer,
             URI requestedUrl,
             SassCanonicalizeContext context,
-            boolean dependency
+            boolean dependency,
+            ImportDeprecationHandler deprecationHandler
     ) throws IOException {
         var importerCache = canonicalizations.computeIfAbsent(
                 importer,
@@ -222,12 +313,18 @@ public final class SassImportResolver {
         );
         @Nullable CachedCanonicalization cached = importerCache.get(key);
         if (cached != null) {
-            return cached.result() == null
-                    ? null
-                    : loadTrackedCanonicalized(
-                            cached.result(),
-                            dependency
-                    );
+            if (cached.result() == null) {
+                return null;
+            }
+            reportCanonicalizationDeprecation(
+                    cached.result(),
+                    dependency,
+                    deprecationHandler
+            );
+            return loadTrackedCanonicalized(
+                    cached.result(),
+                    dependency
+            );
         }
 
         @Nullable CanonicalizedImport canonicalized =
@@ -250,9 +347,33 @@ public final class SassImportResolver {
                     new CachedCanonicalization(canonicalized)
             );
         }
-        return canonicalized == null
-                ? null
-                : loadTrackedCanonicalized(canonicalized, dependency);
+        if (canonicalized == null) {
+            return null;
+        }
+        reportCanonicalizationDeprecation(
+                canonicalized,
+                dependency,
+                deprecationHandler
+        );
+        return loadTrackedCanonicalized(canonicalized, dependency);
+    }
+
+    /// Reports a relative canonical URL before its importer is loaded.
+    ///
+    /// @param canonicalized the importer canonicalization result
+    /// @param dependency whether the importer is a dependency
+    /// @param deprecationHandler receives the deprecation
+    private static void reportCanonicalizationDeprecation(
+            CanonicalizedImport canonicalized,
+            boolean dependency,
+            ImportDeprecationHandler deprecationHandler
+    ) {
+        if (canonicalized.deprecation() != null) {
+            deprecationHandler.report(
+                    canonicalized.deprecation(),
+                    dependency
+            );
+        }
     }
 
     /// Loads one custom-importer result and marks filesystem tracking
@@ -291,20 +412,23 @@ public final class SassImportResolver {
         if (canonicalUrl == null) {
             return null;
         }
+        @Nullable ImportDeprecation deprecation = null;
         if (!canonicalUrl.isAbsolute()) {
-            throw new IllegalStateException(
-                    "Importer canonicalized " + requestedUrl
-                            + " to a non-absolute URL: " + canonicalUrl
+            deprecation = new ImportDeprecation(
+                    SassDeprecation.RELATIVE_CANONICAL,
+                    "Importer " + importer + " canonicalized " + requestedUrl
+                            + " to " + canonicalUrl + ".\n"
+                            + "Relative canonical URLs are deprecated and will "
+                            + "eventually be disallowed."
             );
-        }
-        if (importer.isNonCanonicalScheme(canonicalUrl.getScheme())) {
+        } else if (importer.isNonCanonicalScheme(canonicalUrl.getScheme())) {
             throw new IllegalStateException(
                     "Importer " + importer + " canonicalized " + requestedUrl
                             + " to " + canonicalUrl
                             + ", which uses a scheme declared as non-canonical."
             );
         }
-        return new CanonicalizedImport(importer, canonicalUrl);
+        return new CanonicalizedImport(importer, canonicalUrl, deprecation);
     }
 
     /// Loads a canonicalized importer result, reusing canonical contents.
@@ -406,7 +530,7 @@ public final class SassImportResolver {
         );
         return canonicalUrl == null
                 ? null
-                : new CanonicalizedImport(importer, canonicalUrl);
+                : new CanonicalizedImport(importer, canonicalUrl, null);
     }
 
     /// Caches one stylesheet loaded by the default filesystem importer.
@@ -520,10 +644,12 @@ public final class SassImportResolver {
     /// Associates a canonical URL with the importer that owns it.
     ///
     /// @param importer the importer that returned the URL
-    /// @param canonicalUrl the absolute canonical URL
+    /// @param canonicalUrl the canonical URL
+    /// @param deprecation the canonicalization deprecation, or {@code null}
     private record CanonicalizedImport(
             SassImporter importer,
-            URI canonicalUrl
+            URI canonicalUrl,
+            @Nullable ImportDeprecation deprecation
     ) {
         /// Creates a validated canonicalization result.
         private CanonicalizedImport {

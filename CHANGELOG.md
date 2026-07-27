@@ -44,6 +44,10 @@ This is the first development release.
   Mozilla document rules, private module configuration, arguments after rest
   expansion, adjacent compounds, and bogus combinators in style rules,
   `@extend`, and selector operations.
+  Importer and compile API diagnostics cover relative string source URLs,
+  relative canonical importer results before loading, and successful implicit
+  current-working-directory fallback loads. Relative forms remain operational
+  during their Dart Sass 1.x deprecation period.
 - CLI load paths, ordered platform-aware `SASS_PATH` resolution across compile,
   update/watch, and interactive modes, quiet output, dependency warning
   suppression, and fatal, silence, future, and verbose deprecation options.

@@ -161,6 +161,23 @@ public final class SassCompiler {
         }
         try {
             var stylesheet = StylesheetParser.parse(loaded.file(), loaded.syntax());
+            if (source instanceof SassStringSource stringSource
+                    && stringSource.canonicalUrl() != null
+                    && !stringSource.canonicalUrl().isAbsolute()) {
+                diagnosticReporter.compilerWarning(
+                        new Diagnostic(
+                                DiagnosticSeverity.DEPRECATION,
+                                "Passing a relative `url` argument ("
+                                        + stringSource.canonicalUrl()
+                                        + ") to compileString() or related "
+                                        + "functions is deprecated and will be "
+                                        + "an error in Dart Sass 2.0.0.",
+                                stylesheet.span(),
+                                SassDeprecation.COMPILE_STRING_RELATIVE_URL.id()
+                        ),
+                        false
+                );
+            }
             var root = evaluator.executeRoot(stylesheet, loaded.file().url());
             urls.addAll(registry.loadedUrls());
             sourceContents.putAll(registry.sourceContents());
@@ -378,7 +395,7 @@ public final class SassCompiler {
 
     /// Creates the loaded-URL set for an optional canonical URL.
     ///
-    /// @param canonicalUrl the absolute canonical URL, or {@code null}
+    /// @param canonicalUrl the canonical URL, or {@code null}
     /// @return an empty set or a singleton set
     private static Set<URI> loadedUrls(@Nullable URI canonicalUrl) {
         if (canonicalUrl == null) {

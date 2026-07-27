@@ -130,7 +130,8 @@ public final class FilesystemImporter {
             boolean forImport
     ) throws IOException {
         Objects.requireNonNull(url, "url");
-        if (hasNonFileScheme(url)) {
+        if (hasNonFileScheme(url)
+                || url.regionMatches(true, 0, "sass:", 0, "sass:".length())) {
             return null;
         }
         for (var loadPath : loadPaths) {
@@ -144,6 +145,32 @@ public final class FilesystemImporter {
             }
         }
         return null;
+    }
+
+    /// Resolves a stylesheet through the process current working directory.
+    ///
+    /// This is the compatibility fallback used by string compilation after
+    /// custom importers and explicit load paths have declined the request.
+    ///
+    /// @param url the unresolved stylesheet URL
+    /// @param forImport whether import-only candidates take precedence
+    /// @return the loaded stylesheet, or {@code null} when no candidate exists
+    /// @throws IOException if an existing candidate cannot be canonicalized or read
+    public @Nullable ImportResult canonicalizeAndLoadFromCurrentWorkingDirectory(
+            String url,
+            boolean forImport
+    ) throws IOException {
+        Objects.requireNonNull(url, "url");
+        if (hasNonFileScheme(url)
+                || url.regionMatches(true, 0, "sass:", 0, "sass:".length())) {
+            return null;
+        }
+        @Nullable Path candidate = resolveAt(
+                Path.of("").toAbsolutePath().normalize().resolve(url).normalize(),
+                forImport,
+                resolutionTracker
+        );
+        return candidate == null ? null : load(candidate);
     }
 
     /// Resolves an absolute file URL using standard Sass candidate rules.
