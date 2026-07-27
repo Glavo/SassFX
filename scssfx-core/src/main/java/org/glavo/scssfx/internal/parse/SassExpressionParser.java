@@ -1444,6 +1444,7 @@ class SassExpressionParser extends Parser {
             var namedSpans = new LinkedHashMap<String, SourceSpan>();
             @Nullable SassExpression rest = null;
             @Nullable SassExpression keywordRest = null;
+            var emittedRestDeprecation = false;
             while (lookingAtExpression()) {
                 var argument = expressionUntilComma(true);
                 whitespace(true);
@@ -1466,6 +1467,16 @@ class SassExpressionParser extends Parser {
                                     scanner.source().generatedEndOffset(value.span())
                             )
                     );
+                    if (rest != null && !emittedRestDeprecation) {
+                        emittedRestDeprecation = true;
+                        addParseTimeWarning(new Diagnostic(
+                                DiagnosticSeverity.DEPRECATION,
+                                "Named arguments must come before rest arguments.\n"
+                                        + "This will be an error in Dart Sass 2.0.0.",
+                                namedSpans.get(variable.name()),
+                                "misplaced-rest"
+                        ));
+                    }
                 } else if (scanner.scan('.')) {
                     scanner.expect('.');
                     scanner.expect('.');
@@ -1486,6 +1497,16 @@ class SassExpressionParser extends Parser {
                     );
                 } else {
                     positional.add(argument);
+                    if (rest != null && !emittedRestDeprecation) {
+                        emittedRestDeprecation = true;
+                        addParseTimeWarning(new Diagnostic(
+                                DiagnosticSeverity.DEPRECATION,
+                                "Positional arguments must come before rest arguments.\n"
+                                        + "This will be an error in Dart Sass 2.0.0.",
+                                argument.span(),
+                                "misplaced-rest"
+                        ));
+                    }
                 }
 
                 whitespace(true);

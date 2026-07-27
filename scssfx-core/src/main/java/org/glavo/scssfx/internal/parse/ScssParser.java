@@ -72,6 +72,13 @@ import java.util.Set;
 /// control-flow at-rules, module directives, mixins, functions, and comments.
 @NotNullByDefault
 final class ScssParser extends SassExpressionParser {
+    /// Matches the only {@code @-moz-document} condition retained without a warning.
+    private static final java.util.regex.Pattern SAFE_MOZ_DOCUMENT_VALUE =
+            java.util.regex.Pattern.compile(
+                    "(?is)\\s*url-prefix\\(\\s*(?:''|\"\")?\\s*\\)"
+                            + "(?:\\s*,\\s*url-prefix\\(\\s*(?:''|\"\")?\\s*\\))*\\s*"
+            );
+
     /// Records whether Sass-only stylesheet syntax must be rejected.
     private final boolean plainCss;
 
@@ -875,10 +882,37 @@ final class ScssParser extends SassExpressionParser {
             }
             var span = scanner.spanFrom(start);
             whitespaceWithoutComments(false);
+            if (plainName != null
+                    && plainName.equalsIgnoreCase("-moz-document")
+                    && requiresMozDocumentDeprecation(value)) {
+                addParseTimeWarning(new Diagnostic(
+                        DiagnosticSeverity.DEPRECATION,
+                        "@-moz-document is deprecated and support will be removed in "
+                                + "Dart Sass 2.0.0.\n\n"
+                                + "For details, see https://sass-lang.com/d/moz-document.",
+                        span,
+                        "moz-document"
+                ));
+            }
             return new UnknownAtRule(name, value, children, span);
         }
         expectStatementSeparator();
         return new UnknownAtRule(name, value, null, scanner.spanFrom(start));
+    }
+
+    /// Returns whether one {@code @-moz-document} prelude is deprecated.
+    ///
+    /// Empty {@code url-prefix()} conditions, including explicitly empty
+    /// quoted arguments, remain temporarily supported without a warning.
+    ///
+    /// @param value the parsed at-rule prelude
+    /// @return whether the rule must report {@code moz-document}
+    private static boolean requiresMozDocumentDeprecation(
+            Interpolation value
+    ) {
+        @Nullable var plain = value.asPlain();
+        return plain == null
+                || !SAFE_MOZ_DOCUMENT_VALUE.matcher(plain).matches();
     }
 
     /// Parses a top-level `@font-face` rule.
@@ -2579,6 +2613,15 @@ final class ScssParser extends SassExpressionParser {
             var nameStart = scanner.state();
             var name = variableName();
             var nameSpan = scanner.spanFrom(nameStart);
+            if (name.startsWith("-")) {
+                addParseTimeWarning(new Diagnostic(
+                        DiagnosticSeverity.DEPRECATION,
+                        "Configuring private variables is deprecated.\n"
+                                + "This will be an error in Dart Sass 2.0.0.",
+                        nameSpan,
+                        "with-private"
+                ));
+            }
             if (!names.add(name)) {
                 throw scanner.error(
                         "The same variable may only be configured once.",

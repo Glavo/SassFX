@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.ast.selector;
 
+import org.glavo.scssfx.Diagnostic;
 import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.parse.SelectorParser;
 import org.glavo.scssfx.internal.value.SassValueException;
@@ -12,6 +13,7 @@ import org.jetbrains.annotations.Unmodifiable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /// A comma-separated list of complex selectors.
 ///
@@ -70,6 +72,31 @@ public record SelectorList(
             boolean keyframeSelectors
     ) {
         return SelectorParser.parse(text, span, plainCss, keyframeSelectors);
+    }
+
+    /// Parses a selector list and reports selector-syntax deprecations.
+    ///
+    /// @param text              the selector source after interpolation
+    /// @param span              the span covering that text
+    /// @param plainCss          whether plain CSS selector restrictions apply
+    /// @param keyframeSelectors whether percentage selectors are accepted
+    /// @param deprecationConsumer receives selector deprecations
+    /// @return the parsed selector list
+    /// @throws SassValueException if the selector is invalid
+    public static SelectorList parse(
+            String text,
+            SourceSpan span,
+            boolean plainCss,
+            boolean keyframeSelectors,
+            Consumer<Diagnostic> deprecationConsumer
+    ) {
+        return SelectorParser.parse(
+                text,
+                span,
+                plainCss,
+                keyframeSelectors,
+                deprecationConsumer
+        );
     }
 
     /// Returns whether this list contains a parent-selector reference.

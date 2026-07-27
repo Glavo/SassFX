@@ -228,6 +228,66 @@ public record ComplexSelector(
         return false;
     }
 
+    /// Returns whether this complex is bogus including one leading combinator.
+    ///
+    /// A leading combinator is retained for compatibility but is not valid in
+    /// an emitted top-level complex selector.
+    ///
+    /// @return whether this is invalid CSS before nesting
+    public boolean isBogusIncludingLeading() {
+        return !leadingCombinators.isEmpty() || isBogus();
+    }
+
+    /// Returns whether nesting and extension cannot transform this selector
+    /// into valid CSS.
+    ///
+    /// A single leading or trailing combinator may become valid through
+    /// nesting. Repeated combinators and bogus pseudo-selector arguments cannot.
+    ///
+    /// @return whether the selector has no valid nesting interpretation
+    public boolean isUseless() {
+        if (leadingCombinators.size() > 1) {
+            return true;
+        }
+        for (var component : components) {
+            if (component.combinators().size() > 1) {
+                return true;
+            }
+            for (var simple : component.selector().components()) {
+                if (!(simple instanceof PseudoSelector pseudo)
+                        || !(pseudo.argument()
+                        instanceof SelectorPseudoArgument selectorArgument)) {
+                    continue;
+                }
+                var name = normalizedPseudoName(pseudo);
+                for (var complex : selectorArgument.selectors().components()) {
+                    if ("has".equals(name)
+                            ? complex.isBogus()
+                            : complex.isBogusIncludingLeading()) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /// Returns the lowercase pseudo name after removing one vendor prefix.
+    ///
+    /// @param pseudo the selector whose name is normalized
+    /// @return the CSS-standard pseudo name
+    private static String normalizedPseudoName(PseudoSelector pseudo) {
+        var name = pseudo.name().value().toLowerCase(java.util.Locale.ROOT);
+        if (name.length() >= 2 && name.charAt(0) == '-' && name.charAt(1) != '-') {
+            for (var index = 2; index < name.length(); index++) {
+                if (name.charAt(index) == '-') {
+                    return name.substring(index + 1);
+                }
+            }
+        }
+        return name;
+    }
+
     /// Returns whether this complex has consecutive or trailing combinators.
     ///
     /// Multiple leading combinators ({@code + ~ a}), multiple combinators

@@ -159,6 +159,9 @@ public final class SassEvaluator implements
     /// Contains the stable deprecation identifier for slash division.
     private static final String SLASH_DIV_CODE = "slash-div";
 
+    /// Contains the stable deprecation identifier for invalid combinators.
+    private static final String BOGUS_COMBINATORS_CODE = "bogus-combinators";
+
 
     /// Nested depth of user-defined {@code @function} evaluation.
     ///
@@ -1948,7 +1951,11 @@ public final class SassEvaluator implements
                     selectorText,
                     statement.selector().span(),
                     isPlainCss(),
-                    inKeyframes
+                    inKeyframes,
+                    diagnostic -> diagnosticReporter.compilerWarning(
+                            diagnostic,
+                            inDependency
+                    )
             );
         } catch (SassValueException cause) {
             throw new EvaluationException(
@@ -2101,10 +2108,84 @@ public final class SassEvaluator implements
             }
         }
 
+        warnForBogusCombinators(rule);
+
         if (previousStyleRule == null && !previousParent.children().isEmpty()) {
             previousParent.children().get(previousParent.children().size() - 1).setGroupEnd(true);
         }
         return StatementResult.CONTINUE;
+    }
+
+    /// Reports selectors that rely on deprecated bogus combinator behavior.
+    ///
+    /// @param rule the fully evaluated style rule
+    private void warnForBogusCombinators(CssStyleRule rule) {
+        var selectors = rule.selector().value();
+        if (rule.children().isEmpty() || selectors.isInvisible()) {
+            return;
+        }
+        for (var complex : selectors.components()) {
+            if (!complex.isBogusIncludingLeading()) {
+                continue;
+            }
+
+            var selector = complex.toCssString().strip();
+            String message;
+            if (complex.isUseless()) {
+                message = "The selector \"" + selector + "\" is invalid CSS. It "
+                        + "will be omitted from the generated CSS.\n"
+                        + "This will be an error in Dart Sass 2.0.0.\n\n"
+                        + "More info: https://sass-lang.com/d/bogus-combinators";
+            } else if (!complex.leadingCombinators().isEmpty()) {
+                if (isPlainCss()) {
+                    continue;
+                }
+                message = "The selector \"" + selector + "\" is invalid CSS.\n"
+                        + "This will be an error in Dart Sass 2.0.0.\n\n"
+                        + "More info: https://sass-lang.com/d/bogus-combinators";
+            } else {
+                var omitted = complex.isBogus()
+                        ? " It will be omitted from the generated CSS."
+                        : "";
+                message = "The selector \"" + selector + "\" is only valid for "
+                        + "nesting and shouldn't\n"
+                        + "have children other than style rules." + omitted + "\n"
+                        + "This will be an error in Dart Sass 2.0.0.\n\n"
+                        + "More info: https://sass-lang.com/d/bogus-combinators";
+            }
+            diagnosticReporter.compilerWarning(new Diagnostic(
+                    DiagnosticSeverity.DEPRECATION,
+                    message,
+                    complex.span(),
+                    BOGUS_COMBINATORS_CODE
+            ), inDependency);
+        }
+    }
+
+    /// Reports a bogus selector used as an {@code @extend} source.
+    ///
+    /// @param extender the active style rule that supplies the extender selector
+    /// @param statement the triggering extend rule
+    private void warnForBogusExtender(
+            CssStyleRule extender,
+            ExtendRule statement
+    ) {
+        for (var complex : extender.selector().value().components()) {
+            if (!complex.isBogusIncludingLeading()) {
+                continue;
+            }
+            var suitability = complex.isUseless() ? "can't" : "shouldn't";
+            diagnosticReporter.compilerWarning(new Diagnostic(
+                    DiagnosticSeverity.DEPRECATION,
+                    "The selector \"" + complex.toCssString().strip()
+                            + "\" is invalid CSS and " + suitability
+                            + " be an extender.\n"
+                            + "This will be an error in Dart Sass 2.0.0.\n\n"
+                            + "More info: https://sass-lang.com/d/bogus-combinators",
+                    statement.span(),
+                    BOGUS_COMBINATORS_CODE
+            ), inDependency);
+        }
     }
 
     /// Records one `@extend` against the active style rule for later application.
@@ -2125,7 +2206,16 @@ public final class SassEvaluator implements
         ).strip();
         SelectorList target;
         try {
-            target = SelectorList.parse(selectorText, statement.selector().span());
+            target = SelectorList.parse(
+                    selectorText,
+                    statement.selector().span(),
+                    false,
+                    false,
+                    diagnostic -> diagnosticReporter.compilerWarning(
+                            diagnostic,
+                            inDependency
+                    )
+            );
             SelectorAlgebra.assertExtendDirectiveTargets(target);
         } catch (SassValueException cause) {
             throw new EvaluationException(
@@ -2135,6 +2225,7 @@ public final class SassEvaluator implements
                     cause
             );
         }
+        warnForBogusExtender(styleRule, statement);
         // Extends written in an {@code @import}-ed body under an active import
         // generation also rewrite gen-0 originals when the extender can reach
         // them (import_into_use). Re-stamped module extensions keep isolation.

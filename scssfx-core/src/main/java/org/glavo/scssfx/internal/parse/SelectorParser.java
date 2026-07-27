@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.scssfx.internal.parse;
 
+import org.glavo.scssfx.Diagnostic;
+import org.glavo.scssfx.DiagnosticSeverity;
 import org.glavo.scssfx.SourceLocation;
 import org.glavo.scssfx.SourceSpan;
 import org.glavo.scssfx.internal.ast.selector.AttributeMatcher;
@@ -35,6 +37,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /// Parses resolved selector text into a structured selector AST.
 @ApiStatus.Internal
@@ -55,22 +58,29 @@ public final class SelectorParser {
     /// Whether percentage keyframe selectors such as {@code 10%} are accepted.
     private final boolean keyframeSelectors;
 
+    /// Receives selector parse deprecations, or {@code null} to discard them.
+    private final @Nullable Consumer<Diagnostic> deprecationConsumer;
+
     /// Creates a parser for one selector string.
     ///
     /// @param text              the selector source
     /// @param baseSpan          the span covering that source
     /// @param plainCss          whether plain CSS selector restrictions apply
     /// @param keyframeSelectors whether percentage keyframe selectors are accepted
+    /// @param deprecationConsumer receives selector parse deprecations, or
+    ///                            {@code null} to discard them
     private SelectorParser(
             String text,
             SourceSpan baseSpan,
             boolean plainCss,
-            boolean keyframeSelectors
+            boolean keyframeSelectors,
+            @Nullable Consumer<Diagnostic> deprecationConsumer
     ) {
         this.text = Objects.requireNonNull(text, "text");
         this.baseSpan = Objects.requireNonNull(baseSpan, "baseSpan");
         this.plainCss = plainCss;
         this.keyframeSelectors = keyframeSelectors;
+        this.deprecationConsumer = deprecationConsumer;
     }
 
     /// Parses a selector list.
@@ -109,7 +119,41 @@ public final class SelectorParser {
             boolean plainCss,
             boolean keyframeSelectors
     ) {
-        return new SelectorParser(text, span, plainCss, keyframeSelectors).parseList();
+        return new SelectorParser(
+                text,
+                span,
+                plainCss,
+                keyframeSelectors,
+                null
+        ).parseList();
+    }
+
+    /// Parses a selector list and reports selector-syntax deprecations.
+    ///
+    /// @param text              the selector source after interpolation
+    /// @param span              the span covering that text
+    /// @param plainCss          whether plain CSS selector restrictions apply
+    /// @param keyframeSelectors whether percentage selectors are accepted
+    /// @param deprecationConsumer receives selector deprecations
+    /// @return the parsed selector list
+    /// @throws SassValueException if the selector is invalid
+    public static SelectorList parse(
+            String text,
+            SourceSpan span,
+            boolean plainCss,
+            boolean keyframeSelectors,
+            Consumer<Diagnostic> deprecationConsumer
+    ) {
+        return new SelectorParser(
+                text,
+                span,
+                plainCss,
+                keyframeSelectors,
+                Objects.requireNonNull(
+                        deprecationConsumer,
+                        "deprecationConsumer"
+                )
+        ).parseList();
     }
 
     /// Parses the complete selector list.
@@ -177,9 +221,19 @@ public final class SelectorParser {
             return new ComplexSelector(leading, List.of(), spanFrom(start), lineBreak);
         }
 
+        @Nullable CompoundSelector previousCompound = null;
+        var previousCompoundStart = 0;
+        var adjacentToPrevious = false;
         while (lookingAtSimple()) {
             var compoundStart = position;
             var compound = parseCompound();
+            if (adjacentToPrevious && previousCompound != null) {
+                reportAdjacentCompounds(
+                        previousCompound,
+                        compound,
+                        spanFrom(previousCompoundStart, position)
+                );
+            }
             // dart-sass: "&" may only be used at the beginning of a compound
             // outside plain CSS (where mid-compound parent is allowed).
             if (!plainCss && peek() == '&') {
@@ -188,7 +242,9 @@ public final class SelectorParser {
                 );
             }
             var trailing = new ArrayList<Combinator>();
+            var separatorStart = position;
             whitespace();
+            var consumedWhitespace = position != separatorStart;
             while (true) {
                 @Nullable Combinator combinator = tryCombinator();
                 if (combinator == null) {
@@ -205,6 +261,9 @@ public final class SelectorParser {
             if (!lookingAtSimple()) {
                 break;
             }
+            adjacentToPrevious = trailing.isEmpty() && !consumedWhitespace;
+            previousCompound = compound;
+            previousCompoundStart = compoundStart;
         }
         // Plain CSS rejects trailing combinators such as {@code a >}.
         if (plainCss
@@ -218,6 +277,30 @@ public final class SelectorParser {
             // a bare trailing combinator already failed lookingAtSimple above.
         }
         return new ComplexSelector(leading, components, spanFrom(start), lineBreak);
+    }
+
+    /// Reports two compound selectors written without an intervening separator.
+    ///
+    /// @param previous the first adjacent compound
+    /// @param next the following adjacent compound
+    /// @param span the combined source span
+    private void reportAdjacentCompounds(
+            CompoundSelector previous,
+            CompoundSelector next,
+            SourceSpan span
+    ) {
+        if (deprecationConsumer == null) {
+            return;
+        }
+        deprecationConsumer.accept(new Diagnostic(
+                DiagnosticSeverity.DEPRECATION,
+                "Adjacent compound selectors must be separated by whitespace. "
+                        + "This will be an error in Dart Sass 2.0.0. Suggestion:\n\n"
+                        + previous.toCssString() + " " + next.toCssString() + "\n\n"
+                        + "More info: https://sass-lang.com/d/adjacent-compounds",
+                span,
+                "adjacent-compounds"
+        ));
     }
 
     /// Returns a line counter for {@code offset} within the selector text.
@@ -666,10 +749,13 @@ public final class SelectorParser {
             return parseNthPseudoArgument(argument, argumentStart, argumentEnd);
         }
         if (acceptsSelectorArgument(normalizedName, element)) {
-            return new SelectorPseudoArgument(SelectorList.parse(
+            return new SelectorPseudoArgument(new SelectorParser(
                     argument,
-                    spanFrom(argumentStart, argumentEnd)
-            ));
+                    spanFrom(argumentStart, argumentEnd),
+                    false,
+                    false,
+                    deprecationConsumer
+            ).parseList());
         }
         return new RawPseudoArgument(argument);
     }
@@ -724,10 +810,13 @@ public final class SelectorParser {
         }
         return new NthPseudoArgument(
                 parsed.formula(),
-                SelectorList.parse(
+                new SelectorParser(
                         selectorText,
-                        spanFrom(argumentStart + index, argumentEnd)
-                )
+                        spanFrom(argumentStart + index, argumentEnd),
+                        false,
+                        false,
+                        deprecationConsumer
+                ).parseList()
         );
     }
 
@@ -1243,23 +1332,40 @@ public final class SelectorParser {
     /// @param end   the exclusive relative end offset
     /// @return the corresponding source span
     private SourceSpan spanFrom(int start, int end) {
-        var absoluteStart = baseSpan.start().offset() + start;
-        var absoluteEnd = baseSpan.start().offset() + end;
-        var startLocation = new SourceLocation(
-                baseSpan.start().line(),
-                baseSpan.start().column() + start,
-                absoluteStart
-        );
-        var endLocation = new SourceLocation(
-                baseSpan.start().line(),
-                baseSpan.start().column() + end,
-                absoluteEnd
-        );
         return new SourceSpan(
                 baseSpan.url(),
-                startLocation,
-                endLocation,
+                locationAt(start),
+                locationAt(end),
                 text.substring(start, end)
+        );
+    }
+
+    /// Returns the source location for one selector-relative offset.
+    ///
+    /// @param offset the offset into [#text]
+    /// @return the location relative to [#baseSpan]
+    private SourceLocation locationAt(int offset) {
+        var line = baseSpan.start().line();
+        var column = baseSpan.start().column();
+        for (var index = 0; index < offset; index++) {
+            var character = text.charAt(index);
+            if (character == '\r') {
+                line++;
+                column = 0;
+                if (index + 1 < offset && text.charAt(index + 1) == '\n') {
+                    index++;
+                }
+            } else if (character == '\n' || character == '\f') {
+                line++;
+                column = 0;
+            } else {
+                column++;
+            }
+        }
+        return new SourceLocation(
+                line,
+                column,
+                baseSpan.start().offset() + offset
         );
     }
 

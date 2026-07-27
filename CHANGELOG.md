@@ -40,7 +40,10 @@ This is the first development release.
   diagnostics follow their dedicated deprecation categories. Color-module
   compatibility diagnostics cover numeric `invert()`, `grayscale()`, and
   `opacity()` fallbacks plus both Microsoft-filter `alpha()` forms while
-  preserving their plain-CSS output.
+  preserving their plain-CSS output. Parser and selector diagnostics cover
+  Mozilla document rules, private module configuration, arguments after rest
+  expansion, adjacent compounds, and bogus combinators in style rules,
+  `@extend`, and selector operations.
 - CLI load paths, ordered platform-aware `SASS_PATH` resolution across compile,
   update/watch, and interactive modes, quiet output, dependency warning
   suppression, and fatal, silence, future, and verbose deprecation options.

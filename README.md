@@ -608,7 +608,10 @@ indexes, `math.random()`, HSL/HWB constructors, color weights, color channel
 updates, alpha updates, and hue adjustment. The `sass:color` plain-CSS
 compatibility fallbacks for numeric `invert()`, `grayscale()`, and `opacity()`,
 plus Microsoft-filter `alpha()` calls, report the `color-module-compat`
-category while preserving their CSS output.
+category while preserving their CSS output. Parser and selector processing
+also reports deprecated Mozilla document rules, private module configuration,
+arguments placed after rest expansion, adjacent compounds, and bogus
+combinators across style rules, `@extend`, and selector operations.
 
 `SassDeprecation` is the typed Dart Sass 1.101.3 deprecation registry. It
 exposes the command-line ID, activation and obsolescence versions, status, and

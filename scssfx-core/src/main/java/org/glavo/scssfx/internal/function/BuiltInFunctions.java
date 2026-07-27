@@ -2482,7 +2482,7 @@ public final class BuiltInFunctions {
         var withArgument = args.get(1);
         var configured = !(withArgument instanceof SassNull);
         var configuration = configured
-                ? configurationFromWithMap(withArgument, context.span())
+                ? configurationFromWithMap(context, withArgument)
                 : ModuleConfiguration.empty();
         context.loadCss(url, configuration, configured);
         return SassNull.NULL;
@@ -2490,12 +2490,12 @@ public final class BuiltInFunctions {
 
     /// Converts a {@code $with} map into an explicit module configuration.
     ///
+    /// @param context the invocation receiving private-configuration diagnostics
     /// @param value the configuration map
-    /// @param span  the include span used for configuration origins
     /// @return the explicit configuration, or empty when the map has no entries
     private static ModuleConfiguration configurationFromWithMap(
-            SassValue value,
-            SourceSpan span
+            BuiltInCallable.Context context,
+            SassValue value
     ) {
         @Nullable SassMap map = value.tryMap();
         if (map == null) {
@@ -2504,7 +2504,9 @@ public final class BuiltInFunctions {
         if (map.contents().isEmpty()) {
             return ModuleConfiguration.empty();
         }
+        var span = context.span();
         var values = new LinkedHashMap<String, ConfiguredValue>();
+        var reportedPrivate = false;
         for (var entry : map.contents().entrySet()) {
             if (!(entry.getKey() instanceof SassString key)) {
                 // dart-sass: "$with key: 1 is not a string."
@@ -2515,6 +2517,15 @@ public final class BuiltInFunctions {
             var name = key.text().replace('_', '-');
             if (name.isEmpty()) {
                 throw new SassValueException("$with: \"\" is not a valid variable name.");
+            }
+            if (name.startsWith("-") && !reportedPrivate) {
+                reportedPrivate = true;
+                context.deprecate(
+                        "Configuring private variables (such as $" + name
+                                + ") is deprecated.\n"
+                                + "This will be an error in Dart Sass 2.0.0.",
+                        "with-private"
+                );
             }
             var configured = new ConfiguredValue(entry.getValue(), span, span);
             @Nullable ConfiguredValue previous = values.put(name, configured);
