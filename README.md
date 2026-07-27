@@ -19,6 +19,7 @@ development build.
   resource schemes.
 - Structured diagnostics, configurable logging and deprecation processing,
   loaded-URL metadata, and CSS source maps.
+- Cacheable Gradle task for CSS, JavaFX CSS, and BSS generation.
 - Embedded Sass Protocol 3.2.0 framing, version negotiation, concurrent
   compilation dispatch, diagnostics, and compile responses.
 - Fixed Dart Sass, sass-spec, and OpenJFX compatibility oracles.
@@ -44,11 +45,11 @@ On Windows:
 .\gradlew.ps1 check
 ```
 
-Product code and artifacts target Java 17. `check` runs core, embedded, and
-CLI unit tests, the curated sass-spec suite, Java 17 shaded-application smoke
-tests, artifact boundary checks, and source-isolation checks. Generating
-Javadoc additionally requires a JDK 25 toolchain because Markdown-style
-`///` Javadoc is used.
+Product code and artifacts target Java 17. `check` runs core, embedded, CLI,
+and Gradle plugin tests, the curated sass-spec suite, Java 17
+shaded-application smoke tests, artifact boundary checks, and source-isolation
+checks. Generating Javadoc additionally requires a JDK 25 toolchain because
+Markdown-style `///` Javadoc is used.
 
 The build produces:
 
@@ -57,6 +58,7 @@ The build produces:
 | `scssfx-core` | Reusable compiler API | `scssfx-core/build/libs/scssfx-core-0.1.0-SNAPSHOT.jar` |
 | `scssfx-embedded` | Embedded Sass Protocol executable | `scssfx-embedded/build/libs/scssfx-embedded-0.1.0-SNAPSHOT.jar` |
 | `scssfx-cli` | Executable command-line frontend | `scssfx-cli/build/libs/scssfx-cli-0.1.0-SNAPSHOT.jar` |
+| `scssfx-gradle-plugin` | Gradle build integration | `scssfx-gradle-plugin/build/libs/scssfx-gradle-plugin-0.1.0-SNAPSHOT.jar` |
 
 The core JAR has the automatic module name `org.glavo.scssfx` and is not a fat
 JAR. The unclassified embedded and CLI JARs are self-contained shaded
@@ -66,6 +68,50 @@ JavaFX, FFI, or native content.
 
 No public artifact repository is configured yet. Do not treat the current
 group and version as published Maven coordinates.
+
+## Gradle Plugin
+
+The `org.glavo.scssfx` plugin registers a cacheable `compileScss` task. Its
+defaults compile `.scss`, `.sass`, and `.css` files under `src/main/scss` to
+`build/generated/scssfx/main`. Basenames beginning with `_` are tracked as
+inputs but are treated as partials and do not receive their own output.
+
+```kotlin
+plugins {
+    java
+    id("org.glavo.scssfx")
+}
+
+scssfx {
+    target.set("css/javafx@21")
+    style.set("compressed")
+    charset.set(true)
+    loadPaths.from(layout.projectDirectory.dir("src/shared/scss"))
+}
+```
+
+The target accepts only `css`, `css/javafx@8` through `css/javafx@27`, or
+`bss/javafx@8` through `bss/javafx@27`. Text targets produce `.css`; BSS
+targets produce `.bss`. Source-relative directory structure is preserved.
+`sourceDirectory` and `outputDirectory` may be replaced through the extension.
+
+When the Java plugin is present, `processResources` automatically includes the
+generated tree and depends on `compileScss`. Additional independent
+compilations may use the public task type:
+
+```kotlin
+tasks.register<org.glavo.scssfx.gradle.ScssfxCompile>("compileThemeBss") {
+    sourceDirectory.set(layout.projectDirectory.dir("src/theme/scss"))
+    outputDirectory.set(layout.buildDirectory.dir("generated/scssfx/theme"))
+    target.set("bss/javafx@27")
+}
+```
+
+The task tracks the complete source tree and configured load-path trees,
+supports Gradle build caching and configuration caching, removes stale
+outputs, detects output-path collisions, and publishes its output tree only
+after every entrypoint compiles successfully. The snapshot plugin is not
+available from a public plugin repository yet.
 
 ## Command Line
 

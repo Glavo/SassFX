@@ -8,6 +8,9 @@ This is the first development release.
 
 ### Added
 
+- `org.glavo.scssfx` Gradle plugin with a cacheable `compileScss` task,
+  strict CSS/JavaFX CSS/BSS targets, partial tracking, transactional output,
+  stale-output cleanup, Java resources integration, and TestKit coverage.
 - Pure Java 17 compiler for SCSS, indented Sass, and plain-CSS library inputs.
 - Standard CSS, validated JavaFX CSS, and JavaFX BSS output targets.
 - `JavaFXTarget` release selection from JavaFX 8 through JavaFX 27.
