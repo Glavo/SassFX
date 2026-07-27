@@ -237,6 +237,12 @@ queries, extend targets, or unknown at-rule values produce Dart
 Sass-compatible compiler warnings; ordinary SassScript strings and declaration
 values do not.
 
+Legacy color channel readers and the deprecated `adjust-hue`, `lighten`,
+`darken`, two-argument `saturate`, `desaturate`, `opacify`, `fade-in`,
+`transparentize`, and `fade-out` functions report Dart Sass-compatible
+`color-functions` diagnostics with migration suggestions. Plain-CSS filter
+forms such as one-argument `saturate()` remain unaffected.
+
 Pass `--pkg-importer=node` to resolve `pkg:` URLs with Node package lookup.
 The importer starts beside the containing file, or at the process working
 directory for stdin and other URL-less roots, and searches each ancestor's

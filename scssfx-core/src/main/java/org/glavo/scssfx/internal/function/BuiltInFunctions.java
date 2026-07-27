@@ -66,6 +66,9 @@ public final class BuiltInFunctions {
     /// Contains the stable deprecation identifier for invalid function units.
     private static final String FUNCTION_UNITS_CODE = "function-units";
 
+    /// Contains the stable deprecation identifier for legacy color functions.
+    private static final String COLOR_FUNCTIONS_CODE = "color-functions";
+
     /// Contains the caller guidance for string-based {@code meta.call()}.
     private static final String CALL_STRING_DEPRECATION_MESSAGE =
             "Passing a string to call() is deprecated and will be illegal in Dart Sass 2.0.0.\n\n"
@@ -331,9 +334,24 @@ public final class BuiltInFunctions {
                 BuiltInFunctions::zip
         ));
 
-        register(functions, BuiltInCallable.of("red", List.of("color"), BuiltInFunctions::red));
-        register(functions, BuiltInCallable.of("green", List.of("color"), BuiltInFunctions::green));
-        register(functions, BuiltInCallable.of("blue", List.of("color"), BuiltInFunctions::blue));
+        register(functions, deprecatedColorChannelFunction(
+                "red",
+                ColorSpace.RGB,
+                null,
+                true
+        ));
+        register(functions, deprecatedColorChannelFunction(
+                "green",
+                ColorSpace.RGB,
+                null,
+                true
+        ));
+        register(functions, deprecatedColorChannelFunction(
+                "blue",
+                ColorSpace.RGB,
+                null,
+                true
+        ));
         // Alpha supports Microsoft filter overloads: alpha(c=d) and multi-arg forms.
         register(functions, BuiltInCallable.withRest(
                 "alpha",
@@ -342,26 +360,23 @@ public final class BuiltInFunctions {
                 BuiltInFunctions::alphaChannel
         ));
         register(functions, BuiltInCallable.of("opacity", List.of("color"), BuiltInFunctions::opacity));
-        register(functions, BuiltInCallable.of("hue", List.of("color"), BuiltInFunctions::colorHue));
-        register(functions, BuiltInCallable.of(
+        register(functions, deprecatedColorChannelFunction(
+                "hue",
+                ColorSpace.HSL,
+                "deg",
+                true
+        ));
+        register(functions, deprecatedColorChannelFunction(
                 "saturation",
-                List.of("color"),
-                BuiltInFunctions::colorSaturation
+                ColorSpace.HSL,
+                "%",
+                true
         ));
-        register(functions, BuiltInCallable.of(
+        register(functions, deprecatedColorChannelFunction(
                 "lightness",
-                List.of("color"),
-                BuiltInFunctions::colorLightness
-        ));
-        register(functions, BuiltInCallable.of(
-                "whiteness",
-                List.of("color"),
-                BuiltInFunctions::colorWhiteness
-        ));
-        register(functions, BuiltInCallable.of(
-                "blackness",
-                List.of("color"),
-                BuiltInFunctions::colorBlackness
+                ColorSpace.HSL,
+                "%",
+                true
         ));
         // Global mix() shares the Color 4 $method parameter with color.mix();
         // non-legacy colors require $method even when called without a namespace.
@@ -407,49 +422,82 @@ public final class BuiltInFunctions {
                 2,
                 BuiltInFunctions::adjustHue
         ));
-        register(functions, BuiltInCallable.of(
+        register(functions, BuiltInCallable.contextual(
                 "lighten",
-                List.of("color", "amount"),
+                List.of(
+                        Param.required("color"),
+                        Param.required("amount")
+                ),
+                2,
                 BuiltInFunctions::lighten
         ));
-        register(functions, BuiltInCallable.of(
+        register(functions, BuiltInCallable.contextual(
                 "darken",
-                List.of("color", "amount"),
+                List.of(
+                        Param.required("color"),
+                        Param.required("amount")
+                ),
+                2,
                 BuiltInFunctions::darken
         ));
         // Global saturate() overloads CSS filter saturate($amount) and the
         // legacy color adjuster saturate($color, $amount). Rest dispatch keeps
         // both signatures' missing-argument diagnostics aligned with dart-sass.
-        register(functions, BuiltInCallable.withRest(
+        register(functions, BuiltInCallable.contextualWithRest(
                 "saturate",
                 List.of(),
                 "args",
+                0,
                 BuiltInFunctions::saturateRest
         ));
-        register(functions, BuiltInCallable.of(
+        register(functions, BuiltInCallable.contextual(
                 "desaturate",
-                List.of("color", "amount"),
+                List.of(
+                        Param.required("color"),
+                        Param.required("amount")
+                ),
+                2,
                 BuiltInFunctions::desaturate
         ));
-        register(functions, BuiltInCallable.of(
+        register(functions, BuiltInCallable.contextual(
                 "opacify",
-                List.of("color", "amount"),
-                args -> opacifyNamed(args, "opacify")
+                List.of(
+                        Param.required("color"),
+                        Param.required("amount")
+                ),
+                2,
+                (context, args) -> opacifyNamed(context, args, "opacify")
         ));
-        register(functions, BuiltInCallable.of(
+        register(functions, BuiltInCallable.contextual(
                 "fade-in",
-                List.of("color", "amount"),
-                args -> opacifyNamed(args, "fade-in")
+                List.of(
+                        Param.required("color"),
+                        Param.required("amount")
+                ),
+                2,
+                (context, args) -> opacifyNamed(context, args, "fade-in")
         ));
-        register(functions, BuiltInCallable.of(
+        register(functions, BuiltInCallable.contextual(
                 "transparentize",
-                List.of("color", "amount"),
-                args -> transparentizeNamed(args, "transparentize")
+                List.of(
+                        Param.required("color"),
+                        Param.required("amount")
+                ),
+                2,
+                (context, args) -> transparentizeNamed(
+                        context,
+                        args,
+                        "transparentize"
+                )
         ));
-        register(functions, BuiltInCallable.of(
+        register(functions, BuiltInCallable.contextual(
                 "fade-out",
-                List.of("color", "amount"),
-                args -> transparentizeNamed(args, "fade-out")
+                List.of(
+                        Param.required("color"),
+                        Param.required("amount")
+                ),
+                2,
+                (context, args) -> transparentizeNamed(context, args, "fade-out")
         ));
         register(functions, BuiltInCallable.contextualWithRest(
                 "adjust-color",
@@ -749,9 +797,24 @@ public final class BuiltInFunctions {
     public static @Unmodifiable Map<String, BuiltInCallable> colorModule() {
         var global = global();
         var functions = new LinkedHashMap<String, BuiltInCallable>();
-        moduleFunction(functions, global, "red", "red");
-        moduleFunction(functions, global, "green", "green");
-        moduleFunction(functions, global, "blue", "blue");
+        register(functions, deprecatedColorChannelFunction(
+                "red",
+                ColorSpace.RGB,
+                null,
+                false
+        ));
+        register(functions, deprecatedColorChannelFunction(
+                "green",
+                ColorSpace.RGB,
+                null,
+                false
+        ));
+        register(functions, deprecatedColorChannelFunction(
+                "blue",
+                ColorSpace.RGB,
+                null,
+                false
+        ));
         // Module alpha uses distinct diagnostics from the global Microsoft-filter form.
         register(functions, BuiltInCallable.withRest(
                 "alpha",
@@ -797,11 +860,36 @@ public final class BuiltInFunctions {
                 1,
                 BuiltInFunctions::colorInvert
         ));
-        moduleFunction(functions, global, "hue", "hue");
-        moduleFunction(functions, global, "saturation", "saturation");
-        moduleFunction(functions, global, "lightness", "lightness");
-        moduleFunction(functions, global, "whiteness", "whiteness");
-        moduleFunction(functions, global, "blackness", "blackness");
+        register(functions, deprecatedColorChannelFunction(
+                "hue",
+                ColorSpace.HSL,
+                "deg",
+                false
+        ));
+        register(functions, deprecatedColorChannelFunction(
+                "saturation",
+                ColorSpace.HSL,
+                "%",
+                false
+        ));
+        register(functions, deprecatedColorChannelFunction(
+                "lightness",
+                ColorSpace.HSL,
+                "%",
+                false
+        ));
+        register(functions, deprecatedColorChannelFunction(
+                "whiteness",
+                ColorSpace.HWB,
+                "%",
+                false
+        ));
+        register(functions, deprecatedColorChannelFunction(
+                "blackness",
+                ColorSpace.HWB,
+                "%",
+                false
+        ));
         register(functions, BuiltInCallable.of(
                 "grayscale",
                 List.of("color"),
@@ -3428,28 +3516,52 @@ public final class BuiltInFunctions {
         return new SassList(result, ListSeparator.COMMA, false);
     }
 
-    /// Returns the legacy RGB red channel rounded to Sass's nearest integer.
+    /// Creates one deprecated legacy color-channel reader.
     ///
-    /// @param args the one color argument
-    /// @return the rounded red channel
-    private static SassValue red(List<SassValue> args) {
-        return SassNumber.of(roundSass(colorArgument(args.get(0), "color").red()), null);
-    }
-
-    /// Returns the legacy RGB green channel rounded to Sass's nearest integer.
+    /// RGB channels retain Sass's historical nearest-integer rounding. HSL and
+    /// HWB channels are returned in their conventional units.
     ///
-    /// @param args the one color argument
-    /// @return the rounded green channel
-    private static SassValue green(List<SassValue> args) {
-        return SassNumber.of(roundSass(colorArgument(args.get(0), "color").green()), null);
-    }
-
-    /// Returns the legacy RGB blue channel rounded to Sass's nearest integer.
-    ///
-    /// @param args the one color argument
-    /// @return the rounded blue channel
-    private static SassValue blue(List<SassValue> args) {
-        return SassNumber.of(roundSass(colorArgument(args.get(0), "color").blue()), null);
+    /// @param name the legacy channel name
+    /// @param space the replacement function's explicit color space
+    /// @param unit the returned unit, or {@code null} for unitless channels
+    /// @param global whether the function is exposed without a module namespace
+    /// @return the contextual channel function
+    private static BuiltInCallable deprecatedColorChannelFunction(
+            String name,
+            ColorSpace space,
+            @Nullable String unit,
+            boolean global
+    ) {
+        return BuiltInCallable.contextual(
+                name,
+                List.of(Param.required("color")),
+                1,
+                (context, args) -> {
+                    var color = colorArgument(args.get(0), "color");
+                    double value = switch (name) {
+                        case "red" -> roundSass(color.red());
+                        case "green" -> roundSass(color.green());
+                        case "blue" -> roundSass(color.blue());
+                        case "hue" -> color.hue();
+                        case "saturation" -> color.saturation();
+                        case "lightness" -> color.lightness();
+                        case "whiteness" -> color.whiteness();
+                        case "blackness" -> color.blackness();
+                        default -> throw new AssertionError(
+                                "unknown legacy color channel: " + name
+                        );
+                    };
+                    context.deprecate(
+                            (global ? "" : "color.") + name
+                                    + "() is deprecated. Suggestion:\n\n"
+                                    + "color.channel($color, \"" + name
+                                    + "\", $space: " + space.spaceName() + ")\n\n"
+                                    + "More info: https://sass-lang.com/d/color-functions",
+                            COLOR_FUNCTIONS_CODE
+                    );
+                    return SassNumber.of(value, unit);
+                }
+        );
     }
 
     /// Pattern matching the start of a proprietary Microsoft filter argument
@@ -3662,46 +3774,6 @@ public final class BuiltInFunctions {
         }
     }
 
-    /// Returns the legacy HSL hue of one RGB color.
-    ///
-    /// @param args the one color argument
-    /// @return the hue in degrees
-    private static SassValue colorHue(List<SassValue> args) {
-        return SassNumber.of(colorArgument(args.get(0), "color").hue(), "deg");
-    }
-
-    /// Returns the legacy HSL saturation of one RGB color.
-    ///
-    /// @param args the one color argument
-    /// @return the saturation percentage
-    private static SassValue colorSaturation(List<SassValue> args) {
-        return SassNumber.of(colorArgument(args.get(0), "color").saturation(), "%");
-    }
-
-    /// Returns the legacy HSL lightness of one RGB color.
-    ///
-    /// @param args the one color argument
-    /// @return the lightness percentage
-    private static SassValue colorLightness(List<SassValue> args) {
-        return SassNumber.of(colorArgument(args.get(0), "color").lightness(), "%");
-    }
-
-    /// Returns the legacy HWB whiteness of one color.
-    ///
-    /// @param args the one color argument
-    /// @return the whiteness percentage
-    private static SassValue colorWhiteness(List<SassValue> args) {
-        return SassNumber.of(colorArgument(args.get(0), "color").whiteness(), "%");
-    }
-
-    /// Returns the legacy HWB blackness of one color.
-    ///
-    /// @param args the one color argument
-    /// @return the blackness percentage
-    private static SassValue colorBlackness(List<SassValue> args) {
-        return SassNumber.of(colorArgument(args.get(0), "color").blackness(), "%");
-    }
-
     /// Global {@code invert()} with plain-CSS number filter fallback.
     private static SassValue globalInvert(List<SassValue> args) {
         var value = args.get(0);
@@ -3767,23 +3839,63 @@ public final class BuiltInFunctions {
                 numberArgument(args.get(1), "degrees"),
                 "degrees"
         );
+        context.deprecate(
+                "adjust-hue() is deprecated. Suggestion:\n\n"
+                        + "color.adjust($color, $hue: "
+                        + SassNumber.of(degrees, "deg").toCssString()
+                        + ")\n\n"
+                        + "More info: https://sass-lang.com/d/color-functions",
+                COLOR_FUNCTIONS_CODE
+        );
         return color.changeHsl(color.hue() + degrees, null, null, null);
     }
 
     /// Implements the deprecated global {@code lighten()} function.
-    private static SassValue lighten(List<SassValue> args) {
+    private static SassValue lighten(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
         var color = colorArgument(args.get(0), "color");
         requireLegacyColorFunction(color, "lighten");
         double amount = numberArgument(args.get(1), "amount").valueInRange(0, 100, "amount");
-        return color.changeHsl(null, null, clampLikeCss(color.lightness() + amount, 0, 100), null);
+        var result = color.changeHsl(
+                null,
+                null,
+                clampLikeCss(color.lightness() + amount, 0, 100),
+                null
+        );
+        deprecateColorAdjustment(
+                context,
+                "lighten",
+                color,
+                amount,
+                "lightness"
+        );
+        return result;
     }
 
     /// Implements the deprecated global {@code darken()} function.
-    private static SassValue darken(List<SassValue> args) {
+    private static SassValue darken(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
         var color = colorArgument(args.get(0), "color");
         requireLegacyColorFunction(color, "darken");
         double amount = numberArgument(args.get(1), "amount").valueInRange(0, 100, "amount");
-        return color.changeHsl(null, null, clampLikeCss(color.lightness() - amount, 0, 100), null);
+        var result = color.changeHsl(
+                null,
+                null,
+                clampLikeCss(color.lightness() - amount, 0, 100),
+                null
+        );
+        deprecateColorAdjustment(
+                context,
+                "darken",
+                color,
+                -amount,
+                "lightness"
+        );
+        return result;
     }
 
     /// Dispatches global {@code saturate()} CSS-filter and color-adjuster overloads.
@@ -3795,7 +3907,10 @@ public final class BuiltInFunctions {
     ///
     /// @param args the rest-bound argument list from [#withRest]
     /// @return a CSS filter string or adjusted color
-    private static SassValue saturateRest(List<SassValue> args) {
+    private static SassValue saturateRest(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
         var rest = restArgumentList(args);
         var positional = new ArrayList<>(rest.asList());
         var named = new LinkedHashMap<>(rest.keywords());
@@ -3846,7 +3961,7 @@ public final class BuiltInFunctions {
         if (amount == null) {
             throw new SassValueException("Missing argument $amount.");
         }
-        return saturateColor(color, amount);
+        return saturateColor(context, color, amount);
     }
 
     /// Implements the one-argument CSS {@code saturate()} filter form.
@@ -3861,37 +3976,177 @@ public final class BuiltInFunctions {
     }
 
     /// Implements the two-argument legacy color {@code saturate()} form.
-    private static SassValue saturateColor(SassValue colorValue, SassValue amountValue) {
+    private static SassValue saturateColor(
+            BuiltInCallable.Context context,
+            SassValue colorValue,
+            SassValue amountValue
+    ) {
         var color = colorArgument(colorValue, "color");
         requireLegacyColorFunction(color, "saturate");
         double amount = numberArgument(amountValue, "amount").valueInRange(0, 100, "amount");
-        return color.changeHsl(null, clampLikeCss(color.saturation() + amount, 0, 100), null, null);
+        var result = color.changeHsl(
+                null,
+                clampLikeCss(color.saturation() + amount, 0, 100),
+                null,
+                null
+        );
+        deprecateColorAdjustment(
+                context,
+                "saturate",
+                color,
+                amount,
+                "saturation"
+        );
+        return result;
     }
 
     /// Implements the deprecated global {@code desaturate()} function.
-    private static SassValue desaturate(List<SassValue> args) {
+    private static SassValue desaturate(
+            BuiltInCallable.Context context,
+            List<SassValue> args
+    ) {
         var color = colorArgument(args.get(0), "color");
         requireLegacyColorFunction(color, "desaturate");
         double amount = numberArgument(args.get(1), "amount").valueInRange(0, 100, "amount");
-        return color.changeHsl(null, clampLikeCss(color.saturation() - amount, 0, 100), null, null);
+        var result = color.changeHsl(
+                null,
+                clampLikeCss(color.saturation() - amount, 0, 100),
+                null,
+                null
+        );
+        deprecateColorAdjustment(
+                context,
+                "desaturate",
+                color,
+                -amount,
+                "saturation"
+        );
+        return result;
     }
 
     /// Implements global {@code opacify()}/{@code fade-in()}.
-    private static SassValue opacifyNamed(List<SassValue> args, String functionName) {
+    private static SassValue opacifyNamed(
+            BuiltInCallable.Context context,
+            List<SassValue> args,
+            String functionName
+    ) {
         var color = colorArgument(args.get(0), "color");
         requireLegacyColorFunction(color, functionName);
         double amount = numberArgument(args.get(1), "amount")
                 .valueInRangeWithUnit(0, 1, "amount", "");
-        return color.changeAlpha(clampLikeCss(color.alpha() + amount, 0, 1));
+        var result = color.changeAlpha(
+                clampLikeCss(color.alpha() + amount, 0, 1)
+        );
+        deprecateColorAdjustment(
+                context,
+                functionName,
+                color,
+                amount,
+                "alpha"
+        );
+        return result;
     }
 
     /// Implements global {@code transparentize()}/{@code fade-out()}.
-    private static SassValue transparentizeNamed(List<SassValue> args, String functionName) {
+    private static SassValue transparentizeNamed(
+            BuiltInCallable.Context context,
+            List<SassValue> args,
+            String functionName
+    ) {
         var color = colorArgument(args.get(0), "color");
         requireLegacyColorFunction(color, functionName);
         double amount = numberArgument(args.get(1), "amount")
                 .valueInRangeWithUnit(0, 1, "amount", "");
-        return color.changeAlpha(clampLikeCss(color.alpha() - amount, 0, 1));
+        var result = color.changeAlpha(
+                clampLikeCss(color.alpha() - amount, 0, 1)
+        );
+        deprecateColorAdjustment(
+                context,
+                functionName,
+                color,
+                -amount,
+                "alpha"
+        );
+        return result;
+    }
+
+    /// Reports one deprecated legacy color adjustment.
+    ///
+    /// @param context the invocation receiving the diagnostic
+    /// @param functionName the deprecated global function name
+    /// @param color the original legacy color
+    /// @param adjustment the signed channel adjustment
+    /// @param channelName the adjusted HSL or alpha channel
+    private static void deprecateColorAdjustment(
+            BuiltInCallable.Context context,
+            String functionName,
+            SassColor color,
+            double adjustment,
+            String channelName
+    ) {
+        context.deprecate(
+                functionName + "() is deprecated. "
+                        + suggestScaleAndAdjust(color, adjustment, channelName)
+                        + "\n\n"
+                        + "More info: https://sass-lang.com/d/color-functions",
+                COLOR_FUNCTIONS_CODE
+        );
+    }
+
+    /// Returns Dart Sass migration suggestions for a legacy color adjustment.
+    ///
+    /// A non-zero adjustment includes both the proportional {@code color.scale()}
+    /// replacement and the direct {@code color.adjust()} replacement. A zero
+    /// adjustment includes only the latter.
+    ///
+    /// @param original the original legacy color
+    /// @param adjustment the signed requested change
+    /// @param channelName the HSL or alpha channel name
+    /// @return the complete suggestion block
+    private static String suggestScaleAndAdjust(
+            SassColor original,
+            double adjustment,
+            String channelName
+    ) {
+        boolean alpha = "alpha".equals(channelName);
+        double oldValue = alpha
+                ? original.alpha()
+                : original.toSpace(ColorSpace.HSL, false).channel(channelName);
+        double minimum = 0.0;
+        double maximum = alpha ? 1.0 : 100.0;
+        double newValue = oldValue + adjustment;
+
+        var suggestion = new StringBuilder("Suggestion");
+        if (adjustment != 0.0) {
+            double factor;
+            if (newValue > maximum) {
+                factor = 1.0;
+            } else if (newValue < minimum) {
+                factor = -1.0;
+            } else if (adjustment > 0.0) {
+                factor = adjustment / (maximum - oldValue);
+            } else {
+                factor = (newValue - oldValue) / (oldValue - minimum);
+            }
+            suggestion.append("s:\n\n")
+                    .append("color.scale($color, $")
+                    .append(channelName)
+                    .append(": ")
+                    .append(SassNumber.of(factor * 100.0, "%").toCssString())
+                    .append(")\n");
+        } else {
+            suggestion.append(":\n\n");
+        }
+
+        return suggestion.append("color.adjust($color, $")
+                .append(channelName)
+                .append(": ")
+                .append(SassNumber.of(
+                        adjustment,
+                        alpha ? null : "%"
+                ).toCssString())
+                .append(")")
+                .toString();
     }
 
     /// Global {@code adjust-color()} keyword form.

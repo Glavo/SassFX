@@ -32,6 +32,8 @@ This is the first development release.
   limits, and fatal, silence, future, and verbose deprecation policies.
   Function-unit diagnostics cover list indexes, random limits, legacy color
   constructors, color weights, channel and alpha updates, and hue adjustment.
+  Legacy color-function diagnostics cover global and module channel readers
+  plus all nine deprecated color adjustment functions with migration guidance.
 - CLI load paths, ordered platform-aware `SASS_PATH` resolution across compile,
   update/watch, and interactive modes, quiet output, dependency warning
   suppression, and fatal, silence, future, and verbose deprecation options.
