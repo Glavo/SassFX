@@ -332,7 +332,7 @@ final class BssTargetTest {
 
     /// Serializes selectors and supported values into JavaFX 17 BSS bytes.
     @Test
-    void compilesJavaFx17Bss() throws Exception {
+    void compilesJavaFX17Bss() throws Exception {
         var result = compile(BssTarget.DEFAULT);
         var output = result.output();
 
@@ -347,7 +347,7 @@ final class BssTargetTest {
 
     /// Serializes the JavaFX 27 import and media-rule framing of BSS v9.
     @Test
-    void compilesJavaFx27Bss() throws Exception {
+    void compilesJavaFX27Bss() throws Exception {
         var target = new BssTarget(JavaFXTarget.JAVAFX27);
         var output = compile(target).output();
 
@@ -473,7 +473,7 @@ final class BssTargetTest {
 
     /// Uses the JavaFX 8 converter package in BSS version 5 string tables.
     @Test
-    void writesJavaFx8ConverterClassNames() throws Exception {
+    void writesJavaFX8ConverterClassNames() throws Exception {
         var output = new SassCompiler().compile(
                 SassSource.fromString(
                         """
@@ -499,7 +499,7 @@ final class BssTargetTest {
 
     /// Reproduces JavaFX 8's gradient repeat-cycle encoding.
     @Test
-    void writesJavaFx8GradientRepeatCompatibility() throws Exception {
+    void writesJavaFX8GradientRepeatCompatibility() throws Exception {
         var compiler = new SassCompiler();
         var source = SassSource.fromString(
                 """
@@ -511,27 +511,27 @@ final class BssTargetTest {
                         """,
                 Syntax.SCSS
         );
-        var javaFx8Output = compiler.compile(
+        var javaFX8Output = compiler.compile(
                 source,
                 new BssTarget(JavaFXTarget.JAVAFX8)
         ).output();
-        var javaFx17Output = compiler.compile(
+        var javaFX17Output = compiler.compile(
                 source,
                 new BssTarget(JavaFXTarget.JAVAFX17)
         ).output();
-        var javaFx8Text = new String(
-                remainingBytes(javaFx8Output),
+        var javaFX8Text = new String(
+                remainingBytes(javaFX8Output),
                 StandardCharsets.ISO_8859_1
         );
-        var javaFx17Text = new String(
-                remainingBytes(javaFx17Output),
+        var javaFX17Text = new String(
+                remainingBytes(javaFX17Output),
                 StandardCharsets.ISO_8859_1
         );
 
-        assertTrue(javaFx8Text.contains("REFLECT"));
-        assertFalse(javaFx8Text.contains("REPEAT"));
-        assertTrue(javaFx17Text.contains("REPEAT"));
-        assertFalse(javaFx17Text.contains("REFLECT"));
+        assertTrue(javaFX8Text.contains("REFLECT"));
+        assertFalse(javaFX8Text.contains("REPEAT"));
+        assertTrue(javaFX17Text.contains("REPEAT"));
+        assertFalse(javaFX17Text.contains("REFLECT"));
     }
 
     /// Serializes JavaFX's deprecated gradient and ladder grammars.
@@ -566,51 +566,51 @@ final class BssTargetTest {
                         """,
                 Syntax.SCSS
         );
-        var javaFx8 = new SassCompiler().compile(
+        var javaFX8 = new SassCompiler().compile(
                 source,
                 new BssTarget(JavaFXTarget.JAVAFX8)
         ).output();
-        var javaFx17 = new SassCompiler().compile(
+        var javaFX17 = new SassCompiler().compile(
                 source,
                 new BssTarget(JavaFXTarget.JAVAFX17)
         ).output();
-        var javaFx8Text = new String(
-                remainingBytes(javaFx8),
+        var javaFX8Text = new String(
+                remainingBytes(javaFX8),
                 StandardCharsets.ISO_8859_1
         );
-        var javaFx17Text = new String(
-                remainingBytes(javaFx17),
+        var javaFX17Text = new String(
+                remainingBytes(javaFX17),
                 StandardCharsets.ISO_8859_1
         );
 
-        assertTrue(javaFx8Text.contains(
+        assertTrue(javaFX8Text.contains(
                 "com.sun.javafx.css.converters.PaintConverter"
                         + "$LinearGradientConverter"
         ));
-        assertTrue(javaFx8Text.contains(
+        assertTrue(javaFX8Text.contains(
                 "com.sun.javafx.css.converters.PaintConverter"
                         + "$RadialGradientConverter"
         ));
-        assertTrue(javaFx17Text.contains(
+        assertTrue(javaFX17Text.contains(
                 "javafx.css.converter.PaintConverter"
                         + "$LinearGradientConverter"
         ));
-        assertTrue(javaFx17Text.contains(
+        assertTrue(javaFX17Text.contains(
                 "javafx.css.converter.PaintConverter"
                         + "$RadialGradientConverter"
         ));
-        assertTrue(javaFx8Text.contains("REFLECT"));
-        assertTrue(javaFx8Text.contains("REPEAT"));
-        assertTrue(javaFx17Text.contains("REFLECT"));
-        assertTrue(javaFx17Text.contains("REPEAT"));
-        assertTrue(javaFx8Text.contains("-fx-start-x"));
-        assertTrue(javaFx8Text.contains("-fx-stop-offset"));
-        assertTrue(javaFx17Text.contains("-fx-end-y"));
-        assertTrue(javaFx17Text.contains("-fx-base"));
-        assertTrue(javaFx8Text.contains(
+        assertTrue(javaFX8Text.contains("REFLECT"));
+        assertTrue(javaFX8Text.contains("REPEAT"));
+        assertTrue(javaFX17Text.contains("REFLECT"));
+        assertTrue(javaFX17Text.contains("REPEAT"));
+        assertTrue(javaFX8Text.contains("-fx-start-x"));
+        assertTrue(javaFX8Text.contains("-fx-stop-offset"));
+        assertTrue(javaFX17Text.contains("-fx-end-y"));
+        assertTrue(javaFX17Text.contains("-fx-base"));
+        assertTrue(javaFX8Text.contains(
                 "com.sun.javafx.css.parser.LadderConverter"
         ));
-        assertTrue(javaFx17Text.contains(
+        assertTrue(javaFX17Text.contains(
                 "javafx.css.converter.LadderConverter"
         ));
     }
@@ -1334,7 +1334,7 @@ final class BssTargetTest {
 
     /// Uses the internal JavaFX 8 converter name for ordinary durations.
     @Test
-    void compilesJavaFx8DurationConverterName() throws Exception {
+    void compilesJavaFX8DurationConverterName() throws Exception {
         var document = decodeDocument(new SassCompiler().compile(
                 SassSource.fromString(
                         "Tooltip { -fx-show-delay: 125ms; }",
@@ -1477,7 +1477,7 @@ final class BssTargetTest {
 
     /// Uses JavaFX 8's internal converter package for shadow effects.
     @Test
-    void compilesJavaFx8ShadowConverterNames() throws Exception {
+    void compilesJavaFX8ShadowConverterNames() throws Exception {
         var document = decodeDocument(new SassCompiler().compile(
                 SassSource.fromString(
                         """
@@ -1626,7 +1626,7 @@ final class BssTargetTest {
     /// Rejects every transition declaration that affected JavaFX releases
     /// cannot deserialize from BSS.
     @Test
-    void rejectsTransitionsThatJavaFxCannotLoadFromBss() {
+    void rejectsTransitionsThatJavaFXCannotLoadFromBss() {
         String @Unmodifiable [] declarations = new String[]{
                 "transition: opacity 250ms ease-in 10ms",
                 "transition-delay: 10ms",
@@ -1688,7 +1688,7 @@ final class BssTargetTest {
 
     /// Serializes JavaFX 25 discrete media expressions into BSS version 7.
     @Test
-    void compilesJavaFx25MediaRules() throws Exception {
+    void compilesJavaFX25MediaRules() throws Exception {
         var document = decodeDocument(new SassCompiler().compile(
                 SassSource.fromString(
                         """
@@ -1735,7 +1735,7 @@ final class BssTargetTest {
 
     /// Serializes JavaFX 26 interval media expressions into BSS version 8.
     @Test
-    void compilesJavaFx26RangeMediaRules() throws Exception {
+    void compilesJavaFX26RangeMediaRules() throws Exception {
         var document = decodeDocument(new SassCompiler().compile(
                 SassSource.fromString(
                         """
@@ -1762,7 +1762,7 @@ final class BssTargetTest {
 
     /// Serializes JavaFX 27 platform media features into BSS version 9.
     @Test
-    void compilesJavaFx27PlatformMediaRules() throws Exception {
+    void compilesJavaFX27PlatformMediaRules() throws Exception {
         var document = decodeDocument(new SassCompiler().compile(
                 SassSource.fromString(
                         """
@@ -1788,7 +1788,7 @@ final class BssTargetTest {
 
     /// Resolves and embeds a conditional imported stylesheet in BSS version 9.
     @Test
-    void compilesJavaFx27ConditionalImport(@TempDir Path directory) throws Exception {
+    void compilesJavaFX27ConditionalImport(@TempDir Path directory) throws Exception {
         var imported = directory.resolve("theme.css");
         var root = directory.resolve("root.css");
         Files.writeString(
@@ -1837,7 +1837,7 @@ final class BssTargetTest {
 
     /// Flattens unconditional imports for BSS versions predating import framing.
     @Test
-    void flattensImportForJavaFx17(@TempDir Path directory) throws Exception {
+    void flattensImportForJavaFX17(@TempDir Path directory) throws Exception {
         var imported = directory.resolve("theme.css");
         var root = directory.resolve("root.css");
         Files.writeString(

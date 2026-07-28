@@ -19,9 +19,9 @@ import java.util.Objects;
 /// OpenJFX represents both supported shadow functions as six nested parsed
 /// values: blur type, color, radius, spread or choke, x offset, and y offset.
 @NotNullByDefault
-final class JavaFxEffectParser {
+final class JavaFXEffectParser {
     /// Prevents instantiation.
-    private JavaFxEffectParser() {
+    private JavaFXEffectParser() {
     }
 
     /// Returns whether a value begins with a supported JavaFX effect function.
@@ -64,7 +64,7 @@ final class JavaFxEffectParser {
         return new ShadowEffect(
                 kind,
                 parseBlurType(arguments.get(0), span),
-                JavaFxPaintParser.parseColorPaint(arguments.get(1), span),
+                JavaFXPaintParser.parseColorPaint(arguments.get(1), span),
                 parseSize(arguments.get(2), span),
                 parseSize(arguments.get(3), span),
                 parseSize(arguments.get(4), span),
@@ -79,7 +79,7 @@ final class JavaFxEffectParser {
     /// @return the normalized size representation
     /// @throws BssSerializeException if the token is neither a size nor a lookup
     private static EffectSize parseSize(String text, SourceSpan span) {
-        @Nullable SassNumber number = JavaFxPaintParser.tryParseSize(text);
+        @Nullable SassNumber number = JavaFXPaintParser.tryParseSize(text);
         if (number != null) {
             if (!isSupportedEffectSize(number)) {
                 throw invalidEffect(span);
@@ -87,7 +87,7 @@ final class JavaFxEffectParser {
             return new RawEffectSize(number);
         }
         var lookup = text.trim();
-        if (JavaFxPaintParser.isLookupIdentifier(lookup)) {
+        if (JavaFXPaintParser.isLookupIdentifier(lookup)) {
             return new LookupEffectSize(lookup);
         }
         throw invalidEffect(span);
@@ -333,7 +333,7 @@ final class JavaFxEffectParser {
     record ShadowEffect(
             EffectKind kind,
             String blurType,
-            JavaFxPaintParser.ColorPaint color,
+            JavaFXPaintParser.ColorPaint color,
             EffectSize radius,
             EffectSize spreadOrChoke,
             EffectSize offsetX,

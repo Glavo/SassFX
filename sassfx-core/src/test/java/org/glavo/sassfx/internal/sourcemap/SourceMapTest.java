@@ -105,7 +105,7 @@ final class SourceMapTest {
 
     /// Accounts for the separator required by compressed JavaFX media rules.
     @Test
-    void mapsCompressedJavaFxMediaRules() throws Exception {
+    void mapsCompressedJavaFXMediaRules() throws Exception {
         var result = new SassCompiler().compile(
                 SassSource.fromString(
                         """

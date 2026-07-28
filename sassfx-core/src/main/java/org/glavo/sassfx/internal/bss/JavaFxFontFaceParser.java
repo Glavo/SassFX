@@ -20,9 +20,9 @@ import java.util.Objects;
 /// written, matching JavaFX's stylesheet-relative URL conversion without
 /// loading JavaFX classes at compilation time.
 @NotNullByDefault
-final class JavaFxFontFaceParser {
+final class JavaFXFontFaceParser {
     /// Prevents instantiation.
-    private JavaFxFontFaceParser() {
+    private JavaFXFontFaceParser() {
     }
 
     /// Parses one comma-separated JavaFX {@code src} descriptor value.

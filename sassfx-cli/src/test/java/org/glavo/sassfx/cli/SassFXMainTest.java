@@ -131,7 +131,7 @@ final class SassFXMainTest {
 
     /// Compiles compressed JavaFX CSS to stdout.
     @Test
-    void compilesCompressedJavaFxCssToStdout(@TempDir Path directory) throws Exception {
+    void compilesCompressedJavaFXCssToStdout(@TempDir Path directory) throws Exception {
         var input = directory.resolve("style.scss");
         Files.writeString(input, "a { -fx-text-fill: red; }");
 
@@ -275,7 +275,7 @@ final class SassFXMainTest {
 
     /// Accepts every boundary of the configurable JavaFX target range.
     @Test
-    void acceptsJavaFxTargetRange(@TempDir Path directory) throws Exception {
+    void acceptsJavaFXTargetRange(@TempDir Path directory) throws Exception {
         var input = directory.resolve("style.scss");
         Files.writeString(input, "Pane { -fx-opacity: 1; }");
 
@@ -294,7 +294,7 @@ final class SassFXMainTest {
 
     /// Rejects JavaFX target values outside the supported integer range.
     @Test
-    void rejectsInvalidJavaFxTargets(@TempDir Path directory) throws Exception {
+    void rejectsInvalidJavaFXTargets(@TempDir Path directory) throws Exception {
         var input = directory.resolve("style.scss");
         Files.writeString(input, "Pane { -fx-opacity: 1; }");
 

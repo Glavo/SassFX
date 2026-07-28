@@ -17,9 +17,9 @@ import java.util.Base64;
 /// The helper is compiled for Java 8 and accesses JavaFX through reflection so
 /// its compile classpath contains neither JavaFX nor SassFX product classes.
 @NotNullByDefault
-public final class JavaFx8OracleHelper {
+public final class JavaFX8OracleHelper {
     /// Prevents instantiation.
-    private JavaFx8OracleHelper() {
+    private JavaFX8OracleHelper() {
     }
 
     /// Generates JavaFX 8 BSS, compares it with SassFX, and loads the result.
@@ -38,13 +38,13 @@ public final class JavaFx8OracleHelper {
         }
 
         Class<?> stylesheetClass = Class.forName("com.sun.javafx.css.Stylesheet");
-        String javaFxVersion = System.getProperty(
+        String javaFXVersion = System.getProperty(
                 "javafx.runtime.version",
                 System.getProperty("javafx.version", "")
         );
-        if (!javaFxVersion.isEmpty() && !javaFxVersion.startsWith("8")) {
+        if (!javaFXVersion.isEmpty() && !javaFXVersion.startsWith("8")) {
             throw new IllegalStateException(
-                    "JavaFX 8 oracle requires a JavaFX 8 runtime; found " + javaFxVersion
+                    "JavaFX 8 oracle requires a JavaFX 8 runtime; found " + javaFXVersion
             );
         }
 

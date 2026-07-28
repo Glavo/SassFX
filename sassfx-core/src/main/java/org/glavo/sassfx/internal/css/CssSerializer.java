@@ -949,7 +949,7 @@ public final class CssSerializer {
         try {
             var value = declaration.value().value();
             @Nullable var legacyGradient = javaFX
-                    ? JavaFxLegacyGradient.serialize(value)
+                    ? JavaFXLegacyGradient.serialize(value)
                     : null;
             var css = legacyGradient != null
                     ? legacyGradient

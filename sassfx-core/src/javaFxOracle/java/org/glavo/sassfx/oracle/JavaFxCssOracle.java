@@ -30,9 +30,9 @@ import java.util.logging.Logger;
 /// This class belongs to an isolated development source set. It is absent from
 /// product runtime and publication classpaths.
 @NotNullByDefault
-public final class JavaFxCssOracle {
+public final class JavaFXCssOracle {
     /// Prevents instantiation.
-    private JavaFxCssOracle() {
+    private JavaFXCssOracle() {
     }
 
     /// Runs the fixture matrix for one JavaFX release target.

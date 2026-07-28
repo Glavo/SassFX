@@ -65,6 +65,6 @@ jobs:
       - name: Verify JavaFX compatibility matrix
         run: >-
           ./gradlew --no-daemon
-          :sassfx-core:verifyAllJavaFxCssOracles
-          -PjavaFx8OracleJavaHome="$JAVAFX8_HOME"
+          :sassfx-core:verifyAllJavaFXCssOracles
+          -PjavaFX8OracleJavaHome="$JAVAFX8_HOME"
           --warning-mode all

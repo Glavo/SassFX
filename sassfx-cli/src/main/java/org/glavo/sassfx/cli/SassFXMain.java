@@ -882,7 +882,7 @@ public final class SassFXMain implements Callable<Integer> {
                             job.destination(),
                             new JavaFXCssTarget(
                                     Objects.requireNonNull(
-                                            context.javaFxTarget()
+                                            context.javaFXTarget()
                                     ),
                                     Objects.requireNonNull(context.outputStyle()),
                                     charsetEnabled()
@@ -905,7 +905,7 @@ public final class SassFXMain implements Callable<Integer> {
                             job.source(),
                             Objects.requireNonNull(job.destination()),
                             new BssTarget(Objects.requireNonNull(
-                                    context.javaFxTarget()
+                                    context.javaFXTarget()
                             )),
                             context.compileOptions(),
                             incremental,
@@ -2263,7 +2263,7 @@ public final class SassFXMain implements Callable<Integer> {
     /// Contains immutable settings shared by every job in one invocation.
     ///
     /// @param targetBackend the selected output backend
-    /// @param javaFxTarget selected JavaFX release, or {@code null} for
+    /// @param javaFXTarget selected JavaFX release, or {@code null} for
     /// standard CSS
     /// @param outputStyle text output style, or {@code null} for BSS
     /// @param compileOptions compiler options
@@ -2277,7 +2277,7 @@ public final class SassFXMain implements Callable<Integer> {
     @NotNullByDefault
     private record ExecutionContext(
             CliBackend targetBackend,
-            @Nullable JavaFXTarget javaFxTarget,
+            @Nullable JavaFXTarget javaFXTarget,
             @Nullable OutputStyle outputStyle,
             CompileOptions compileOptions,
             OutputPolicy outputPolicy,

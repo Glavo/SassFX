@@ -71,7 +71,7 @@ final class JavaFXCssValidatorTest {
 
     /// Rejects unsupported media-query syntax for JavaFX 27.
     @Test
-    void rejectsUnsupportedJavaFx27MediaQuery() {
+    void rejectsUnsupportedJavaFX27MediaQuery() {
         var media = new CssMediaRule(
                 CssMediaQuery.parseList("screen"),
                 span("@media screen")
@@ -581,7 +581,7 @@ final class JavaFXCssValidatorTest {
 
     /// Accepts a blend mode supported by JavaFX 17.
     @Test
-    void acceptsJavaFx17BlendMode() {
+    void acceptsJavaFX17BlendMode() {
         assertDoesNotThrow(
                 () -> JavaFXCssValidator.validate(
                         stylesheet(
@@ -606,7 +606,7 @@ final class JavaFXCssValidatorTest {
             ".button#main:hover",
             "VBox > .button .label"
     })
-    void acceptsJavaFxSelectors(String selector) {
+    void acceptsJavaFXSelectors(String selector) {
         for (var compatibility : JavaFXTarget.values()) {
             assertDoesNotThrow(
                     () -> JavaFXCssValidator.validate(
@@ -635,7 +635,7 @@ final class JavaFXCssValidatorTest {
             "Pane:is(.active)",
             "svg|Pane"
     })
-    void rejectsUnsupportedJavaFxSelectors(String selector) {
+    void rejectsUnsupportedJavaFXSelectors(String selector) {
         for (var compatibility : JavaFXTarget.values()) {
             assertThrows(
                     CssSerializeException.class,

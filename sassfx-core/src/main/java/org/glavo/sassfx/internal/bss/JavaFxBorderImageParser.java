@@ -19,9 +19,9 @@ import java.util.Objects;
 /// The parser reconstructs JavaFX's layered four-sided size shorthands, border-image
 /// slice records, and property lookup treatment without loading JavaFX classes.
 @NotNullByDefault
-final class JavaFxBorderImageParser {
+final class JavaFXBorderImageParser {
     /// Prevents instantiation.
-    private JavaFxBorderImageParser() {
+    private JavaFXBorderImageParser() {
     }
 
     /// Parses JavaFX border-image inset layers.

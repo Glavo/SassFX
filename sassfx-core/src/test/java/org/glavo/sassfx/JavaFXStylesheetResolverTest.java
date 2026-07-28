@@ -243,7 +243,7 @@ final class JavaFXStylesheetResolverTest {
 
     /// Does not resolve imports retained in textual JavaFX CSS output.
     @Test
-    void doesNotResolveTextualJavaFxCssImports() throws Exception {
+    void doesNotResolveTextualJavaFXCssImports() throws Exception {
         var calls = new AtomicInteger();
         JavaFXStylesheetResolver resolver = (resource, baseUrl) -> {
             calls.incrementAndGet();

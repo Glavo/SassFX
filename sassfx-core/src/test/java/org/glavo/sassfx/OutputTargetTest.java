@@ -55,7 +55,7 @@ final class OutputTargetTest {
 
     /// Verifies every supported JavaFX release and BSS format mapping.
     @Test
-    void exposesContinuousJavaFxTargets() {
+    void exposesContinuousJavaFXTargets() {
         var targets = JavaFXTarget.values();
         assertEquals(20, targets.length);
 

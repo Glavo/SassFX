@@ -171,7 +171,7 @@ final class JavaFXMediaQueryValidatorTest {
             "input-touch",
             "input-multitouch"
     })
-    void acceptsJavaFx27ConditionalInputFeatures(String value) {
+    void acceptsJavaFX27ConditionalInputFeatures(String value) {
         var query = "(-fx-supports-conditional-feature: " + value + ")";
 
         assertDoesNotThrow(() -> JavaFXMediaQueryValidator.validate(

@@ -24,9 +24,9 @@ import java.util.Objects;
 /// semantic meaning to parenthesized comma lists.
 @ApiStatus.Internal
 @NotNullByDefault
-public final class JavaFxLegacyGradient {
+public final class JavaFXLegacyGradient {
     /// Prevents instantiation.
-    private JavaFxLegacyGradient() {
+    private JavaFXLegacyGradient() {
     }
 
     /// Contains one recognized paint and the first unconsumed list index.

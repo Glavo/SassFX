@@ -25,21 +25,21 @@ or conflict with the pinned artifacts.
 Each task accepts a version-specific override:
 
 ```text
--PjavaFx17OracleJavaHome=<jdk>
--PjavaFx18OracleJavaHome=<jdk>
--PjavaFx23OracleJavaHome=<jdk>
--PjavaFx25OracleJavaHome=<jdk>
--PjavaFx26OracleJavaHome=<jdk>
--PjavaFx27OracleJavaHome=<jdk>
+-PjavaFX17OracleJavaHome=<jdk>
+-PjavaFX18OracleJavaHome=<jdk>
+-PjavaFX23OracleJavaHome=<jdk>
+-PjavaFX25OracleJavaHome=<jdk>
+-PjavaFX26OracleJavaHome=<jdk>
+-PjavaFX27OracleJavaHome=<jdk>
 ```
 
-`-PjavaFxOracleJavaHome=<jdk>` supplies one compatible JDK for every modular
+`-PjavaFXOracleJavaHome=<jdk>` supplies one compatible JDK for every modular
 oracle. Use a distribution that does not bundle JavaFX.
 
 Run the modular matrix with:
 
 ```text
-./gradlew :sassfx-core:verifyJavaFxCssOracles
+./gradlew :sassfx-core:verifyJavaFXCssOracles
 ```
 
 ## JavaFX 8
@@ -55,21 +55,21 @@ processes:
 The Java 8 JDK must include JavaFX 8. Configure it explicitly:
 
 ```text
-./gradlew :sassfx-core:verifyJavaFx8CssOracle -PjavaFx8OracleJavaHome=<javafx-8-jdk>
+./gradlew :sassfx-core:verifyJavaFX8CssOracle -PjavaFX8OracleJavaHome=<javafx-8-jdk>
 ```
 
 Run every configured oracle with:
 
 ```text
-./gradlew :sassfx-core:verifyAllJavaFxCssOracles -PjavaFx8OracleJavaHome=<javafx-8-jdk>
+./gradlew :sassfx-core:verifyAllJavaFXCssOracles -PjavaFX8OracleJavaHome=<javafx-8-jdk>
 ```
 
 CI should pin the JavaFX 8 vendor, update release, archive checksum, and
-`javaFx8OracleJavaHome` instead of using an arbitrary installed JDK.
+`javaFX8OracleJavaHome` instead of using an arbitrary installed JDK.
 
 ## Offline Artifacts
 
-`-PjavaFxOracleDirectory=<directory>` replaces Maven resolution. The directory
+`-PjavaFXOracleDirectory=<directory>` replaces Maven resolution. The directory
 must contain `javafx-base.jar` and `javafx-graphics.jar` under each modular
 version directory:
 

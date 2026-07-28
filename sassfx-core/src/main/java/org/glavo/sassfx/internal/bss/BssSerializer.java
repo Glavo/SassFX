@@ -27,7 +27,7 @@ import org.glavo.sassfx.internal.css.CssUnknownAtRule;
 import org.glavo.sassfx.internal.css.JavaFXMediaQuery;
 import org.glavo.sassfx.internal.css.JavaFXMediaQueryValidator;
 import org.glavo.sassfx.internal.css.JavaFXCssImport;
-import org.glavo.sassfx.internal.css.JavaFxLegacyGradient;
+import org.glavo.sassfx.internal.css.JavaFXLegacyGradient;
 import org.glavo.sassfx.internal.value.ListSeparator;
 import org.glavo.sassfx.internal.value.SassBoolean;
 import org.glavo.sassfx.internal.value.SassColor;
@@ -572,7 +572,7 @@ public final class BssSerializer {
     /// @return a BSS-ready font-face snapshot
     private static BssFontFace collectFontFace(CssFontFace fontFace) {
         var descriptors = new HashMap<String, String>();
-        var sources = new ArrayList<JavaFxFontFaceParser.Source>();
+        var sources = new ArrayList<JavaFXFontFaceParser.Source>();
         for (var child : fontFace.children()) {
             if (child instanceof CssComment || child.isInvisible()) {
                 continue;
@@ -590,7 +590,7 @@ public final class BssSerializer {
             var name = declaration.name().value();
             var value = fontFaceValue(declaration);
             if (name.equalsIgnoreCase("src")) {
-                sources.addAll(JavaFxFontFaceParser.parseSources(
+                sources.addAll(JavaFXFontFaceParser.parseSources(
                         value,
                         declaration.value().span()
                 ));
@@ -1200,24 +1200,24 @@ public final class BssSerializer {
             return;
         }
         if (isEffectProperty(property)) {
-            if (JavaFxEffectParser.isEffectFunction(value)) {
-                writeEffectValue(output, JavaFxEffectParser.parse(value, span), span, strings);
+            if (JavaFXEffectParser.isEffectFunction(value)) {
+                writeEffectValue(output, JavaFXEffectParser.parse(value, span), span, strings);
             } else if (value instanceof SassString string
                     && !string.hasQuotes()
-                    && JavaFxPaintParser.isLookupIdentifier(string.text())) {
+                    && JavaFXPaintParser.isLookupIdentifier(string.text())) {
                 writeStringValue(output, property, string, strings);
             } else {
-                JavaFxEffectParser.parse(value, span);
+                JavaFXEffectParser.parse(value, span);
                 throw new AssertionError("invalid JavaFX effect parsing returned normally");
             }
             return;
         }
-        if (JavaFxEffectParser.isEffectFunction(value)) {
-            writeEffectValue(output, JavaFxEffectParser.parse(value, span), span, strings);
+        if (JavaFXEffectParser.isEffectFunction(value)) {
+            writeEffectValue(output, JavaFXEffectParser.parse(value, span), span, strings);
             return;
         }
-        if (JavaFxPaintParser.isPaintFunction(value)) {
-            writePaintValue(output, JavaFxPaintParser.parse(value, span), span, strings);
+        if (JavaFXPaintParser.isPaintFunction(value)) {
+            writePaintValue(output, JavaFXPaintParser.parse(value, span), span, strings);
             return;
         }
         if (isScalarUrlValue(value)) {
@@ -1722,31 +1722,31 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writePaintValue(
             DataOutputStream output,
-            JavaFxPaintParser.Paint paint,
+            JavaFXPaintParser.Paint paint,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
-        if (paint instanceof JavaFxPaintParser.ColorPaint color) {
+        if (paint instanceof JavaFXPaintParser.ColorPaint color) {
             writeColorPaintValue(output, color, span, strings);
             return;
         }
-        if (paint instanceof JavaFxPaintParser.LinearGradientPaint gradient) {
+        if (paint instanceof JavaFXPaintParser.LinearGradientPaint gradient) {
             writeLinearGradientValue(output, gradient, span, strings);
             return;
         }
-        if (paint instanceof JavaFxPaintParser.RadialGradientPaint gradient) {
+        if (paint instanceof JavaFXPaintParser.RadialGradientPaint gradient) {
             writeRadialGradientValue(output, gradient, span, strings);
             return;
         }
-        if (paint instanceof JavaFxPaintParser.ImagePatternPaint pattern) {
+        if (paint instanceof JavaFXPaintParser.ImagePatternPaint pattern) {
             writeImagePatternValue(output, pattern, span, strings);
             return;
         }
-        if (paint instanceof JavaFxPaintParser.RepeatingImagePatternPaint pattern) {
+        if (paint instanceof JavaFXPaintParser.RepeatingImagePatternPaint pattern) {
             writeRepeatingImagePatternValue(output, pattern, strings);
             return;
         }
-        if (paint instanceof JavaFxPaintParser.RegionReferencePaint reference) {
+        if (paint instanceof JavaFXPaintParser.RegionReferencePaint reference) {
             writeRegionReferenceValue(output, reference, strings);
             return;
         }
@@ -1761,7 +1761,7 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeRegionReferenceValue(
             DataOutputStream output,
-            JavaFxPaintParser.RegionReferencePaint reference,
+            JavaFXPaintParser.RegionReferencePaint reference,
             StringStore strings
     ) throws IOException {
         writeParsedHeader(output, false, STRING_CONVERTER, strings);
@@ -1778,7 +1778,7 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeEffectValue(
             DataOutputStream output,
-            JavaFxEffectParser.ShadowEffect effect,
+            JavaFXEffectParser.ShadowEffect effect,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
@@ -1806,14 +1806,14 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeEffectSize(
             DataOutputStream output,
-            JavaFxEffectParser.EffectSize size,
+            JavaFXEffectParser.EffectSize size,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
         output.writeByte(NESTED_VALUE);
-        if (size instanceof JavaFxEffectParser.RawEffectSize raw) {
+        if (size instanceof JavaFXEffectParser.RawEffectSize raw) {
             writeSizeValue(output, raw.value(), span, strings);
-        } else if (size instanceof JavaFxEffectParser.LookupEffectSize lookup) {
+        } else if (size instanceof JavaFXEffectParser.LookupEffectSize lookup) {
             writeLookupValue(output, lookup.key(), strings);
         } else {
             throw new AssertionError("unsupported JavaFX effect size type");
@@ -1829,19 +1829,19 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeColorPaintValue(
             DataOutputStream output,
-            JavaFxPaintParser.ColorPaint color,
+            JavaFXPaintParser.ColorPaint color,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
-        if (color instanceof JavaFxPaintParser.SolidPaint solid) {
+        if (color instanceof JavaFXPaintParser.SolidPaint solid) {
             writeColorValue(output, solid.color(), span, strings);
             return;
         }
-        if (color instanceof JavaFxPaintParser.LookupPaint lookup) {
+        if (color instanceof JavaFXPaintParser.LookupPaint lookup) {
             writeLookupValue(output, lookup.key(), strings);
             return;
         }
-        if (color instanceof JavaFxPaintParser.DerivedPaint derived) {
+        if (color instanceof JavaFXPaintParser.DerivedPaint derived) {
             writeParsedHeader(output, false, DERIVE_COLOR_CONVERTER, strings);
             writeParsedValueArrayPrefix(output, 2);
             output.writeByte(NESTED_VALUE);
@@ -1849,7 +1849,7 @@ public final class BssSerializer {
             writeNestedGradientSize(output, derived.brightness(), span, strings);
             return;
         }
-        if (color instanceof JavaFxPaintParser.LadderPaint ladder) {
+        if (color instanceof JavaFXPaintParser.LadderPaint ladder) {
             writeParsedHeader(output, false, LADDER_CONVERTER, strings);
             writeParsedValueArrayPrefix(output, 1 + ladder.stops().size());
             output.writeByte(NESTED_VALUE);
@@ -1891,7 +1891,7 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeImagePatternValue(
             DataOutputStream output,
-            JavaFxPaintParser.ImagePatternPaint pattern,
+            JavaFXPaintParser.ImagePatternPaint pattern,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
@@ -1936,7 +1936,7 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeRepeatingImagePatternValue(
             DataOutputStream output,
-            JavaFxPaintParser.RepeatingImagePatternPaint pattern,
+            JavaFXPaintParser.RepeatingImagePatternPaint pattern,
             StringStore strings
     ) throws IOException {
         writeParsedHeader(output, false, REPEATING_IMAGE_PATTERN_CONVERTER, strings);
@@ -1954,15 +1954,15 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeImagePatternSizeValue(
             DataOutputStream output,
-            JavaFxPaintParser.ImagePatternSize size,
+            JavaFXPaintParser.ImagePatternSize size,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
-        if (size instanceof JavaFxPaintParser.RawImagePatternSize raw) {
+        if (size instanceof JavaFXPaintParser.RawImagePatternSize raw) {
             writeSizeValue(output, raw.size(), span, strings);
             return;
         }
-        if (size instanceof JavaFxPaintParser.LookupImagePatternSize lookup) {
+        if (size instanceof JavaFXPaintParser.LookupImagePatternSize lookup) {
             writeLookupValue(output, lookup.key(), strings);
             return;
         }
@@ -1978,7 +1978,7 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeLinearGradientValue(
             DataOutputStream output,
-            JavaFxPaintParser.LinearGradientPaint gradient,
+            JavaFXPaintParser.LinearGradientPaint gradient,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
@@ -2009,7 +2009,7 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeRadialGradientValue(
             DataOutputStream output,
-            JavaFxPaintParser.RadialGradientPaint gradient,
+            JavaFXPaintParser.RadialGradientPaint gradient,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
@@ -2041,7 +2041,7 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeNullableGradientSize(
             DataOutputStream output,
-            @Nullable JavaFxPaintParser.GradientSize size,
+            @Nullable JavaFXPaintParser.GradientSize size,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
@@ -2061,15 +2061,15 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeNestedGradientSize(
             DataOutputStream output,
-            JavaFxPaintParser.GradientSize size,
+            JavaFXPaintParser.GradientSize size,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
-        if (size instanceof JavaFxPaintParser.RawGradientSize raw) {
+        if (size instanceof JavaFXPaintParser.RawGradientSize raw) {
             writeNestedGradientSize(output, raw.size(), span, strings);
             return;
         }
-        if (size instanceof JavaFxPaintParser.LookupGradientSize lookup) {
+        if (size instanceof JavaFXPaintParser.LookupGradientSize lookup) {
             output.writeByte(NESTED_VALUE);
             writeLookupValue(output, lookup.key(), strings);
             return;
@@ -2118,7 +2118,7 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeGradientStopValue(
             DataOutputStream output,
-            JavaFxPaintParser.GradientStop stop,
+            JavaFXPaintParser.GradientStop stop,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
@@ -2138,7 +2138,7 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeGradientColorValue(
             DataOutputStream output,
-            JavaFxPaintParser.ColorPaint color,
+            JavaFXPaintParser.ColorPaint color,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
@@ -2195,16 +2195,16 @@ public final class BssSerializer {
     /// @param span  the source value span
     /// @return the paints in layer order
     /// @throws BssSerializeException if a layer is not a supported paint
-    private static @Unmodifiable List<JavaFxPaintParser.Paint> backgroundPaintValues(
+    private static @Unmodifiable List<JavaFXPaintParser.Paint> backgroundPaintValues(
             SassValue value,
             SourceSpan span
     ) {
         if (!(value instanceof SassList list)) {
-            return List.of(JavaFxPaintParser.parse(value, span));
+            return List.of(JavaFXPaintParser.parse(value, span));
         }
         if (list.separator() == ListSeparator.SPACE
-                && JavaFxLegacyGradient.serialize(value) != null) {
-            return List.of(JavaFxPaintParser.parse(value, span));
+                && JavaFXLegacyGradient.serialize(value) != null) {
+            return List.of(JavaFXPaintParser.parse(value, span));
         }
         if (list.hasBrackets()
                 || list.separator() != ListSeparator.COMMA
@@ -2215,9 +2215,9 @@ public final class BssSerializer {
                     null
             );
         }
-        var paints = new ArrayList<JavaFxPaintParser.Paint>(list.contents().size());
+        var paints = new ArrayList<JavaFXPaintParser.Paint>(list.contents().size());
         for (var item : list.contents()) {
-            paints.add(JavaFxPaintParser.parse(item, span));
+            paints.add(JavaFXPaintParser.parse(item, span));
         }
         return List.copyOf(paints);
     }
@@ -3374,32 +3374,32 @@ public final class BssSerializer {
     /// @param span  the source value span
     /// @return the source-order paints
     /// @throws BssSerializeException if the layer is not a supported paint sequence
-    private static @Unmodifiable List<JavaFxPaintParser.Paint> borderPaintValues(
+    private static @Unmodifiable List<JavaFXPaintParser.Paint> borderPaintValues(
             SassValue value,
             SourceSpan span
     ) {
         if (!(value instanceof SassList list)) {
-            return List.of(JavaFxPaintParser.parse(value, span));
+            return List.of(JavaFXPaintParser.parse(value, span));
         }
         if (list.hasBrackets()
                 || list.separator() != ListSeparator.SPACE
                 || list.contents().isEmpty()) {
             throw invalidBorderPaints(span);
         }
-        var paints = new ArrayList<JavaFxPaintParser.Paint>(4);
+        var paints = new ArrayList<JavaFXPaintParser.Paint>(4);
         for (var index = 0; index < list.contents().size();) {
-            @Nullable var legacyGradient = JavaFxLegacyGradient.consume(
+            @Nullable var legacyGradient = JavaFXLegacyGradient.consume(
                     list.contents(),
                     index
             );
             if (legacyGradient != null) {
-                paints.add(JavaFxPaintParser.parse(
+                paints.add(JavaFXPaintParser.parse(
                         new SassString(legacyGradient.css(), false),
                         span
                 ));
                 index = legacyGradient.nextIndex();
             } else {
-                paints.add(JavaFxPaintParser.parse(
+                paints.add(JavaFXPaintParser.parse(
                         list.contents().get(index),
                         span
                 ));
@@ -3416,8 +3416,8 @@ public final class BssSerializer {
     ///
     /// @param supplied the one to four supplied paints
     /// @return top, right, bottom, and left paints
-    private static @Unmodifiable List<JavaFxPaintParser.Paint> expandBorderPaints(
-            List<JavaFxPaintParser.Paint> supplied
+    private static @Unmodifiable List<JavaFXPaintParser.Paint> expandBorderPaints(
+            List<JavaFXPaintParser.Paint> supplied
     ) {
         return switch (supplied.size()) {
             case 1 -> List.of(supplied.get(0), supplied.get(0), supplied.get(0), supplied.get(0));
@@ -3453,7 +3453,7 @@ public final class BssSerializer {
             SourceSpan span,
             StringStore strings
     ) throws IOException {
-        var layers = JavaFxBorderStyleParser.parseLayers(value, span);
+        var layers = JavaFXBorderStyleParser.parseLayers(value, span);
         writeParsedHeader(output, false, LAYERED_BORDER_STYLE_CONVERTER, strings);
         writeParsedValueArrayPrefix(output, layers.size());
         for (var layer : layers) {
@@ -3476,7 +3476,7 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeBorderStyleValue(
             DataOutputStream output,
-            JavaFxBorderStyleParser.BorderStyle style,
+            JavaFXBorderStyleParser.BorderStyle style,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
@@ -3503,17 +3503,17 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeBorderStyleDashValue(
             DataOutputStream output,
-            JavaFxBorderStyleParser.DashStyle dashStyle,
+            JavaFXBorderStyleParser.DashStyle dashStyle,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
         output.writeByte(NESTED_VALUE);
-        if (dashStyle instanceof JavaFxBorderStyleParser.KeywordDashStyle) {
+        if (dashStyle instanceof JavaFXBorderStyleParser.KeywordDashStyle) {
             writeParsedHeader(output, false, null, strings);
             output.writeByte(NULL_VALUE);
             return;
         }
-        if (dashStyle instanceof JavaFxBorderStyleParser.SegmentsDashStyle segments) {
+        if (dashStyle instanceof JavaFXBorderStyleParser.SegmentsDashStyle segments) {
             writeParsedHeader(output, false, SIZE_SEQUENCE_CONVERTER, strings);
             writeParsedValueArrayPrefix(output, segments.segments().size());
             for (var size : segments.segments()) {
@@ -3534,7 +3534,7 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeNullableBorderStyleNumericValue(
             DataOutputStream output,
-            @Nullable JavaFxBorderStyleParser.BorderStyleSize size,
+            @Nullable JavaFXBorderStyleParser.BorderStyleSize size,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
@@ -3578,15 +3578,15 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeBorderStyleSizeValue(
             DataOutputStream output,
-            JavaFxBorderStyleParser.BorderStyleSize size,
+            JavaFXBorderStyleParser.BorderStyleSize size,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
-        if (size instanceof JavaFxBorderStyleParser.RawBorderStyleSize raw) {
+        if (size instanceof JavaFXBorderStyleParser.RawBorderStyleSize raw) {
             writeSizeValue(output, raw.value(), span, strings);
             return;
         }
-        if (size instanceof JavaFxBorderStyleParser.LookupBorderStyleSize lookup) {
+        if (size instanceof JavaFXBorderStyleParser.LookupBorderStyleSize lookup) {
             writeLookupValue(output, lookup.key(), strings);
             return;
         }
@@ -3606,7 +3606,7 @@ public final class BssSerializer {
             SourceSpan span,
             StringStore strings
     ) throws IOException {
-        var layers = JavaFxBorderImageParser.parseInsetLayers(value, span);
+        var layers = JavaFXBorderImageParser.parseInsetLayers(value, span);
         writeParsedHeader(output, false, INSETS_SEQUENCE_CONVERTER, strings);
         writeParsedValueArrayPrefix(output, layers.size());
         for (var layer : layers) {
@@ -3628,7 +3628,7 @@ public final class BssSerializer {
             SourceSpan span,
             StringStore strings
     ) throws IOException {
-        var layers = JavaFxBorderImageParser.parseSliceLayers(value, span);
+        var layers = JavaFXBorderImageParser.parseSliceLayers(value, span);
         writeParsedHeader(output, false, SLICE_SEQUENCE_CONVERTER, strings);
         writeParsedValueArrayPrefix(output, layers.size());
         for (var layer : layers) {
@@ -3646,7 +3646,7 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeBorderImageSliceValue(
             DataOutputStream output,
-            JavaFxBorderImageParser.BorderImageSlice slice,
+            JavaFXBorderImageParser.BorderImageSlice slice,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
@@ -3671,7 +3671,7 @@ public final class BssSerializer {
             SourceSpan span,
             StringStore strings
     ) throws IOException {
-        var layers = JavaFxBorderImageParser.parseWidthLayers(value, span);
+        var layers = JavaFXBorderImageParser.parseWidthLayers(value, span);
         writeParsedHeader(output, false, BORDER_IMAGE_WIDTHS_SEQUENCE_CONVERTER, strings);
         writeParsedValueArrayPrefix(output, layers.size());
         for (var layer : layers) {
@@ -3689,7 +3689,7 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeBorderImageWidthValue(
             DataOutputStream output,
-            JavaFxBorderImageParser.FourSidedSizes widths,
+            JavaFXBorderImageParser.FourSidedSizes widths,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
@@ -3710,7 +3710,7 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeBorderImageInsetsValue(
             DataOutputStream output,
-            JavaFxBorderImageParser.FourSidedSizes insets,
+            JavaFXBorderImageParser.FourSidedSizes insets,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
@@ -3731,15 +3731,15 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeBorderImageSizeValue(
             DataOutputStream output,
-            JavaFxBorderImageParser.SizeValue size,
+            JavaFXBorderImageParser.SizeValue size,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
-        if (size instanceof JavaFxBorderImageParser.RawSizeValue raw) {
+        if (size instanceof JavaFXBorderImageParser.RawSizeValue raw) {
             writeSizeValue(output, raw.value(), span, strings);
             return;
         }
-        if (size instanceof JavaFxBorderImageParser.LookupSizeValue lookup) {
+        if (size instanceof JavaFXBorderImageParser.LookupSizeValue lookup) {
             writeLookupValue(output, lookup.key(), strings);
             return;
         }
@@ -3948,8 +3948,8 @@ public final class BssSerializer {
                 ? new ArrayList<>(expandCornerRadii(vertical))
                 : new ArrayList<>(normalizedHorizontal);
         for (var index = 0; index < normalizedHorizontal.size(); index++) {
-            if (isJavaFxPixelZero(normalizedHorizontal.get(index))
-                    || isJavaFxPixelZero(normalizedVertical.get(index))) {
+            if (isJavaFXPixelZero(normalizedHorizontal.get(index))
+                    || isJavaFXPixelZero(normalizedVertical.get(index))) {
                 var zero = SassNumber.of(0.0, "px");
                 normalizedHorizontal.set(index, zero);
                 normalizedVertical.set(index, zero);
@@ -4005,7 +4005,7 @@ public final class BssSerializer {
     ///
     /// @param number the Sass size
     /// @return whether the parsed JavaFX size equals zero pixels
-    private static boolean isJavaFxPixelZero(SassNumber number) {
+    private static boolean isJavaFXPixelZero(SassNumber number) {
         return number.value() == 0.0
                 && number.denominatorUnits().isEmpty()
                 && (number.isUnitless()
@@ -4118,8 +4118,8 @@ public final class BssSerializer {
             }
             default -> {
                 if (string.hasQuotes()) {
-                    @Nullable JavaFxPaintParser.SolidPaint color =
-                            JavaFxPaintParser.tryParseSolidColor(string.text(), span);
+                    @Nullable JavaFXPaintParser.SolidPaint color =
+                            JavaFXPaintParser.tryParseSolidColor(string.text(), span);
                     if (color != null) {
                         writeColorValue(output, color.color(), span, strings);
                         return;
@@ -4919,7 +4919,7 @@ public final class BssSerializer {
     ///
     /// @param paints the top, right, bottom, and left paints
     @NotNullByDefault
-    private record BorderPaintLayer(@Unmodifiable List<JavaFxPaintParser.Paint> paints) {
+    private record BorderPaintLayer(@Unmodifiable List<JavaFXPaintParser.Paint> paints) {
         /// Creates an immutable normalized border paint layer.
         ///
         /// @throws IllegalArgumentException if the layer does not contain exactly four paints
@@ -4998,7 +4998,7 @@ public final class BssSerializer {
     @NotNullByDefault
     private record BssFontFace(
             @Unmodifiable Map<String, String> descriptors,
-            @Unmodifiable List<JavaFxFontFaceParser.Source> sources,
+            @Unmodifiable List<JavaFXFontFaceParser.Source> sources,
             SourceSpan span
     ) {
         /// Creates one immutable font-face snapshot.

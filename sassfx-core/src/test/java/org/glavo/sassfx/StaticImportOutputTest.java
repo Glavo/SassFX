@@ -141,25 +141,25 @@ final class StaticImportOutputTest {
 
     /// Serializes unconditional imports for both JavaFX compatibility levels.
     @Test
-    void serializesJavaFxCssImports() throws Exception {
+    void serializesJavaFXCssImports() throws Exception {
         var source = SassSource.fromString("@import \"theme.css\";", Syntax.SCSS);
         var compiler = new SassCompiler();
-        var javaFx17 = compiler.compile(
+        var javaFX17 = compiler.compile(
                 source,
                 new JavaFXCssTarget(JavaFXTarget.JAVAFX17, OutputStyle.COMPRESSED)
         ).output();
-        var javaFx27 = compiler.compile(
+        var javaFX27 = compiler.compile(
                 source,
                 new JavaFXCssTarget(JavaFXTarget.JAVAFX27, OutputStyle.COMPRESSED)
         ).output();
 
-        assertEquals("@import \"theme.css\";", javaFx17);
-        assertEquals("@import \"theme.css\";", javaFx27);
+        assertEquals("@import \"theme.css\";", javaFX17);
+        assertEquals("@import \"theme.css\";", javaFX27);
     }
 
     /// Rejects conditional imports whose semantics differ on JavaFX 17.
     @Test
-    void rejectsConditionalImportsForJavaFx17() {
+    void rejectsConditionalImportsForJavaFX17() {
         var failure = assertThrows(
                 SassCompilationException.class,
                 () -> new SassCompiler().compile(
@@ -182,7 +182,7 @@ final class StaticImportOutputTest {
 
     /// Serializes JavaFX 27 media conditions after the import URL.
     @Test
-    void serializesConditionalImportsForJavaFx27() throws Exception {
+    void serializesConditionalImportsForJavaFX27() throws Exception {
         var result = new SassCompiler().compile(
                 SassSource.fromString(
                         "@import \"theme.css\" (prefers-color-scheme: dark);",

@@ -77,7 +77,7 @@ final class SassFXPluginTest {
 
     /// Compiles strict JavaFX CSS and BSS targets without JavaFX dependencies.
     @Test
-    void compilesJavaFxCssAndBssTargets(@TempDir Path project)
+    void compilesJavaFXCssAndBssTargets(@TempDir Path project)
             throws IOException {
         writeProject(
                 project,

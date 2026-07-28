@@ -20,7 +20,7 @@ import java.nio.file.Path;
 /// This generator runs on Java 17 and is the only side of the JavaFX 8 oracle
 /// that loads SassFX product classes.
 @NotNullByDefault
-public final class JavaFx8OracleInputGenerator {
+public final class JavaFX8OracleInputGenerator {
     /// Contains the shared JavaFX 8 compatibility fixture.
     private static final String SOURCE = """
             @font-face {
@@ -160,7 +160,7 @@ public final class JavaFx8OracleInputGenerator {
             """;
 
     /// Prevents instantiation.
-    private JavaFx8OracleInputGenerator() {
+    private JavaFX8OracleInputGenerator() {
     }
 
     /// Writes generated CSS and SassFX BSS into the requested directory.

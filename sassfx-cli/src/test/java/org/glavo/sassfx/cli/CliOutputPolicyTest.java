@@ -451,7 +451,7 @@ final class CliOutputPolicyTest {
 
     /// Applies textual charset and source-map policies to JavaFX CSS.
     @Test
-    void appliesTextPoliciesToJavaFxCss(@TempDir Path directory)
+    void appliesTextPoliciesToJavaFXCss(@TempDir Path directory)
             throws Exception {
         var input = directory.resolve("in.scss");
         var output = directory.resolve("out.css");

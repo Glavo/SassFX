@@ -2,7 +2,7 @@
 package org.glavo.sassfx.internal.bss;
 
 import org.glavo.sassfx.SourceSpan;
-import org.glavo.sassfx.internal.css.JavaFxLegacyGradient;
+import org.glavo.sassfx.internal.css.JavaFXLegacyGradient;
 import org.glavo.sassfx.internal.value.SassColor;
 import org.glavo.sassfx.internal.value.SassNumber;
 import org.glavo.sassfx.internal.value.SassString;
@@ -26,7 +26,7 @@ import java.util.regex.Pattern;
 /// paint declarations, including `region(...)` selector references, without
 /// loading JavaFX classes at compilation time.
 @NotNullByDefault
-final class JavaFxPaintParser {
+final class JavaFXPaintParser {
     /// Matches one finite decimal CSS number followed by an optional unit.
     private static final Pattern SIZE_PATTERN = Pattern.compile(
             "([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?)([%a-zA-Z]+)?"
@@ -51,7 +51,7 @@ final class JavaFxPaintParser {
     private static final SassNumber ONE_HUNDRED_PERCENT = SassNumber.of(100.0, "%");
 
     /// Prevents instantiation.
-    private JavaFxPaintParser() {
+    private JavaFXPaintParser() {
     }
 
     /// Parses one BSS paint declaration value.
@@ -66,7 +66,7 @@ final class JavaFxPaintParser {
         if (value instanceof SassColor color) {
             return new SolidPaint(color);
         }
-        @Nullable var legacyGradient = JavaFxLegacyGradient.serialize(value);
+        @Nullable var legacyGradient = JavaFXLegacyGradient.serialize(value);
         if (legacyGradient != null) {
             return parseTextPaint(legacyGradient, span);
         }
@@ -85,7 +85,7 @@ final class JavaFxPaintParser {
     /// @param value the evaluated Sass value
     /// @return whether the value begins with a supported unquoted paint function
     static boolean isPaintFunction(SassValue value) {
-        if (JavaFxLegacyGradient.serialize(value) != null) {
+        if (JavaFXLegacyGradient.serialize(value) != null) {
             return true;
         }
         if (!(value instanceof SassString string) || string.hasQuotes()) {

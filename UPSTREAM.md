@@ -26,8 +26,8 @@ compatibility oracles.
 The isolated JavaFX CSS oracles are run with:
 
 ```shell
-./gradlew :sassfx-core:verifyAllJavaFxCssOracles \
-  -PjavaFx8OracleJavaHome=<javafx-8-jdk>
+./gradlew :sassfx-core:verifyAllJavaFXCssOracles \
+  -PjavaFX8OracleJavaHome=<javafx-8-jdk>
 ```
 
 The modular tasks resolve pinned platform-specific OpenJFX artifacts and use a

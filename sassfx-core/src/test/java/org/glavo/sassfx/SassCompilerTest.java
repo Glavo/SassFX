@@ -182,7 +182,7 @@ final class SassCompilerTest {
 
     /// Compiles a JavaFX CSS target without a JavaFX runtime dependency.
     @Test
-    void compilesJavaFxCssTargets() throws Exception {
+    void compilesJavaFXCssTargets() throws Exception {
         var compiler = new SassCompiler();
         var result = compiler.compile(
                 SassSource.fromString("a { -fx-text-fill: #f00; }", Syntax.SCSS),
@@ -198,7 +198,7 @@ final class SassCompilerTest {
 
     /// Restores legacy JavaFX gradient grouping only for JavaFX CSS targets.
     @Test
-    void serializesDirectLegacyJavaFxGradients() throws Exception {
+    void serializesDirectLegacyJavaFXGradients() throws Exception {
         var source = SassSource.fromString(
                 """
                         Pane {
@@ -253,24 +253,24 @@ final class SassCompilerTest {
 
     /// Preserves declaration meaning across JavaFX compatibility levels.
     @Test
-    void validatesVersionSpecificJavaFxDeclarations() throws Exception {
+    void validatesVersionSpecificJavaFXDeclarations() throws Exception {
         var compiler = new SassCompiler();
         var transitionSource = SassSource.fromString(
                 "Pane { transition: -fx-opacity 100ms linear; }",
                 Syntax.SCSS
         );
-        var javaFx17 = new JavaFXCssTarget(
+        var javaFX17 = new JavaFXCssTarget(
                 JavaFXTarget.JAVAFX17,
                 OutputStyle.COMPRESSED
         );
-        var javaFx27 = new JavaFXCssTarget(
+        var javaFX27 = new JavaFXCssTarget(
                 JavaFXTarget.JAVAFX27,
                 OutputStyle.COMPRESSED
         );
 
         var transitionFailure = assertThrows(
                 SassCompilationException.class,
-                () -> compiler.compile(transitionSource, javaFx17)
+                () -> compiler.compile(transitionSource, javaFX17)
         );
         assertEquals(
                 "JavaFX 17 CSS does not support property transition.",
@@ -278,7 +278,7 @@ final class SassCompilerTest {
         );
         assertEquals(
                 "Pane{transition:-fx-opacity 100ms linear}",
-                compiler.compile(transitionSource, javaFx27).output()
+                compiler.compile(transitionSource, javaFX27).output()
         );
 
         var redBlendMode = SassSource.fromString(
@@ -287,7 +287,7 @@ final class SassCompilerTest {
         );
         var blendFailure = assertThrows(
                 SassCompilationException.class,
-                () -> compiler.compile(redBlendMode, javaFx17)
+                () -> compiler.compile(redBlendMode, javaFX17)
         );
         assertEquals(
                 "JavaFX 17 CSS does not support -fx-blend-mode value red.",
@@ -295,7 +295,7 @@ final class SassCompilerTest {
         );
         assertEquals(
                 "Pane{-fx-blend-mode:red}",
-                compiler.compile(redBlendMode, javaFx27).output()
+                compiler.compile(redBlendMode, javaFX27).output()
         );
 
         assertEquals(
@@ -305,7 +305,7 @@ final class SassCompilerTest {
                                 "Pane { -fx-blend-mode: multiply; }",
                                 Syntax.SCSS
                         ),
-                        javaFx17
+                        javaFX17
                 ).output()
         );
     }
@@ -699,7 +699,7 @@ final class SassCompilerTest {
 
     /// Compiles JavaFX 27 media conditions and rejects them for JavaFX 17.
     @Test
-    void compilesMediaRulesForCssAndJavaFxCssTargets() throws Exception {
+    void compilesMediaRulesForCssAndJavaFXCssTargets() throws Exception {
         var source = """
                 $minimum: 600px;
                 @media (min-width: #{$minimum}) {
@@ -730,7 +730,7 @@ final class SassCompilerTest {
                 css.output()
         );
 
-        var javaFx = new SassCompiler().compile(
+        var javaFX = new SassCompiler().compile(
                 SassSource.fromString(source, Syntax.SCSS),
                 new JavaFXCssTarget(
                         JavaFXTarget.JAVAFX27,
@@ -740,7 +740,7 @@ final class SassCompilerTest {
         assertEquals(
                 "@media (min-width: 600px){Pane{-fx-opacity:1}}"
                         + "@media (orientation: landscape){Pane{-fx-opacity:0.5}}",
-                javaFx.output()
+                javaFX.output()
         );
 
         var failure = assertThrows(
@@ -758,7 +758,7 @@ final class SassCompilerTest {
 
     /// Validates transition functions after SassScript evaluation and serialization.
     @Test
-    void compilesEvaluatedJavaFxTransitions() throws Exception {
+    void compilesEvaluatedJavaFXTransitions() throws Exception {
         var source = """
                 $duration: 120ms;
                 $curve: cubic-bezier(0.1, -2, 0.9, 3);
@@ -804,7 +804,7 @@ final class SassCompilerTest {
 
     /// Compiles supports rules for CSS and rejects them for JavaFX CSS.
     @Test
-    void compilesSupportsRulesForCssAndJavaFxCssTargets() throws Exception {
+    void compilesSupportsRulesForCssAndJavaFXCssTargets() throws Exception {
         var source = """
                 $display: grid;
                 @supports (display: #{$display}) {
@@ -1204,7 +1204,7 @@ final class SassCompilerTest {
 
     /// Rejects native CSS nesting that JavaFX would silently discard.
     @Test
-    void serializesNativeCssNestingForJavaFxCss() {
+    void serializesNativeCssNestingForJavaFXCss() {
         var failure = assertThrows(
                 SassCompilationException.class,
                 () -> new SassCompiler().compile(

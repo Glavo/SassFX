@@ -24,14 +24,14 @@ import java.util.regex.Pattern;
 /// records. This parser reconstructs its documented dash, phase, stroke-type,
 /// line-join, and line-cap grammar without loading JavaFX classes.
 @NotNullByDefault
-final class JavaFxBorderStyleParser {
+final class JavaFXBorderStyleParser {
     /// Matches one finite decimal CSS number followed by an optional unit.
     private static final Pattern SIZE_PATTERN = Pattern.compile(
             "([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?)([%a-zA-Z]+)?"
     );
 
     /// Prevents instantiation.
-    private JavaFxBorderStyleParser() {
+    private JavaFXBorderStyleParser() {
     }
 
     /// Parses one JavaFX border-style declaration into normalized layers.
