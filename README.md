@@ -5,8 +5,8 @@ and plain CSS to standard CSS, validated JavaFX CSS, or JavaFX binary
 stylesheets (BSS).
 
 The compiler does not load JavaFX, invoke Dart Sass or Node.js, use FFI, or
-ship native libraries. The current version is an unpublished
-`0.1.0-SNAPSHOT`.
+ship native libraries. Local builds use `0.1.0-SNAPSHOT` unless
+`-PsassfxVersion=<version>` or `SASSFX_VERSION` supplies a release version.
 
 ## Highlights
 
@@ -37,6 +37,7 @@ Use the checked-in Gradle Wrapper:
 ```shell
 ./gradlew assemble
 ./gradlew check
+./gradlew verifyPublishedConsumer
 ```
 
 On Windows:
@@ -44,6 +45,7 @@ On Windows:
 ```powershell
 .\gradlew.ps1 assemble
 .\gradlew.ps1 check
+.\gradlew.ps1 verifyPublishedConsumer
 ```
 
 Product code and artifacts target Java 17. `check` runs the module tests, the
@@ -67,8 +69,15 @@ applications with automatic module names `org.glavo.sassfx.embedded` and
 `org.glavo.sassfx.cli`. They contain relocated runtime dependencies but no
 JavaFX, FFI, or native content.
 
-No public artifact repository is configured yet. Do not treat the current
-group and version as published Maven coordinates.
+All four projects are configured for signed Maven Central publication with
+sources, Javadoc, license, developer, and SCM metadata. CLI and Embedded
+publications use their self-contained shaded JARs as the main artifacts. The
+Gradle plugin is also configured for Plugin Portal publication.
+`verifyPublishedConsumer` stages every publication in an isolated repository,
+resolves the plugin and library from a consumer build, compiles Java and SCSS,
+and runs both executable artifacts. Release tags use the version derived from
+the tag; configuring publication does not imply that a particular version has
+already been released.
 
 ## Gradle Plugin
 
@@ -80,7 +89,7 @@ inputs but are treated as partials and do not receive their own output.
 ```kotlin
 plugins {
     java
-    id("org.glavo.sassfx")
+    id("org.glavo.sassfx") version "<version>"
 }
 
 sassfx {
@@ -111,7 +120,8 @@ tasks.register<org.glavo.sassfx.gradle.SassFXCompile>("compileThemeBss") {
 The task tracks the source and load-path trees, supports the Gradle build and
 configuration caches, removes stale files, detects output-path collisions,
 and replaces the output tree only after every entrypoint compiles
-successfully. The plugin is not yet available from a public plugin repository.
+successfully. Release versions are published through the Gradle Plugin Portal
+workflow.
 
 ## Command Line
 
@@ -164,7 +174,7 @@ Usage: sassfx [OPTIONS] INPUT [OUTPUT]
 | `--[no-]trace` | Appends Java implementation stack traces to Sass and IO failures |
 | `-o`, `--output` | Writes to a file instead of standard output |
 | `-h`, `--help` | Prints command help |
-| `-V`, `--version` | Prints the development version |
+| `-V`, `--version` | Prints the embedded implementation version |
 
 Compile standard CSS:
 

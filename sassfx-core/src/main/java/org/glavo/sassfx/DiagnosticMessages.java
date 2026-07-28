@@ -4,7 +4,6 @@ package org.glavo.sassfx;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Locale;
 import java.util.Objects;
 
 /// Renders [DiagnosticCode] values into human-readable English text.
@@ -14,6 +13,7 @@ import java.util.Objects;
 /// throw sites.
 @NotNullByDefault
 public final class DiagnosticMessages {
+    /// Prevents instantiation.
     private DiagnosticMessages() {
     }
 
@@ -25,9 +25,14 @@ public final class DiagnosticMessages {
     ///             {@link DiagnosticCode#PARSE_ERROR} and
     ///             {@link DiagnosticCode#EVALUATION_ERROR}
     /// @return the English diagnostic text
-    public static String render(DiagnosticCode code, Object @Nullable ... args) {
+    public static String render(
+            DiagnosticCode code,
+            @Nullable Object @Nullable ... args
+    ) {
         Objects.requireNonNull(code, "code");
-        Object[] safeArgs = args == null ? new Object[0] : args;
+        @Nullable Object[] safeArgs = args == null
+                ? new @Nullable Object[0]
+                : args;
         return switch (code) {
             case PARSE_ERROR, EVALUATION_ERROR, MODULE_ERROR, SELECTOR_ERROR,
                     SERIALIZE_ERROR, UNSUPPORTED_FEATURE, EXPECTED_TOKEN,
@@ -55,7 +60,7 @@ public final class DiagnosticMessages {
     public static Diagnostic error(
             DiagnosticCode code,
             @Nullable SourceSpan span,
-            Object @Nullable ... args
+            @Nullable Object @Nullable ... args
     ) {
         return new Diagnostic(
                 DiagnosticSeverity.ERROR,
@@ -74,7 +79,7 @@ public final class DiagnosticMessages {
     public static Diagnostic warning(
             DiagnosticCode code,
             @Nullable SourceSpan span,
-            Object @Nullable ... args
+            @Nullable Object @Nullable ... args
     ) {
         return new Diagnostic(
                 DiagnosticSeverity.WARNING,
@@ -84,7 +89,12 @@ public final class DiagnosticMessages {
         );
     }
 
-    private static String requireMessage(Object[] args) {
+    /// Returns the required first pre-rendered message argument.
+    ///
+    /// @param args the non-null argument array
+    /// @return the first argument converted to text
+    /// @throws IllegalArgumentException if no non-null first argument exists
+    private static String requireMessage(@Nullable Object[] args) {
         if (args.length == 0 || args[0] == null) {
             throw new IllegalArgumentException("message argument is required");
         }

@@ -2903,6 +2903,19 @@ public final class SelectorAlgebra {
     /// @param target      the single compound target
     /// @param inserted    the selector alternatives to insert
     /// @param replacement whether matched originals must be removed
+    /// @param originalKeys keys identifying document-original selectors
+    /// @param sourceSpecificity source specificity by selector key
+    /// @return the transformed alternatives in stable source order
+    /// Transforms one target while protecting selected extender products from
+    /// repeated nested-pseudo expansion.
+    ///
+    /// @param selectors the current complex-selector alternatives
+    /// @param target the single compound target
+    /// @param inserted the selector alternatives to insert
+    /// @param replacement whether matched originals must be removed
+    /// @param originalKeys keys identifying document-original selectors
+    /// @param sourceSpecificity source specificity by selector key
+    /// @param protectedExtenderKeys products that must not re-enter extension
     /// @return the transformed alternatives in stable source order
     private static @Unmodifiable List<ComplexSelector> transformTarget(
             List<ComplexSelector> selectors,

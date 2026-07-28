@@ -319,7 +319,11 @@ function Invoke-GradleWrapper {
     $classesDirectory = Join-Path $bootstrapDirectory 'classes'
 
     $javaExecutable = Resolve-JavaExecutable
-    [string[]] $jvmArguments = @('-Xmx64m', '-Xms64m')
+    [string[]] $jvmArguments = @(
+        '-Xmx64m'
+        '-Xms64m'
+        '--enable-native-access=ALL-UNNAMED'
+    )
     foreach ($optionSource in @($env:JAVA_OPTS, $env:GRADLE_OPTS)) {
         foreach ($option in @(Split-ArgumentString -Value $optionSource)) {
             $jvmArguments += $option

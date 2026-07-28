@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.sassfx.cli;
 
+import org.glavo.sassfx.SassFXVersion;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Unmodifiable;
 import org.junit.jupiter.api.Test;
@@ -68,7 +69,7 @@ final class EmbeddedCliIntegrationTest {
         var fields = readVersionResponse(versionMessage);
         assertEquals("3.2.0", fields.strings().get(1));
         assertEquals("1.101.3", fields.strings().get(2));
-        assertEquals("0.1.0-SNAPSHOT", fields.strings().get(3));
+        assertEquals(SassFXVersion.current(), fields.strings().get(3));
         assertEquals("sassfx", fields.strings().get(4));
         assertEquals(requestId, fields.id());
     }

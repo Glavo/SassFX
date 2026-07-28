@@ -17,9 +17,16 @@ public enum CalculationOperator {
     /// Division.
     DIVIDED_BY("/", 2);
 
+    /// The serialized operator glyph.
     private final String operator;
+
+    /// The precedence used for parenthesization.
     private final int precedence;
 
+    /// Creates an operator descriptor.
+    ///
+    /// @param operator the serialized glyph
+    /// @param precedence the binding precedence
     CalculationOperator(String operator, int precedence) {
         this.operator = operator;
         this.precedence = precedence;

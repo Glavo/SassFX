@@ -22,6 +22,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /// Verifies SassFX JavaFX CSS compatibility against a pinned OpenJFX parser.
 ///
@@ -41,6 +43,7 @@ public final class JavaFxCssOracle {
         if (arguments.length != 1) {
             throw new IllegalArgumentException("Expected one JavaFX version argument.");
         }
+        Logger.getLogger("javafx.css").setLevel(Level.OFF);
 
         var target = switch (arguments[0]) {
             case "17" -> JavaFXTarget.JAVAFX17;

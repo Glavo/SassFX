@@ -69,10 +69,19 @@ with library, command-line, Embedded Sass, and Gradle interfaces.
 - Runtime oracles cover JavaFX 8, 17, 18, 23, 25, 26, and 27.
 - Artifact checks keep JavaFX, FFI, native content, local upstream checkouts,
   and frontend-only dependencies out of the core runtime.
+- Staged-publication verification resolves the core library and Gradle plugin
+  from an isolated repository and runs the published CLI and Embedded JARs.
+
+### Delivery
+
+- Configures signed Maven Central publications for the core library, CLI,
+  Embedded endpoint, and Gradle plugin.
+- Configures Gradle Plugin Portal publication for `org.glavo.sassfx`.
+- Adds Linux and Windows CI, the full JavaFX oracle matrix, and tag-driven
+  release automation.
 
 ### Known limitations
 
-- No public Maven or Gradle Plugin Portal publication is configured.
 - JavaFX CSS and BSS intentionally reject unsupported syntax and value shapes
   instead of producing output that may fail at runtime.
 - JavaFX 23–27 transition declarations are supported in textual CSS but not

@@ -19,6 +19,7 @@ import java.util.Objects;
 @ApiStatus.Internal
 @NotNullByDefault
 public final class IndentedSassParser {
+    /// Prevents instantiation.
     private IndentedSassParser() {
     }
 

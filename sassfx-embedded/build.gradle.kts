@@ -1,8 +1,11 @@
+import com.vanniktech.maven.publish.MavenPublishBaseExtension
+import org.gradle.api.publish.maven.MavenPublication
 import java.util.jar.JarFile
 
 plugins {
     application
     id("com.gradleup.shadow") version "9.6.1"
+    id("com.vanniktech.maven.publish.base")
 }
 
 group = rootProject.group
@@ -28,6 +31,8 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(17)
     }
+    withJavadocJar()
+    withSourcesJar()
 }
 
 tasks.withType<JavaCompile>().configureEach {
@@ -72,6 +77,10 @@ tasks.shadowJar {
         duplicatesStrategy = DuplicatesStrategy.INCLUDE
     }
     relocate(
+        "com.fasterxml.jackson",
+        "org.glavo.sassfx.internal.thirdparty.jackson",
+    )
+    relocate(
         "com.google.protobuf",
         "org.glavo.sassfx.internal.thirdparty.protobuf",
     )
@@ -85,6 +94,52 @@ tasks.shadowJar {
             "Main-Class" to application.mainClass.get(),
         )
     }
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            artifact(tasks.shadowJar)
+            artifact(tasks.named<Jar>("sourcesJar"))
+            artifact(tasks.named<Jar>("javadocJar"))
+            pom {
+                name = "SassFX Embedded"
+                description = "Standalone Embedded Sass Protocol host implemented in Java."
+                inceptionYear = "2026"
+                url = "https://github.com/Glavo/SassFX"
+                licenses {
+                    license {
+                        name = "Mozilla Public License 2.0"
+                        url = "https://www.mozilla.org/MPL/2.0/"
+                        distribution = "repo"
+                    }
+                }
+                developers {
+                    developer {
+                        id = "glavo"
+                        name = "Glavo"
+                        url = "https://github.com/Glavo"
+                    }
+                }
+                scm {
+                    url = "https://github.com/Glavo/SassFX"
+                    connection = "scm:git:https://github.com/Glavo/SassFX.git"
+                    developerConnection = "scm:git:ssh://git@github.com/Glavo/SassFX.git"
+                }
+            }
+        }
+    }
+    repositories {
+        maven {
+            name = "localStaging"
+            url = uri(rootProject.layout.buildDirectory.dir("staging-repository"))
+        }
+    }
+}
+
+extensions.configure<MavenPublishBaseExtension> {
+    publishToMavenCentral()
+    signAllPublications()
 }
 
 tasks.withType<AbstractArchiveTask>().configureEach {
@@ -103,6 +158,7 @@ val verifyShadedJar = tasks.register("verifyShadedJar") {
         val forbiddenEntryPatterns = listOf(
             Regex("(^|/)javafx/", RegexOption.IGNORE_CASE),
             Regex("(^|/)com/sun/javafx/", RegexOption.IGNORE_CASE),
+            Regex("^com/fasterxml/jackson/.*"),
             Regex("^com/google/protobuf/.*"),
             Regex("^com/sass_lang/embedded_protocol/.*"),
             Regex(".*\\.(a|dll|dylib|exe|jnilib|lib|node|wasm)$", RegexOption.IGNORE_CASE),
@@ -124,6 +180,7 @@ val verifyShadedJar = tasks.register("verifyShadedJar") {
         val requiredEntries = listOf(
             "org/glavo/sassfx/embedded/SassFXEmbeddedMain.class",
             "org/glavo/sassfx/embedded/EmbeddedCompiler.class",
+            "org/glavo/sassfx/internal/thirdparty/jackson/core/JsonFactory.class",
             "org/glavo/sassfx/internal/thirdparty/protobuf/Message.class",
             "org/glavo/sassfx/internal/thirdparty/embedded_protocol/InboundMessage.class",
         )

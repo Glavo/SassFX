@@ -2034,6 +2034,10 @@ public final class BuiltInFunctions {
         );
     }
 
+    /// Reads a unitless numeric legacy color channel.
+    ///
+    /// @param value the channel value
+    /// @return its magnitude
     private static double channel(SassValue value) {
         return value.assertNumber().assertNoUnits().value();
     }
@@ -2058,20 +2062,24 @@ public final class BuiltInFunctions {
         return clampLikeCss(raw, 0.0, 1.0);
     }
 
+    /// Returns a quoted copy of a string argument.
     private static SassValue quote(List<SassValue> args) {
         var string = stringArgument(args.get(0), "string");
         return new SassString(string.text(), true);
     }
 
+    /// Returns an unquoted copy of a string argument.
     private static SassValue unquote(List<SassValue> args) {
         var string = stringArgument(args.get(0), "string");
         return new SassString(string.text(), false);
     }
 
+    /// Returns the list-view length of one value.
     private static SassValue length(List<SassValue> args) {
         return SassNumber.of(args.get(0).lengthAsList(), null);
     }
 
+    /// Returns the value at a Sass one-based or negative list index.
     private static SassValue nth(
             BuiltInCallable.Context context,
             List<SassValue> args
@@ -2082,6 +2090,7 @@ public final class BuiltInFunctions {
         return list.asList().get(index);
     }
 
+    /// Joins two list views using a selected separator.
     private static SassValue join(List<SassValue> args) {
         var left = args.get(0);
         var right = args.get(1);
@@ -2124,6 +2133,7 @@ public final class BuiltInFunctions {
         return new SassList(elements, ListSeparator.SLASH, false);
     }
 
+    /// Appends one value while retaining the input list's bracket state.
     private static SassValue append(List<SassValue> args) {
         var list = args.get(0);
         var value = args.get(1);
@@ -2138,7 +2148,11 @@ public final class BuiltInFunctions {
         return new SassList(contents, separator, list.hasBrackets());
     }
 
-    private static ListSeparator defaultSeparator(SassValue left, SassValue right) {
+    /// Selects the first explicit input separator or defaults to a space.
+    private static ListSeparator defaultSeparator(
+            SassValue left,
+            SassValue right
+    ) {
         if (left.separator() != ListSeparator.UNDECIDED) {
             return left.separator();
         }
@@ -2148,6 +2162,7 @@ public final class BuiltInFunctions {
         return ListSeparator.SPACE;
     }
 
+    /// Parses a list separator argument, including the `auto` selector.
     private static ListSeparator separatorArgument(
             SassValue value,
             SassValue left,
@@ -2170,10 +2185,6 @@ public final class BuiltInFunctions {
         };
     }
 
-    /// Returns the Sass type name for one value.
-    ///
-    /// @param args the one bound value argument
-    /// @return an unquoted Sass type name
     /// Known historical Sass language features reported by {@code feature-exists()}.
     private static final @Unmodifiable Set<String> KNOWN_FEATURES = Set.of(
             "global-variable-shadowing",
@@ -2202,6 +2213,10 @@ public final class BuiltInFunctions {
         return SassBoolean.of(KNOWN_FEATURES.contains(feature.text()));
     }
 
+    /// Returns the Sass type name for one value.
+    ///
+    /// @param args the one bound value argument
+    /// @return an unquoted Sass type name
     private static SassValue typeOf(List<SassValue> args) {
         var value = args.get(0);
         String type;
@@ -2656,15 +2671,18 @@ public final class BuiltInFunctions {
         return value instanceof SassNull ? null : metaStringArgument(value, "module");
     }
 
+    /// Returns the serialized units of one number as a quoted string.
     private static SassValue unit(List<SassValue> args) {
         return new SassString(numberArgument(args.get(0), "number").unitString(), true);
     }
 
+    /// Returns whether two numbers can be compared after unit conversion.
     private static SassValue comparable(List<SassValue> args) {
         return SassBoolean.of(numberArgument(args.get(0), "number1")
                 .isComparableTo(numberArgument(args.get(1), "number2")));
     }
 
+    /// Converts one unitless number to a percentage.
     private static SassValue percentage(List<SassValue> args) {
         var number = numberArgument(args.get(0), "number");
         try {
@@ -2977,6 +2995,8 @@ public final class BuiltInFunctions {
         return SassNumber.withUnits(radians * (180.0 / Math.PI), DEGREES, List.of());
     }
 
+    /// Implements the deprecated global absolute-value function and its
+    /// compatibility diagnostics.
     private static SassValue abs(
             BuiltInCallable.Context context,
             List<SassValue> args
@@ -3027,6 +3047,7 @@ public final class BuiltInFunctions {
         );
     }
 
+    /// Rounds one number to the nearest integer, preserving its units.
     private static SassValue round(List<SassValue> args) {
         return mapNumber(args.get(0), BuiltInFunctions::roundSass);
     }
@@ -3040,22 +3061,27 @@ public final class BuiltInFunctions {
         return rounded == 0.0 ? 0.0 : Math.copySign(rounded, value);
     }
 
+    /// Rounds one number toward positive infinity.
     private static SassValue ceil(List<SassValue> args) {
         return mapNumber(args.get(0), Math::ceil);
     }
 
+    /// Rounds one number toward negative infinity.
     private static SassValue floor(List<SassValue> args) {
         return mapNumber(args.get(0), Math::floor);
     }
 
+    /// Returns the least of a nonempty set of comparable numbers.
     private static SassValue min(List<SassValue> args) {
         return extreme(restValues(args), true);
     }
 
+    /// Returns the greatest of a nonempty set of comparable numbers.
     private static SassValue max(List<SassValue> args) {
         return extreme(restValues(args), false);
     }
 
+    /// Expands a sole argument-list value into its positional elements.
     private static List<SassValue> restValues(List<SassValue> args) {
         if (args.size() == 1 && args.get(0) instanceof SassArgumentList list) {
             return list.asList();
@@ -3063,6 +3089,7 @@ public final class BuiltInFunctions {
         return args;
     }
 
+    /// Selects the minimum or maximum from comparable numbers.
     private static SassValue extreme(List<SassValue> args, boolean minimum) {
         if (args.isEmpty()) {
             throw new SassValueException("At least one argument must be passed.");
@@ -3081,6 +3108,7 @@ public final class BuiltInFunctions {
         return best;
     }
 
+    /// Applies a scalar operation while retaining a number's units.
     private static SassNumber mapNumber(
             SassValue value,
             java.util.function.DoubleUnaryOperator operator
@@ -3093,12 +3121,14 @@ public final class BuiltInFunctions {
         );
     }
 
+    /// Returns a mapped value or Sass null for an absent key.
     private static SassValue mapGet(List<SassValue> args) {
         var map = mapArgument(args.get(0), "map");
         @Nullable SassValue value = map.contents().get(args.get(1));
         return value == null ? SassNull.NULL : value;
     }
 
+    /// Returns map keys in insertion order as a comma-separated list.
     private static SassValue mapKeys(List<SassValue> args) {
         return new SassList(
                 List.copyOf(mapArgument(args.get(0), "map").contents().keySet()),
@@ -3107,6 +3137,7 @@ public final class BuiltInFunctions {
         );
     }
 
+    /// Returns map values in insertion order as a comma-separated list.
     private static SassValue mapValues(List<SassValue> args) {
         return new SassList(
                 List.copyOf(mapArgument(args.get(0), "map").contents().values()),
@@ -3115,6 +3146,7 @@ public final class BuiltInFunctions {
         );
     }
 
+    /// Merges two maps at their top level.
     private static SassValue mapMerge(List<SassValue> args) {
         return flatMergeMaps(
                 mapArgument(args.get(0), "map1"),
@@ -3122,6 +3154,7 @@ public final class BuiltInFunctions {
         );
     }
 
+    /// Returns whether a map contains a top-level key.
     private static SassValue mapHasKey(List<SassValue> args) {
         return SassBoolean.of(mapArgument(args.get(0), "map").contents().containsKey(args.get(1)));
     }
@@ -3477,11 +3510,13 @@ public final class BuiltInFunctions {
         return rest instanceof SassArgumentList list ? list.asList() : List.of(rest);
     }
 
+    /// Returns a string's Unicode code-point length.
     private static SassValue strLength(List<SassValue> args) {
         var text = stringArgument(args.get(0), "string").text();
         return SassNumber.of(text.codePointCount(0, text.length()), null);
     }
 
+    /// Returns the one-based code-point index of a substring or Sass null.
     private static SassValue strIndex(List<SassValue> args) {
         var text = stringArgument(args.get(0), "string").text();
         var substring = stringArgument(args.get(1), "substring").text();
@@ -3641,11 +3676,13 @@ public final class BuiltInFunctions {
         return result < 0 && !allowNegative ? 0 : result;
     }
 
+    /// Converts ASCII lowercase letters while preserving string quote state.
     private static SassValue toUpperCase(List<SassValue> args) {
         var string = stringArgument(args.get(0), "string");
         return new SassString(asciiCase(string.text(), true), string.hasQuotes());
     }
 
+    /// Converts ASCII uppercase letters while preserving string quote state.
     private static SassValue toLowerCase(List<SassValue> args) {
         var string = stringArgument(args.get(0), "string");
         return new SassString(asciiCase(string.text(), false), string.hasQuotes());
@@ -3668,6 +3705,8 @@ public final class BuiltInFunctions {
         throw new SassValueException("$" + name + ": " + rendered + " is not a string.");
     }
 
+    /// Applies ASCII-only case conversion without changing non-ASCII code
+    /// points.
     private static String asciiCase(String text, boolean upper) {
         var result = new StringBuilder(text.length());
         for (var index = 0; index < text.length(); ) {
@@ -3684,11 +3723,13 @@ public final class BuiltInFunctions {
         return result.toString();
     }
 
+    /// Returns a process-unique unquoted Sass identifier.
     private static SassValue uniqueId(List<SassValue> args) {
         var value = UNIQUE_ID.getAndIncrement();
         return new SassString("u" + Long.toString(value, 36), false);
     }
 
+    /// Returns the effective separator name for one list view.
     private static SassValue listSeparator(List<SassValue> args) {
         var separator = args.get(0).separator();
         var text = separator == ListSeparator.COMMA
@@ -3697,10 +3738,12 @@ public final class BuiltInFunctions {
         return new SassString(text, false);
     }
 
+    /// Returns whether a list value is bracketed.
     private static SassValue isBracketed(List<SassValue> args) {
         return SassBoolean.of(args.get(0).hasBrackets());
     }
 
+    /// Returns a value's first one-based list index or Sass null.
     private static SassValue index(List<SassValue> args) {
         var list = args.get(0).asList();
         var value = args.get(1);
@@ -3712,6 +3755,7 @@ public final class BuiltInFunctions {
         return SassNull.NULL;
     }
 
+    /// Replaces the value at a Sass list index.
     private static SassValue setNth(
             BuiltInCallable.Context context,
             List<SassValue> args
@@ -3727,6 +3771,7 @@ public final class BuiltInFunctions {
         return new SassList(contents, separator, list.hasBrackets());
     }
 
+    /// Transposes list views, truncating rows to the shortest input.
     private static SassValue zip(List<SassValue> args) {
         var lists = restValues(args);
         if (lists.isEmpty()) {
@@ -4829,6 +4874,7 @@ public final class BuiltInFunctions {
         }
     }
 
+    /// Implements the global color alpha reader and plain-CSS filter fallback.
     private static SassValue opacity(
             BuiltInCallable.Context context,
             List<SassValue> args

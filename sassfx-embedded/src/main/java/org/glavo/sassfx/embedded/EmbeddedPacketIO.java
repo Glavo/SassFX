@@ -36,9 +36,29 @@ final class EmbeddedPacketIO {
     ///
     /// @param input the byte stream to read
     /// @return the decoded packet, or {@code null} at clean EOF
-    /// @throws IOException if the stream fails or the frame is malformed
+    /// @throws IOException if the stream fails, the frame is malformed, or
+    ///                     the body exceeds the default endpoint limit
     static @Nullable Packet read(InputStream input) throws IOException {
+        return read(input, EmbeddedLimits.DEFAULT.maxPacketLength());
+    }
+
+    /// Reads one complete packet subject to an allocation limit.
+    ///
+    /// @param input the byte stream to read
+    /// @param maxPacketLength the largest accepted frame body in bytes
+    /// @return the decoded packet, or {@code null} at clean EOF
+    /// @throws IOException if the stream fails, the frame is malformed, or
+    ///                     the declared length exceeds {@code maxPacketLength}
+    static @Nullable Packet read(
+            InputStream input,
+            int maxPacketLength
+    ) throws IOException {
         Objects.requireNonNull(input, "input");
+        if (maxPacketLength <= 0) {
+            throw new IllegalArgumentException(
+                    "maxPacketLength must be positive"
+            );
+        }
         var packetLength = readVarint(input, 53, true);
         if (packetLength < 0) {
             return null;
@@ -49,6 +69,12 @@ final class EmbeddedPacketIO {
         if (packetLength > MAX_JAVA_PACKET_LENGTH) {
             throw new IOException(
                     "Embedded Sass packet exceeds the Java array size limit."
+            );
+        }
+        if (packetLength > maxPacketLength) {
+            throw new IOException(
+                    "Embedded Sass packet exceeds the configured "
+                            + maxPacketLength + "-byte limit."
             );
         }
 
@@ -174,6 +200,16 @@ final class EmbeddedPacketIO {
         @Override
         public byte @Unmodifiable [] message() {
             return Arrays.copyOf(message, message.length);
+        }
+
+        /// Returns the internal protobuf body for package-local decoding.
+        ///
+        /// The returned array must not be modified or retained beyond the
+        /// immediate parse operation.
+        ///
+        /// @return the packet-owned body
+        byte @Unmodifiable [] rawMessage() {
+            return message;
         }
     }
 }

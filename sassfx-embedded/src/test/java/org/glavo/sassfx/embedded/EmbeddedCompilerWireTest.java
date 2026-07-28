@@ -841,6 +841,50 @@ final class EmbeddedCompilerWireTest {
         }
     }
 
+    /// Rejects work beyond the configured worker and queue capacity.
+    @Test
+    void rejectsCompilationWhenQueueIsFull() throws Exception {
+        var limits = new EmbeddedLimits(1 << 20, 1, 1, 16);
+        try (var harness = new CompilerHarness(limits)) {
+            var importer = InboundMessage.CompileRequest.Importer.newBuilder()
+                    .setImporterId(1);
+            var input = InboundMessage.CompileRequest.StringInput.newBuilder()
+                    .setSource("@use 'blocked';")
+                    .setSyntax(Syntax.SCSS);
+            var request = InboundMessage.newBuilder()
+                    .setCompileRequest(
+                            InboundMessage.CompileRequest.newBuilder()
+                                    .setString(input)
+                                    .addImporters(importer)
+                    )
+                    .build();
+
+            harness.send(20, request);
+            var callback = harness.receive();
+            assertEquals(20, callback.compilationId());
+            assertTrue(callback.message().hasCanonicalizeRequest());
+
+            harness.send(21, request);
+            harness.send(22, request);
+
+            var failure = harness.receive();
+            assertEquals(22, failure.compilationId());
+            assertTrue(failure.message().hasError());
+            assertEquals(
+                    ProtocolErrorType.PARAMS,
+                    failure.message().getError().getType()
+            );
+            assertEquals(
+                    "The Embedded Sass compilation queue is full.",
+                    failure.message().getError().getMessage()
+            );
+            assertEquals(
+                    EmbeddedCompiler.PROTOCOL_EXIT_STATUS,
+                    harness.awaitStatus()
+            );
+        }
+    }
+
     /// Verifies a wire-ID violation emits a protocol error and returns status 76.
     @Test
     void returnsProtocolStatusForInvalidWireId() throws Exception {
@@ -956,6 +1000,13 @@ final class EmbeddedCompilerWireTest {
 
         /// Creates and starts a connected in-process endpoint.
         private CompilerHarness() throws IOException {
+            this(EmbeddedLimits.DEFAULT);
+        }
+
+        /// Creates and starts an endpoint with explicit resource limits.
+        ///
+        /// @param limits the endpoint limits
+        private CompilerHarness(EmbeddedLimits limits) throws IOException {
             compilerInput = new PipedInputStream(1 << 20);
             hostOutput = new PipedOutputStream(compilerInput);
             hostInput = new PipedInputStream(1 << 20);
@@ -963,7 +1014,7 @@ final class EmbeddedCompilerWireTest {
             compilerExecutor = Executors.newSingleThreadExecutor();
             readerExecutor = Executors.newSingleThreadExecutor();
             status = compilerExecutor.submit(
-                    () -> new EmbeddedCompiler().run(
+                    () -> new EmbeddedCompiler(limits).run(
                             compilerInput,
                             compilerOutput
                     )

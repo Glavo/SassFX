@@ -82,8 +82,12 @@ public sealed interface IfConditionExpression permits
         /// Logical disjunction.
         OR("or");
 
+        /// The serialized CSS spelling.
         private final String cssName;
 
+        /// Creates an operator with its serialized spelling.
+        ///
+        /// @param cssName the CSS spelling
         BooleanOperator(String cssName) {
             this.cssName = cssName;
         }

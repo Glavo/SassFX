@@ -5,8 +5,9 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 /// Identifies a versioned JavaFX CSS or BSS capability relevant to SassFX.
 ///
-/// A feature records availability in the JavaFX platform. Output backends may
-/// expose a smaller subset while their serializers are being implemented.
+/// A feature records availability in the JavaFX platform. Individual output
+/// backends may reject a platform feature that its output format cannot
+/// represent or that the targeted JavaFX runtime cannot read reliably.
 @NotNullByDefault
 public enum JavaFXFeature {
     /// Supports `@font-face` rules in CSS and BSS.

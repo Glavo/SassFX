@@ -26,6 +26,7 @@ import java.util.Objects;
 @ApiStatus.Internal
 @NotNullByDefault
 final class CssColorChannels {
+    /// Prevents instantiation.
     private CssColorChannels() {
     }
 
@@ -367,6 +368,10 @@ final class CssColorChannels {
         return new SlashChannels(input, null);
     }
 
+    /// Parses a slash-separated channel token as a number when possible.
+    ///
+    /// @param text the token text
+    /// @return a number preserving its unit, or an unquoted string
     private static SassValue parseNumberOrString(String text) {
         // Recover units that appear in slash-presented strings such as "50%/none".
         for (var index = 0; index < text.length(); index++) {
@@ -392,6 +397,18 @@ final class CssColorChannels {
         }
     }
 
+    /// Constructs a color after validating and normalizing three channel
+    /// values and an optional alpha channel.
+    ///
+    /// @param context the callable context used for deprecations, or `null`
+    /// @param functionName the invoking function name
+    /// @param space the destination color space
+    /// @param channelsValue the supplied channel value
+    /// @param alphaValue the optional alpha value
+    /// @param fromRgbFunction whether legacy RGB clamping applies
+    /// @param argumentName the argument name used by diagnostics
+    /// @param originalInput the original value displayed by diagnostics
+    /// @return the constructed color
     private static SassColor colorFromChannels(
             @Nullable BuiltInCallable.Context context,
             String functionName,
@@ -500,6 +517,13 @@ final class CssColorChannels {
         return SassColor.forSpace(space, channel0, channel1, channel2, alpha);
     }
 
+    /// Converts one color channel to the destination space's numeric scale.
+    ///
+    /// @param context the callable context used for deprecations, or `null`
+    /// @param value the supplied channel
+    /// @param space the destination color space
+    /// @param channel the destination channel descriptor
+    /// @return the channel magnitude, or `null` for `none`
     private static @Nullable Double channelNumber(
             @Nullable BuiltInCallable.Context context,
             SassValue value,
@@ -577,6 +601,10 @@ final class CssColorChannels {
         return magnitude;
     }
 
+    /// Returns the elements of an unbracketed space list or a singleton value.
+    ///
+    /// @param value the channel collection
+    /// @return the channel elements
     private static List<SassValue> expandSpaceList(SassValue value) {
         if (value instanceof SassList list
                 && (list.separator() == ListSeparator.SPACE
@@ -587,13 +615,27 @@ final class CssColorChannels {
         return List.of(value);
     }
 
+    /// Returns whether a value is the unquoted CSS `none` keyword.
+    ///
+    /// @param value the value to inspect
+    /// @return whether it represents a missing channel
     private static boolean isNone(SassValue value) {
         return value instanceof SassString string
                 && !string.hasQuotes()
                 && "none".equalsIgnoreCase(string.text());
     }
 
-    private static double percentageOrUnitless(SassNumber number, double max, String name) {
+    /// Converts a unitless or percentage number to a bounded channel scale.
+    ///
+    /// @param number the supplied number
+    /// @param max the magnitude corresponding to 100 percent
+    /// @param name the argument name used by failures
+    /// @return the scaled magnitude
+    private static double percentageOrUnitless(
+            SassNumber number,
+            double max,
+            String name
+    ) {
         if (number.isUnitless()) {
             return number.value();
         }
@@ -627,6 +669,12 @@ final class CssColorChannels {
         }
     }
 
+    /// Clamps a finite value to an inclusive range.
+    ///
+    /// @param value the value
+    /// @param min the lower bound
+    /// @param max the upper bound
+    /// @return the clamped value
     private static double clamp(double value, double min, double max) {
         return Math.min(max, Math.max(min, value));
     }
@@ -639,6 +687,13 @@ final class CssColorChannels {
         return clamp(value, min, max);
     }
 
-    private record SlashChannels(SassValue channels, @Nullable SassValue alpha) {
+    /// Contains channels split around a CSS slash separator.
+    ///
+    /// @param channels the channels before the slash
+    /// @param alpha the value after the slash, or `null`
+    private record SlashChannels(
+            SassValue channels,
+            @Nullable SassValue alpha
+    ) {
     }
 }

@@ -1,8 +1,11 @@
+import com.vanniktech.maven.publish.MavenPublishBaseExtension
+import org.gradle.api.publish.maven.MavenPublication
 import java.util.zip.ZipFile
 
 plugins {
     application
     id("com.gradleup.shadow") version "9.6.1"
+    id("com.vanniktech.maven.publish.base")
 }
 
 group = rootProject.group
@@ -30,6 +33,8 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(17)
     }
+    withJavadocJar()
+    withSourcesJar()
 }
 
 tasks.withType<JavaCompile>().configureEach {
@@ -86,6 +91,52 @@ tasks.shadowJar {
             "Main-Class" to application.mainClass.get(),
         )
     }
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            artifact(tasks.shadowJar)
+            artifact(tasks.named<Jar>("sourcesJar"))
+            artifact(tasks.named<Jar>("javadocJar"))
+            pom {
+                name = "SassFX CLI"
+                description = "Standalone command-line Sass compiler implemented in Java."
+                inceptionYear = "2026"
+                url = "https://github.com/Glavo/SassFX"
+                licenses {
+                    license {
+                        name = "Mozilla Public License 2.0"
+                        url = "https://www.mozilla.org/MPL/2.0/"
+                        distribution = "repo"
+                    }
+                }
+                developers {
+                    developer {
+                        id = "glavo"
+                        name = "Glavo"
+                        url = "https://github.com/Glavo"
+                    }
+                }
+                scm {
+                    url = "https://github.com/Glavo/SassFX"
+                    connection = "scm:git:https://github.com/Glavo/SassFX.git"
+                    developerConnection = "scm:git:ssh://git@github.com/Glavo/SassFX.git"
+                }
+            }
+        }
+    }
+    repositories {
+        maven {
+            name = "localStaging"
+            url = uri(rootProject.layout.buildDirectory.dir("staging-repository"))
+        }
+    }
+}
+
+extensions.configure<MavenPublishBaseExtension> {
+    publishToMavenCentral()
+    signAllPublications()
 }
 
 tasks.withType<AbstractArchiveTask>().configureEach {

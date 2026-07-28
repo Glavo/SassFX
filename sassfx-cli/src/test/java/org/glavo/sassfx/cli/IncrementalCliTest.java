@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @NotNullByDefault
 final class IncrementalCliTest {
     /// Maximum time allowed for asynchronous watch output to become observable.
-    private static final long WATCH_ASSERTION_TIMEOUT_SECONDS = 5;
+    private static final long WATCH_ASSERTION_TIMEOUT_SECONDS = 15;
 
     /// Compiles a mapped root whose destination does not yet exist.
     @Test

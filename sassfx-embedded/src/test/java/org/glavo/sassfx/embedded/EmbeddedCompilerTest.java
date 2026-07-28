@@ -3,6 +3,7 @@ package org.glavo.sassfx.embedded;
 
 import com.google.protobuf.Descriptors;
 import com.sass_lang.embedded_protocol.Value;
+import org.glavo.sassfx.SassFXVersion;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.ResourceLock;
@@ -26,10 +27,10 @@ final class EmbeddedCompilerTest {
                         {
                           "protocolVersion": "3.2.0",
                           "compilerVersion": "1.101.3",
-                          "implementationVersion": "0.1.0-SNAPSHOT",
+                          "implementationVersion": "%s",
                           "implementationName": "sassfx",
                           "id": 0
-                        }""",
+                        }""".formatted(SassFXVersion.current()),
                 EmbeddedCompiler.versionJson()
         );
     }

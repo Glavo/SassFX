@@ -20,6 +20,7 @@ import java.util.Set;
 @ApiStatus.Internal
 @NotNullByDefault
 public final class SassCalculation implements SassValue {
+    /// Units whose dimensions may participate in unresolved CSS calculations.
     private static final Set<String> KNOWN_UNIT_SETS = Set.of(
             "em", "ex", "ch", "rem", "vw", "vh", "vmin", "vmax", "cm", "mm", "q", "in", "pt", "pc", "px",
             "deg", "grad", "rad", "turn",
@@ -28,9 +29,16 @@ public final class SassCalculation implements SassValue {
             "dpi", "dpcm", "dppx"
     );
 
+    /// The lowercase CSS calculation function name.
     private final String name;
+
+    /// The immutable simplified calculation arguments.
     private final @Unmodifiable List<Object> arguments;
 
+    /// Creates an unresolved calculation.
+    ///
+    /// @param name the lowercase function name
+    /// @param arguments the simplified arguments
     private SassCalculation(String name, List<Object> arguments) {
         this.name = Objects.requireNonNull(name, "name");
         this.arguments = List.copyOf(arguments);
@@ -717,6 +725,10 @@ public final class SassCalculation implements SassValue {
         return Objects.hash(name, arguments);
     }
 
+    /// Simplifies every calculation argument while preserving order.
+    ///
+    /// @param arguments the input arguments
+    /// @return the simplified arguments
     private static List<Object> simplifyAll(List<Object> arguments) {
         var result = new ArrayList<Object>(arguments.size());
         for (var argument : arguments) {
@@ -725,6 +737,10 @@ public final class SassCalculation implements SassValue {
         return result;
     }
 
+    /// Simplifies one value into a valid calculation operand.
+    ///
+    /// @param arg the candidate operand
+    /// @return the simplified operand
     private static Object simplify(Object arg) {
         if (arg instanceof SassNumber || arg instanceof CalculationOperation) {
             return arg;
@@ -754,6 +770,10 @@ public final class SassCalculation implements SassValue {
         throw new IllegalArgumentException("Unexpected calculation argument: " + arg);
     }
 
+    /// Returns whether flattened calculation text requires grouping.
+    ///
+    /// @param text the unquoted CSS text
+    /// @return whether parentheses are required
     private static boolean needsParentheses(String text) {
         for (var index = 0; index < text.length(); index++) {
             char character = text.charAt(index);
@@ -765,6 +785,11 @@ public final class SassCalculation implements SassValue {
                 && text.regionMatches(true, 0, "var(", 0, 4);
     }
 
+    /// Verifies a fixed argument count unless unresolved CSS text prevents
+    /// determining the final count.
+    ///
+    /// @param args the calculation arguments
+    /// @param expectedLength the required count
     private static void verifyLength(List<Object> args, int expectedLength) {
         if (args.size() == expectedLength) {
             return;
@@ -780,6 +805,9 @@ public final class SassCalculation implements SassValue {
         );
     }
 
+    /// Rejects numeric arguments that cannot coexist in one CSS calculation.
+    ///
+    /// @param args the calculation arguments
     private static void verifyCompatibleNumbers(List<Object> args) {
         for (var arg : args) {
             if (arg instanceof SassNumber number && number.hasComplexUnits()) {
@@ -804,7 +832,16 @@ public final class SassCalculation implements SassValue {
         }
     }
 
-    private static boolean hasCompatibleUnits(SassNumber left, SassNumber right) {
+    /// Returns whether two numbers have matching, mutually coercible unit
+    /// dimensions.
+    ///
+    /// @param left the first number
+    /// @param right the second number
+    /// @return whether their units are compatible
+    private static boolean hasCompatibleUnits(
+            SassNumber left,
+            SassNumber right
+    ) {
         if (left.isUnitless() && right.isUnitless()) {
             return true;
         }
@@ -816,13 +853,27 @@ public final class SassCalculation implements SassValue {
                 && left.denominatorUnits().size() == right.denominatorUnits().size();
     }
 
+    /// Returns whether text names a CSS round strategy.
+    ///
+    /// @param text the candidate name
+    /// @return whether it is a recognized strategy
     private static boolean isRoundStrategy(String text) {
         var lower = text.toLowerCase(Locale.ROOT);
         return "nearest".equals(lower) || "up".equals(lower)
                 || "down".equals(lower) || "to-zero".equals(lower);
     }
 
-    private static SassNumber roundWithStep(String strategy, SassNumber number, SassNumber step) {
+    /// Applies a CSS round strategy with a unit-compatible step.
+    ///
+    /// @param strategy the normalized strategy name
+    /// @param number the value to round
+    /// @param step the rounding step
+    /// @return the rounded value with the input units
+    private static SassNumber roundWithStep(
+            String strategy,
+            SassNumber number,
+            SassNumber step
+    ) {
         if (Double.isInfinite(number.value()) && Double.isInfinite(step.value())
                 || step.value() == 0.0
                 || Double.isNaN(number.value())
@@ -911,6 +962,12 @@ public final class SassCalculation implements SassValue {
         return Math.abs(ceil) >= Math.abs(floor) ? ceil : floor;
     }
 
+    /// Creates a number with a replacement magnitude and an existing unit
+    /// representation.
+    ///
+    /// @param value the replacement magnitude
+    /// @param number the source of numerator and denominator units
+    /// @return the new number
     private static SassNumber matchUnits(double value, SassNumber number) {
         return SassNumber.withUnits(value, number.numeratorUnits(), number.denominatorUnits());
     }

@@ -5,6 +5,7 @@ import org.glavo.sassfx.internal.value.SassFuzzy;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 
 /// Conversion helpers and matrices for CSS Color Level 4 color spaces.
 ///
@@ -14,7 +15,7 @@ import org.jetbrains.annotations.Nullable;
 @NotNullByDefault
 public final class ColorConversions {
     /// The D50 white point components.
-    static final double[] D50 = {
+    static final double @Unmodifiable [] D50 = {
             0.3457 / 0.3585,
             1.00000,
             (1.0 - 0.3457 - 0.3585) / 0.3585
@@ -26,130 +27,151 @@ public final class ColorConversions {
     /// Lab conversion epsilon constant.
     static final double LAB_EPSILON = 216.0 / 24389.0;
 
-    private static final double[] LMS_TO_OKLAB = ColorMatrices.LMS_TO_OKLAB;
+    /// Converts LMS channels to OKLab.
+    private static final double @Unmodifiable [] LMS_TO_OKLAB =
+            ColorMatrices.LMS_TO_OKLAB;
 
-    private static final double[] OKLAB_TO_LMS = ColorMatrices.OKLAB_TO_LMS;
+    /// Converts OKLab channels to LMS.
+    private static final double @Unmodifiable [] OKLAB_TO_LMS =
+            ColorMatrices.OKLAB_TO_LMS;
 
-    private static final double[] LINEAR_SRGB_TO_XYZ_D65 = {
+    /// Converts linear sRGB channels to XYZ-D65.
+    private static final double @Unmodifiable [] LINEAR_SRGB_TO_XYZ_D65 = {
             0.41239079926595950, 0.35758433938387796, 0.18048078840183430,
             0.21263900587151036, 0.71516867876775590, 0.07219231536073371,
             0.01933081871559185, 0.11919477979462598, 0.95053215224966060
     };
 
-    private static final double[] XYZ_D65_TO_LINEAR_SRGB = {
+    /// Converts XYZ-D65 channels to linear sRGB.
+    private static final double @Unmodifiable [] XYZ_D65_TO_LINEAR_SRGB = {
             3.24096994190452130, -1.53738317757009350, -0.49861076029300330,
             -0.96924363628087980, 1.87596750150772060, 0.04155505740717561,
             0.05563007969699360, -0.20397695888897657, 1.05697151424287860
     };
 
-    private static final double[] LINEAR_DISPLAY_P3_TO_XYZ_D65 = {
+    /// Converts linear Display-P3 channels to XYZ-D65.
+    private static final double @Unmodifiable [] LINEAR_DISPLAY_P3_TO_XYZ_D65 = {
             0.48657094864821626, 0.26566769316909294, 0.19821728523436250,
             0.22897456406974884, 0.69173852183650620, 0.07928691409374500,
             0.00000000000000000, 0.04511338185890257, 1.04394436890097570
     };
 
-    private static final double[] XYZ_D65_TO_LINEAR_DISPLAY_P3 = {
+    /// Converts XYZ-D65 channels to linear Display-P3.
+    private static final double @Unmodifiable [] XYZ_D65_TO_LINEAR_DISPLAY_P3 = {
             2.49349691194142450, -0.93138361791912360, -0.40271078445071684,
             -0.82948896956157490, 1.76266406031834680, 0.02362468584194359,
             0.03584583024378433, -0.07617238926804170, 0.95688452400768730
     };
 
-    private static final double[] LINEAR_A98_RGB_TO_XYZ_D65 = {
+    /// Converts linear A98 RGB channels to XYZ-D65.
+    private static final double @Unmodifiable [] LINEAR_A98_RGB_TO_XYZ_D65 = {
             0.57666904291013080, 0.18555823790654627, 0.18822864623499472,
             0.29734497525053616, 0.62736356625546600, 0.07529145849399789,
             0.02703136138641237, 0.07068885253582714, 0.99133753683763890
     };
 
-    private static final double[] XYZ_D65_TO_LINEAR_A98_RGB = {
+    /// Converts XYZ-D65 channels to linear A98 RGB.
+    private static final double @Unmodifiable [] XYZ_D65_TO_LINEAR_A98_RGB = {
             2.04158790381074600, -0.56500697427885960, -0.34473135077832950,
             -0.96924363628087980, 1.87596750150772060, 0.04155505740717561,
             0.01344428063203102, -0.11836239223101823, 1.01517499439120540
     };
 
-    private static final double[] LINEAR_REC2020_TO_XYZ_D65 = {
+    /// Converts linear Rec. 2020 channels to XYZ-D65.
+    private static final double @Unmodifiable [] LINEAR_REC2020_TO_XYZ_D65 = {
             0.63695804830129130, 0.14461690358620838, 0.16888097516417205,
             0.26270021201126703, 0.67799807151887100, 0.05930171646986194,
             0.00000000000000000, 0.02807269304908750, 1.06098505771079090
     };
 
-    private static final double[] XYZ_D65_TO_LINEAR_REC2020 = {
+    /// Converts XYZ-D65 channels to linear Rec. 2020.
+    private static final double @Unmodifiable [] XYZ_D65_TO_LINEAR_REC2020 = {
             1.71665118797126760, -0.35567078377639240, -0.25336628137365980,
             -0.66668435183248900, 1.61648123663493900, 0.01576854581391113,
             0.01763985744531091, -0.04277061325780865, 0.94210312123547400
     };
 
-    private static final double[] LINEAR_PROPHOTO_RGB_TO_XYZ_D65 = {
+    /// Converts linear ProPhoto RGB channels to XYZ-D65.
+    private static final double @Unmodifiable [] LINEAR_PROPHOTO_RGB_TO_XYZ_D65 = {
             0.75559074229692100, 0.11271984265940525, 0.08214534209534540,
             0.26832184357857190, 0.71511525666179120, 0.01656289975963685,
             0.00391597276242580, -0.01293344283684181, 1.09807522083429450
     };
 
-    private static final double[] XYZ_D65_TO_LINEAR_PROPHOTO_RGB = {
+    /// Converts XYZ-D65 channels to linear ProPhoto RGB.
+    private static final double @Unmodifiable [] XYZ_D65_TO_LINEAR_PROPHOTO_RGB = {
             1.40319046337749790, -0.22301514479051668, -0.10160668507413790,
             -0.52623840216330720, 1.48163196292346440, 0.01701879027252688,
             -0.01120226528622150, 0.01824640347962099, 0.91124722749150480
     };
 
-    private static final double[] XYZ_D65_TO_XYZ_D50 = {
+    /// Adapts XYZ-D65 channels to the D50 white point.
+    private static final double @Unmodifiable [] XYZ_D65_TO_XYZ_D50 = {
             1.04792979254499660, 0.02294687060160952, -0.05019226628920519,
             0.02962780877005567, 0.99043442675388000, -0.01707379906341879,
             -0.00924304064620452, 0.01505519149029816, 0.75187428142813700
     };
 
-    private static final double[] XYZ_D50_TO_XYZ_D65 = {
+    /// Adapts XYZ-D50 channels to the D65 white point.
+    private static final double @Unmodifiable [] XYZ_D50_TO_XYZ_D65 = {
             0.95547342148807520, -0.02309845494876452, 0.06325924320057065,
             -0.02836970933386358, 1.00999539808130410, 0.02104144119191730,
             0.01231401486448199, -0.02050764929889898, 1.33036592624212400
     };
 
-    private static final double[] XYZ_D65_TO_LMS = {
+    /// Converts XYZ-D65 channels to LMS.
+    private static final double @Unmodifiable [] XYZ_D65_TO_LMS = {
             0.81902243799670300, 0.36190626005289034, -0.12887378152098788,
             0.03298365393238846, 0.92928686158634330, 0.03614466635064235,
             0.04817718935962420, 0.26423953175273080, 0.63354782846943080
     };
 
-    private static final double[] LMS_TO_XYZ_D65 = {
+    /// Converts LMS channels to XYZ-D65.
+    private static final double @Unmodifiable [] LMS_TO_XYZ_D65 = {
             1.22687987584592430, -0.55781499446021710, 0.28139104566596460,
             -0.04057574521480084, 1.11228680328031730, -0.07171105806551635,
             -0.07637293667466007, -0.42149333240224324, 1.58692401983678180
     };
 
     /// Direct LMS → linear sRGB matrix from dart-sass (avoids LMS→XYZ→sRGB drift).
-    private static final double[] LMS_TO_LINEAR_SRGB = {
+    private static final double @Unmodifiable [] LMS_TO_LINEAR_SRGB = {
             4.07674163607595800, -3.30771153925806200, 0.23096990318210417,
             -1.26843797328503200, 2.60975734928768900, -0.34131937600265710,
             -0.00419607613867551, -0.70341861793593630, 1.70761469407461200
     };
 
     /// Direct linear Display-P3 → linear sRGB (dart-sass precomputed matrix).
-    private static final double[] LINEAR_DISPLAY_P3_TO_LINEAR_SRGB = {
+    private static final double @Unmodifiable [] LINEAR_DISPLAY_P3_TO_LINEAR_SRGB = {
             1.22494017628055980, -0.22494017628055996, 0.00000000000000000,
             -0.04205695470968816, 1.04205695470968800, 0.00000000000000000,
             -0.01963755459033443, -0.07863604555063188, 1.09827360014096630
     };
 
     /// Direct linear a98-RGB → linear sRGB (dart-sass precomputed matrix).
-    private static final double[] LINEAR_A98_RGB_TO_LINEAR_SRGB = {
+    private static final double @Unmodifiable [] LINEAR_A98_RGB_TO_LINEAR_SRGB = {
             1.39835574396077830, -0.39835574396077830, 0.00000000000000000,
             0.00000000000000000, 1.00000000000000000, 0.00000000000000000,
             0.00000000000000000, -0.04292898929447326, 1.04292898929447330
     };
 
     /// Direct linear ProPhoto → linear sRGB (dart-sass precomputed matrix).
-    private static final double[] LINEAR_PROPHOTO_RGB_TO_LINEAR_SRGB = {
+    private static final double @Unmodifiable [] LINEAR_PROPHOTO_RGB_TO_LINEAR_SRGB = {
             2.03438084951699600, -0.72763578993413420, -0.30674505958286180,
             -0.22882573163305037, 1.23174254119010480, -0.00291680955705449,
             -0.00855882878391742, -0.15326670213803720, 1.16182553092195470
     };
 
     /// Direct linear Rec.2020 → linear sRGB (dart-sass precomputed matrix).
-    private static final double[] LINEAR_REC2020_TO_LINEAR_SRGB = {
+    private static final double @Unmodifiable [] LINEAR_REC2020_TO_LINEAR_SRGB = {
             1.66049100210843450, -0.58764113878854950, -0.07284986331988487,
             -0.12455047452159074, 1.13289989712596030, -0.00834942260436947,
             -0.01815076335490530, -0.10057889800800737, 1.11872966136291270
     };
 
+    /// The Rec. 2020 transfer-function alpha constant.
     private static final double REC2020_ALPHA = 1.09929682680944;
+
+    /// The Rec. 2020 transfer-function beta threshold.
     private static final double REC2020_BETA = 0.018053968510807;
 
     /// Prevents instantiation.
@@ -495,13 +517,22 @@ public final class ColorConversions {
         };
     }
 
-    private static IllegalStateException unsupportedMatrix(ColorSpace source, ColorSpace dest) {
+    /// Creates the failure used when no direct conversion matrix exists.
+    ///
+    /// @param source the source color space
+    /// @param dest the destination color space
+    /// @return the conversion failure
+    private static IllegalStateException unsupportedMatrix(
+            ColorSpace source,
+            ColorSpace dest
+    ) {
         return new IllegalStateException(
                 "No dart-sass transformation matrix from " + source + " to " + dest + "."
         );
     }
 
-    private static final double[] IDENTITY_3X3 = {
+    /// The row-major 3-by-3 identity matrix.
+    private static final double @Unmodifiable [] IDENTITY_3X3 = {
             1, 0, 0,
             0, 1, 0,
             0, 0, 1

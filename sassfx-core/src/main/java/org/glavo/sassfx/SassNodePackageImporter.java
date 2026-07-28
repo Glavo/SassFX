@@ -15,7 +15,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -165,7 +164,11 @@ public final class SassNodePackageImporter implements SassImporter {
         }
 
         @Nullable Path subpath = FilesystemImporter.resolveAt(
-                packageRoot.resolve(nativePath(split.subpath())).normalize(),
+                resolvePackagePath(
+                        packageRoot,
+                        split.subpath(),
+                        "Package subpath '" + split.subpath() + "'"
+                ),
                 context.fromImport()
         );
         return subpath == null ? null : canonicalFileUrl(subpath);
@@ -179,7 +182,7 @@ public final class SassNodePackageImporter implements SassImporter {
     /// @throws IOException if the file cannot be read
     /// @throws IllegalArgumentException if the URL is not a plain file URL
     @Override
-    public @Nullable SassImporterResult load(URI canonicalUrl)
+    public SassImporterResult load(URI canonicalUrl)
             throws IOException {
         Objects.requireNonNull(canonicalUrl, "canonicalUrl");
         var path = filePath(canonicalUrl);
@@ -414,7 +417,11 @@ public final class SassNodePackageImporter implements SassImporter {
         if (sass instanceof String sassValue
                 && validExtension(sassValue)) {
             return resolveImportOnly(
-                    packageRoot.resolve(nativePath(sassValue)),
+                    resolvePackagePath(
+                            packageRoot,
+                            stripRelativePrefix(sassValue),
+                            "The 'sass' field"
+                    ),
                     fromImport
             );
         }
@@ -422,7 +429,11 @@ public final class SassNodePackageImporter implements SassImporter {
         if (style instanceof String styleValue
                 && validExtension(styleValue)) {
             return resolveImportOnly(
-                    packageRoot.resolve(nativePath(styleValue)),
+                    resolvePackagePath(
+                            packageRoot,
+                            stripRelativePrefix(styleValue),
+                            "The 'style' field"
+                    ),
                     fromImport
             );
         }
@@ -515,7 +526,6 @@ public final class SassNodePackageImporter implements SassImporter {
                 @Nullable Object main = mainExport(exports);
                 if (main != null) {
                     @Nullable Path resolved = packageTargetResolve(
-                            null,
                             main,
                             packageRoot,
                             null
@@ -539,7 +549,6 @@ public final class SassNodePackageImporter implements SassImporter {
                     && map.get(matchKey) != null
                     && matchKey.indexOf('*') < 0) {
                 @Nullable Path resolved = packageTargetResolve(
-                        matchKey,
                         map.get(matchKey),
                         packageRoot,
                         null
@@ -576,7 +585,6 @@ public final class SassNodePackageImporter implements SassImporter {
                         matchKey.length() - patternTrailer.length()
                 );
                 @Nullable Path resolved = packageTargetResolve(
-                        variant,
                         target,
                         packageRoot,
                         patternMatch
@@ -650,13 +658,11 @@ public final class SassNodePackageImporter implements SassImporter {
 
     /// Resolves one package export target.
     ///
-    /// @param subpath the matching subpath, or {@code null} for the root
     /// @param target the export target JSON value
     /// @param packageRoot the installed package root
     /// @param patternMatch wildcard replacement text, or {@code null}
     /// @return the first resolvable target path, or {@code null}
     private static @Nullable Path packageTargetResolve(
-            @Nullable String subpath,
             Object target,
             Path packageRoot,
             @Nullable String patternMatch
@@ -672,11 +678,12 @@ public final class SassNodePackageImporter implements SassImporter {
             var replaced = patternMatch == null
                     ? string
                     : replaceFirstStar(string, patternMatch);
-            var path = packageRoot.resolve(
-                    nativePath(replaced.substring(2))
+            var path = resolvePackagePath(
+                    packageRoot,
+                    replaced.substring(2),
+                    "Export '" + string + "'"
             );
             if (patternMatch != null) {
-                path = path.normalize();
                 return Files.isRegularFile(path) ? path : null;
             }
             return path;
@@ -689,7 +696,6 @@ public final class SassNodePackageImporter implements SassImporter {
                     continue;
                 }
                 @Nullable Path resolved = packageTargetResolve(
-                        subpath,
                         entry.getValue(),
                         packageRoot,
                         patternMatch
@@ -706,7 +712,6 @@ public final class SassNodePackageImporter implements SassImporter {
                     continue;
                 }
                 @Nullable Path resolved = packageTargetResolve(
-                        subpath,
                         value,
                         packageRoot,
                         patternMatch
@@ -720,6 +725,91 @@ public final class SassNodePackageImporter implements SassImporter {
         throw new IllegalStateException(
                 "Invalid 'exports' value " + target + " in "
                         + packageRoot.resolve("package.json") + "."
+        );
+    }
+
+    /// Removes the conventional `./` prefix from a manifest path.
+    ///
+    /// @param value the manifest path
+    /// @return the path without one leading `./`
+    private static String stripRelativePrefix(String value) {
+        return value.startsWith("./") ? value.substring(2) : value;
+    }
+
+    /// Resolves a package-relative path without allowing it to escape the
+    /// installed package directory.
+    ///
+    /// Empty, current-directory, parent-directory, `node_modules`, encoded
+    /// separator, and native-separator segments are rejected. These checks
+    /// implement the path boundary required by Node package target resolution
+    /// before the platform filesystem interprets the path.
+    ///
+    /// @param packageRoot the normalized absolute installed package directory
+    /// @param value the slash-separated package-relative path
+    /// @param description the value description used in diagnostics
+    /// @return the normalized path within {@code packageRoot}
+    /// @throws IllegalStateException if the value is not a safe package path
+    private static Path resolvePackagePath(
+            Path packageRoot,
+            String value,
+            String description
+    ) {
+        if (containsEncodedSeparator(value)) {
+            throw invalidPackagePath(description, packageRoot);
+        }
+        var decoded = percentDecode(value);
+        if (decoded.indexOf('\\') >= 0) {
+            throw invalidPackagePath(description, packageRoot);
+        }
+        for (var segment : decoded.split("/", -1)) {
+            if (segment.isEmpty()
+                    || segment.equals(".")
+                    || segment.equals("..")
+                    || segment.equals("node_modules")) {
+                throw invalidPackagePath(description, packageRoot);
+            }
+        }
+
+        var resolved = packageRoot.resolve(nativePath(value)).normalize();
+        if (!resolved.startsWith(packageRoot)) {
+            throw invalidPackagePath(description, packageRoot);
+        }
+        return resolved;
+    }
+
+    /// Returns whether a path contains a percent-encoded slash or backslash.
+    ///
+    /// @param value the raw path
+    /// @return whether a separator is encoded
+    private static boolean containsEncodedSeparator(String value) {
+        for (var index = 0; index + 2 < value.length(); index++) {
+            if (value.charAt(index) != '%') {
+                continue;
+            }
+            var high = Character.digit(value.charAt(index + 1), 16);
+            var low = Character.digit(value.charAt(index + 2), 16);
+            if (high >= 0 && low >= 0) {
+                var decoded = high << 4 | low;
+                if (decoded == '/' || decoded == '\\') {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /// Creates the standard package-boundary failure.
+    ///
+    /// @param description the rejected value description
+    /// @param packageRoot the installed package root
+    /// @return the path-validation failure
+    private static IllegalStateException invalidPackagePath(
+            String description,
+            Path packageRoot
+    ) {
+        return new IllegalStateException(
+                description + " must be a path within the package root at '"
+                        + packageRoot + "'."
         );
     }
 

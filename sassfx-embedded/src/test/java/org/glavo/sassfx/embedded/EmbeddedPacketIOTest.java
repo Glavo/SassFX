@@ -185,6 +185,31 @@ final class EmbeddedPacketIOTest {
         assertTrue(failure.getMessage().contains("no protobuf body"));
     }
 
+    /// Rejects a declared frame length before allocating its body.
+    @Test
+    void rejectsConfiguredPacketLimit() {
+        var failure = assertThrows(
+                IOException.class,
+                () -> EmbeddedPacketIO.read(
+                        new ByteArrayInputStream(bytes(9)),
+                        8
+                )
+        );
+        assertTrue(failure.getMessage().contains("8-byte limit"));
+    }
+
+    /// Rejects a nonpositive allocation limit.
+    @Test
+    void rejectsInvalidPacketLimit() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> EmbeddedPacketIO.read(
+                        new ByteArrayInputStream(new byte[0]),
+                        0
+                )
+        );
+    }
+
     /// Writes one packet and checks its exact byte representation and round trip.
     ///
     /// @param compilationId the compilation ID

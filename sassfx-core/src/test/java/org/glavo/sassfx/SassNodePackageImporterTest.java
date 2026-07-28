@@ -351,6 +351,57 @@ final class SassNodePackageImporterTest {
                 "{\"exports\":{\".\":\"./entry.scss\",\"sass\":\"./entry.scss\"}}",
                 "can not have both conditions and paths"
         );
+        assertExportFailure(
+                root,
+                packageRoot,
+                "{\"exports\":{\".\":\"./../outside.scss\"}}",
+                "must be a path within the package root"
+        );
+        assertExportFailure(
+                root,
+                packageRoot,
+                "{\"exports\":{\".\":\"./%2e%2e/outside.scss\"}}",
+                "must be a path within the package root"
+        );
+        assertExportFailure(
+                root,
+                packageRoot,
+                "{\"exports\":{\".\":\"./node_modules/other.scss\"}}",
+                "must be a path within the package root"
+        );
+    }
+
+    /// Rejects raw subpaths and manifest entry fields that leave the package.
+    @Test
+    void rejectsPackagePathEscapes(@TempDir Path directory)
+            throws Exception {
+        var root = directory.resolve("project");
+        var packageRoot = packageRoot(root, "demo");
+        writeManifest(packageRoot, "{}");
+        writeStylesheet(root.resolve("outside.scss"), ".outside {v: 1}");
+
+        var subpathFailure = assertThrows(
+                SassCompilationException.class,
+                () -> compileFile(root, "@use \"pkg:demo/../../outside\";")
+        );
+        assertTrue(
+                subpathFailure.getMessage().contains(
+                        "must be a path within the package root"
+                ),
+                subpathFailure.getMessage()
+        );
+
+        writeManifest(packageRoot, "{\"sass\":\"../../outside.scss\"}");
+        var manifestFailure = assertThrows(
+                SassCompilationException.class,
+                () -> compileFile(root, "@use \"pkg:demo\";")
+        );
+        assertTrue(
+                manifestFailure.getMessage().contains(
+                        "must be a path within the package root"
+                ),
+                manifestFailure.getMessage()
+        );
     }
 
     /// Records canonical package files as loaded and source-map URLs.

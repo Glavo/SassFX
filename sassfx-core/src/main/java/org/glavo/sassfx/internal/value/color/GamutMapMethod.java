@@ -30,7 +30,10 @@ public enum GamutMapMethod {
 
     /// Maps chroma in OKLCH using the local-MINDE improvement from CSS Color 4.
     LOCAL_MINDE("local-minde") {
+        /// The just-noticeable OKLab color-difference threshold.
         private static final double JND = 0.02;
+
+        /// The binary-search and threshold comparison tolerance.
         private static final double EPSILON = 0.0001;
 
         @Override

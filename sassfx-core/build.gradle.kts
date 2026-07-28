@@ -4,6 +4,7 @@ import java.util.zip.ZipFile
 
 plugins {
     `java-library`
+    id("com.vanniktech.maven.publish")
 }
 
 group = rootProject.group
@@ -105,8 +106,6 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(17)
     }
-    withJavadocJar()
-    withSourcesJar()
 }
 
 tasks.withType<JavaCompile>().configureEach {
@@ -131,6 +130,7 @@ tasks.withType<Test>().configureEach {
 }
 
 tasks.test {
+    systemProperty("sassfx.test.expectedVersion", project.version.toString())
     useJUnitPlatform {
         excludeTags("sass-spec")
     }
@@ -158,7 +158,13 @@ tasks.withType<Javadoc>().configureEach {
     options.encoding = "UTF-8"
 }
 
+val embeddedProjectVersion = project.version.toString()
+
 tasks.processResources {
+    inputs.property("sassfxVersion", embeddedProjectVersion)
+    filesMatching("org/glavo/sassfx/sassfx-version.properties") {
+        expand("version" to embeddedProjectVersion)
+    }
     from(rootProject.layout.projectDirectory.file("LICENSE")) {
         into("META-INF")
         rename { "LICENSE.txt" }
@@ -176,6 +182,46 @@ tasks.jar {
         attributes(
             "Automatic-Module-Name" to "org.glavo.sassfx",
         )
+    }
+}
+
+mavenPublishing {
+    publishToMavenCentral()
+    signAllPublications()
+    coordinates(project.group.toString(), project.name, project.version.toString())
+    pom {
+        name = "SassFX Core"
+        description = "Pure Java Sass compiler with CSS, JavaFX CSS, and BSS backends."
+        inceptionYear = "2026"
+        url = "https://github.com/Glavo/SassFX"
+        licenses {
+            license {
+                name = "Mozilla Public License 2.0"
+                url = "https://www.mozilla.org/MPL/2.0/"
+                distribution = "repo"
+            }
+        }
+        developers {
+            developer {
+                id = "glavo"
+                name = "Glavo"
+                url = "https://github.com/Glavo"
+            }
+        }
+        scm {
+            url = "https://github.com/Glavo/SassFX"
+            connection = "scm:git:https://github.com/Glavo/SassFX.git"
+            developerConnection = "scm:git:ssh://git@github.com/Glavo/SassFX.git"
+        }
+    }
+}
+
+publishing {
+    repositories {
+        maven {
+            name = "localStaging"
+            url = uri(rootProject.layout.buildDirectory.dir("staging-repository"))
+        }
     }
 }
 

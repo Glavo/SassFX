@@ -73,6 +73,7 @@ public final class BssSerializer {
     /// Contains the first BSS version with per-rule media framing.
     private static final int VERSION_7 = 7;
 
+    /// The BSS version introduced by JavaFX 27.
     private static final int VERSION_9 = 9;
 
     /// Contains the first BSS version with stylesheet-import framing.

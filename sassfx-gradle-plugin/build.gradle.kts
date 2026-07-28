@@ -1,7 +1,8 @@
 import java.util.jar.JarFile
 
 plugins {
-    `java-gradle-plugin`
+    id("com.gradle.plugin-publish")
+    id("com.vanniktech.maven.publish")
 }
 
 group = rootProject.group
@@ -19,12 +20,15 @@ dependencies {
 }
 
 gradlePlugin {
+    website = "https://github.com/Glavo/SassFX"
+    vcsUrl = "https://github.com/Glavo/SassFX.git"
     plugins {
         create("sassfx") {
             id = "org.glavo.sassfx"
             implementationClass = "org.glavo.sassfx.gradle.SassFXPlugin"
             displayName = "SassFX"
             description = "Compiles Sass to CSS, JavaFX CSS, or JavaFX BSS."
+            tags = listOf("sass", "scss", "css", "javafx")
         }
     }
 }
@@ -33,8 +37,6 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(17)
     }
-    withJavadocJar()
-    withSourcesJar()
 }
 
 tasks.withType<JavaCompile>().configureEach {
@@ -74,6 +76,46 @@ tasks.jar {
         attributes(
             "Automatic-Module-Name" to "org.glavo.sassfx.gradle",
         )
+    }
+}
+
+mavenPublishing {
+    publishToMavenCentral()
+    signAllPublications()
+    coordinates(project.group.toString(), project.name, project.version.toString())
+    pom {
+        name = "SassFX Gradle Plugin"
+        description = "Gradle plugin for compiling Sass to CSS, JavaFX CSS, or BSS."
+        inceptionYear = "2026"
+        url = "https://github.com/Glavo/SassFX"
+        licenses {
+            license {
+                name = "Mozilla Public License 2.0"
+                url = "https://www.mozilla.org/MPL/2.0/"
+                distribution = "repo"
+            }
+        }
+        developers {
+            developer {
+                id = "glavo"
+                name = "Glavo"
+                url = "https://github.com/Glavo"
+            }
+        }
+        scm {
+            url = "https://github.com/Glavo/SassFX"
+            connection = "scm:git:https://github.com/Glavo/SassFX.git"
+            developerConnection = "scm:git:ssh://git@github.com/Glavo/SassFX.git"
+        }
+    }
+}
+
+publishing {
+    repositories {
+        maven {
+            name = "localStaging"
+            url = uri(rootProject.layout.buildDirectory.dir("staging-repository"))
+        }
     }
 }
 

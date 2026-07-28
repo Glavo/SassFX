@@ -5,6 +5,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
+import java.io.Serial;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +16,7 @@ import java.util.Set;
 @NotNullByDefault
 public final class SassCompilationException extends Exception {
     /// The serialization version of this exception representation.
+    @Serial
     private static final long serialVersionUID = 1L;
 
     /// The immutable, nonempty diagnostics associated with the failure, with

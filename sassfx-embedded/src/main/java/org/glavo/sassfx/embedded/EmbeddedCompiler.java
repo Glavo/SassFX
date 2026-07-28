@@ -19,6 +19,7 @@ import org.glavo.sassfx.SassDeprecation;
 import org.glavo.sassfx.SassDiagnosticOptions;
 import org.glavo.sassfx.SassFileImporter;
 import org.glavo.sassfx.SassFileSource;
+import org.glavo.sassfx.SassFXVersion;
 import org.glavo.sassfx.SassImporter;
 import org.glavo.sassfx.SassLogEvent;
 import org.glavo.sassfx.SassLogger;
@@ -44,10 +45,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
@@ -65,7 +67,7 @@ public final class EmbeddedCompiler {
     public static final String COMPILER_VERSION = "1.101.3";
 
     /// The current SassFX implementation version.
-    public static final String IMPLEMENTATION_VERSION = "0.1.0-SNAPSHOT";
+    public static final String IMPLEMENTATION_VERSION = SassFXVersion.current();
 
     /// The implementation name reported to hosts.
     public static final String IMPLEMENTATION_NAME = "sassfx";
@@ -92,8 +94,19 @@ public final class EmbeddedCompiler {
     /// Serializes all writes because compilation workers share one stdout.
     private final Object outputLock = new Object();
 
-    /// Creates an embedded compiler endpoint.
+    /// Contains the resource limits applied to each endpoint run.
+    private final EmbeddedLimits limits;
+
+    /// Creates an embedded compiler endpoint with [EmbeddedLimits#DEFAULT].
     public EmbeddedCompiler() {
+        this(EmbeddedLimits.DEFAULT);
+    }
+
+    /// Creates an embedded compiler endpoint with explicit resource limits.
+    ///
+    /// @param limits the per-run endpoint limits
+    public EmbeddedCompiler(EmbeddedLimits limits) {
+        this.limits = Objects.requireNonNull(limits, "limits");
     }
 
     /// Returns the endpoint version response as a standalone JSON document.
@@ -133,14 +146,23 @@ public final class EmbeddedCompiler {
         Objects.requireNonNull(output, "output");
         Map<Long, EmbeddedCompilationDispatcher> active =
                 new ConcurrentHashMap<>();
-        BlockingQueue<EndpointEvent> events = new LinkedBlockingQueue<>();
-        var workerCount = Math.max(
-                2,
-                Math.min(16, Runtime.getRuntime().availableProcessors())
+        BlockingQueue<EndpointEvent> events = new ArrayBlockingQueue<>(
+                limits.maxInboundEvents()
         );
-        ExecutorService executor = Executors.newFixedThreadPool(workerCount);
+        ExecutorService executor = new ThreadPoolExecutor(
+                limits.maxConcurrentCompilations(),
+                limits.maxConcurrentCompilations(),
+                0,
+                TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(limits.maxQueuedCompilations()),
+                new ThreadPoolExecutor.AbortPolicy()
+        );
         var reader = new Thread(
-                () -> readPackets(input, events),
+                () -> readPackets(
+                        input,
+                        events,
+                        limits.maxPacketLength()
+                ),
                 "sassfx-embedded-reader"
         );
         reader.setDaemon(true);
@@ -182,7 +204,7 @@ public final class EmbeddedCompiler {
 
                 final InboundMessage message;
                 try {
-                    message = InboundMessage.parseFrom(packet.message());
+                    message = InboundMessage.parseFrom(packet.rawMessage());
                 } catch (InvalidProtocolBufferException failure) {
                     return protocolFailure(
                             output,
@@ -287,48 +309,61 @@ public final class EmbeddedCompiler {
                     );
                 }
 
-                executor.execute(() -> {
-                    OutboundMessage response;
-                    try {
-                        response = compile(
-                                packet.compilationId(),
-                                message.getCompileRequest(),
-                                dispatcher,
-                                output
-                        );
-                    } catch (EmbeddedProtocolException failure) {
-                        events.offer(new FatalFailure(
-                                packet.compilationId(),
-                                failure.type(),
-                                failure.requestId(),
-                                messageOf(failure)
-                        ));
-                        return;
-                    } catch (RuntimeException failure) {
-                        events.offer(new FatalFailure(
-                                packet.compilationId(),
-                                ProtocolErrorType.INTERNAL,
-                                UNKNOWN_REQUEST_ID,
-                                messageOf(failure)
-                        ));
-                        return;
-                    }
+                try {
+                    executor.execute(() -> {
+                        OutboundMessage response;
+                        try {
+                            response = compile(
+                                    packet.compilationId(),
+                                    message.getCompileRequest(),
+                                    dispatcher,
+                                    output
+                            );
+                        } catch (EmbeddedProtocolException failure) {
+                            publishEvent(events, new FatalFailure(
+                                    packet.compilationId(),
+                                    failure.type(),
+                                    failure.requestId(),
+                                    messageOf(failure)
+                            ));
+                            return;
+                        } catch (RuntimeException failure) {
+                            publishEvent(events, new FatalFailure(
+                                    packet.compilationId(),
+                                    ProtocolErrorType.INTERNAL,
+                                    UNKNOWN_REQUEST_ID,
+                                    messageOf(failure)
+                            ));
+                            return;
+                        }
 
-                    // Release the ID before publishing its terminal response so
-                    // the host can safely reuse it after observing the response.
+                        // Release the ID before publishing its terminal response
+                        // so the host can safely reuse it after observing the
+                        // response.
+                        active.remove(packet.compilationId(), dispatcher);
+                        dispatcher.close();
+                        try {
+                            send(output, packet.compilationId(), response);
+                        } catch (IOException failure) {
+                            publishEvent(events, new FatalFailure(
+                                    packet.compilationId(),
+                                    ProtocolErrorType.INTERNAL,
+                                    UNKNOWN_REQUEST_ID,
+                                    messageOf(failure)
+                            ));
+                        }
+                    });
+                } catch (RejectedExecutionException failure) {
                     active.remove(packet.compilationId(), dispatcher);
                     dispatcher.close();
-                    try {
-                        send(output, packet.compilationId(), response);
-                    } catch (IOException failure) {
-                        events.offer(new FatalFailure(
-                                packet.compilationId(),
-                                ProtocolErrorType.INTERNAL,
-                                UNKNOWN_REQUEST_ID,
-                                messageOf(failure)
-                        ));
-                    }
-                });
+                    return protocolFailure(
+                            output,
+                            packet.compilationId(),
+                            ProtocolErrorType.PARAMS,
+                            UNKNOWN_REQUEST_ID,
+                            "The Embedded Sass compilation queue is full."
+                    );
+                }
             }
         } catch (RuntimeException failure) {
             return protocolFailure(
@@ -422,15 +457,20 @@ public final class EmbeddedCompiler {
     ///
     /// @param input the host-owned protocol input
     /// @param events the endpoint event queue
+    /// @param maxPacketLength the largest accepted frame body
     private static void readPackets(
             InputStream input,
-            BlockingQueue<EndpointEvent> events
+            BlockingQueue<EndpointEvent> events,
+            int maxPacketLength
     ) {
         try {
             while (true) {
-                @Nullable var packet = EmbeddedPacketIO.read(input);
+                @Nullable var packet = EmbeddedPacketIO.read(
+                        input,
+                        maxPacketLength
+                );
                 if (packet == null) {
-                    events.offer(EndOfInput.INSTANCE);
+                    publishEvent(events, EndOfInput.INSTANCE);
                     return;
                 }
                 events.put(new PacketEvent(packet));
@@ -438,14 +478,32 @@ public final class EmbeddedCompiler {
         } catch (InterruptedException failure) {
             Thread.currentThread().interrupt();
         } catch (IOException failure) {
-            events.offer(new ReadFailure(failure));
+            publishEvent(events, new ReadFailure(failure));
         } catch (RuntimeException failure) {
-            events.offer(new FatalFailure(
+            publishEvent(events, new FatalFailure(
                     UNKNOWN_COMPILATION_ID,
                     ProtocolErrorType.INTERNAL,
                     UNKNOWN_REQUEST_ID,
                     messageOf(failure)
             ));
+        }
+    }
+
+    /// Publishes an endpoint event while preserving interruption.
+    ///
+    /// Worker and reader threads use blocking publication so terminal failures
+    /// cannot be dropped when the bounded inbound queue is temporarily full.
+    ///
+    /// @param events the endpoint event queue
+    /// @param event the event to publish
+    private static void publishEvent(
+            BlockingQueue<EndpointEvent> events,
+            EndpointEvent event
+    ) {
+        try {
+            events.put(event);
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
         }
     }
 

@@ -13,8 +13,13 @@ import java.util.Objects;
 @ApiStatus.Internal
 @NotNullByDefault
 public final class CalculationOperation {
+    /// The binary operator.
     private final CalculationOperator operator;
+
+    /// The left calculation operand.
     private final Object left;
+
+    /// The right calculation operand.
     private final Object right;
 
     /// Creates an operation.
@@ -74,6 +79,12 @@ public final class CalculationOperation {
         return Objects.hash(operator, left, right);
     }
 
+    /// Serializes an operand with parentheses when required by precedence or
+    /// associativity.
+    ///
+    /// @param operand the nested operand
+    /// @param leftSide whether it is the left operand
+    /// @return the serialized operand
     private String parenthesize(Object operand, boolean leftSide) {
         if (operand instanceof CalculationOperation nested
                 && nested.operator.precedence() < operator.precedence()) {
@@ -96,6 +107,10 @@ public final class CalculationOperation {
         return serializeOperand(operand);
     }
 
+    /// Serializes one supported calculation operand.
+    ///
+    /// @param operand the operand
+    /// @return its CSS representation
     static String serializeOperand(Object operand) {
         if (operand instanceof SassNumber number) {
             // Nested non-finite numbers keep bare CSS keywords so outer calc()

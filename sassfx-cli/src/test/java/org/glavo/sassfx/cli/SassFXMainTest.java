@@ -5,6 +5,7 @@ import org.glavo.sassfx.BssTarget;
 import org.glavo.sassfx.JavaFXTarget;
 import org.glavo.sassfx.SassCompiler;
 import org.glavo.sassfx.SassFileSource;
+import org.glavo.sassfx.SassFXVersion;
 import org.glavo.sassfx.Syntax;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Unmodifiable;
@@ -36,14 +37,18 @@ final class SassFXMainTest {
         assertTrue(output.toString().contains("Usage: sassfx"));
     }
 
-    /// Verifies the reported development version.
+    /// Verifies the implementation version embedded by the current build.
     @Test
     void printsVersion() {
         var output = new StringWriter();
         var commandLine = commandLine(output, new StringWriter());
 
         assertEquals(0, commandLine.execute("--version"));
-        assertTrue(output.toString().contains("sassfx 0.1.0-SNAPSHOT"));
+        assertTrue(
+                output.toString().contains(
+                        "sassfx " + SassFXVersion.current()
+                )
+        );
     }
 
     /// Verifies that invocation without an input is a usage error.

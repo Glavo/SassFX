@@ -12,6 +12,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.io.Serial;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -355,13 +356,25 @@ public final class SassSpecBatchMain {
 
     /// Marks an output-CSS assertion failure with corpus ownership.
     private static final class OutputMismatch extends AssertionError {
+        /// The serialization format version.
+        @Serial
+        private static final long serialVersionUID = 1L;
+
+        /// Records whether the fixture belongs to the upstream corpus.
         private final boolean upstream;
 
+        /// Creates an output mismatch.
+        ///
+        /// @param upstream whether the fixture belongs to the upstream corpus
+        /// @param message the assertion detail
         private OutputMismatch(boolean upstream, String message) {
             super(message);
             this.upstream = upstream;
         }
 
+        /// Returns whether the fixture belongs to the upstream corpus.
+        ///
+        /// @return whether the fixture is upstream
         private boolean upstream() {
             return upstream;
         }
@@ -369,13 +382,25 @@ public final class SassSpecBatchMain {
 
     /// Marks a diagnostic assertion failure with corpus ownership.
     private static final class DiagnosticMismatch extends AssertionError {
+        /// The serialization format version.
+        @Serial
+        private static final long serialVersionUID = 1L;
+
+        /// Records whether the fixture belongs to the upstream corpus.
         private final boolean upstream;
 
+        /// Creates a diagnostic mismatch.
+        ///
+        /// @param upstream whether the fixture belongs to the upstream corpus
+        /// @param message the assertion detail
         private DiagnosticMismatch(boolean upstream, String message) {
             super(message);
             this.upstream = upstream;
         }
 
+        /// Returns whether the fixture belongs to the upstream corpus.
+        ///
+        /// @return whether the fixture is upstream
         private boolean upstream() {
             return upstream;
         }

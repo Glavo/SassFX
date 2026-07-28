@@ -147,8 +147,8 @@ import java.util.function.Supplier;
 ///
 /// One evaluator represents one compilation environment. It may evaluate
 /// standalone expressions and execute at most one stylesheet. Statement
-/// execution establishes variable semantics and writes the supported statement
-/// subset into an internal [CssStylesheet].
+/// execution establishes variable semantics and writes the resulting rules
+/// into an internal [CssStylesheet].
 @ApiStatus.Internal
 @NotNullByDefault
 public final class SassEvaluator implements
@@ -3273,6 +3273,11 @@ public final class SassEvaluator implements
         return result;
     }
 
+    /// Adds one module and its transitive upstream modules to a URL index.
+    ///
+    /// @param module the module to visit
+    /// @param result the destination URL index
+    /// @param seen modules already visited by identity
     private static void indexModulesByUrl(
             LoadedModule module,
             Map<URI, LoadedModule> result,
@@ -3350,6 +3355,10 @@ public final class SassEvaluator implements
         return false;
     }
 
+    /// Returns whether one simple selector has a module-private name.
+    ///
+    /// @param simple the selector to inspect
+    /// @return whether it is a private placeholder, class, or ID
     private static boolean isPrivateSimple(
             org.glavo.sassfx.internal.ast.selector.SimpleSelector simple
     ) {
@@ -6864,10 +6873,18 @@ public final class SassEvaluator implements
         return args.get(0);
     }
 
+    /// Throws the standard missing-argument failure for an absent calculation
+    /// argument.
+    ///
+    /// @return never returns
     private static Object nullArg() {
         throw new SassValueException("Missing argument.");
     }
 
+    /// Converts a unitless or angular calculation operand to radians.
+    ///
+    /// @param number the calculation operand
+    /// @return its magnitude in radians
     private static double calculationRadians(SassNumber number) {
         if (number.isUnitless()) {
             return number.value();
@@ -6882,6 +6899,10 @@ public final class SassEvaluator implements
         }
     }
 
+    /// Creates a degree-valued Sass number from radians.
+    ///
+    /// @param radians the angular magnitude
+    /// @return the equivalent degree number
     private static SassNumber calculationDegrees(double radians) {
         if (Double.isNaN(radians)) {
             return SassNumber.of(Double.NaN, "deg");
@@ -6919,7 +6940,15 @@ public final class SassEvaluator implements
         };
     }
 
-    private static SassString serializePlainCss(String name, List<SassValue> positional) {
+    /// Serializes a calculation function without applying Sass simplification.
+    ///
+    /// @param name the CSS function name
+    /// @param positional the positional arguments
+    /// @return an unquoted CSS function string
+    private static SassString serializePlainCss(
+            String name,
+            List<SassValue> positional
+    ) {
         var result = new StringBuilder(name).append('(');
         for (var index = 0; index < positional.size(); index++) {
             if (index > 0) {

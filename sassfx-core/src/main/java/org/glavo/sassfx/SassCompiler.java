@@ -35,9 +35,8 @@ import java.util.Set;
 /// Compiles Sass sources into typed output representations.
 ///
 /// Instances are stateless, thread-safe, and reusable. One compilation reads
-/// its root source, parses and evaluates the currently supported language
-/// subset, and serializes CSS IR for [CssTarget], [JavaFXCssTarget], and the
-/// supported [BssTarget] subset.
+/// its root source, parses and evaluates Sass, and serializes CSS IR for
+/// [CssTarget], [JavaFXCssTarget], and [BssTarget].
 @NotNullByDefault
 public final class SassCompiler {
     /// Creates a reusable compiler.
@@ -128,8 +127,7 @@ public final class SassCompiler {
 
         if (options.sourceMap() && target instanceof BssTarget) {
             throw compilationFailure(
-                    "Source map generation isn't supported for BSS output.",
-                    null
+                    "Source map generation isn't supported for BSS output."
             );
         }
 
@@ -414,21 +412,17 @@ public final class SassCompiler {
         var label = target instanceof JavaFXCssTarget
                 ? "JavaFX CSS"
                 : target instanceof BssTarget ? "BSS" : "CSS";
-        return compilationFailure(label + " output isn't supported.", null);
+        return compilationFailure(label + " output isn't supported.");
     }
 
     /// Creates a span-free compilation failure.
     ///
     /// @param message the failure message
-    /// @param cause   the underlying cause, or {@code null}
     /// @return the compilation exception
-    private static SassCompilationException compilationFailure(
-            String message,
-            @Nullable Throwable cause
-    ) {
+    private static SassCompilationException compilationFailure(String message) {
         return new SassCompilationException(
                 List.of(new Diagnostic(DiagnosticSeverity.ERROR, message, null, null)),
-                cause
+                null
         );
     }
 

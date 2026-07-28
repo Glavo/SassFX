@@ -553,11 +553,19 @@ public final class FilesystemImporter {
         return left.compareTo(right);
     }
 
+    /// Returns the final component of a slash-agnostic diagnostic path.
+    ///
+    /// @param path the displayed path
+    /// @return its final component
     private static String baseName(String path) {
         int slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
         return slash < 0 ? path : path.substring(slash + 1);
     }
 
+    /// Returns the diagnostic ordering rank for a Sass file extension.
+    ///
+    /// @param path the candidate path
+    /// @return zero for Sass, one for SCSS, two for CSS, or three otherwise
     private static int extensionRank(String path) {
         var lower = path.toLowerCase(Locale.ROOT);
         if (lower.endsWith(".sass")) {

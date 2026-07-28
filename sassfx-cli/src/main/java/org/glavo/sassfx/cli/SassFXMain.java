@@ -67,7 +67,7 @@ import java.util.regex.Pattern;
         name = "sassfx",
         description = "Compiles Sass stylesheets to CSS, JavaFX CSS, or JavaFX BSS.",
         mixinStandardHelpOptions = true,
-        version = "sassfx 0.1.0-SNAPSHOT",
+        versionProvider = SassFXVersionProvider.class,
         exitCodeOnInvalidInput = 64,
         exitCodeOnExecutionException = 255
 )
