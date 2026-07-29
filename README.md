@@ -85,6 +85,10 @@ key from the release environment. The required GitHub secrets are
 `SIGNING_PASSWORD`, `GRADLE_PUBLISH_KEY`, and `GRADLE_PUBLISH_SECRET`.
 The public key corresponding to `SIGNING_KEY` must be available from a public
 OpenPGP key server before a release is published.
+After Maven Central and the Gradle Plugin Portal accept the artifacts, a
+separate job uses the workflow's GitHub token to create a GitHub Release with
+generated release notes. JReleaser reuses the pushed tag and does not create or
+replace it.
 Publication configuration does not imply that a particular version has
 already been released.
 

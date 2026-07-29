@@ -115,6 +115,10 @@ tasks.named("jreleaserDeploy") {
     dependsOn(verifyReleaseVersion)
 }
 
+tasks.named("jreleaserRelease") {
+    dependsOn(verifyReleaseVersion)
+}
+
 tasks.clean {
     dependsOn(":sassfx-core:clean")
     dependsOn(":sassfx-cli:clean")

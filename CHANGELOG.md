@@ -79,6 +79,8 @@ with library, command-line, Embedded Sass, and Gradle interfaces.
 - Stages Maven publications for the core library, CLI, Embedded endpoint, and
   Gradle plugin, then validates, signs, and deploys them with JReleaser.
 - Configures Gradle Plugin Portal publication for `org.glavo.sassfx`.
+- Creates a GitHub Release with generated notes after both artifact
+  repositories accept the release.
 - Adds Linux and Windows CI, the full JavaFX oracle matrix, and tag-driven
   release automation.
 

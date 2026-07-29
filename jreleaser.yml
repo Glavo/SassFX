@@ -11,11 +11,15 @@ project:
 
 release:
   github:
-    enabled: false
+    enabled: true
+    owner: Glavo
+    name: SassFX
+    skipTag: true
+    releaseNotes:
+      enabled: true
 
 signing:
   pgp:
-    active: RELEASE
     armored: true
     verify: false
 
@@ -23,7 +27,6 @@ deploy:
   maven:
     mavenCentral:
       sassfx:
-        active: RELEASE
         url: https://central.sonatype.com/api/v1/publisher
         applyMavenCentralRules: true
         stagingRepositories:

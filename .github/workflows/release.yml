@@ -12,6 +12,8 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     environment: release
+    outputs:
+      version: ${{ steps.version.outputs.value }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-java@v5
@@ -33,6 +35,8 @@ jobs:
         env:
           JRELEASER_MAVENCENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           JRELEASER_MAVENCENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          JRELEASER_DEPLOY_MAVEN_MAVENCENTRAL_SASSFX_ACTIVE: RELEASE
+          JRELEASER_SIGNING_ACTIVE: RELEASE
           JRELEASER_GPG_SECRET_KEY: ${{ secrets.SIGNING_KEY }}
           JRELEASER_GPG_PASSPHRASE: ${{ secrets.SIGNING_PASSWORD }}
         run: >-
@@ -47,3 +51,25 @@ jobs:
           ./gradlew --no-daemon
           -PsassfxVersion="${{ steps.version.outputs.value }}"
           :sassfx-gradle-plugin:publishPlugins
+
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: "25"
+          cache: gradle
+      - name: Publish GitHub release
+        env:
+          JRELEASER_GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          ./gradlew --no-daemon
+          -PsassfxVersion="${{ needs.publish.outputs.version }}"
+          jreleaserRelease
