@@ -4,15 +4,24 @@ import org.gradle.external.javadoc.StandardJavadocDocletOptions
 
 plugins {
     base
-    id("com.vanniktech.maven.publish") version "0.37.0" apply false
-    id("com.vanniktech.maven.publish.base") version "0.37.0" apply false
     id("com.gradle.plugin-publish") version "2.1.1" apply false
+    id("org.jreleaser") version "1.25.0"
 }
 
 group = "org.glavo"
 version = providers.gradleProperty("sassfxVersion")
     .orElse(providers.environmentVariable("SASSFX_VERSION"))
     .getOrElse("0.1.0-SNAPSHOT")
+description = "Pure Java Sass compiler with CSS, JavaFX CSS, and BSS backends."
+
+jreleaser {
+    configFile.set(layout.projectDirectory.file("jreleaser.yml"))
+    dependsOnAssemble.set(false)
+}
+
+tasks.matching { it.name.startsWith("jreleaser") }.configureEach {
+    doNotTrackState("JReleaser manages its own working directory and trace log.")
+}
 
 val verifyReleaseVersion = tasks.register<VerifyReleaseVersionTask>(
     "verifyReleaseVersion",
@@ -22,8 +31,8 @@ val verifyReleaseVersion = tasks.register<VerifyReleaseVersionTask>(
     releaseVersion.set(project.version.toString())
 }
 
-val cleanLocalStagingRepository = tasks.register<Delete>(
-    "cleanLocalStagingRepository",
+val cleanStagingRepository = tasks.register<Delete>(
+    "cleanStagingRepository",
 ) {
     delete(layout.buildDirectory.dir("staging-repository"))
 }
@@ -44,7 +53,7 @@ subprojects {
     pluginManager.withPlugin("maven-publish") {
         tasks.withType<PublishToMavenRepository>().configureEach {
             if (name.endsWith("ToLocalStagingRepository")) {
-                dependsOn(cleanLocalStagingRepository)
+                dependsOn(cleanStagingRepository)
             }
         }
     }
@@ -64,9 +73,9 @@ tasks.check {
     dependsOn(":sassfx-gradle-plugin:check")
 }
 
-tasks.register("verifyLocalPublications") {
-    group = LifecycleBasePlugin.VERIFICATION_GROUP
-    description = "Publishes every Maven artifact to an isolated local repository."
+val stageMavenPublications = tasks.register("stageMavenPublications") {
+    group = "publishing"
+    description = "Stages every Maven publication for verification or deployment."
     dependsOn(":sassfx-core:publishAllPublicationsToLocalStagingRepository")
     dependsOn(":sassfx-cli:publishAllPublicationsToLocalStagingRepository")
     dependsOn(":sassfx-embedded:publishAllPublicationsToLocalStagingRepository")
@@ -76,7 +85,7 @@ tasks.register("verifyLocalPublications") {
 tasks.register<Exec>("verifyPublishedConsumer") {
     group = LifecycleBasePlugin.VERIFICATION_GROUP
     description = "Verifies all staged artifacts from an isolated Gradle consumer."
-    dependsOn("verifyLocalPublications")
+    dependsOn(stageMavenPublications)
     workingDir(layout.projectDirectory.dir("gradle/verification/consumer"))
 
     val wrapperName = if (System.getProperty("os.name").startsWith("Windows")) {
@@ -99,6 +108,11 @@ tasks.register<Exec>("verifyPublishedConsumer") {
         "all",
         "check",
     )
+}
+
+tasks.named("jreleaserDeploy") {
+    dependsOn(stageMavenPublications)
+    dependsOn(verifyReleaseVersion)
 }
 
 tasks.clean {

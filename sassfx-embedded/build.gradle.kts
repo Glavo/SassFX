@@ -1,11 +1,10 @@
-import com.vanniktech.maven.publish.MavenPublishBaseExtension
 import org.glavo.sassfx.build.VerifyShadedCompilerJarTask
 import org.gradle.api.publish.maven.MavenPublication
 
 plugins {
     application
     id("com.gradleup.shadow") version "9.6.1"
-    id("com.vanniktech.maven.publish.base")
+    `maven-publish`
 }
 
 group = rootProject.group
@@ -127,11 +126,6 @@ publishing {
             url = uri(rootProject.layout.buildDirectory.dir("staging-repository"))
         }
     }
-}
-
-extensions.configure<MavenPublishBaseExtension> {
-    publishToMavenCentral()
-    signAllPublications()
 }
 
 tasks.withType<AbstractArchiveTask>().configureEach {

@@ -1,10 +1,11 @@
 import org.glavo.sassfx.build.FailTask
 import org.glavo.sassfx.build.VerifyCoreLibraryJarTask
 import org.glavo.sassfx.build.VerifyReferenceIsolationTask
+import org.gradle.api.publish.maven.MavenPublication
 
 plugins {
     `java-library`
-    id("com.vanniktech.maven.publish")
+    `maven-publish`
 }
 
 group = rootProject.group
@@ -106,6 +107,8 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(17)
     }
+    withJavadocJar()
+    withSourcesJar()
 }
 
 tasks.withType<JavaCompile>().configureEach {
@@ -184,33 +187,35 @@ tasks.jar {
     }
 }
 
-mavenPublishing {
-    publishToMavenCentral()
-    signAllPublications()
-    coordinates(project.group.toString(), project.name, project.version.toString())
-    pom {
-        name = "SassFX Core"
-        description = "Pure Java Sass compiler with CSS, JavaFX CSS, and BSS backends."
-        inceptionYear = "2026"
-        url = "https://github.com/Glavo/SassFX"
-        licenses {
-            license {
-                name = "Mozilla Public License 2.0"
-                url = "https://www.mozilla.org/MPL/2.0/"
-                distribution = "repo"
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            from(components["java"])
+            pom {
+                name = "SassFX Core"
+                description = "Pure Java Sass compiler with CSS, JavaFX CSS, and BSS backends."
+                inceptionYear = "2026"
+                url = "https://github.com/Glavo/SassFX"
+                licenses {
+                    license {
+                        name = "Mozilla Public License 2.0"
+                        url = "https://www.mozilla.org/MPL/2.0/"
+                        distribution = "repo"
+                    }
+                }
+                developers {
+                    developer {
+                        id = "glavo"
+                        name = "Glavo"
+                        url = "https://github.com/Glavo"
+                    }
+                }
+                scm {
+                    url = "https://github.com/Glavo/SassFX"
+                    connection = "scm:git:https://github.com/Glavo/SassFX.git"
+                    developerConnection = "scm:git:ssh://git@github.com/Glavo/SassFX.git"
+                }
             }
-        }
-        developers {
-            developer {
-                id = "glavo"
-                name = "Glavo"
-                url = "https://github.com/Glavo"
-            }
-        }
-        scm {
-            url = "https://github.com/Glavo/SassFX"
-            connection = "scm:git:https://github.com/Glavo/SassFX.git"
-            developerConnection = "scm:git:ssh://git@github.com/Glavo/SassFX.git"
         }
     }
 }

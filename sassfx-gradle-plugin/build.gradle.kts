@@ -1,10 +1,10 @@
 import org.glavo.sassfx.build.VerifyPluginJarTask
 import org.glavo.sassfx.build.VerifyPluginPublicationTask
+import org.gradle.api.publish.maven.MavenPublication
 
 plugins {
     id("com.gradle.plugin-publish")
     id("com.gradleup.shadow") version "9.6.1"
-    id("com.vanniktech.maven.publish")
 }
 
 group = rootProject.group
@@ -39,6 +39,8 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(17)
     }
+    withJavadocJar()
+    withSourcesJar()
 }
 
 tasks.withType<JavaCompile>().configureEach {
@@ -96,38 +98,34 @@ tasks.shadowJar {
     }
 }
 
-mavenPublishing {
-    publishToMavenCentral()
-    signAllPublications()
-    coordinates(project.group.toString(), project.name, project.version.toString())
-    pom {
-        name = "SassFX Gradle Plugin"
-        description = "Gradle plugin for compiling Sass to CSS, JavaFX CSS, or BSS."
-        inceptionYear = "2026"
-        url = "https://github.com/Glavo/SassFX"
-        licenses {
-            license {
-                name = "Mozilla Public License 2.0"
-                url = "https://www.mozilla.org/MPL/2.0/"
-                distribution = "repo"
-            }
-        }
-        developers {
-            developer {
-                id = "glavo"
-                name = "Glavo"
-                url = "https://github.com/Glavo"
-            }
-        }
-        scm {
+publishing {
+    publications.withType<MavenPublication>().configureEach {
+        pom {
+            name = "SassFX Gradle Plugin"
+            description = "Gradle plugin for compiling Sass to CSS, JavaFX CSS, or BSS."
+            inceptionYear = "2026"
             url = "https://github.com/Glavo/SassFX"
-            connection = "scm:git:https://github.com/Glavo/SassFX.git"
-            developerConnection = "scm:git:ssh://git@github.com/Glavo/SassFX.git"
+            licenses {
+                license {
+                    name = "Mozilla Public License 2.0"
+                    url = "https://www.mozilla.org/MPL/2.0/"
+                    distribution = "repo"
+                }
+            }
+            developers {
+                developer {
+                    id = "glavo"
+                    name = "Glavo"
+                    url = "https://github.com/Glavo"
+                }
+            }
+            scm {
+                url = "https://github.com/Glavo/SassFX"
+                connection = "scm:git:https://github.com/Glavo/SassFX.git"
+                developerConnection = "scm:git:ssh://git@github.com/Glavo/SassFX.git"
+            }
         }
     }
-}
-
-publishing {
     repositories {
         maven {
             name = "localStaging"

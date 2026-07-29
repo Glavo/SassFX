@@ -69,14 +69,23 @@ shaded artifacts with automatic module names `org.glavo.sassfx.embedded`,
 `org.glavo.sassfx.cli`, and `org.glavo.sassfx.gradle`. They contain relocated
 runtime dependencies but no JavaFX, FFI, or native content.
 
-All four projects are configured for signed Maven Central publication with
-sources, Javadoc, license, developer, and SCM metadata. CLI, Embedded, and the
-Gradle plugin use their self-contained shaded JARs as the main artifacts. The
-Gradle plugin is also configured for Plugin Portal publication.
-`verifyPublishedConsumer` stages every publication in an isolated repository,
-resolves the plugin and library from a consumer build, compiles Java and SCSS,
-and runs both executable artifacts. Release tags use the version derived from
-the tag; configuring publication does not imply that a particular version has
+All four projects produce Maven publications with sources, Javadoc, license,
+developer, and SCM metadata. CLI, Embedded, and the Gradle plugin use their
+self-contained shaded JARs as the main artifacts. Gradle stages these
+publications in an isolated repository; JReleaser validates, signs, and deploys
+that repository through the Central Publisher API. The Gradle plugin is also
+configured for Plugin Portal publication. `verifyPublishedConsumer` resolves
+the staged plugin and library from a consumer build, compiles Java and SCSS,
+and runs both executable artifacts.
+
+Tags matching `v*.*.*` start the release workflow. The tag supplies the release
+version, while JReleaser reads the Central Portal token and armored PGP private
+key from the release environment. The required GitHub secrets are
+`MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `SIGNING_KEY`,
+`SIGNING_PASSWORD`, `GRADLE_PUBLISH_KEY`, and `GRADLE_PUBLISH_SECRET`.
+The public key corresponding to `SIGNING_KEY` must be available from a public
+OpenPGP key server before a release is published.
+Publication configuration does not imply that a particular version has
 already been released.
 
 ## Gradle Plugin
