@@ -75,13 +75,6 @@ public enum BinaryOperator {
         this.associative = associative;
     }
 
-    /// Returns the human-readable operator name used by diagnostics.
-    ///
-    /// @return the operator name
-    public String displayName() {
-        return displayName;
-    }
-
     /// Returns the Sass source spelling of this operator.
     ///
     /// @return the operator source spelling

@@ -1515,15 +1515,6 @@ public final class BssSerializer {
         return text.length() >= 4 && text.regionMatches(true, 0, "url(", 0, 4);
     }
 
-    /// Returns whether a value is JavaFX's indefinite duration keyword.
-    ///
-    /// @param value the evaluated Sass value
-    /// @return whether generic JavaFX parsing produces positive infinity
-    private static boolean isIndefiniteDuration(SassValue value) {
-        return value instanceof SassString string
-                && string.text().equalsIgnoreCase("indefinite");
-    }
-
     /// Returns whether a Sass color token is a JavaFX 18 blend-mode identifier.
     ///
     /// Sass evaluates the conflicting `red`, `green`, and `blue` identifiers as
@@ -2315,7 +2306,6 @@ public final class BssSerializer {
         writeRawSizeValue(
                 output,
                 Double.POSITIVE_INFINITY,
-                "PX",
                 strings
         );
     }
@@ -4100,21 +4090,16 @@ public final class BssSerializer {
     ) throws IOException {
         var lower = string.text().toLowerCase(Locale.ROOT);
         switch (lower) {
-            case "indefinite" -> {
-                writeIndefiniteDurationValue(output, strings);
-                return;
-            }
+            case "indefinite" -> writeIndefiniteDurationValue(output, strings);
             case "infinity" -> {
                 writeParsedHeader(output, false, SIZE_CONVERTER, strings);
                 output.writeByte(NESTED_VALUE);
-                writeRawSizeValue(output, Double.MAX_VALUE, "PX", strings);
-                return;
+                writeRawSizeValue(output, Double.MAX_VALUE, strings);
             }
             case "true", "false" -> {
                 writeParsedHeader(output, false, BOOLEAN_CONVERTER, strings);
                 output.writeByte(STRING_VALUE);
                 output.writeShort(strings.add(lower));
-                return;
             }
             default -> {
                 if (string.hasQuotes()) {
@@ -4712,19 +4697,17 @@ public final class BssSerializer {
     ///
     /// @param output  the declaration output stream
     /// @param value   the numeric size value, including positive infinity
-    /// @param unit    the JavaFX SizeUnits enum spelling
     /// @param strings the shared string table
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeRawSizeValue(
             DataOutputStream output,
             double value,
-            String unit,
             StringStore strings
     ) throws IOException {
         writeParsedHeader(output, false, null, strings);
         output.writeByte(SIZE_VALUE);
         output.writeLong(Double.doubleToLongBits(value));
-        output.writeShort(strings.add(unit));
+        output.writeShort(strings.add("PX"));
     }
 
     /// Returns the JavaFX SizeUnits enum name for one Sass number.

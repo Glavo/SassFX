@@ -41,17 +41,6 @@ public final class SourceMapGenerator {
         }
     }
 
-    /// Encodes sources and entries as a version-3 source-map document.
-    ///
-    /// @param sources the ordered source identifiers
-    /// @param entries the map entries
-    /// @return the JSON text
-    /// @throws IOException if JSON encoding fails
-    static String toJson(List<String> sources, List<SourceMapBuffer.Entry> entries)
-            throws IOException {
-        return toJson(sources, entries, null);
-    }
-
     /// Encodes sources, entries, and optional source contents as a version-3
     /// source-map document.
     ///

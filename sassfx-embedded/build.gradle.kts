@@ -1,6 +1,6 @@
 import com.vanniktech.maven.publish.MavenPublishBaseExtension
+import org.glavo.sassfx.build.VerifyShadedCompilerJarTask
 import org.gradle.api.publish.maven.MavenPublication
-import java.util.jar.JarFile
 
 plugins {
     application
@@ -46,18 +46,6 @@ tasks.withType<Javadoc>().configureEach {
         languageVersion = JavaLanguageVersion.of(25)
     }
     options.encoding = "UTF-8"
-}
-
-tasks.withType<Test>().configureEach {
-    useJUnitPlatform()
-    val taskTemporaryDirectory = layout.buildDirectory.dir("tmp/$name")
-    systemProperty(
-        "java.io.tmpdir",
-        taskTemporaryDirectory.get().asFile.absolutePath,
-    )
-    doFirst {
-        taskTemporaryDirectory.get().asFile.mkdirs()
-    }
 }
 
 tasks.jar {
@@ -151,98 +139,24 @@ tasks.withType<AbstractArchiveTask>().configureEach {
     isReproducibleFileOrder = true
 }
 
-val verifyShadedJar = tasks.register("verifyShadedJar") {
+val verifyShadedJar = tasks.register<VerifyShadedCompilerJarTask>(
+    "verifyShadedJar",
+) {
     group = LifecycleBasePlugin.VERIFICATION_GROUP
     description = "Verifies that the embedded compiler contains no JavaFX, FFI, or native content."
-    dependsOn(tasks.shadowJar)
-    inputs.file(tasks.shadowJar.flatMap { it.archiveFile })
-
-    doLast {
-        val archive = tasks.shadowJar.get().archiveFile.get().asFile
-        val forbiddenEntryPatterns = listOf(
-            Regex("(^|/)javafx/", RegexOption.IGNORE_CASE),
-            Regex("(^|/)com/sun/javafx/", RegexOption.IGNORE_CASE),
-            Regex("^com/google/errorprone/.*"),
-            Regex("^com/google/gson/.*"),
-            Regex("^com/google/protobuf/.*"),
-            Regex("^com/sass_lang/embedded_protocol/.*"),
-            Regex(".*\\.(a|dll|dylib|exe|jnilib|lib|node|wasm)$", RegexOption.IGNORE_CASE),
-            Regex(".*\\.so(?:\\.\\d+)*$", RegexOption.IGNORE_CASE),
-            Regex(".*\\.(dart|js|mjs|cjs)$", RegexOption.IGNORE_CASE),
-        )
-        val forbiddenClassReferences = listOf(
-            "javafx/",
-            "com/sun/javafx/",
-            "java/lang/foreign/",
-            "jdk/incubator/foreign/",
-            "com/sun/jna/",
-            "com/sun/jnr/",
-            "jnr/ffi/",
-            "com/kenai/jffi/",
-        )
-        val forbiddenEntries = mutableListOf<String>()
-        val forbiddenReferences = mutableListOf<String>()
-        val requiredEntries = listOf(
+    archiveFile.set(tasks.shadowJar.flatMap { it.archiveFile })
+    expectedMainClass.set(application.mainClass)
+    artifactName.set("The embedded compiler")
+    requiredEntries.set(
+        listOf(
             "org/glavo/sassfx/embedded/SassFXEmbeddedMain.class",
             "org/glavo/sassfx/embedded/EmbeddedCompiler.class",
             "org/glavo/sassfx/internal/thirdparty/errorprone/annotations/CheckReturnValue.class",
             "org/glavo/sassfx/internal/thirdparty/gson/stream/JsonReader.class",
             "org/glavo/sassfx/internal/thirdparty/protobuf/Message.class",
             "org/glavo/sassfx/internal/thirdparty/embedded_protocol/InboundMessage.class",
-        )
-
-        JarFile(archive).use { zipFile ->
-            val mainClass = zipFile.manifest.mainAttributes
-                .getValue("Main-Class")
-            if (mainClass != application.mainClass.get()) {
-                throw GradleException(
-                    "The embedded compiler has an unexpected Main-Class: $mainClass",
-                )
-            }
-            val missingEntries = requiredEntries.filter { entry ->
-                zipFile.getEntry(entry) == null
-            }
-            if (missingEntries.isNotEmpty()) {
-                throw GradleException(
-                    "The embedded compiler is missing required entries: " +
-                        missingEntries.joinToString(),
-                )
-            }
-            val entries = zipFile.entries()
-            while (entries.hasMoreElements()) {
-                val entry = entries.nextElement()
-                if (entry.isDirectory) {
-                    continue
-                }
-                if (forbiddenEntryPatterns.any { pattern -> pattern.matches(entry.name) }) {
-                    forbiddenEntries += entry.name
-                }
-                if (entry.name.endsWith(".class")) {
-                    val contents = zipFile.getInputStream(entry).use { input ->
-                        input.readBytes().toString(Charsets.ISO_8859_1)
-                    }
-                    forbiddenReferences.addAll(
-                        forbiddenClassReferences
-                            .filter { reference -> contents.contains(reference) }
-                            .map { reference -> "${entry.name}: ${reference}" },
-                    )
-                }
-            }
-        }
-
-        if (forbiddenEntries.isNotEmpty()) {
-            throw GradleException(
-                "The embedded compiler contains forbidden entries: " +
-                    forbiddenEntries.joinToString(),
-            )
-        }
-        if (forbiddenReferences.isNotEmpty()) {
-            throw GradleException(
-                "The embedded compiler contains forbidden class references: " +
-                    forbiddenReferences.joinToString(),
-            )
-        }
-    }
+        ),
+    )
 }
 
 val java17Launcher = javaToolchains.launcherFor {

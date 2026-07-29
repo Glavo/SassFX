@@ -44,15 +44,4 @@ public record BssTarget(JavaFXTarget javaFXTarget)
     public int bssVersion() {
         return javaFXTarget.bssVersion();
     }
-
-    /// Returns the binary stylesheet format version selected by this target.
-    ///
-    /// @deprecated Use [#bssVersion()] to distinguish the BSS format version
-    /// from [JavaFXTarget#version()].
-    ///
-    /// @return a value from `5` through `9`
-    @Deprecated
-    public int version() {
-        return bssVersion();
-    }
 }

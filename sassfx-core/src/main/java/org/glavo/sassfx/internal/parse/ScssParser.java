@@ -82,9 +82,6 @@ final class ScssParser extends SassExpressionParser {
     /// Records whether Sass-only stylesheet syntax must be rejected.
     private final boolean plainCss;
 
-    /// Counts style-rule blocks currently being parsed in plain CSS.
-    private int plainCssStyleRuleDepth;
-
     /// Identifies the statement forms allowed inside a braced block.
     private enum StatementContext {
         /// Top-level statements and top-level control-flow bodies.
@@ -326,17 +323,7 @@ final class ScssParser extends SassExpressionParser {
         if (selector.parts().isEmpty()) {
             throw scanner.error("expected selector.");
         }
-        ArrayList<SassStatement> children;
-        if (plainCss) {
-            plainCssStyleRuleDepth++;
-            try {
-                children = statementBlock(StatementContext.STYLE_RULE);
-            } finally {
-                plainCssStyleRuleDepth--;
-            }
-        } else {
-            children = statementBlock(StatementContext.STYLE_RULE);
-        }
+        var children = statementBlock(StatementContext.STYLE_RULE);
         var span = scanner.spanFrom(start);
         whitespaceWithoutComments(false);
         return new StyleRule(selector, children, span);
@@ -840,11 +827,6 @@ final class ScssParser extends SassExpressionParser {
         return new ExtendRule(selector, optional, scanner.spanFrom(start));
     }
 
-    /// Parses an opaque at-rule accepted by plain CSS.
-    ///
-    /// @param start the state at the leading at sign
-    /// @param name the decoded at-rule name
-    /// @return the opaque rule
     /// Parses an opaque at-rule accepted by plain CSS.
     ///
     /// @param start the state at the leading at sign
@@ -2145,9 +2127,10 @@ final class ScssParser extends SassExpressionParser {
                 }
                 var identifier = interpolatedIdentifier();
                 buffer.add(identifier);
-                @Nullable String name = identifier.asPlain() == null
+                @Nullable String plainName = identifier.asPlain();
+                @Nullable String name = plainName == null
                         ? null
-                        : identifier.asPlain().toLowerCase(Locale.ROOT);
+                        : plainName.toLowerCase(Locale.ROOT);
                 if (name != null && !name.equals("and") && scanner.scan('(')) {
                     if (name.equals("supports")) {
                         whitespace(true);
@@ -2280,22 +2263,6 @@ final class ScssParser extends SassExpressionParser {
         throw scanner.error("Expected @supports condition.");
     }
 
-    /// Parses one static-import `supports()` modifier.
-    ///
-    /// @return the structured condition inside the modifier
-    private SupportsCondition importSupportsModifier() {
-        expectIdentifier("supports");
-        scanner.expect('(');
-        whitespace(true);
-        if (scanner.peek() == ')') {
-            throw scanner.error("Expected @supports condition.");
-        }
-        var condition = importSupportsCondition();
-        whitespace(true);
-        scanner.expect(')');
-        return condition;
-    }
-
     /// Parses either an unparenthesized declaration or a regular supports condition.
     ///
     /// CSS import modifiers allow `supports(display: grid)`, while an
@@ -2347,19 +2314,6 @@ final class ScssParser extends SassExpressionParser {
                 customProperty,
                 scanner.spanFrom(start)
         );
-    }
-
-    /// Returns whether a top-level static-import `supports()` modifier begins here.
-    ///
-    /// Whitespace between the identifier and opening parenthesis is not valid.
-    /// The scanner position is unchanged.
-    ///
-    /// @return whether the modifier begins at the current position
-    private boolean lookingAtImportSupportsModifier() {
-        var start = scanner.state();
-        boolean result = scanIdentifier("supports") && scanner.peek() == '(';
-        scanner.restore(start);
-        return result;
     }
 
     /// Collapses line-break whitespace from indented open-paren joins inside a

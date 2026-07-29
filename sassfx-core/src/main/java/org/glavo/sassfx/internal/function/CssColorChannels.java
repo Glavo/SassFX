@@ -6,7 +6,6 @@ import org.glavo.sassfx.internal.value.ListSeparator;
 import org.glavo.sassfx.internal.value.RgbFunctionColorFormat;
 import org.glavo.sassfx.internal.value.SassColor;
 import org.glavo.sassfx.internal.value.SassList;
-import org.glavo.sassfx.internal.value.SassNull;
 import org.glavo.sassfx.internal.value.SassNumber;
 import org.glavo.sassfx.internal.value.SassString;
 import org.glavo.sassfx.internal.value.SassValue;
@@ -19,7 +18,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 
 /// Parses CSS Color Level 4 channel lists used by global color constructors.
@@ -208,7 +206,6 @@ final class CssColorChannels {
 
         return colorFromChannels(
                 context,
-                functionName,
                 space,
                 new SassList(channels, ListSeparator.SPACE, false),
                 alphaValue,
@@ -385,7 +382,7 @@ final class CssColorChannels {
             try {
                 double value = Double.parseDouble(text.substring(0, index));
                 String unit = text.substring(index);
-                return unit.isEmpty() ? SassNumber.of(value, null) : SassNumber.of(value, unit);
+                return SassNumber.of(value, unit);
             } catch (NumberFormatException ignored) {
                 return new SassString(text, false);
             }
@@ -401,7 +398,6 @@ final class CssColorChannels {
     /// values and an optional alpha channel.
     ///
     /// @param context the callable context used for deprecations, or `null`
-    /// @param functionName the invoking function name
     /// @param space the destination color space
     /// @param channelsValue the supplied channel value
     /// @param alphaValue the optional alpha value
@@ -411,7 +407,6 @@ final class CssColorChannels {
     /// @return the constructed color
     private static SassColor colorFromChannels(
             @Nullable BuiltInCallable.Context context,
-            String functionName,
             ColorSpace space,
             SassValue channelsValue,
             @Nullable SassValue alphaValue,
@@ -449,7 +444,7 @@ final class CssColorChannels {
                 alpha = null;
             } else if (alphaValue instanceof SassNumber number) {
                 // CSS clamps non-finite alpha: +infinity → 1, -infinity/NaN → 0.
-                alpha = clampLikeCss(percentageOrUnitless(number, 1.0, "alpha"), 0.0, 1.0);
+                alpha = clampLikeCss(alphaValue(number), 0.0, 1.0);
             } else {
                 // Slash-alpha is still part of the $channels/$description argument
                 // for fixed-space constructors (dart-sass: "$channels: c is not a number.").
@@ -625,25 +620,19 @@ final class CssColorChannels {
                 && "none".equalsIgnoreCase(string.text());
     }
 
-    /// Converts a unitless or percentage number to a bounded channel scale.
+    /// Converts a unitless or percentage alpha number to its fractional scale.
     ///
     /// @param number the supplied number
-    /// @param max the magnitude corresponding to 100 percent
-    /// @param name the argument name used by failures
     /// @return the scaled magnitude
-    private static double percentageOrUnitless(
-            SassNumber number,
-            double max,
-            String name
-    ) {
+    private static double alphaValue(SassNumber number) {
         if (number.isUnitless()) {
             return number.value();
         }
         if (number.numeratorUnits().equals(List.of("%")) && number.denominatorUnits().isEmpty()) {
-            return max * number.value() / 100.0;
+            return number.value() / 100.0;
         }
         throw new SassValueException(
-                "$" + name + ": Expected " + number + " to have unit \"%\" or no units."
+                "$alpha: Expected " + number + " to have unit \"%\" or no units."
         );
     }
 

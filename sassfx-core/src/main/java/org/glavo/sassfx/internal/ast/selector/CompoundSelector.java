@@ -6,7 +6,6 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Unmodifiable;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -54,20 +53,4 @@ public record CompoundSelector(
         return false;
     }
 
-    /// Returns whether this compound begins with a parent selector.
-    ///
-    /// @return whether the first simple selector is `&`
-    public boolean startsWithParent() {
-        return components.get(0) instanceof ParentSelector;
-    }
-
-    /// Returns a compound with an additional simple selector appended.
-    ///
-    /// @param simple the simple selector to append
-    /// @return the extended compound
-    public CompoundSelector withAdditionalSimple(SimpleSelector simple) {
-        var next = new ArrayList<>(components);
-        next.add(Objects.requireNonNull(simple, "simple"));
-        return new CompoundSelector(next, span);
-    }
 }

@@ -162,8 +162,7 @@ public final class SelectorAlgebra {
     /// @param superselector the candidate broader selector list
     /// @param subselector   the candidate narrower selector list
     /// @return whether every subselector component is covered
-    /// @throws SassValueException if an input uses unsupported or
-    ///                            non-comparable explicit combinators
+    /// @throws SassValueException if an input uses unsupported selector syntax
     public static boolean isSuperselector(
             SelectorList superselector,
             SelectorList subselector
@@ -173,21 +172,13 @@ public final class SelectorAlgebra {
 
         for (var subComplex : subselector.components()) {
             var covered = false;
-            var unsupported = false;
             for (var superComplex : superselector.components()) {
-                @Nullable Boolean relation = complexIsSuperselector(superComplex, subComplex);
-                if (Boolean.TRUE.equals(relation)) {
+                if (complexIsSuperselector(superComplex, subComplex)) {
                     covered = true;
                     break;
                 }
-                if (relation == null) {
-                    unsupported = true;
-                }
             }
             if (!covered) {
-                if (unsupported) {
-                    throw unsupportedComparison();
-                }
                 return false;
             }
         }
@@ -946,14 +937,12 @@ public final class SelectorAlgebra {
         }
         if (!hasComplicatedPseudoSemantics(selector1)
                 && !hasComplicatedPseudoSemantics(selector2)) {
-            @Nullable Boolean firstIsSuperselector = complexIsSuperselector(selector1, selector2);
-            @Nullable Boolean secondIsSuperselector = complexIsSuperselector(selector2, selector1);
-            if (Boolean.TRUE.equals(firstIsSuperselector)
-                    && !Boolean.TRUE.equals(secondIsSuperselector)) {
+            boolean firstIsSuperselector = complexIsSuperselector(selector1, selector2);
+            boolean secondIsSuperselector = complexIsSuperselector(selector2, selector1);
+            if (firstIsSuperselector && !secondIsSuperselector) {
                 return List.of(selector2);
             }
-            if (Boolean.TRUE.equals(secondIsSuperselector)
-                    && !Boolean.TRUE.equals(firstIsSuperselector)) {
+            if (secondIsSuperselector && !firstIsSuperselector) {
                 return List.of(selector1);
             }
         }
@@ -1708,10 +1697,10 @@ public final class SelectorAlgebra {
         first.add(base);
         var second = new ArrayList<>(complex2);
         second.add(base);
-        return Boolean.TRUE.equals(complexIsSuperselector(
+        return complexIsSuperselector(
                 new ComplexSelector(List.of(), first, span),
                 new ComplexSelector(List.of(), second, span)
-        ));
+        );
     }
 
     /// Determines whether one complex selector is a superselector of another.
@@ -1723,7 +1712,7 @@ public final class SelectorAlgebra {
     /// @param superselector the candidate broader selector
     /// @param subselector   the candidate narrower selector
     /// @return {@code true} or {@code false}
-    private static @Nullable Boolean complexIsSuperselector(
+    private static boolean complexIsSuperselector(
             ComplexSelector superselector,
             ComplexSelector subselector
     ) {
@@ -1883,61 +1872,6 @@ public final class SelectorAlgebra {
         }
         // Following sibling is a supercombinator of next sibling.
         return first == Combinator.FOLLOWING_SIBLING && second == Combinator.NEXT_SIBLING;
-    }
-
-    /// Determines whether a descendant-only selector is a superselector of a
-    /// selector whose final element is already known to match.
-    ///
-    /// @param superselector the descendant-only broader selector
-    /// @param subselector   the candidate narrower selector
-    /// @return whether the ancestor requirements form an ordered subsequence
-    private static boolean descendantPathIsSuperselector(
-            ComplexSelector superselector,
-            ComplexSelector subselector
-    ) {
-        var subComponents = subselector.components();
-        var firstAncestor = 0;
-        for (var index = 0; index + 1 < subComponents.size(); index++) {
-            @Nullable Combinator relation = relationAfter(subselector, index);
-            if (relation == Combinator.NEXT_SIBLING || relation == Combinator.FOLLOWING_SIBLING) {
-                firstAncestor = index + 1;
-            }
-        }
-
-        var required = 0;
-        var superComponents = superselector.components();
-        for (var index = firstAncestor; index + 1 < subComponents.size()
-                && required + 1 < superComponents.size(); index++) {
-            if (compoundIsSuperselector(
-                    superComponents.get(required).selector(),
-                    subComponents.get(index).selector(),
-                    null
-            )) {
-                required++;
-            }
-        }
-        return required + 1 == superComponents.size();
-    }
-
-    /// Returns whether a subselector relationship implies a superselector
-    /// relationship between the same adjacent components.
-    ///
-    /// @param subRelation   the relationship required by the narrower selector
-    /// @param superRelation the relationship required by the broader selector
-    /// @return whether the former implies the latter
-    private static boolean relationImplies(
-            @Nullable Combinator subRelation,
-            @Nullable Combinator superRelation
-    ) {
-        if (superRelation == null) {
-            return subRelation == null || subRelation == Combinator.CHILD;
-        }
-        return switch (superRelation) {
-            case CHILD -> subRelation == Combinator.CHILD;
-            case NEXT_SIBLING -> subRelation == Combinator.NEXT_SIBLING;
-            case FOLLOWING_SIBLING -> subRelation == Combinator.NEXT_SIBLING
-                    || subRelation == Combinator.FOLLOWING_SIBLING;
-        };
     }
 
     /// Returns the effective relationship after a non-final component.
@@ -2603,10 +2537,10 @@ public final class SelectorAlgebra {
                 path.add(new ComplexSelectorComponent(subselector, List.of(), subselector.span()));
                 for (var candidate : selectors.components()) {
                     if (candidate.leadingCombinators().isEmpty()
-                            && Boolean.TRUE.equals(complexIsSuperselector(
+                            && complexIsSuperselector(
                                     candidate,
                                     new ComplexSelector(List.of(), path, subselector.span())
-                            ))) {
+                            )) {
                         yield true;
                     }
                 }
@@ -2748,18 +2682,6 @@ public final class SelectorAlgebra {
             }
         }
         return true;
-    }
-
-    /// Returns a single-compound complex selector for compound comparison.
-    ///
-    /// @param compound the compound selector to wrap
-    /// @return a complex selector containing only {@code compound}
-    private static ComplexSelector singleCompoundComplex(CompoundSelector compound) {
-        return new ComplexSelector(
-                List.of(),
-                List.of(new ComplexSelectorComponent(compound, List.of(), compound.span())),
-                compound.span()
-        );
     }
 
     /// Returns the nested selector list carried by one pseudo selector.
@@ -2905,17 +2827,6 @@ public final class SelectorAlgebra {
     /// @param replacement whether matched originals must be removed
     /// @param originalKeys keys identifying document-original selectors
     /// @param sourceSpecificity source specificity by selector key
-    /// @return the transformed alternatives in stable source order
-    /// Transforms one target while protecting selected extender products from
-    /// repeated nested-pseudo expansion.
-    ///
-    /// @param selectors the current complex-selector alternatives
-    /// @param target the single compound target
-    /// @param inserted the selector alternatives to insert
-    /// @param replacement whether matched originals must be removed
-    /// @param originalKeys keys identifying document-original selectors
-    /// @param sourceSpecificity source specificity by selector key
-    /// @param protectedExtenderKeys products that must not re-enter extension
     /// @return the transformed alternatives in stable source order
     private static @Unmodifiable List<ComplexSelector> transformTarget(
             List<ComplexSelector> selectors,
@@ -3063,7 +2974,7 @@ public final class SelectorAlgebra {
                 }
                 var other = selectors.get(otherIndex);
                 if (complexSpecificity(other) >= maxSourceSpecificity
-                        && Boolean.TRUE.equals(complexIsSuperselector(other, candidate))) {
+                        && complexIsSuperselector(other, candidate)) {
                     redundant = true;
                     break;
                 }
@@ -3369,25 +3280,6 @@ public final class SelectorAlgebra {
                 yield List.of(complex);
             }
         };
-    }
-
-    /// Expands a complex selector that is only a single {@code :is}/{:matches}/{:where}
-    /// into its argument complexes; otherwise returns the complex unchanged.
-    private static List<ComplexSelector> expandUnionPseudoComplex(ComplexSelector complex) {
-        if (complex.components().size() != 1
-                || !complex.leadingCombinators().isEmpty()
-                || !complex.components().get(0).combinators().isEmpty()) {
-            return List.of(complex);
-        }
-        var simples = complex.components().get(0).selector().components();
-        if (simples.size() != 1 || !(simples.get(0) instanceof PseudoSelector pseudo)) {
-            return List.of(complex);
-        }
-        if (isPseudoElement(pseudo) || !isUnionSelectorPseudo(pseudo)) {
-            return List.of(complex);
-        }
-        @Nullable SelectorList args = selectorArgument(pseudo);
-        return args == null ? List.of(complex) : args.components();
     }
 
     /// Returns whether a target may safely be applied inside pseudo selector arguments.
@@ -4301,26 +4193,4 @@ public final class SelectorAlgebra {
                 + ": Selector algebra can't operate on pseudo selectors containing parent selectors.");
     }
 
-    /// Creates the unsupported-comparison diagnostic.
-    ///
-    /// @return the constructed exception
-    private static SassValueException unsupportedComparison() {
-        return new SassValueException(
-                "Selector algebra can't compare selectors with non-aligned explicit combinators yet."
-        );
-    }
-
-    /// Creates the unsupported-unification-topology diagnostic.
-    ///
-    /// @param selector1 the first incompatible selector
-    /// @param selector2 the second incompatible selector
-    /// @return the constructed exception
-    private static SassValueException unsupportedTopology(
-            ComplexSelector selector1,
-            ComplexSelector selector2
-    ) {
-        return new SassValueException("Selector algebra can't unify "
-                + selector1.toCssString() + " with " + selector2.toCssString()
-                + " because their explicit combinator structures differ.");
-    }
 }

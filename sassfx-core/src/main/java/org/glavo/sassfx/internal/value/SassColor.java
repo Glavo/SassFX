@@ -285,17 +285,6 @@ public final class SassColor implements SassValue {
         return forSpace(ColorSpace.SRGB, red, green, blue, alpha);
     }
 
-    /// Creates a color in the XYZ D65 color space.
-    ///
-    /// @param x the X channel
-    /// @param y the Y channel
-    /// @param z the Z channel
-    /// @param alpha the alpha channel between zero and one
-    /// @return the XYZ D65 color
-    public static SassColor xyzD65(double x, double y, double z, double alpha) {
-        return forSpace(ColorSpace.XYZ_D65, x, y, z, alpha);
-    }
-
     /// Resolves a CSS named color and preserves the supplied source spelling.
     ///
     /// @param name the color name

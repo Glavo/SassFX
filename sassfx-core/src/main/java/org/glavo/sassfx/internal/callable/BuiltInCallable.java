@@ -15,7 +15,6 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -522,9 +521,6 @@ public final class BuiltInCallable implements Callable {
         /// Contains configured and built-in global functions by normalized name.
         private final @Unmodifiable Map<String, Callable> globalFunctions;
 
-        /// Contains the stylesheet URL active at the call site, or {@code null}.
-        private final @Nullable URI currentUrl;
-
         /// Contains the complete call span.
         private final SourceSpan span;
 
@@ -547,7 +543,6 @@ public final class BuiltInCallable implements Callable {
         ///
         /// @param environment       the active lexical and module environment
         /// @param globalFunctions   immutable global functions keyed by normalized name
-        /// @param currentUrl        the active stylesheet URL, or {@code null}
         /// @param span              the complete call span
         /// @param compilationContext the active compilation identity token
         /// @param functionValueInvoker invokes function references through normal evaluation
@@ -557,7 +552,6 @@ public final class BuiltInCallable implements Callable {
         public Context(
                 Environment environment,
                 @Unmodifiable Map<String, Callable> globalFunctions,
-                @Nullable URI currentUrl,
                 SourceSpan span,
                 Object compilationContext,
                 FunctionValueInvoker functionValueInvoker,
@@ -567,20 +561,12 @@ public final class BuiltInCallable implements Callable {
         ) {
             this.environment = Objects.requireNonNull(environment, "environment");
             this.globalFunctions = Objects.requireNonNull(globalFunctions, "globalFunctions");
-            this.currentUrl = currentUrl;
             this.span = Objects.requireNonNull(span, "span");
             this.compilationContext = Objects.requireNonNull(compilationContext, "compilationContext");
             this.functionValueInvoker = Objects.requireNonNull(functionValueInvoker, "functionValueInvoker");
             this.mixinValueInvoker = Objects.requireNonNull(mixinValueInvoker, "mixinValueInvoker");
             this.deprecationReporter = Objects.requireNonNull(deprecationReporter, "deprecationReporter");
             this.loadCssInvoker = Objects.requireNonNull(loadCssInvoker, "loadCssInvoker");
-        }
-
-        /// Returns the active stylesheet URL.
-        ///
-        /// @return the stylesheet URL, or {@code null} outside stylesheet execution
-        public @Nullable URI currentUrl() {
-            return currentUrl;
         }
 
         /// Returns the complete invocation span.
@@ -597,7 +583,7 @@ public final class BuiltInCallable implements Callable {
         /// @param name the normalized variable name without a dollar sign
         /// @return whether a binding exists, including one whose value is Sass null
         public boolean variableExists(String name) {
-            return name.isEmpty() ? false : environment.variableExists(name, null);
+            return !name.isEmpty() && environment.variableExists(name, null);
         }
 
         /// Returns whether a root-frame or global-module variable exists.
@@ -827,7 +813,7 @@ public final class BuiltInCallable implements Callable {
         /// Loads a stylesheet and injects its CSS at the current include point.
         ///
         /// Members from the loaded stylesheet are not exposed. Relative URLs are
-        /// resolved against [#currentUrl()].
+        /// resolved against the active stylesheet URL.
         ///
         /// @param url           the unresolved stylesheet URL
         /// @param configuration values for root {@code !default} variables

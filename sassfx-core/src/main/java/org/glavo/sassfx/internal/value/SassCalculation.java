@@ -7,11 +7,9 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.Set;
 
 /// A CSS calculation value such as {@code calc()}, {@code sin()}, or {@code clamp()}.
 ///
@@ -20,15 +18,6 @@ import java.util.Set;
 @ApiStatus.Internal
 @NotNullByDefault
 public final class SassCalculation implements SassValue {
-    /// Units whose dimensions may participate in unresolved CSS calculations.
-    private static final Set<String> KNOWN_UNIT_SETS = Set.of(
-            "em", "ex", "ch", "rem", "vw", "vh", "vmin", "vmax", "cm", "mm", "q", "in", "pt", "pc", "px",
-            "deg", "grad", "rad", "turn",
-            "s", "ms",
-            "hz", "khz",
-            "dpi", "dpcm", "dppx"
-    );
-
     /// The lowercase CSS calculation function name.
     private final String name;
 

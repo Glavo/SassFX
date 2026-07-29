@@ -86,9 +86,9 @@ public abstract class SassFXCompile extends DefaultTask {
     @IgnoreEmptyDirectories
     @PathSensitive(PathSensitivity.RELATIVE)
     public final FileTree getSourceFiles() {
-        return getSourceDirectory().getAsFileTree().matching(patterns -> {
-            patterns.include("**/*.scss", "**/*.sass", "**/*.css");
-        });
+        return getSourceDirectory().getAsFileTree().matching(
+                patterns -> patterns.include("**/*.scss", "**/*.sass", "**/*.css")
+        );
     }
 
     /// Returns additional filesystem roots searched for Sass imports.
@@ -365,7 +365,7 @@ public abstract class SassFXCompile extends DefaultTask {
                 separator + "/javafx@".length()
         );
         if ((!format.equals("css") && !format.equals("bss"))
-                || !versionText.matches("(?:[89]|1[0-9]|2[0-7])")) {
+                || !versionText.matches("[89]|1[0-9]|2[0-7]")) {
             throw unsupportedTarget(targetValue);
         }
         var javaFXTarget = JavaFXTarget.forVersion(

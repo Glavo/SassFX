@@ -248,7 +248,7 @@ final class JavaFXPaintParser {
     ) {
         var cursor = new LegacyGradientCursor(text, span);
         cursor.requireKeyword("ladder");
-        var base = parseColorPaint(cursor.valueBeforeKeyword("stops"), span);
+        var base = parseColorPaint(cursor.valueBeforeStopsKeyword(), span);
         var stops = parseLegacyStops(cursor, span);
         cursor.requireEnd();
         return new LadderPaint(base, stops);
@@ -777,7 +777,7 @@ final class JavaFXPaintParser {
         for (var argument : arguments) {
             rawStops.add(parseGradientStop(argument, span));
         }
-        return normalizeGradientStops(rawStops, span);
+        return normalizeGradientStops(rawStops);
     }
 
     /// Parses one JavaFX {@code <color-stop>} argument.
@@ -801,11 +801,9 @@ final class JavaFXPaintParser {
     /// Normalizes omitted and descending gradient offsets.
     ///
     /// @param rawStops the unnormalized source-order stops
-    /// @param span     the source range associated with the declaration
     /// @return immutable normalized stops
     private static @Unmodifiable List<GradientStop> normalizeGradientStops(
-            List<RawGradientStop> rawStops,
-            SourceSpan span
+            List<RawGradientStop> rawStops
     ) {
         var positions = new ArrayList<@Nullable SassNumber>(rawStops.size());
         for (var stop : rawStops) {
@@ -1084,7 +1082,7 @@ final class JavaFXPaintParser {
     /// @param components the accumulating component list
     /// @param current    the current component builder
     private static void addComponent(List<String> components, StringBuilder current) {
-        if (current.length() == 0) {
+        if (current.isEmpty()) {
             return;
         }
         components.add(current.toString());
@@ -1758,18 +1756,15 @@ final class JavaFXPaintParser {
             return text.substring(start, index);
         }
 
-        /// Returns text through the next standalone keyword and consumes that
-        /// keyword.
+        /// Returns text through the next standalone `stops` keyword and consumes it.
         ///
         /// Parenthesized functions and quoted strings are scanned as part of
         /// the preceding value, so their contents cannot terminate the scan.
         ///
-        /// @param keyword the keyword that terminates the value
         /// @return the non-empty text before the keyword
         /// @throws BssSerializeException if the keyword is absent or the value
         ///                               is empty or unbalanced
-        private String valueBeforeKeyword(String keyword) {
-            Objects.requireNonNull(keyword, "keyword");
+        private String valueBeforeStopsKeyword() {
             skipWhitespace();
             var start = index;
             var depth = 0;
@@ -1810,13 +1805,13 @@ final class JavaFXPaintParser {
                         && text.regionMatches(
                                 true,
                                 index,
-                                keyword,
+                                "stops",
                                 0,
-                                keyword.length()
+                                "stops".length()
                         )
                         && index > start
                         && Character.isWhitespace(text.charAt(index - 1))) {
-                    var end = index + keyword.length();
+                    var end = index + "stops".length();
                     if (end == text.length()
                             || Character.isWhitespace(text.charAt(end))
                             || text.charAt(end) == '(') {

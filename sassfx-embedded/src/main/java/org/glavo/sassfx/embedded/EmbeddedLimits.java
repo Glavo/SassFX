@@ -5,8 +5,9 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 /// Configures resource limits for one Embedded Sass endpoint.
 ///
-/// All limits are enforced per [EmbeddedCompiler#run(java.io.InputStream,
-/// java.io.OutputStream)] invocation. A packet that exceeds
+/// All limits are enforced per
+/// [EmbeddedCompiler#run(java.io.InputStream, java.io.OutputStream)] invocation.
+/// A packet that exceeds
 /// [#maxPacketLength()] is rejected before its body is allocated. Compilation
 /// and inbound-event limits bound memory retained when a host submits work
 /// faster than the endpoint can process it.

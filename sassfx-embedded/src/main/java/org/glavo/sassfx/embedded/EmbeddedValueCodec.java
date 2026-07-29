@@ -543,7 +543,7 @@ final class EmbeddedValueCodec {
     private org.glavo.sassfx.internal.value.SassValue decodeCalculation(
             Value.Calculation calculation
     ) {
-        var arguments = new ArrayList<Object>();
+        var arguments = new ArrayList<>();
         for (var argument : calculation.getArgumentsList()) {
             arguments.add(decodeCalculationValue(argument));
         }
@@ -758,10 +758,7 @@ final class EmbeddedValueCodec {
         return new EmbeddedProtocolException(
                 ProtocolErrorType.PARAMS,
                 -1,
-                Objects.requireNonNullElse(
-                        message,
-                        "Invalid Embedded Sass value."
-                )
+                message
         );
     }
 

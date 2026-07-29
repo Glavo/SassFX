@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.sassfx.internal.function;
 
-import org.glavo.sassfx.SourceSpan;
 import org.glavo.sassfx.internal.callable.BuiltInCallable;
 import org.glavo.sassfx.internal.callable.BuiltInCallable.Param;
 import org.glavo.sassfx.internal.callable.UserDefinedCallable;
@@ -1447,9 +1446,6 @@ public final class BuiltInFunctions {
             }
             return rgbChannels(name, red, green, blue, alphaArg);
         }
-        if (!keywords.isEmpty() && !keywords.containsKey("alpha") && values.size() <= 1) {
-            // Single channels list may carry a named alpha.
-        }
         if (keywords.containsKey("alpha") && values.size() == 1) {
             @Nullable SassValue alphaArg = keywords.remove("alpha");
             if (!keywords.isEmpty()) {
@@ -1903,10 +1899,6 @@ public final class BuiltInFunctions {
                         keywords.get("alpha")
                 );
             }
-            if (keywords.size() == 1 && keywords.containsKey("alpha") && values.size() == 1) {
-                // Single channels list may carry a named alpha via modern form;
-                // fall through is not valid for hsl — reject unknown alone.
-            }
             throw new SassValueException(
                     "No argument named $" + keywords.keySet().iterator().next() + "."
             );
@@ -1999,27 +1991,21 @@ public final class BuiltInFunctions {
         // inverting the hue via forSpace preprocessing.
         double saturation = Math.max(
                 0.0,
-                percentageOrUnitlessChannel(
-                        saturationNumber,
-                        "saturation"
-                )
+                percentageOrUnitlessChannel(saturationNumber)
         );
         if (Double.isNaN(saturation)) {
             saturation = 0.0;
         }
         var lightnessNumber = numberArgument(lightnessValue, "lightness");
         checkPercent(context, lightnessNumber, "lightness");
-        double lightness = percentageOrUnitlessChannel(
-                lightnessNumber,
-                "lightness"
-        );
+        double lightness = percentageOrUnitlessChannel(lightnessNumber);
         double alphaValue = alphaArg != null ? alpha(alphaArg) : 1.0;
         return SassColor.hsl(hue, saturation, lightness, alphaValue);
     }
 
     /// Reads a percent-scale channel, accepting unknown units as bare magnitudes
     /// during the function-units deprecation period.
-    private static double percentageOrUnitlessChannel(SassNumber number, String name) {
+    private static double percentageOrUnitlessChannel(SassNumber number) {
         // Percent, unitless, and legacy non-percent units all use the raw magnitude.
         return number.value();
     }
@@ -2032,14 +2018,6 @@ public final class BuiltInFunctions {
         throw new SassValueException(
                 "$" + name + ": Expected " + number + " to have unit \"%\"."
         );
-    }
-
-    /// Reads a unitless numeric legacy color channel.
-    ///
-    /// @param value the channel value
-    /// @return its magnitude
-    private static double channel(SassValue value) {
-        return value.assertNumber().assertNoUnits().value();
     }
 
     /// Parses a constructor alpha as unitless or {@code %}, clamping into {@code 0..1}.
@@ -2085,7 +2063,7 @@ public final class BuiltInFunctions {
             List<SassValue> args
     ) {
         var list = args.get(0);
-        deprecateUnitfulIndex(context, args.get(1), "n");
+        deprecateUnitfulIndex(context, args.get(1));
         var index = list.sassIndexToListIndex(args.get(1), list.lengthAsList());
         return list.asList().get(index);
     }
@@ -2593,7 +2571,7 @@ public final class BuiltInFunctions {
     /// @param args the one calculation argument
     /// @return a comma-separated argument list
     private static SassValue metaCalcArgs(List<SassValue> args) {
-        var calculation = calculationArgument(args.get(0), "calc");
+        var calculation = calculationArgument(args.get(0));
         var contents = new ArrayList<SassValue>(calculation.arguments().size());
         for (var argument : calculation.arguments()) {
             contents.add(calculationArgumentAsValue(argument));
@@ -2606,20 +2584,19 @@ public final class BuiltInFunctions {
     /// @param args the one calculation argument
     /// @return the quoted calculation name
     private static SassValue metaCalcName(List<SassValue> args) {
-        var calculation = calculationArgument(args.get(0), "calc");
+        var calculation = calculationArgument(args.get(0));
         return new SassString(calculation.name(), true);
     }
 
-    /// Returns a calculation argument while identifying its Sass parameter.
+    /// Returns the calculation supplied as the `$calc` argument.
     ///
     /// @param value the supplied argument
-    /// @param name  the parameter name without a dollar sign
     /// @return the calculation
-    private static SassCalculation calculationArgument(SassValue value, String name) {
+    private static SassCalculation calculationArgument(SassValue value) {
         try {
             return value.assertCalculation();
         } catch (SassValueException exception) {
-            throw prefixParameterException(name, exception);
+            throw prefixParameterException("calc", exception);
         }
     }
 
@@ -3236,16 +3213,6 @@ public final class BuiltInFunctions {
         return nestedMergeAtPath(map1, keys, map2);
     }
 
-    /// Sets one direct map key to a replacement value.
-    ///
-    /// @param args the map, key, and replacement value
-    /// @return a map containing the replacement entry
-    private static SassValue mapSet(List<SassValue> args) {
-        var contents = new LinkedHashMap<>(mapArgument(args.get(0), "map").contents());
-        contents.put(args.get(1), args.get(2));
-        return new SassMap(contents);
-    }
-
     /// Sets a value at a possibly nested path of keys.
     ///
     /// Forms: {@code set($map, $keys..., $value)} with at least one key, or the
@@ -3762,7 +3729,7 @@ public final class BuiltInFunctions {
     ) {
         var list = args.get(0);
         var contents = new ArrayList<>(list.asList());
-        deprecateUnitfulIndex(context, args.get(1), "n");
+        deprecateUnitfulIndex(context, args.get(1));
         var index = list.sassIndexToListIndex(args.get(1), contents.size());
         contents.set(index, args.get(2));
         var separator = list.separator() == ListSeparator.UNDECIDED
@@ -4009,7 +3976,7 @@ public final class BuiltInFunctions {
             return first.interpolate(
                     second,
                     method,
-                    legacyWeight(weight, "weight"),
+                    legacyWeight(weight),
                     false
             );
         }
@@ -4026,7 +3993,7 @@ public final class BuiltInFunctions {
                             + ", you must provide a $method."
             );
         }
-        return first.mixedWith(second, legacyWeight(weight, "weight"));
+        return first.mixedWith(second, legacyWeight(weight));
     }
 
     /// Inverts a color in RGB or an explicit space, or preserves a plain-CSS
@@ -4067,12 +4034,12 @@ public final class BuiltInFunctions {
                 );
             }
             checkPercent(context, weightNumber, "weight");
-            return color.inverted().mixedWith(color, legacyWeight(weightNumber, "weight"));
+            return color.inverted().mixedWith(color, legacyWeight(weightNumber));
         }
 
-        var space = spaceArgument(spaceValue, "space");
+        var space = spaceArgument(spaceValue);
         // With an explicit space, weight may be unitless or percent.
-        var weight = color4Weight(weightNumber, "weight");
+        var weight = color4Weight(weightNumber);
         if (SassFuzzy.equals(weight, 0.0)) {
             return color;
         }
@@ -4131,43 +4098,19 @@ public final class BuiltInFunctions {
     }
 
     /// Parses a Color 4 weight that accepts unitless values or {@code %}.
-    private static double color4Weight(SassNumber number, String name) {
+    private static double color4Weight(SassNumber number) {
         var percent = number.numeratorUnits().equals(List.of("%"))
                 && number.denominatorUnits().isEmpty();
         if (!number.isUnitless() && !percent) {
             throw new SassValueException(
-                    "$" + name + ": Expected " + number + " to have unit \"%\" or no units."
+                    "$weight: Expected " + number + " to have unit \"%\" or no units."
             );
         }
         try {
             return number.valueInRange(0.0, 100.0) / 100.0;
         } catch (SassValueException exception) {
-            throw new SassValueException("$" + name + ": " + exception.getMessage());
+            throw new SassValueException("$weight: " + exception.getMessage());
         }
-    }
-
-    /// Global {@code invert()} with plain-CSS number filter fallback.
-    private static SassValue globalInvert(List<SassValue> args) {
-        var value = args.get(0);
-        var weightNumber = numberArgument(args.get(1), "weight");
-        if (value instanceof SassNumber number) {
-            if (!isCssFilterDefaultWeight(weightNumber)) {
-                throw new SassValueException(
-                        "Only one argument may be passed to the plain-CSS invert() function."
-                );
-            }
-            return new SassString("invert(" + number.toCssString() + ")", false);
-        }
-        if (value.isSpecialNumber()) {
-            return CssColorChannels.functionString("invert", List.of(value));
-        }
-        var color = colorArgument(value, "color");
-        if (!color.isLegacy()) {
-            throw new SassValueException(
-                    "$color: Global invert() only supports legacy colors. Use color.invert() instead."
-            );
-        }
-        return color.inverted().mixedWith(color, legacyWeight(weightNumber, "weight"));
     }
 
     /// Global {@code grayscale()} with plain-CSS number filter fallback.
@@ -4281,7 +4224,7 @@ public final class BuiltInFunctions {
     /// {@code saturate($color, $amount)} is used when {@code $color} is named, two
     /// positionals are supplied, or one positional is paired with {@code $amount}.
     ///
-    /// @param args the rest-bound argument list from [#withRest]
+    /// @param args the rest-bound argument list
     /// @return a CSS filter string or adjusted color
     private static SassValue saturateRest(
             BuiltInCallable.Context context,
@@ -4640,7 +4583,7 @@ public final class BuiltInFunctions {
         if (color.isLegacy() && spaceValue instanceof SassNull) {
             space = ColorSpace.HSL;
         } else {
-            space = spaceArgument(spaceValue, "space");
+            space = spaceArgument(spaceValue);
         }
         if (!space.isPolar()) {
             throw new SassValueException(
@@ -4685,14 +4628,13 @@ public final class BuiltInFunctions {
     /// accepted by reading the raw magnitude (matching dart-sass).
     ///
     /// @param number the supplied weight number
-    /// @param name the parameter name used for diagnostics
     /// @return the weight between zero and one
     /// @throws SassValueException if the number lies outside zero to 100
-    private static double legacyWeight(SassNumber number, String name) {
+    private static double legacyWeight(SassNumber number) {
         try {
             return number.valueInRange(0.0, 100.0) / 100.0;
         } catch (SassValueException exception) {
-            throw new SassValueException("$" + name + ": " + exception.getMessage());
+            throw new SassValueException("$weight: " + exception.getMessage());
         }
     }
 
@@ -4704,21 +4646,6 @@ public final class BuiltInFunctions {
         return weight.value() == 100.0
                 && weight.numeratorUnits().equals(List.of("%"))
                 && weight.denominatorUnits().isEmpty();
-    }
-
-    /// Converts a Color 4 weight that must use the percent unit.
-    private static double percentWeight(SassNumber number, String name) {
-        if (!(number.numeratorUnits().equals(List.of("%"))
-                && number.denominatorUnits().isEmpty())) {
-            throw new SassValueException(
-                    "$" + name + ": Expected " + number + " to have unit \"%\"."
-            );
-        }
-        try {
-            return number.valueInRange(0.0, 100.0) / 100.0;
-        } catch (SassValueException exception) {
-            throw new SassValueException("$" + name + ": " + exception.getMessage());
-        }
     }
 
     /// Inverts every channel of a color already expressed in its target space.
@@ -4784,7 +4711,7 @@ public final class BuiltInFunctions {
     /// Maps a color into gamut using an explicit algorithm.
     private static SassValue colorToGamut(List<SassValue> args) {
         var color = colorArgument(args.get(0), "color");
-        var space = spaceOrDefault(color, args.get(1), "space");
+        var space = spaceOrDefault(color, args.get(1));
         if (args.get(2) instanceof SassNull) {
             throw new SassValueException(
                     "$method: color.to-gamut() requires a $method argument for forwards-"
@@ -4821,13 +4748,12 @@ public final class BuiltInFunctions {
     /// Resolves an optional space argument, defaulting to the color's own space.
     private static ColorSpace spaceOrDefault(
             SassColor color,
-            SassValue spaceValue,
-            String name
+            SassValue spaceValue
     ) {
         if (spaceValue instanceof SassNull) {
             return color.space();
         }
-        return spaceArgument(spaceValue, name);
+        return spaceArgument(spaceValue);
     }
 
     /// Returns a color argument while identifying its Sass parameter in failures.
@@ -4954,7 +4880,7 @@ public final class BuiltInFunctions {
     /// @return the converted color
     private static SassValue colorToSpace(List<SassValue> args) {
         var color = colorArgument(args.get(0), "color");
-        var space = spaceArgument(args.get(1), "space");
+        var space = spaceArgument(args.get(1));
         return color.toSpace(space, false);
     }
 
@@ -5049,23 +4975,23 @@ public final class BuiltInFunctions {
         if (spaceValue instanceof SassNull) {
             return color;
         }
-        return color.toSpace(spaceArgument(spaceValue, "space"), false);
+        return color.toSpace(spaceArgument(spaceValue), false);
     }
 
     /// Parses a color-space name argument.
-    private static ColorSpace spaceArgument(SassValue value, String name) {
+    private static ColorSpace spaceArgument(SassValue value) {
         if (!(value instanceof SassString string)) {
-            throw new SassValueException("$" + name + ": " + value + " is not a string.");
+            throw new SassValueException("$space: " + value + " is not a string.");
         }
         if (string.hasQuotes()) {
             throw new SassValueException(
-                    "$" + name + ": Expected " + value + " to be an unquoted string."
+                    "$space: Expected " + value + " to be an unquoted string."
             );
         }
         try {
             return ColorSpace.fromName(string.text());
         } catch (IllegalArgumentException exception) {
-            throw new SassValueException("$" + name + ": " + exception.getMessage());
+            throw new SassValueException("$space: " + exception.getMessage());
         }
     }
 
@@ -5172,7 +5098,7 @@ public final class BuiltInFunctions {
         } else {
             // Explicit $space keeps missing/powerless channels so adjusting them
             // fails with the "modifying missing channels" diagnostic.
-            color = originalColor.toSpace(spaceArgument(spaceKeyword, "space"), true);
+            color = originalColor.toSpace(spaceArgument(spaceKeyword), true);
         }
 
         // Even with no channel keywords, converting through $space (or the
@@ -5259,7 +5185,7 @@ public final class BuiltInFunctions {
                 alphaArg == null ? null : numberArgument(alphaArg, "alpha")
         );
         if (alpha != null) {
-            alpha = clamp(alpha, 0.0, 1.0);
+            alpha = clampUnitInterval(alpha);
         }
         return SassColor.forSpace(
                 color.space(),
@@ -5360,7 +5286,7 @@ public final class BuiltInFunctions {
                 && channel instanceof ColorChannel.Linear
                 && ("saturation".equals(channel.name()) || "lightness".equals(channel.name()))) {
             checkPercent(context, number, channel.name());
-            return channelFromValue(channel, forcePercent(number), false);
+            return channelFromValue(channel, forcePercent(number));
         }
         if (color.space() == ColorSpace.HWB
                 && channel instanceof ColorChannel.Linear
@@ -5371,9 +5297,9 @@ public final class BuiltInFunctions {
                         "$" + channel.name() + ": Expected " + number + " to have unit \"%\"."
                 );
             }
-            return channelFromValue(channel, number, false);
+            return channelFromValue(channel, number);
         }
-        return channelFromValue(channel, number, false);
+        return channelFromValue(channel, number);
     }
 
     /// Resolves alpha for {@code color.change()}.
@@ -5468,21 +5394,19 @@ public final class BuiltInFunctions {
     ///
     /// @param context the invocation receiving the deprecation
     /// @param value the list index argument
-    /// @param name the parameter name without a leading dollar sign
     private static void deprecateUnitfulIndex(
             BuiltInCallable.Context context,
-            SassValue value,
-            String name
+            SassValue value
     ) {
-        var number = numberArgument(value, name);
+        var number = numberArgument(value, "n");
         if (number.isUnitless()) {
             return;
         }
         context.deprecate(
-                "$" + name + ": Passing a number with unit "
+                "$n: Passing a number with unit "
                         + number.unitString() + " is deprecated.\n\n"
                         + "To preserve current behavior: "
-                        + number.unitSuggestion(name, null) + "\n\n"
+                        + number.unitSuggestion("n", null) + "\n\n"
                         + "More info: https://sass-lang.com/d/function-units",
                 FUNCTION_UNITS_CODE
         );
@@ -5567,7 +5491,7 @@ public final class BuiltInFunctions {
             deprecateAdjustAlpha(context, delta);
             delta = SassNumber.of(delta.value(), null);
         }
-        var result = oldValue + channelFromValue(channel, delta, false);
+        var result = oldValue + channelFromValue(channel, delta);
         if (channel instanceof ColorChannel.Linear linear) {
             return clampAdjustedChannel(
                     result,
@@ -5608,8 +5532,7 @@ public final class BuiltInFunctions {
     /// reject unitless values.
     private static double channelFromValue(
             ColorChannel channel,
-            SassNumber number,
-            boolean clamp
+            SassNumber number
     ) {
         if (channel.isPolarAngle()) {
             return hueDegrees(number);
@@ -5624,13 +5547,7 @@ public final class BuiltInFunctions {
                     "$" + channel.name() + ": Expected " + number + " to have unit \"%\"."
             );
         }
-        double value = percentageOrUnitless(number, linear.max(), channel.name());
-        if (!clamp) {
-            return value;
-        }
-        double lower = linear.lowerClamped() ? linear.min() : Double.NEGATIVE_INFINITY;
-        double upper = linear.upperClamped() ? linear.max() : Double.POSITIVE_INFINITY;
-        return clamp(value, lower, upper);
+        return percentageOrUnitless(number, linear.max(), channel.name());
     }
 
     /// Builds the dart-sass missing-channel diagnostic for adjust/scale/change.
@@ -5769,9 +5686,9 @@ public final class BuiltInFunctions {
         }
     }
 
-    /// Clamps a finite value into an inclusive range.
-    private static double clamp(double value, double minimum, double maximum) {
-        return Math.min(maximum, Math.max(minimum, value));
+    /// Clamps a finite value into the inclusive range from zero through one.
+    private static double clampUnitInterval(double value) {
+        return Math.min(1.0, Math.max(0.0, value));
     }
 
     /// Returns the keyword map carried by an argument list.

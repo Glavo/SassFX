@@ -10,48 +10,22 @@ import java.util.Objects;
 ///
 /// Operands are calculation arguments: [SassNumber], [SassCalculation], unquoted
 /// [SassString], or nested [CalculationOperation] instances.
+///
+/// @param operator the binary operator
+/// @param left the left calculation operand
+/// @param right the right calculation operand
 @ApiStatus.Internal
 @NotNullByDefault
-public final class CalculationOperation {
-    /// The binary operator.
-    private final CalculationOperator operator;
-
-    /// The left calculation operand.
-    private final Object left;
-
-    /// The right calculation operand.
-    private final Object right;
-
+public record CalculationOperation(
+        CalculationOperator operator,
+        Object left,
+        Object right
+) {
     /// Creates an operation.
-    ///
-    /// @param operator the operator
-    /// @param left     the left operand
-    /// @param right    the right operand
-    public CalculationOperation(CalculationOperator operator, Object left, Object right) {
-        this.operator = Objects.requireNonNull(operator, "operator");
-        this.left = Objects.requireNonNull(left, "left");
-        this.right = Objects.requireNonNull(right, "right");
-    }
-
-    /// Returns the operator.
-    ///
-    /// @return the operator
-    public CalculationOperator operator() {
-        return operator;
-    }
-
-    /// Returns the left operand.
-    ///
-    /// @return the left operand
-    public Object left() {
-        return left;
-    }
-
-    /// Returns the right operand.
-    ///
-    /// @return the right operand
-    public Object right() {
-        return right;
+    public CalculationOperation {
+        Objects.requireNonNull(operator, "operator");
+        Objects.requireNonNull(left, "left");
+        Objects.requireNonNull(right, "right");
     }
 
     /// Serializes this operation for CSS emission.
@@ -64,19 +38,6 @@ public final class CalculationOperation {
     @Override
     public String toString() {
         return toCssString();
-    }
-
-    @Override
-    public boolean equals(Object other) {
-        return other instanceof CalculationOperation operation
-                && operator == operation.operator
-                && left.equals(operation.left)
-                && right.equals(operation.right);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(operator, left, right);
     }
 
     /// Serializes an operand with parentheses when required by precedence or

@@ -53,26 +53,6 @@ public record PendingExtension(
         boolean fromLegacyImport,
         @Nullable CssStyleRule extenderRule
 ) {
-    /// Creates one pending extension with import generation {@code 0}.
-    ///
-    /// @param extender     the resolved selectors of the extending style rule
-    /// @param target       the single-compound selectors being extended
-    /// @param optional     whether an unmatched target is allowed
-    /// @param mediaContext the active media-query list, or {@code null} outside media
-    /// @param originUrl    the canonical URL of the declaring module, or
-    ///                     {@code null} for an anonymous root
-    /// @param span         the `@extend` source span
-    public PendingExtension(
-            SelectorList extender,
-            SelectorList target,
-            boolean optional,
-            @Nullable List<CssMediaQuery> mediaContext,
-            @Nullable URI originUrl,
-            SourceSpan span
-    ) {
-        this(extender, target, optional, mediaContext, originUrl, span, 0, false, false, null);
-    }
-
     /// Creates one pending extension with an explicit import generation.
     ///
     /// @param extender         the resolved selectors of the extending style rule

@@ -1,6 +1,6 @@
 import com.vanniktech.maven.publish.MavenPublishBaseExtension
+import org.glavo.sassfx.build.VerifyShadedCompilerJarTask
 import org.gradle.api.publish.maven.MavenPublication
-import java.util.zip.ZipFile
 
 plugins {
     application
@@ -48,18 +48,6 @@ tasks.withType<Javadoc>().configureEach {
         languageVersion = JavaLanguageVersion.of(25)
     }
     options.encoding = "UTF-8"
-}
-
-tasks.withType<Test>().configureEach {
-    useJUnitPlatform()
-    val taskTemporaryDirectory = layout.buildDirectory.dir("tmp/$name")
-    systemProperty(
-        "java.io.tmpdir",
-        taskTemporaryDirectory.get().asFile.absolutePath,
-    )
-    doFirst {
-        taskTemporaryDirectory.get().asFile.mkdirs()
-    }
 }
 
 tasks.jar {
@@ -148,117 +136,33 @@ tasks.withType<AbstractArchiveTask>().configureEach {
     isReproducibleFileOrder = true
 }
 
-val verifyShadedJar = tasks.register("verifyShadedJar") {
+val verifyShadedJar = tasks.register<VerifyShadedCompilerJarTask>(
+    "verifyShadedJar",
+) {
     group = LifecycleBasePlugin.VERIFICATION_GROUP
     description = "Verifies that the distributable JAR contains no JavaFX, FFI, or native content."
-    dependsOn(tasks.shadowJar)
-    inputs.file(tasks.shadowJar.flatMap { it.archiveFile })
-
-    doLast {
-        val archive = tasks.shadowJar.get().archiveFile.get().asFile
-        val forbiddenEntryPatterns = listOf(
-            Regex("(^|/)javafx/", RegexOption.IGNORE_CASE),
-            Regex("(^|/)com/sun/javafx/", RegexOption.IGNORE_CASE),
-            Regex("^com/google/errorprone/.*"),
-            Regex("^com/google/gson/.*"),
-            Regex("^com/google/protobuf/.*"),
-            Regex("^com/sass_lang/embedded_protocol/.*"),
-            Regex(".*\\.(a|dll|dylib|exe|jnilib|lib|node|wasm)$", RegexOption.IGNORE_CASE),
-            Regex(".*\\.so(?:\\.\\d+)*$", RegexOption.IGNORE_CASE),
-            Regex(".*\\.(dart|js|mjs|cjs)$", RegexOption.IGNORE_CASE),
-        )
-        val forbiddenClassReferences = listOf(
-            "javafx/",
-            "com/sun/javafx/",
-            "java/lang/foreign/",
-            "jdk/incubator/foreign/",
-            "com/sun/jna/",
-            "com/sun/jnr/",
-            "jnr/ffi/",
-            "com/kenai/jffi/",
-        )
-        val forbiddenEntries = mutableListOf<String>()
-        val forbiddenReferences = mutableListOf<String>()
-        val requiredEntries = listOf(
+    archiveFile.set(tasks.shadowJar.flatMap { it.archiveFile })
+    expectedMainClass.set(application.mainClass)
+    artifactName.set("The distributable JAR")
+    requiredEntries.set(
+        listOf(
             "org/glavo/sassfx/embedded/EmbeddedCompiler.class",
             "org/glavo/sassfx/internal/thirdparty/errorprone/annotations/CheckReturnValue.class",
             "org/glavo/sassfx/internal/thirdparty/gson/stream/JsonReader.class",
             "org/glavo/sassfx/internal/thirdparty/protobuf/Message.class",
             "org/glavo/sassfx/internal/thirdparty/embedded_protocol/InboundMessage.class",
-        )
-
-        ZipFile(archive).use { zipFile ->
-            val missingEntries = requiredEntries.filter { entry ->
-                zipFile.getEntry(entry) == null
-            }
-            if (missingEntries.isNotEmpty()) {
-                throw GradleException(
-                    "The distributable JAR is missing embedded-protocol entries: " +
-                        missingEntries.joinToString(),
-                )
-            }
-            val entries = zipFile.entries()
-            while (entries.hasMoreElements()) {
-                val entry = entries.nextElement()
-                if (entry.isDirectory) {
-                    continue
-                }
-
-                if (forbiddenEntryPatterns.any { pattern -> pattern.matches(entry.name) }) {
-                    forbiddenEntries += entry.name
-                }
-
-                if (entry.name.endsWith(".class")) {
-                    val classContents = zipFile.getInputStream(entry).use { input ->
-                        input.readBytes().toString(Charsets.ISO_8859_1)
-                    }
-                    forbiddenReferences.addAll(
-                        forbiddenClassReferences
-                            .filter { reference -> classContents.contains(reference) }
-                            .map { reference -> "${entry.name}: ${reference}" },
-                    )
-                }
-            }
-        }
-
-        if (forbiddenEntries.isNotEmpty()) {
-            throw GradleException(
-                "The distributable JAR contains forbidden entries: " +
-                    forbiddenEntries.joinToString(),
-            )
-        }
-        if (forbiddenReferences.isNotEmpty()) {
-            throw GradleException(
-                "The distributable JAR contains forbidden class references: " +
-                    forbiddenReferences.joinToString(),
-            )
-        }
-    }
+        ),
+    )
 }
 
 val java17Launcher = javaToolchains.launcherFor {
     languageVersion = JavaLanguageVersion.of(17)
 }
 
-val verifyJava17Toolchain = tasks.register("verifyJava17Toolchain") {
-    group = LifecycleBasePlugin.VERIFICATION_GROUP
-    description = "Verifies that a Java 17 launcher is available for runtime compatibility checks."
-
-    doLast {
-        runCatching { java17Launcher.get() }.getOrElse { cause ->
-            throw GradleException(
-                "Java 17 is required for the shaded CLI smoke test. Configure a Java 17 toolchain.",
-                cause,
-            )
-        }
-    }
-}
-
 val smokeTestShadedCli = tasks.register<JavaExec>("smokeTestShadedCli") {
     group = LifecycleBasePlugin.VERIFICATION_GROUP
     description = "Runs the shaded CLI version command on Java 17."
     dependsOn(tasks.shadowJar)
-    dependsOn(verifyJava17Toolchain)
     javaLauncher.set(java17Launcher)
     classpath = files(tasks.shadowJar.flatMap { it.archiveFile })
     mainClass.set(application.mainClass)
@@ -271,7 +175,6 @@ val smokeTestShadedEmbeddedCli = tasks.register<JavaExec>(
     group = LifecycleBasePlugin.VERIFICATION_GROUP
     description = "Runs the shaded CLI embedded version command on Java 17."
     dependsOn(tasks.shadowJar)
-    dependsOn(verifyJava17Toolchain)
     javaLauncher.set(java17Launcher)
     classpath = files(tasks.shadowJar.flatMap { it.archiveFile })
     mainClass.set(application.mainClass)

@@ -25,7 +25,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 /// Stores Sass lexical bindings and their dynamic assignment semantics.
 ///
@@ -366,21 +365,6 @@ public final class Environment {
             }
         }
         return fromOneGlobalModule(name, "mixin", LoadedModule::mixins);
-    }
-
-    /// Adds a loaded module to this environment.
-    ///
-    /// @param module    the loaded module
-    /// @param namespace the namespace, or {@code null} for {@code as *}
-    /// @param useSpan   the `@use` span used for conflict diagnostics
-    /// @throws SassValueException if the namespace is already taken or {@code as *}
-    /// conflicts with existing members
-    public void addModule(
-            LoadedModule module,
-            @Nullable String namespace,
-            SourceSpan useSpan
-    ) {
-        addModule(module, namespace, useSpan, true);
     }
 
     /// Registers a loaded module for member lookup and optionally the CSS graph.
@@ -749,14 +733,12 @@ public final class Environment {
     /// throws.
     ///
     /// @param body the body to run
-    /// @param <T>  the result type
-    /// @return the body result
-    public <T> T withMixin(Supplier<T> body) {
+    public void withMixin(Runnable body) {
         Objects.requireNonNull(body, "body");
         var previous = inMixin;
         inMixin = true;
         try {
-            return body.get();
+            body.run();
         } finally {
             inMixin = previous;
         }
@@ -773,14 +755,15 @@ public final class Environment {
     ///
     /// @param content the content callable, or {@code null}
     /// @param body    the body to run
-    /// @param <T>     the result type
-    /// @return the body result
-    public <T> T withContent(@Nullable UserDefinedCallable content, Supplier<T> body) {
+    public void withContent(
+            @Nullable UserDefinedCallable content,
+            Runnable body
+    ) {
         Objects.requireNonNull(body, "body");
         var previous = this.content;
         this.content = content;
         try {
-            return body.get();
+            body.run();
         } finally {
             this.content = previous;
         }

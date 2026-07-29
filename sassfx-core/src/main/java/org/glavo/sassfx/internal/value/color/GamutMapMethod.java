@@ -106,13 +106,6 @@ public enum GamutMapMethod {
         this.name = name;
     }
 
-    /// Returns the Sass name.
-    ///
-    /// @return the algorithm name
-    public String methodName() {
-        return name;
-    }
-
     /// Maps {@code color} into gamut using this algorithm.
     ///
     /// @param color the color to map

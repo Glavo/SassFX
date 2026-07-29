@@ -299,14 +299,6 @@ final class SassSpecRunnerTest {
         Files.writeString(target, content, StandardCharsets.UTF_8);
     }
 
-    /// Returns the logical mount prefix for an archive resource path.
-    ///
-    /// {@code curated.hrx} mounts at the suite root. Upstream archives under
-    /// {@code upstream/} mount at their path relative to {@code upstream/}
-    /// without the {@code .hrx} suffix.
-    ///
-    /// @param archiveResource the classpath-relative archive path
-    /// @return the slash-separated mount prefix, possibly empty
     /// Mounts an HRX at its parent when case paths already include the stem.
     ///
     /// @param archiveResource the archive resource path

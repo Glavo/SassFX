@@ -251,70 +251,18 @@ public final class ModuleRegistry {
         Objects.requireNonNull(loadSpan, "loadSpan");
         Objects.requireNonNull(evaluator, "evaluator");
 
-        loadImport(url, baseUrl, loadSpan, evaluator, true);
-    }
-
-    /// Loads a stylesheet as a legacy import without preferring import-only files.
-    ///
-    /// Used when {@code @forward} appears inside an {@code @import}-ed file so
-    /// {@code other.import.scss} can forward {@code other.scss} without recursion.
-    ///
-    /// @param url       the unresolved import URL
-    /// @param baseUrl   the containing stylesheet URL, or {@code null}
-    /// @param loadSpan  the dynamic import or forward span
-    /// @param evaluator the evaluator receiving imported statements
-    /// @throws EvaluationException if resolution, parsing, or evaluation fails
-    public void loadImportAsModuleCandidate(
-            String url,
-            @Nullable URI baseUrl,
-            SourceSpan loadSpan,
-            SassEvaluator evaluator
-    ) {
-        loadImport(url, baseUrl, loadSpan, evaluator, false);
-    }
-
-    /// Loads and executes a legacy Sass import.
-    ///
-    /// @param url       the unresolved import URL
-    /// @param baseUrl   the containing stylesheet URL, or {@code null}
-    /// @param loadSpan  the load span
-    /// @param evaluator the evaluator receiving imported statements
-    /// @param forImport whether import-only candidates ({@code *.import.scss}) win
-    /// @throws EvaluationException if resolution, parsing, or evaluation fails
-    private void loadImport(
-            String url,
-            @Nullable URI baseUrl,
-            SourceSpan loadSpan,
-            SassEvaluator evaluator,
-            boolean forImport
-    ) {
-        Objects.requireNonNull(url, "url");
-        Objects.requireNonNull(loadSpan, "loadSpan");
-        Objects.requireNonNull(evaluator, "evaluator");
-
         ImportResult imported;
         try {
-            imported = forImport
-                    ? importer.canonicalizeAndLoadImport(
-                            url,
-                            baseUrl,
-                            (deprecation, dependency) ->
-                                    evaluator.reportImportDeprecation(
-                                            deprecation,
-                                            loadSpan,
-                                            dependency
-                                    )
-                    )
-                    : importer.canonicalizeAndLoad(
-                            url,
-                            baseUrl,
-                            (deprecation, dependency) ->
-                                    evaluator.reportImportDeprecation(
-                                            deprecation,
-                                            loadSpan,
-                                            dependency
-                                    )
-                    );
+            imported = importer.canonicalizeAndLoadImport(
+                    url,
+                    baseUrl,
+                    (deprecation, dependency) ->
+                            evaluator.reportImportDeprecation(
+                                    deprecation,
+                                    loadSpan,
+                                    dependency
+                            )
+            );
         } catch (EvaluationException failure) {
             throw failure;
         } catch (IOException | RuntimeException failure) {

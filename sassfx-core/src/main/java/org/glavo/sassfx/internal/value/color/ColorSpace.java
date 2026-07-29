@@ -3,7 +3,6 @@ package org.glavo.sassfx.internal.value.color;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
-import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.List;
@@ -249,18 +248,6 @@ public enum ColorSpace {
             case "oklch" -> OKLCH;
             default -> throw new IllegalArgumentException("Unknown color space \"" + name + "\".");
         };
-    }
-
-    /// Resolves a known color space by CSS name.
-    ///
-    /// @param name the space name
-    /// @return the resolved space, or {@code null} when unknown
-    public static @Nullable ColorSpace tryFromName(String name) {
-        try {
-            return fromName(name);
-        } catch (IllegalArgumentException ignored) {
-            return null;
-        }
     }
 
     /// Returns the CSS name.

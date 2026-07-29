@@ -172,8 +172,8 @@ public final class SassNodePackageImporter implements SassImporter {
         return subpath == null ? null : canonicalFileUrl(subpath);
     }
 
-    /// Loads an exact canonical file URL returned by [#canonicalize(URI,
-    /// SassCanonicalizeContext)].
+    /// Loads an exact canonical file URL returned by
+    /// [#canonicalize(URI, SassCanonicalizeContext)].
     ///
     /// @param canonicalUrl the canonical file URL
     /// @return the decoded stylesheet and its file URL for source maps
@@ -549,7 +549,7 @@ public final class SassNodePackageImporter implements SassImporter {
             }
 
             var expansionKeys = map.keySet().stream()
-                    .filter(key -> count(key, '*') == 1)
+                    .filter(key -> countAsterisks(key) == 1)
                     .sorted(SassNodePackageImporter::compareExpansionKeys)
                     .toList();
             for (var expansionKey : expansionKeys) {
@@ -1002,15 +1002,14 @@ public final class SassNodePackageImporter implements SassImporter {
         return value.replace('\\', '/');
     }
 
-    /// Counts one character in a string.
+    /// Counts asterisks in a string.
     ///
     /// @param value the string to inspect
-    /// @param expected the character to count
     /// @return the number of occurrences
-    private static int count(String value, char expected) {
+    private static int countAsterisks(String value) {
         var count = 0;
         for (var index = 0; index < value.length(); index++) {
-            if (value.charAt(index) == expected) {
+            if (value.charAt(index) == '*') {
                 count++;
             }
         }

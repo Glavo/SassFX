@@ -366,50 +366,6 @@ public final class SassEvaluator implements
         );
     }
 
-    /// Creates an evaluator that uses an existing environment.
-    ///
-    /// @param environment the mutable evaluation environment
-    public SassEvaluator(Environment environment) {
-        this(
-                environment,
-                null,
-                List.of(),
-                new CompilationDiagnostics(SassDiagnosticOptions.DEFAULT)
-        );
-    }
-
-    /// Creates an evaluator with a module registry.
-    ///
-    /// @param moduleRegistry the compilation module registry
-    public SassEvaluator(ModuleRegistry moduleRegistry) {
-        this(
-                new Environment(),
-                Objects.requireNonNull(moduleRegistry, "moduleRegistry"),
-                List.of(),
-                new CompilationDiagnostics(SassDiagnosticOptions.DEFAULT)
-        );
-    }
-
-    /// Creates an evaluator with a module registry and custom global functions.
-    ///
-    /// Later custom definitions replace earlier definitions with the same
-    /// normalized name. Core global built-ins replace same-named custom
-    /// definitions.
-    ///
-    /// @param moduleRegistry the compilation module registry
-    /// @param customFunctions custom callables in declaration order
-    public SassEvaluator(
-            ModuleRegistry moduleRegistry,
-            List<CustomFunctionCallable> customFunctions
-    ) {
-        this(
-                new Environment(),
-                Objects.requireNonNull(moduleRegistry, "moduleRegistry"),
-                customFunctions,
-                new CompilationDiagnostics(SassDiagnosticOptions.DEFAULT)
-        );
-    }
-
     /// Creates an evaluator that shares a compilation diagnostic processor.
     ///
     /// @param moduleRegistry the compilation module registry
@@ -428,44 +384,13 @@ public final class SassEvaluator implements
         );
     }
 
-    /// Creates an evaluator with an environment and optional module registry.
-    ///
-    /// @param environment    the mutable evaluation environment
-    /// @param moduleRegistry the module registry, or {@code null}
-    public SassEvaluator(Environment environment, @Nullable ModuleRegistry moduleRegistry) {
-        this(
-                environment,
-                moduleRegistry,
-                List.of(),
-                new CompilationDiagnostics(SassDiagnosticOptions.DEFAULT)
-        );
-    }
-
-    /// Creates an evaluator with explicit state and custom global functions.
-    ///
-    /// @param environment the mutable evaluation environment
-    /// @param moduleRegistry the module registry, or {@code null}
-    /// @param customFunctions custom callables in declaration order
-    public SassEvaluator(
-            Environment environment,
-            @Nullable ModuleRegistry moduleRegistry,
-            List<CustomFunctionCallable> customFunctions
-    ) {
-        this(
-                environment,
-                moduleRegistry,
-                customFunctions,
-                new CompilationDiagnostics(SassDiagnosticOptions.DEFAULT)
-        );
-    }
-
     /// Creates an evaluator with explicit state and diagnostic processing.
     ///
     /// @param environment the mutable evaluation environment
     /// @param moduleRegistry the module registry, or {@code null}
     /// @param customFunctions custom callables in declaration order
     /// @param diagnosticReporter the per-compilation diagnostic processor
-    public SassEvaluator(
+    private SassEvaluator(
             Environment environment,
             @Nullable ModuleRegistry moduleRegistry,
             List<CustomFunctionCallable> customFunctions,
@@ -541,13 +466,6 @@ public final class SassEvaluator implements
     /// Adds the deprecation-repetition summary after successful evaluation.
     public void finishDiagnostics() {
         diagnosticReporter.finishSuccess();
-    }
-
-    /// Returns the CSS IR root produced by stylesheet execution.
-    ///
-    /// @return the CSS stylesheet, or {@code null} before execution completes
-    public @Nullable CssStylesheet cssStylesheet() {
-        return cssStylesheet;
     }
 
     /// Evaluates one expression in the current environment.
@@ -687,20 +605,6 @@ public final class SassEvaluator implements
         );
     }
 
-    /// Executes a legacy imported stylesheet in the current environment.
-    ///
-    /// CSS is emitted into the active parent at the import location. Variables,
-    /// functions, and mixins declared by the imported stylesheet remain visible
-    /// to subsequent caller statements. The imported source URL is installed
-    /// temporarily so nested relative imports resolve beside that file.
-    ///
-    /// @param imported the parsed imported stylesheet
-    /// @param url      the imported stylesheet's canonical URL
-    /// @throws EvaluationException if the imported stylesheet cannot be evaluated
-    public void executeLegacyImport(Stylesheet imported, URI url) {
-        executeLegacyImport(imported, url, false);
-    }
-
     /// Executes a legacy import with dependency provenance.
     ///
     /// @param imported the parsed imported stylesheet
@@ -754,9 +658,7 @@ public final class SassEvaluator implements
         if (hasForwards) {
             currentConfiguration = environment.toImplicitConfiguration();
         } else {
-            currentConfiguration = previousConfiguration == null
-                    ? ModuleConfiguration.empty()
-                    : previousConfiguration;
+            currentConfiguration = previousConfiguration;
         }
         for (var warning : imported.parseTimeWarnings()) {
             diagnosticReporter.compilerWarning(warning, inDependency);
@@ -882,25 +784,6 @@ public final class SassEvaluator implements
                     List.of(),
                     cause
             );
-        }
-    }
-
-    /// Installs a module's public members into the current environment without a
-    /// namespace (legacy {@code @import} visibility).
-    ///
-    /// Variables are shared as live {@link VariableBinding}s. Callables from a
-    /// later import replace earlier ones with the same name.
-    ///
-    /// @param module the module whose members become local
-    private void importModuleMembers(LoadedModule module) {
-        for (var entry : module.variables().entrySet()) {
-            environment.importVariableBinding(entry.getKey(), entry.getValue());
-        }
-        for (var entry : module.functions().entrySet()) {
-            environment.setFunction(entry.getValue());
-        }
-        for (var entry : module.mixins().entrySet()) {
-            environment.setMixin(entry.getValue());
         }
     }
 
@@ -4363,8 +4246,7 @@ public final class SassEvaluator implements
         if (positional.size() > 3) {
             throw new EvaluationException(
                     "Only 3 arguments allowed, but " + positional.size()
-                            + (positional.size() == 1 ? " was" : " were")
-                            + " passed.",
+                            + " were passed.",
                     expression.span()
             );
         }
@@ -4412,21 +4294,18 @@ public final class SassEvaluator implements
         var condition = takeLegacyIfValue(
                 values,
                 named,
-                0,
                 "condition",
                 expression.span()
         );
         var ifTrue = takeLegacyIfValue(
                 values,
                 named,
-                1,
                 "if-true",
                 expression.span()
         );
         var ifFalse = takeLegacyIfValue(
                 values,
                 named,
-                2,
                 "if-false",
                 expression.span()
         );
@@ -4453,14 +4332,12 @@ public final class SassEvaluator implements
     ///
     /// @param values remaining positional values (consumed from the front)
     /// @param named  remaining named values (consumed on use)
-    /// @param index  the parameter index (for error text only)
     /// @param name   the parameter name without {@code $}
     /// @param span   the complete {@code if()} span
     /// @return the bound value
     private static SassValue takeLegacyIfValue(
             ArrayList<SassValue> values,
             LinkedHashMap<String, SassValue> named,
-            int index,
             String name,
             SourceSpan span
     ) {
@@ -4734,18 +4611,6 @@ public final class SassEvaluator implements
     /// @param condition the parsed supports condition
     /// @return the evaluated CSS condition
     private String evaluateSupportsCondition(SupportsCondition condition) {
-        return evaluateSupportsCondition(condition, null);
-    }
-
-    /// Evaluates a supports condition with the operator context of its parent.
-    ///
-    /// @param condition the parsed supports condition
-    /// @param parentOperator the enclosing boolean operator, or null
-    /// @return the evaluated CSS condition
-    private String evaluateSupportsCondition(
-            SupportsCondition condition,
-            @Nullable SupportsBooleanOperator parentOperator
-    ) {
         if (condition instanceof SupportsDeclaration declaration) {
             // Names unquote so {@code ("--theme": …)} becomes {@code (--theme: …)}.
             // Values keep quotes so {@code (a: "b")} remains quoted.
@@ -4800,7 +4665,7 @@ public final class SassEvaluator implements
                 || condition instanceof SupportsOperation operation
                 && (parentOperator == null
                 || operation.operator() != parentOperator);
-        var text = evaluateSupportsCondition(condition, parentOperator);
+        var text = evaluateSupportsCondition(condition);
         return parenthesize ? "(" + text + ")" : text;
     }
 
@@ -5019,8 +4884,8 @@ public final class SassEvaluator implements
                 : parent.copyWithoutChildren();
         grandparent.addChild(copy);
         cssParent = copy;
-        if (styleRule == parent && copy instanceof CssStyleRule rule) {
-            styleRule = rule;
+        if (styleRule == parent) {
+            styleRule = (CssStyleRule) copy;
         }
     }
 
@@ -5113,7 +4978,6 @@ public final class SassEvaluator implements
                         new BuiltInCallable.Context(
                                 environment,
                                 globalFunctions,
-                                currentUrl,
                                 span,
                                 compilationContext,
                                 this::runFunctionValue,
@@ -5435,8 +5299,8 @@ public final class SassEvaluator implements
             injectUnknownAtRule(unknownAtRule, reattributeOrigins);
             return;
         }
-        if (node instanceof CssFontFace fontFace) {
-            injectFontFace(fontFace, reattributeOrigins);
+        if (node instanceof CssFontFace sourceFontFace) {
+            injectFontFace(sourceFontFace, reattributeOrigins);
             return;
         }
         throw new EvaluationException(
@@ -5639,14 +5503,9 @@ public final class SassEvaluator implements
             } else {
                 var wrapper = copyStyleRulePreservingOrigin(activeStyleRule);
                 injected.addChild(wrapper);
-                var supportsParent = requireCssParent();
                 cssParent = wrapper;
-                try {
-                    for (var child : supportsRule.children()) {
-                        injectCssNode(child, reattributeOrigins);
-                    }
-                } finally {
-                    cssParent = supportsParent;
+                for (var child : supportsRule.children()) {
+                    injectCssNode(child, reattributeOrigins);
                 }
             }
         } finally {
@@ -5805,25 +5664,10 @@ public final class SassEvaluator implements
             @Nullable UserDefinedCallable content,
             SourceSpan span
     ) {
-        environment.withContent(content, () -> environment.withMixin(() -> {
-            runCallable(mixin, evaluated, span);
-            return null;
-        }));
-    }
-
-    /// Executes a user-defined mixin body with unevaluated call-site arguments.
-    ///
-    /// @param mixin     the user-defined mixin
-    /// @param arguments the unevaluated invocation arguments
-    /// @param content   the direct content block, or {@code null}
-    /// @param span      the include span
-    private void runUserDefinedMixin(
-            UserDefinedCallable mixin,
-            ArgumentList arguments,
-            @Nullable UserDefinedCallable content,
-            SourceSpan span
-    ) {
-        runUserDefinedMixin(mixin, evaluateArguments(arguments, span), content, span);
+        environment.withContent(
+                content,
+                () -> environment.withMixin(() -> runCallable(mixin, evaluated, span))
+        );
     }
 
     /// Executes a user-defined mixin body with already-evaluated arguments.
@@ -5856,7 +5700,6 @@ public final class SassEvaluator implements
                     );
                     executeChildren(mixin.children());
                     checkUnusedKeywords(rest, span);
-                    return null;
                 } finally {
                     scope.close();
                 }
@@ -5986,18 +5829,6 @@ public final class SassEvaluator implements
             addRestMap(named, map, span, stripSlash);
         }
         return new EvaluatedArguments(List.copyOf(positional), named, separator);
-    }
-
-    /// Merges a rest map into the named-argument table.
-    ///
-    /// Keys must be Sass strings (quoted or unquoted). Values keep their
-    /// evaluated form after any outer {@code withoutSlash} rewrite.
-    private void addRestMap(
-            LinkedHashMap<String, SassValue> named,
-            SassMap map,
-            SourceSpan span
-    ) {
-        addRestMap(named, map, span, true);
     }
 
     /// Merges a rest map into the named-argument table.
@@ -6381,13 +6212,11 @@ public final class SassEvaluator implements
         }
     }
 
-    /// Serializes a plain-CSS function call.
-    ///
-    /// @param name       the function name
-    /// @param positional the evaluated arguments
-    /// @return an unquoted CSS function string
-    /// @throws SassValueException if an argument cannot be represented in CSS
     /// Evaluates a CSS calculation function with calculation-context arguments.
+    ///
+    /// @param expression the calculation function expression
+    /// @param inLegacySassFunction the legacy function name, or {@code null}
+    /// @return the calculation value
     private SassValue visitCalculation(
             FunctionExpression expression,
             @Nullable String inLegacySassFunction
@@ -6450,15 +6279,10 @@ public final class SassEvaluator implements
             throw new EvaluationException(
                     "Only " + maxArgs + " argument" + (maxArgs == 1 ? "" : "s")
                             + " allowed, but " + count
-                            + (count == 1 ? " was" : " were") + " passed.",
+                            + " were passed.",
                     expression.span()
             );
         }
-    }
-
-    /// Evaluates one expression as a calculation argument.
-    private Object visitCalculationExpression(SassExpression expression) {
-        return visitCalculationExpression(expression, null);
     }
 
     /// Evaluates one expression as a calculation argument with optional legacy mode.
@@ -6705,7 +6529,7 @@ public final class SassEvaluator implements
                 if (args.size() != 1) {
                     throw new SassValueException(
                             "1 argument required, but only " + args.size()
-                                    + (args.size() == 1 ? " was" : " were") + " passed."
+                                    + " were passed."
                     );
                 }
                 yield SassCalculation.calc(args.get(0));
@@ -7167,14 +6991,6 @@ public final class SassEvaluator implements
             for (var element : list.contents()) {
                 rejectPlainCssForbiddenExpression(element);
             }
-            return;
-        }
-        if (expression instanceof InterpolatedFunctionExpression
-                || expression instanceof LegacyIfExpression
-                || expression instanceof IfExpression) {
-            // Nested if()/interpolated forms inside calc are not plain CSS calc
-            // operands; fall through to normal evaluation paths that already
-            // reject interpolation in plain CSS.
             return;
         }
     }

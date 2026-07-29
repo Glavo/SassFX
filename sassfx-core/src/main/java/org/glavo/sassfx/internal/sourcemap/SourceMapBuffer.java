@@ -50,21 +50,6 @@ public final class SourceMapBuffer {
     /// Contains source text aligned with [#sources], or {@code null} when omitted.
     private final @Nullable ArrayList<@Nullable String> sourceContents;
 
-    /// Creates a buffer.
-    ///
-    /// @param enabled whether mappings are recorded
-    public SourceMapBuffer(boolean enabled) {
-        this(enabled, Map.of(), false, Map.of(), null);
-    }
-
-    /// Creates a buffer with alternate source identifiers.
-    ///
-    /// @param enabled whether mappings are recorded
-    /// @param sourceMapUrls alternate source-map URLs keyed by canonical URL
-    public SourceMapBuffer(boolean enabled, Map<URI, URI> sourceMapUrls) {
-        this(enabled, sourceMapUrls, false, Map.of(), null);
-    }
-
     /// Creates a buffer with source identifiers and optional embedded contents.
     ///
     /// @param enabled whether mappings are recorded

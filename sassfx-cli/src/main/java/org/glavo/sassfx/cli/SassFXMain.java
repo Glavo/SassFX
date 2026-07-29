@@ -943,7 +943,7 @@ public final class SassFXMain implements Callable<Integer> {
                     );
                 } catch (IOException outputFailure) {
                     printIoFailure(outputFailure, context.err());
-                    status = Math.max(status, IO_EXIT_STATUS);
+                    status = IO_EXIT_STATUS;
                 }
                 if (!quiet) {
                     printNonErrorDiagnostics(
@@ -976,7 +976,7 @@ public final class SassFXMain implements Callable<Integer> {
                 if (trace) {
                     printImplementationTrace(failure, context.err());
                 }
-                status = Math.max(status, IO_EXIT_STATUS);
+                status = IO_EXIT_STATUS;
                 recordIoFailedState(
                         states,
                         previousStates,
@@ -2400,7 +2400,7 @@ public final class SassFXMain implements Callable<Integer> {
         var format = target.substring(0, separator);
         var versionText = target.substring(separator + "/javafx@".length());
         if ((!format.equals("css") && !format.equals("bss"))
-                || !versionText.matches("(?:[89]|1[0-9]|2[0-7])")) {
+                || !versionText.matches("[89]|1[0-9]|2[0-7]")) {
             throw unsupportedTarget();
         }
 

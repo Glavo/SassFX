@@ -823,13 +823,6 @@ public record CssMediaQuery(
             return !atEnd() && isIdentifierStart(peek());
         }
 
-        /// Returns whether the current token is followed by a query delimiter.
-        ///
-        /// @return whether parsing has reached a comma or end of input
-        private boolean atQueryEnd() {
-            return atEnd() || peek() == ',';
-        }
-
         /// Returns whether the parser has consumed all source text.
         ///
         /// @return whether no next code unit exists

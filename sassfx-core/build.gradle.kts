@@ -1,6 +1,6 @@
-import java.util.jar.Attributes
-import java.util.jar.Manifest
-import java.util.zip.ZipFile
+import org.glavo.sassfx.build.FailTask
+import org.glavo.sassfx.build.VerifyCoreLibraryJarTask
+import org.glavo.sassfx.build.VerifyReferenceIsolationTask
 
 plugins {
     `java-library`
@@ -118,17 +118,6 @@ tasks.named<JavaCompile>(javaFX8OracleSourceSet.compileJavaTaskName) {
     options.release = 8
 }
 
-tasks.withType<Test>().configureEach {
-    val taskTemporaryDirectory = layout.buildDirectory.dir("tmp/$name")
-    systemProperty(
-        "java.io.tmpdir",
-        taskTemporaryDirectory.get().asFile.absolutePath,
-    )
-    doFirst {
-        taskTemporaryDirectory.get().asFile.mkdirs()
-    }
-}
-
 tasks.test {
     systemProperty("sassfx.test.expectedVersion", project.version.toString())
     useJUnitPlatform {
@@ -158,12 +147,22 @@ tasks.withType<Javadoc>().configureEach {
     options.encoding = "UTF-8"
 }
 
-val embeddedProjectVersion = project.version.toString()
+val generateVersionProperties =
+    tasks.register<WriteProperties>("generateVersionProperties") {
+        destinationFile.set(
+            layout.buildDirectory.file(
+                "generated/sassfx-version/sassfx-version.properties",
+            ),
+        )
+        property("version", project.version.toString())
+        encoding = "UTF-8"
+        lineSeparator = "\n"
+    }
 
 tasks.processResources {
-    inputs.property("sassfxVersion", embeddedProjectVersion)
-    filesMatching("org/glavo/sassfx/sassfx-version.properties") {
-        expand("version" to embeddedProjectVersion)
+    exclude("org/glavo/sassfx/sassfx-version.properties")
+    from(generateVersionProperties) {
+        into("org/glavo/sassfx")
     }
     from(rootProject.layout.projectDirectory.file("LICENSE")) {
         into("META-INF")
@@ -230,47 +229,12 @@ tasks.withType<AbstractArchiveTask>().configureEach {
     isReproducibleFileOrder = true
 }
 
-val verifyCoreLibraryJar = tasks.register("verifyCoreLibraryJar") {
+val verifyCoreLibraryJar = tasks.register<VerifyCoreLibraryJarTask>(
+    "verifyCoreLibraryJar",
+) {
     group = LifecycleBasePlugin.VERIFICATION_GROUP
     description = "Verifies that the core library JAR contains no CLI implementation or entry point."
-    dependsOn(tasks.jar)
-    inputs.file(tasks.jar.flatMap { it.archiveFile })
-
-    doLast {
-        val archive = tasks.jar.get().archiveFile.get().asFile
-        ZipFile(archive).use { zipFile ->
-            val forbiddenEntries = zipFile.entries().asSequence()
-                .map { entry -> entry.name }
-                .filter { name ->
-                    name.startsWith("org/glavo/sassfx/cli/")
-                        || name.startsWith("picocli/")
-                        || name.contains("/picocli/")
-                }
-                .toList()
-            if (forbiddenEntries.isNotEmpty()) {
-                throw GradleException(
-                    "The core library JAR contains CLI entries: " +
-                        forbiddenEntries.joinToString(),
-                )
-            }
-
-            val manifestEntry = zipFile.getEntry("META-INF/MANIFEST.MF")
-                ?: throw GradleException("The core library JAR has no manifest.")
-            val manifest = zipFile.getInputStream(manifestEntry).use(::Manifest)
-            val mainClass = manifest.mainAttributes.getValue(Attributes.Name.MAIN_CLASS)
-            if (mainClass != null) {
-                throw GradleException(
-                    "The core library JAR declares an application entry point: $mainClass",
-                )
-            }
-            val moduleName = manifest.mainAttributes.getValue("Automatic-Module-Name")
-            if (moduleName != "org.glavo.sassfx") {
-                throw GradleException(
-                    "The core library JAR declares an unexpected module name: $moduleName",
-                )
-            }
-        }
-    }
+    archiveFile.set(tasks.jar.flatMap { it.archiveFile })
 }
 
 val javaFXOracleLauncherVersions = mapOf(
@@ -345,36 +309,38 @@ val generateJavaFX8OracleInputs =
     }
 
 val javaFX8JavaHome = providers.gradleProperty("javaFX8OracleJavaHome").orNull
-val verifyJavaFX8CssOracle = tasks.register<Exec>("verifyJavaFX8CssOracle") {
-    group = LifecycleBasePlugin.VERIFICATION_GROUP
-    description = "Validates JavaFX 8 BSS against a configured JavaFX 8 runtime."
-    dependsOn(generateJavaFX8OracleInputs)
-    dependsOn(javaFX8OracleSourceSet.classesTaskName)
+val verifyJavaFX8CssOracle =
     if (javaFX8JavaHome == null) {
-        executable("java")
-        doFirst {
-            throw GradleException(
+        tasks.register<FailTask>("verifyJavaFX8CssOracle") {
+            group = LifecycleBasePlugin.VERIFICATION_GROUP
+            description = "Validates JavaFX 8 BSS against a configured JavaFX 8 runtime."
+            failureMessage.set(
                 "verifyJavaFX8CssOracle requires -PjavaFX8OracleJavaHome="
                     + "<a Java 8 JDK containing JavaFX 8>.",
             )
         }
     } else {
-        val javaExecutable =
-            if (System.getProperty("os.name").startsWith("Windows")) "java.exe" else "java"
-        executable(
-            file(javaFX8JavaHome)
-                .resolve("bin/$javaExecutable")
-                .absolutePath,
-        )
+        tasks.register<Exec>("verifyJavaFX8CssOracle") {
+            group = LifecycleBasePlugin.VERIFICATION_GROUP
+            description = "Validates JavaFX 8 BSS against a configured JavaFX 8 runtime."
+            dependsOn(generateJavaFX8OracleInputs)
+            dependsOn(javaFX8OracleSourceSet.classesTaskName)
+            val javaExecutable =
+                if (System.getProperty("os.name").startsWith("Windows")) "java.exe" else "java"
+            executable(
+                file(javaFX8JavaHome)
+                    .resolve("bin/$javaExecutable")
+                    .absolutePath,
+            )
+            args(
+                "-Djava.awt.headless=true",
+                "-cp",
+                javaFX8OracleSourceSet.output.classesDirs.asPath,
+                "org.glavo.sassfx.oracle.JavaFX8OracleHelper",
+                javaFX8OracleDirectory.get().asFile.absolutePath,
+            )
+        }
     }
-    args(
-        "-Djava.awt.headless=true",
-        "-cp",
-        javaFX8OracleSourceSet.output.classesDirs.asPath,
-        "org.glavo.sassfx.oracle.JavaFX8OracleHelper",
-        javaFX8OracleDirectory.get().asFile.absolutePath,
-    )
-}
 
 tasks.register("verifyJavaFXCssOracles") {
     group = LifecycleBasePlugin.VERIFICATION_GROUP
@@ -394,6 +360,14 @@ val referenceSensitiveFiles = fileTree(rootProject.layout.projectDirectory) {
     include("sassfx-cli/src/**")
     include("sassfx-embedded/src/**")
     include("sassfx-gradle-plugin/src/**")
+    include("buildSrc/src/**")
+    include("buildSrc/*.gradle.kts")
+    include("gradle/**/*.gradle.kts")
+    include("gradle/**/*.java")
+    include("gradle/**/*.properties")
+    include("gradle/**/*.scss")
+    include("gradle/**/*.xml")
+    include(".github/**")
     include("*.gradle.kts")
     include("sassfx-core/*.gradle.kts")
     include("sassfx-cli/*.gradle.kts")
@@ -402,45 +376,17 @@ val referenceSensitiveFiles = fileTree(rootProject.layout.projectDirectory) {
     include("*.md")
 }
 
-val verifyReferenceIsolation = tasks.register("verifyReferenceIsolation") {
+val verifyReferenceIsolation = tasks.register<VerifyReferenceIsolationTask>(
+    "verifyReferenceIsolation",
+) {
     group = LifecycleBasePlugin.VERIFICATION_GROUP
     description = "Verifies that committed project inputs do not reference a local upstream checkout."
-    inputs.files(referenceSensitiveFiles)
-
-    doLast {
-        val forbiddenReferences = listOf(
-            "external" + "/",
-            "external" + "\\",
-            rootProject.layout.projectDirectory.asFile.absolutePath,
-        )
-        val violations = referenceSensitiveFiles.files.flatMap { file ->
-            file.readLines(Charsets.UTF_8).mapIndexedNotNull { index, line ->
-                forbiddenReferences.firstOrNull { reference ->
-                    line.contains(reference, ignoreCase = true)
-                }?.let { reference ->
-                    "${file.relativeTo(rootProject.layout.projectDirectory.asFile)}:" +
-                        "${index + 1}: $reference"
-                }
-            }
-        }
-
-        if (violations.isNotEmpty()) {
-            throw GradleException(
-                "Project inputs contain forbidden local references:\n" +
-                    violations.joinToString("\n"),
-            )
-        }
-    }
+    sourceFiles.from(referenceSensitiveFiles)
+    rootDirectory.set(rootProject.layout.projectDirectory)
 }
 
 tasks.check {
     dependsOn(verifyCoreLibraryJar)
     dependsOn(verifyReferenceIsolation)
     dependsOn(sassSpec)
-}
-
-tasks.register("printTestRuntimeClasspath") {
-    doLast {
-        println(sourceSets["test"].runtimeClasspath.asPath)
-    }
 }

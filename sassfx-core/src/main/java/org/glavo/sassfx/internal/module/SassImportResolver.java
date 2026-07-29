@@ -28,11 +28,6 @@ import java.util.Objects;
 @ApiStatus.Internal
 @NotNullByDefault
 public final class SassImportResolver {
-    /// Ignores import deprecations for direct resolver tests and utilities.
-    private static final ImportDeprecationHandler NO_DEPRECATIONS =
-            (deprecation, dependency) -> {
-            };
-
     /// Contains custom importers in user-defined precedence order.
     private final @Unmodifiable List<SassImporter> importers;
 
@@ -58,14 +53,6 @@ public final class SassImportResolver {
     /// Associates canonical URLs with alternate source-map URLs.
     private final LinkedHashMap<URI, URI> sourceMapUrls = new LinkedHashMap<>();
 
-    /// Creates a resolver for one compilation.
-    ///
-    /// @param importers custom importers in precedence order
-    /// @param loadPaths filesystem load paths searched after custom importers
-    public SassImportResolver(List<SassImporter> importers, List<Path> loadPaths) {
-        this(importers, loadPaths, null);
-    }
-
     /// Creates a resolver that records incremental resolution metadata.
     ///
     /// @param importers custom importers in precedence order
@@ -86,24 +73,6 @@ public final class SassImportResolver {
         this.resolutionTracker = resolutionTracker;
     }
 
-    /// Resolves and loads a module-style request.
-    ///
-    /// @param url the unresolved stylesheet URL
-    /// @param baseUrl the containing canonical URL, or {@code null}
-    /// @return the loaded stylesheet, or {@code null} when unresolved
-    /// @throws IOException if an importer or filesystem read fails
-    public @Nullable ImportResult canonicalizeAndLoad(
-            String url,
-            @Nullable URI baseUrl
-    ) throws IOException {
-        return canonicalizeAndLoad(
-                url,
-                baseUrl,
-                false,
-                NO_DEPRECATIONS
-        );
-    }
-
     /// Resolves and loads a module-style request while reporting deprecations.
     ///
     /// @param url the unresolved stylesheet URL
@@ -121,24 +90,6 @@ public final class SassImportResolver {
                 baseUrl,
                 false,
                 deprecationHandler
-        );
-    }
-
-    /// Resolves and loads a legacy-import request.
-    ///
-    /// @param url the unresolved stylesheet URL
-    /// @param baseUrl the containing canonical URL, or {@code null}
-    /// @return the loaded stylesheet, or {@code null} when unresolved
-    /// @throws IOException if an importer or filesystem read fails
-    public @Nullable ImportResult canonicalizeAndLoadImport(
-            String url,
-            @Nullable URI baseUrl
-    ) throws IOException {
-        return canonicalizeAndLoad(
-                url,
-                baseUrl,
-                true,
-                NO_DEPRECATIONS
         );
     }
 

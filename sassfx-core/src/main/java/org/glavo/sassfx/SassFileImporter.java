@@ -11,8 +11,8 @@ import java.net.URI;
 ///
 /// The compiler applies the standard Sass extension, partial, import-only, and
 /// directory-index rules to a returned file URL. Requests that are already
-/// absolute {@code file:} URLs bypass [#findFileUrl(URI,
-/// SassCanonicalizeContext)] and are resolved directly.
+/// absolute {@code file:} URLs bypass
+/// [#findFileUrl(URI, SassCanonicalizeContext)] and are resolved directly.
 ///
 /// This interface extends [SassImporter] so file importers and contents
 /// importers can be stored in one ordered [CompileOptions#importers()] list.

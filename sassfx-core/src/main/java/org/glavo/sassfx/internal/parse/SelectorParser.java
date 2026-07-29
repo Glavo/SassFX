@@ -189,13 +189,6 @@ public final class SelectorParser {
         return new SelectorList(components, baseSpan);
     }
 
-    /// Parses one complex selector.
-    ///
-    /// @return the parsed complex selector
-    private ComplexSelector parseComplex() {
-        return parseComplex(false);
-    }
-
     /// Parses one complex selector, recording whether a line break preceded it.
     ///
     /// @param lineBreak whether a newline appeared after the preceding comma
@@ -270,11 +263,6 @@ public final class SelectorParser {
                 && !components.isEmpty()
                 && !components.get(components.size() - 1).combinators().isEmpty()) {
             throw error("expected selector.");
-        }
-        // Also reject a lone trailing combinator with no compounds.
-        if (plainCss && components.isEmpty() && !leading.isEmpty()) {
-            // Leading-only forms such as {@code > a} are parsed with compounds;
-            // a bare trailing combinator already failed lookingAtSimple above.
         }
         return new ComplexSelector(leading, components, spanFrom(start), lineBreak);
     }
@@ -963,63 +951,6 @@ public final class SelectorParser {
         return normalized;
     }
 
-    /// Finds the top-level {@code of} token separating an nth selector list.
-    ///
-    /// @param argument the raw text between parentheses
-    /// @return the offset of {@code of}, or {@code -1} when absent
-    private static int findNthOfSeparator(String argument) {
-        var quote = 0;
-        var parentheses = 0;
-        var brackets = 0;
-        for (var index = 0; index < argument.length(); index++) {
-            var character = argument.charAt(index);
-            if (character == '\\' && index + 1 < argument.length()) {
-                index++;
-                continue;
-            }
-            if (quote != 0) {
-                if (character == quote) {
-                    quote = 0;
-                }
-                continue;
-            }
-            if (character == '\'' || character == '"') {
-                quote = character;
-                continue;
-            }
-            if (character == '[') {
-                brackets++;
-                continue;
-            }
-            if (character == ']' && brackets > 0) {
-                brackets--;
-                continue;
-            }
-            if (brackets != 0) {
-                continue;
-            }
-            if (character == '(') {
-                parentheses++;
-                continue;
-            }
-            if (character == ')' && parentheses > 0) {
-                parentheses--;
-                continue;
-            }
-            if (parentheses == 0
-                    && (character == 'o' || character == 'O')
-                    && index + 2 < argument.length()
-                    && (argument.charAt(index + 1) == 'f'
-                    || argument.charAt(index + 1) == 'F')
-                    && index > 0
-                    && isWhitespace(argument.charAt(index - 1))
-                    && isWhitespace(argument.charAt(index + 2))) {
-                return index;
-            }
-        }
-        return -1;
-    }
-
     /// Reads the content of a functional pseudo-selector argument.
     ///
     /// @return the argument text without its enclosing parentheses
@@ -1030,11 +961,11 @@ public final class SelectorParser {
         var parentheses = 1;
         var brackets = 0;
         while (!isDone()) {
-                var character = read();
+            var character = read();
             if (character == '"' || character == '\'') {
-                    readQuoted(character);
+                readQuoted(character);
                 continue;
-                }
+            }
             if (character == '\\') {
                 skipOpaqueEscape();
                 continue;
@@ -1046,7 +977,7 @@ public final class SelectorParser {
             if (character == ']' && brackets > 0) {
                 brackets--;
                 continue;
-        }
+            }
             if (brackets != 0) {
                 continue;
             }
@@ -1058,8 +989,8 @@ public final class SelectorParser {
                 parentheses--;
                 if (parentheses == 0) {
                     return text.substring(start, position - 1);
+                }
             }
-        }
         }
         throw error("Expected closing ')'.");
     }

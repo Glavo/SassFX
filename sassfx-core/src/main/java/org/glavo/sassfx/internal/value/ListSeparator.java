@@ -36,13 +36,6 @@ public enum ListSeparator {
         this.source = source;
     }
 
-    /// Returns the human-readable separator name used by diagnostics.
-    ///
-    /// @return the separator name
-    public String displayName() {
-        return displayName;
-    }
-
     /// Returns the source separator.
     ///
     /// @return the separator, or {@code null} when it is undecided

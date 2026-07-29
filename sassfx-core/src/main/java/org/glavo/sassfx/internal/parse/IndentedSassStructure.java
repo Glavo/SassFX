@@ -347,10 +347,6 @@ final class IndentedSassStructure {
         return null;
     }
 
-    /// Collects physical lines and combines multiline loud comments.
-    ///
-    /// @param source the source to inspect
-    /// @return logical lines in source order
     /// Lexes the indented source into logical statement lines.
     ///
     /// @param source the indented Sass source
@@ -1183,32 +1179,6 @@ final class IndentedSassStructure {
             }
         }
         return new Indentation(columns, length);
-    }
-
-    /// Returns how many leading characters produce at most {@code columns} of indent.
-    ///
-    /// @param text    the physical line
-    /// @param columns the maximum indent columns to consume
-    /// @return the character count of the consumed prefix
-    private static int indentLengthForColumns(String text, int columns) {
-        if (columns <= 0) {
-            return 0;
-        }
-        var seen = 0;
-        var length = 0;
-        while (length < text.length() && seen < columns) {
-            var character = text.charAt(length);
-            if (character == ' ') {
-                seen++;
-                length++;
-            } else if (character == '\t') {
-                seen += 2;
-                length++;
-            } else {
-                break;
-            }
-        }
-        return length;
     }
 
     /// Scans one accumulated statement for continuation and delimiter errors.
@@ -2300,15 +2270,6 @@ final class IndentedSassStructure {
         return false;
     }
 
-    /// Returns whether {@code character} may continue an identifier or variable.
-    private static boolean isIdentChar(int character) {
-        return Character.isLetterOrDigit(character)
-                || character == '-'
-                || character == '_'
-                || character == '$'
-                || character == '\\';
-    }
-
     /// Returns whether {@code character} may begin an indented {@code +include} name.
     ///
     /// @param character the code unit after {@code +}
@@ -2773,14 +2734,6 @@ final class IndentedSassStructure {
         }
     }
 
-    /// Contains one logical statement line.
-    ///
-    /// @param indent the indentation width
-    /// @param text the statement text
-    /// @param startOffset the source start offset
-    /// @param endOffset the source end offset
-    /// @param pieces source-backed pieces forming the unchanged statement text
-    /// @param comment whether the line is a comment
     /// One logical statement or comment line produced by the indented lexer.
     ///
     /// @param indent      indentation width used for block structure
@@ -2808,9 +2761,6 @@ final class IndentedSassStructure {
 
     /// Describes the continuation and delimiter state of a logical statement.
     ///
-    /// @param requiresContinuation whether another physical line is required
-    /// @param openQuote whether the statement ends inside a quoted string
-    /// @param errorMessage the delimiter diagnostic, or {@code null}
     /// @param requiresContinuation whether another physical line should be joined
     /// @param mandatory            whether missing that line is an error at EOF
     /// @param openQuote            whether an open quote is active

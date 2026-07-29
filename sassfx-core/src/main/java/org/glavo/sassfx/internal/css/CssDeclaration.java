@@ -66,13 +66,6 @@ public final class CssDeclaration extends AbstractCssNode implements CssNode {
         return parsedAsSassScript;
     }
 
-    /// Returns whether this declaration names a CSS custom property.
-    ///
-    /// @return whether the name begins with `--`
-    public boolean isCustomProperty() {
-        return name.value().startsWith("--");
-    }
-
     /// Returns false because declarations are always emitted when present.
     ///
     /// @return {@code false}

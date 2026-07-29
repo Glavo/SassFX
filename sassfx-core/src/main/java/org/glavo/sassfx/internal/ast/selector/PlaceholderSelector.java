@@ -2,7 +2,6 @@
 package org.glavo.sassfx.internal.ast.selector;
 
 import org.glavo.sassfx.SourceSpan;
-import org.glavo.sassfx.internal.value.SassValueException;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 

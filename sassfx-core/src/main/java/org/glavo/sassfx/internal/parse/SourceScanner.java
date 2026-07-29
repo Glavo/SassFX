@@ -225,26 +225,6 @@ final class SourceScanner {
         );
     }
 
-    /// Creates a structured parse failure for an explicit source range.
-    ///
-    /// @param code   the stable diagnostic code
-    /// @param start  the inclusive UTF-16 start offset
-    /// @param length the nonnegative UTF-16 range length
-    /// @param args   format arguments for [org.glavo.sassfx.DiagnosticMessages]
-    /// @return the parse failure
-    ParseException error(
-            org.glavo.sassfx.DiagnosticCode code,
-            int start,
-            int length,
-            Object... args
-    ) {
-        Objects.requireNonNull(code, "code");
-        if (length < 0) {
-            throw new IllegalArgumentException("length must not be negative");
-        }
-        return new ParseException(code, source.span(start, Math.addExact(start, length)), args);
-    }
-
     /// Creates a parse failure for an already projected source span.
     ///
     /// @param message the failure message
@@ -255,24 +235,6 @@ final class SourceScanner {
                 org.glavo.sassfx.DiagnosticCode.PARSE_ERROR,
                 Objects.requireNonNull(span, "span"),
                 Objects.requireNonNull(message, "message")
-        );
-    }
-
-    /// Creates a structured parse failure for an already projected source span.
-    ///
-    /// @param code the stable diagnostic code
-    /// @param span the source span associated with the failure
-    /// @param args format arguments for [org.glavo.sassfx.DiagnosticMessages]
-    /// @return the parse failure
-    ParseException error(
-            org.glavo.sassfx.DiagnosticCode code,
-            SourceSpan span,
-            Object... args
-    ) {
-        return new ParseException(
-                Objects.requireNonNull(code, "code"),
-                Objects.requireNonNull(span, "span"),
-                args
         );
     }
 

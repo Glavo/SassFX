@@ -36,6 +36,7 @@ import org.jetbrains.annotations.Unmodifiable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.Serial;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -378,7 +379,9 @@ public final class EmbeddedCompiler {
             reader.interrupt();
             executor.shutdownNow();
             try {
-                executor.awaitTermination(1, TimeUnit.SECONDS);
+                if (!executor.awaitTermination(1, TimeUnit.SECONDS)) {
+                    executor.shutdownNow();
+                }
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
             }
@@ -706,12 +709,12 @@ public final class EmbeddedCompiler {
                                 : base.resolve(url.getPath()).toUri();
                 importers.add(loadPath);
             }
-            case NODE_PACKAGE_IMPORTER -> {
-                importers.add(new SassNodePackageImporter(Path.of(
+            case NODE_PACKAGE_IMPORTER -> importers.add(
+                    new SassNodePackageImporter(Path.of(
                         importer.getNodePackageImporter()
                                 .getEntryPointDirectory()
-                )));
-            }
+                    ))
+            );
             case IMPORTER_ID -> importers.add(new EmbeddedHostImporter(
                     importer.getImporterId(),
                     importer.getNonCanonicalSchemeList(),
@@ -1482,6 +1485,7 @@ public final class EmbeddedCompiler {
     private static final class EmbeddedOutputException
             extends RuntimeException {
         /// The serialization version of this exception representation.
+        @Serial
         private static final long serialVersionUID = 1L;
 
         /// Creates a logger output failure.

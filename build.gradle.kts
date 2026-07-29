@@ -1,3 +1,5 @@
+import org.glavo.sassfx.build.VerifyReleaseVersionTask
+import org.gradle.api.publish.maven.tasks.PublishToMavenRepository
 import org.gradle.external.javadoc.StandardJavadocDocletOptions
 
 plugins {
@@ -12,21 +14,12 @@ version = providers.gradleProperty("sassfxVersion")
     .orElse(providers.environmentVariable("SASSFX_VERSION"))
     .getOrElse("0.1.0-SNAPSHOT")
 
-val verifyReleaseVersion = tasks.register("verifyReleaseVersion") {
+val verifyReleaseVersion = tasks.register<VerifyReleaseVersionTask>(
+    "verifyReleaseVersion",
+) {
     group = LifecycleBasePlugin.VERIFICATION_GROUP
     description = "Verifies that a release build uses a stable semantic version."
-
-    doLast {
-        val releaseVersion = version.toString()
-        if (!Regex("""\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?""").matches(releaseVersion)
-            || releaseVersion.endsWith("-SNAPSHOT")
-        ) {
-            throw GradleException(
-                "A release requires -PsassfxVersion=<stable semantic version>; "
-                    + "received '$releaseVersion'.",
-            )
-        }
-    }
+    releaseVersion.set(project.version.toString())
 }
 
 val cleanLocalStagingRepository = tasks.register<Delete>(
@@ -36,6 +29,11 @@ val cleanLocalStagingRepository = tasks.register<Delete>(
 }
 
 subprojects {
+    tasks.withType<Test>().configureEach {
+        useJUnitPlatform()
+        systemProperty("java.io.tmpdir", temporaryDir.absolutePath)
+    }
+
     tasks.withType<Javadoc>().configureEach {
         (options as StandardJavadocDocletOptions).addBooleanOption(
             "Werror",
@@ -44,10 +42,10 @@ subprojects {
     }
 
     pluginManager.withPlugin("maven-publish") {
-        tasks.matching {
-            it.name == "publishAllPublicationsToLocalStagingRepository"
-        }.configureEach {
-            dependsOn(cleanLocalStagingRepository)
+        tasks.withType<PublishToMavenRepository>().configureEach {
+            if (name.endsWith("ToLocalStagingRepository")) {
+                dependsOn(cleanLocalStagingRepository)
+            }
         }
     }
 }
