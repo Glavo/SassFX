@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.sassfx.internal.sourcemap;
 
-import com.fasterxml.jackson.core.JsonFactory;
+import com.google.gson.Strictness;
+import com.google.gson.stream.JsonWriter;
 import org.glavo.sassfx.SourceMap;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -16,9 +17,6 @@ import java.util.Objects;
 @ApiStatus.Internal
 @NotNullByDefault
 public final class SourceMapGenerator {
-    /// Contains the JSON factory used to emit source maps.
-    private static final JsonFactory JSON_FACTORY = JsonFactory.builder().build();
-
     /// Prevents instantiation.
     private SourceMapGenerator() {
     }
@@ -74,29 +72,30 @@ public final class SourceMapGenerator {
             );
         }
         var writer = new StringWriter();
-        try (var generator = JSON_FACTORY.createGenerator(writer)) {
-            generator.writeStartObject();
-            generator.writeNumberField("version", 3);
-            generator.writeArrayFieldStart("sources");
+        try (var generator = new JsonWriter(writer)) {
+            generator.setStrictness(Strictness.STRICT);
+            generator.beginObject();
+            generator.name("version").value(3);
+            generator.name("sources").beginArray();
             for (var source : sources) {
-                generator.writeString(source);
+                generator.value(source);
             }
-            generator.writeEndArray();
+            generator.endArray();
             if (sourceContents != null) {
-                generator.writeArrayFieldStart("sourcesContent");
+                generator.name("sourcesContent").beginArray();
                 for (@Nullable var sourceContent : sourceContents) {
                     if (sourceContent == null) {
-                        generator.writeNull();
+                        generator.nullValue();
                     } else {
-                        generator.writeString(sourceContent);
+                        generator.value(sourceContent);
                     }
                 }
-                generator.writeEndArray();
+                generator.endArray();
             }
-            generator.writeArrayFieldStart("names");
-            generator.writeEndArray();
-            generator.writeStringField("mappings", encodeMappings(entries));
-            generator.writeEndObject();
+            generator.name("names").beginArray();
+            generator.endArray();
+            generator.name("mappings").value(encodeMappings(entries));
+            generator.endObject();
         }
         return writer.toString();
     }

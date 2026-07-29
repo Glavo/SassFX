@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.sassfx.sassspec;
 
-import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonToken;
+import com.google.gson.Strictness;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
 import org.glavo.sassfx.DiagnosticSeverity;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.io.IOException;
+import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -22,9 +23,6 @@ import java.util.Set;
 final class SassSpecManifest {
     /// The only manifest format understood by this runner version.
     private static final int SUPPORTED_FORMAT = 1;
-
-    /// Creates streaming JSON parsers for manifest input.
-    private static final JsonFactory JSON_FACTORY = new JsonFactory();
 
     /// The validated manifest format version.
     private final int format;
@@ -66,32 +64,34 @@ final class SassSpecManifest {
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(sourceName, "sourceName");
 
-        try (var parser = JSON_FACTORY.createParser(source)) {
-            requireToken(nextRequired(parser, sourceName), JsonToken.START_OBJECT, sourceName, "a JSON object");
+        try (var reader = new JsonReader(new StringReader(source))) {
+            reader.setStrictness(Strictness.STRICT);
+            requireToken(
+                    reader.peek(),
+                    JsonToken.BEGIN_OBJECT,
+                    sourceName,
+                    "a JSON object"
+            );
+            reader.beginObject();
 
             @Nullable Integer format = null;
             @Nullable List<Archive> archives = null;
             var fields = new HashSet<String>();
-            while (true) {
-                JsonToken token = nextRequired(parser, sourceName);
-                if (token == JsonToken.END_OBJECT) {
-                    break;
-                }
-                requireToken(token, JsonToken.FIELD_NAME, sourceName, "a manifest field name");
-                String field = Objects.requireNonNull(parser.currentName(), "manifest field name");
+            while (reader.hasNext()) {
+                String field = reader.nextName();
                 if (!fields.add(field)) {
                     throw malformed(sourceName, "Manifest fields must not be repeated: " + field);
                 }
 
-                JsonToken valueToken = nextRequired(parser, sourceName);
                 switch (field) {
-                    case "format" -> format = readInteger(parser, valueToken, sourceName, field);
-                    case "archives" -> archives = readArchives(parser, valueToken, sourceName);
+                    case "format" -> format = readInteger(reader, sourceName, field);
+                    case "archives" -> archives = readArchives(reader, sourceName);
                     default -> throw malformed(sourceName, "Unknown manifest field: " + field);
                 }
             }
+            reader.endObject();
 
-            if (nextOrNull(parser) != null) {
+            if (reader.peek() != JsonToken.END_DOCUMENT) {
                 throw malformed(sourceName, "Manifest input must contain exactly one JSON value.");
             }
             return new SassSpecManifest(
@@ -117,57 +117,61 @@ final class SassSpecManifest {
 
     /// Reads the archive declarations from one JSON array value.
     ///
-    /// @param parser the active JSON parser
-    /// @param token the current value token
+    /// @param reader the active JSON reader
     /// @param sourceName the manifest label used in errors
     /// @return immutable archive declarations
     /// @throws IOException if JSON parsing fails
     private static @Unmodifiable List<Archive> readArchives(
-            JsonParser parser,
-            JsonToken token,
+            JsonReader reader,
             String sourceName
     ) throws IOException {
-        requireToken(token, JsonToken.START_ARRAY, sourceName, "an archives array");
+        requireToken(
+                reader.peek(),
+                JsonToken.BEGIN_ARRAY,
+                sourceName,
+                "an archives array"
+        );
+        reader.beginArray();
         var archives = new ArrayList<Archive>();
-        while (true) {
-            JsonToken element = nextRequired(parser, sourceName);
-            if (element == JsonToken.END_ARRAY) {
-                return List.copyOf(archives);
-            }
-            requireToken(element, JsonToken.START_OBJECT, sourceName, "an archive object");
-            archives.add(readArchive(parser, sourceName));
+        while (reader.hasNext()) {
+            archives.add(readArchive(reader, sourceName));
         }
+        reader.endArray();
+        return List.copyOf(archives);
     }
 
-    /// Reads one archive declaration after its opening object token.
+    /// Reads one archive declaration.
     ///
-    /// @param parser the active JSON parser
+    /// @param reader the active JSON reader
     /// @param sourceName the manifest label used in errors
     /// @return the parsed archive declaration
     /// @throws IOException if JSON parsing fails
-    private static Archive readArchive(JsonParser parser, String sourceName) throws IOException {
+    private static Archive readArchive(JsonReader reader, String sourceName)
+            throws IOException {
+        requireToken(
+                reader.peek(),
+                JsonToken.BEGIN_OBJECT,
+                sourceName,
+                "an archive object"
+        );
+        reader.beginObject();
         @Nullable String path = null;
         @Nullable List<Case> cases = null;
         var fields = new HashSet<String>();
 
-        while (true) {
-            JsonToken token = nextRequired(parser, sourceName);
-            if (token == JsonToken.END_OBJECT) {
-                break;
-            }
-            requireToken(token, JsonToken.FIELD_NAME, sourceName, "an archive field name");
-            String field = Objects.requireNonNull(parser.currentName(), "archive field name");
+        while (reader.hasNext()) {
+            String field = reader.nextName();
             if (!fields.add(field)) {
                 throw malformed(sourceName, "Archive fields must not be repeated: " + field);
             }
 
-            JsonToken valueToken = nextRequired(parser, sourceName);
             switch (field) {
-                case "path" -> path = readString(parser, valueToken, sourceName, field);
-                case "cases" -> cases = readCases(parser, valueToken, sourceName);
+                case "path" -> path = readString(reader, sourceName, field);
+                case "cases" -> cases = readCases(reader, sourceName);
                 default -> throw malformed(sourceName, "Unknown archive field: " + field);
             }
         }
+        reader.endObject();
 
         return new Archive(
                 requireValue(path, "archive path", sourceName),
@@ -177,35 +181,44 @@ final class SassSpecManifest {
 
     /// Reads the case declarations from one JSON array value.
     ///
-    /// @param parser the active JSON parser
-    /// @param token the current value token
+    /// @param reader the active JSON reader
     /// @param sourceName the manifest label used in errors
     /// @return immutable case declarations
     /// @throws IOException if JSON parsing fails
     private static @Unmodifiable List<Case> readCases(
-            JsonParser parser,
-            JsonToken token,
+            JsonReader reader,
             String sourceName
     ) throws IOException {
-        requireToken(token, JsonToken.START_ARRAY, sourceName, "a cases array");
+        requireToken(
+                reader.peek(),
+                JsonToken.BEGIN_ARRAY,
+                sourceName,
+                "a cases array"
+        );
+        reader.beginArray();
         var cases = new ArrayList<Case>();
-        while (true) {
-            JsonToken element = nextRequired(parser, sourceName);
-            if (element == JsonToken.END_ARRAY) {
-                return List.copyOf(cases);
-            }
-            requireToken(element, JsonToken.START_OBJECT, sourceName, "a case object");
-            cases.add(readCase(parser, sourceName));
+        while (reader.hasNext()) {
+            cases.add(readCase(reader, sourceName));
         }
+        reader.endArray();
+        return List.copyOf(cases);
     }
 
-    /// Reads one case declaration after its opening object token.
+    /// Reads one case declaration.
     ///
-    /// @param parser the active JSON parser
+    /// @param reader the active JSON reader
     /// @param sourceName the manifest label used in errors
     /// @return the parsed case declaration
     /// @throws IOException if JSON parsing fails
-    private static Case readCase(JsonParser parser, String sourceName) throws IOException {
+    private static Case readCase(JsonReader reader, String sourceName)
+            throws IOException {
+        requireToken(
+                reader.peek(),
+                JsonToken.BEGIN_OBJECT,
+                sourceName,
+                "a case object"
+        );
+        reader.beginObject();
         @Nullable String directory = null;
         @Nullable Action action = null;
         @Nullable String category = null;
@@ -214,28 +227,32 @@ final class SassSpecManifest {
         List<DiagnosticExpectation> diagnostics = List.of();
         var fields = new HashSet<String>();
 
-        while (true) {
-            JsonToken token = nextRequired(parser, sourceName);
-            if (token == JsonToken.END_OBJECT) {
-                break;
-            }
-            requireToken(token, JsonToken.FIELD_NAME, sourceName, "a case field name");
-            String field = Objects.requireNonNull(parser.currentName(), "case field name");
+        while (reader.hasNext()) {
+            String field = reader.nextName();
             if (!fields.add(field)) {
                 throw malformed(sourceName, "Case fields must not be repeated: " + field);
             }
 
-            JsonToken valueToken = nextRequired(parser, sourceName);
             switch (field) {
-                case "directory" -> directory = readString(parser, valueToken, sourceName, field);
-                case "action" -> action = Action.parse(readString(parser, valueToken, sourceName, field));
-                case "category" -> category = readString(parser, valueToken, sourceName, field);
-                case "reason" -> reason = readString(parser, valueToken, sourceName, field);
-                case "loadedUrls" -> loadedUrls = readStringList(parser, valueToken, sourceName, field);
-                case "diagnostics" -> diagnostics = readDiagnostics(parser, valueToken, sourceName);
+                case "directory" -> directory = readString(reader, sourceName, field);
+                case "action" -> action = Action.parse(
+                        readString(reader, sourceName, field)
+                );
+                case "category" -> category = readString(reader, sourceName, field);
+                case "reason" -> reason = readString(reader, sourceName, field);
+                case "loadedUrls" -> loadedUrls = readStringList(
+                        reader,
+                        sourceName,
+                        field
+                );
+                case "diagnostics" -> diagnostics = readDiagnostics(
+                        reader,
+                        sourceName
+                );
                 default -> throw malformed(sourceName, "Unknown case field: " + field);
             }
         }
+        reader.endObject();
 
         return new Case(
                 requireValue(directory, "case directory", sourceName),
@@ -249,105 +266,115 @@ final class SassSpecManifest {
 
     /// Reads a duplicate-free array of relative paths.
     ///
-    /// @param parser the active JSON parser
-    /// @param token the current value token
+    /// @param reader the active JSON reader
     /// @param sourceName the manifest label used in errors
     /// @param fieldName the field label used in errors
     /// @return immutable relative paths in declaration order
     /// @throws IOException if JSON parsing fails
     private static @Unmodifiable List<String> readStringList(
-            JsonParser parser,
-            JsonToken token,
+            JsonReader reader,
             String sourceName,
             String fieldName
     ) throws IOException {
-        requireToken(token, JsonToken.START_ARRAY, sourceName, fieldName + " array");
+        requireToken(
+                reader.peek(),
+                JsonToken.BEGIN_ARRAY,
+                sourceName,
+                fieldName + " array"
+        );
+        reader.beginArray();
         var values = new LinkedHashSet<String>();
-        while (true) {
-            JsonToken element = nextRequired(parser, sourceName);
-            if (element == JsonToken.END_ARRAY) {
-                return List.copyOf(values);
-            }
-            String value = readString(parser, element, sourceName, fieldName + " element");
+        while (reader.hasNext()) {
+            String value = readString(
+                    reader,
+                    sourceName,
+                    fieldName + " element"
+            );
             HrxArchive.validateRelativePath(value, fieldName + " element");
             if (!values.add(value)) {
                 throw malformed(sourceName, fieldName + " must not contain duplicate paths.");
             }
         }
+        reader.endArray();
+        return List.copyOf(values);
     }
 
     /// Reads the structured diagnostic expectations from a JSON array value.
     ///
-    /// @param parser the active JSON parser
-    /// @param token the current value token
+    /// @param reader the active JSON reader
     /// @param sourceName the manifest label used in errors
     /// @return immutable diagnostic expectations
     /// @throws IOException if JSON parsing fails
     private static @Unmodifiable List<DiagnosticExpectation> readDiagnostics(
-            JsonParser parser,
-            JsonToken token,
+            JsonReader reader,
             String sourceName
     ) throws IOException {
-        requireToken(token, JsonToken.START_ARRAY, sourceName, "a diagnostics array");
+        requireToken(
+                reader.peek(),
+                JsonToken.BEGIN_ARRAY,
+                sourceName,
+                "a diagnostics array"
+        );
+        reader.beginArray();
         var diagnostics = new ArrayList<DiagnosticExpectation>();
-        while (true) {
-            JsonToken element = nextRequired(parser, sourceName);
-            if (element == JsonToken.END_ARRAY) {
-                return List.copyOf(diagnostics);
-            }
-            requireToken(element, JsonToken.START_OBJECT, sourceName, "a diagnostic object");
-            diagnostics.add(readDiagnostic(parser, sourceName));
+        while (reader.hasNext()) {
+            diagnostics.add(readDiagnostic(reader, sourceName));
         }
+        reader.endArray();
+        return List.copyOf(diagnostics);
     }
 
-    /// Reads one diagnostic expectation after its opening object token.
+    /// Reads one diagnostic expectation.
     ///
-    /// @param parser the active JSON parser
+    /// @param reader the active JSON reader
     /// @param sourceName the manifest label used in errors
     /// @return the parsed diagnostic expectation
     /// @throws IOException if JSON parsing fails
-    private static DiagnosticExpectation readDiagnostic(JsonParser parser, String sourceName) throws IOException {
+    private static DiagnosticExpectation readDiagnostic(
+            JsonReader reader,
+            String sourceName
+    ) throws IOException {
+        requireToken(
+                reader.peek(),
+                JsonToken.BEGIN_OBJECT,
+                sourceName,
+                "a diagnostic object"
+        );
+        reader.beginObject();
         @Nullable DiagnosticSeverity severity = null;
         @Nullable String code = null;
         @Nullable String message = null;
         var fields = new HashSet<String>();
 
-        while (true) {
-            JsonToken token = nextRequired(parser, sourceName);
-            if (token == JsonToken.END_OBJECT) {
-                break;
-            }
-            requireToken(token, JsonToken.FIELD_NAME, sourceName, "a diagnostic field name");
-            String field = Objects.requireNonNull(parser.currentName(), "diagnostic field name");
+        while (reader.hasNext()) {
+            String field = reader.nextName();
             if (!fields.add(field)) {
                 throw malformed(sourceName, "Diagnostic fields must not be repeated: " + field);
             }
 
-            JsonToken valueToken = nextRequired(parser, sourceName);
             switch (field) {
-                case "severity" -> severity = readSeverity(parser, valueToken, sourceName);
-                case "code" -> code = readString(parser, valueToken, sourceName, field);
-                case "message" -> message = readString(parser, valueToken, sourceName, field);
+                case "severity" -> severity = readSeverity(reader, sourceName);
+                case "code" -> code = readString(reader, sourceName, field);
+                case "message" -> message = readString(reader, sourceName, field);
                 default -> throw malformed(sourceName, "Unknown diagnostic field: " + field);
             }
         }
+        reader.endObject();
 
         return new DiagnosticExpectation(requireValue(severity, "diagnostic severity", sourceName), code, message);
     }
 
     /// Reads one diagnostic severity enum constant from JSON.
     ///
-    /// @param parser the active JSON parser
-    /// @param token the current value token
+    /// @param reader the active JSON reader
     /// @param sourceName the manifest label used in errors
     /// @return the diagnostic severity
     /// @throws IOException if JSON parsing fails
     private static DiagnosticSeverity readSeverity(
-            JsonParser parser,
-            JsonToken token,
+            JsonReader reader,
             String sourceName
     ) throws IOException {
-        String value = readString(parser, token, sourceName, "diagnostic severity");
+        String value = readString(reader, sourceName, "diagnostic severity");
         try {
             return DiagnosticSeverity.valueOf(value);
         } catch (IllegalArgumentException exception) {
@@ -357,61 +384,52 @@ final class SassSpecManifest {
 
     /// Reads one required integer field.
     ///
-    /// @param parser the active JSON parser
-    /// @param token the current value token
+    /// @param reader the active JSON reader
     /// @param sourceName the manifest label used in errors
     /// @param fieldName the field label used in errors
     /// @return the integer value
     /// @throws IOException if JSON parsing fails
     private static int readInteger(
-            JsonParser parser,
-            JsonToken token,
+            JsonReader reader,
             String sourceName,
             String fieldName
     ) throws IOException {
-        requireToken(token, JsonToken.VALUE_NUMBER_INT, sourceName, fieldName + " integer");
-        return parser.getIntValue();
+        requireToken(
+                reader.peek(),
+                JsonToken.NUMBER,
+                sourceName,
+                fieldName + " integer"
+        );
+        var value = reader.nextString();
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException failure) {
+            throw malformed(
+                    sourceName,
+                    "Expected " + fieldName + " integer but found " + value + "."
+            );
+        }
     }
 
     /// Reads one required string field or array element.
     ///
-    /// @param parser the active JSON parser
-    /// @param token the current value token
+    /// @param reader the active JSON reader
     /// @param sourceName the manifest label used in errors
     /// @param fieldName the field label used in errors
     /// @return the string value
     /// @throws IOException if JSON parsing fails
     private static String readString(
-            JsonParser parser,
-            JsonToken token,
+            JsonReader reader,
             String sourceName,
             String fieldName
     ) throws IOException {
-        requireToken(token, JsonToken.VALUE_STRING, sourceName, fieldName + " string");
-        return parser.getText();
-    }
-
-    /// Returns the next JSON token or reports an unexpected end of input.
-    ///
-    /// @param parser the active JSON parser
-    /// @param sourceName the manifest label used in errors
-    /// @return the next non-null token
-    /// @throws IOException if JSON parsing fails
-    private static JsonToken nextRequired(JsonParser parser, String sourceName) throws IOException {
-        @Nullable JsonToken token = nextOrNull(parser);
-        if (token == null) {
-            throw malformed(sourceName, "Unexpected end of JSON input.");
-        }
-        return token;
-    }
-
-    /// Returns the next JSON token, including an end-of-input sentinel.
-    ///
-    /// @param parser the active JSON parser
-    /// @return the next token, or {@code null} at end of input
-    /// @throws IOException if JSON parsing fails
-    private static @Nullable JsonToken nextOrNull(JsonParser parser) throws IOException {
-        return parser.nextToken();
+        requireToken(
+                reader.peek(),
+                JsonToken.STRING,
+                sourceName,
+                fieldName + " string"
+        );
+        return reader.nextString();
     }
 
     /// Verifies that a token has the expected JSON kind.
@@ -431,7 +449,7 @@ final class SassSpecManifest {
         }
     }
 
-    /// Returns a required nullable parser result.
+    /// Returns a required nullable decoded value.
     ///
     /// @param value the result to validate
     /// @param fieldName the absent field label used in errors

@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.sassfx;
 
-import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonToken;
+import com.google.gson.Strictness;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
 import org.glavo.sassfx.internal.module.FilesystemImporter;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.StringReader;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -35,10 +37,6 @@ import java.util.Objects;
 /// one compiler invocation still applies its normal canonical-URL load cache.
 @NotNullByDefault
 public final class SassNodePackageImporter implements SassImporter {
-    /// Parses package manifests without requiring Jackson databind.
-    private static final JsonFactory JSON_FACTORY =
-            JsonFactory.builder().build();
-
     /// Stylesheet extensions accepted for package exports and entry points.
     private static final List<String> VALID_EXTENSIONS =
             List.of(".scss", ".sass", ".css");
@@ -316,10 +314,11 @@ public final class SassNodePackageImporter implements SassImporter {
             String packageName
     ) throws IOException {
         var json = Files.readString(manifestPath, StandardCharsets.UTF_8);
-        try (var parser = JSON_FACTORY.createParser(json)) {
-            @Nullable Object value = readJsonValue(parser, parser.nextToken());
+        try (var reader = new JsonReader(new StringReader(json))) {
+            reader.setStrictness(Strictness.STRICT);
+            @Nullable Object value = readJsonValue(reader);
             if (!(value instanceof Map<?, ?> rawMap)
-                    || parser.nextToken() != null) {
+                    || reader.peek() != JsonToken.END_DOCUMENT) {
                 throw new IOException("package manifest must be one JSON object");
             }
             return stringMap(rawMap);
@@ -336,53 +335,43 @@ public final class SassNodePackageImporter implements SassImporter {
         }
     }
 
-    /// Reads one JSON value from the current token.
+    /// Reads one JSON value at the reader's current position.
     ///
-    /// @param parser the manifest parser
-    /// @param token the current token, or {@code null} at end of input
+    /// @param reader the manifest reader
     /// @return the decoded JSON-compatible Java value
     /// @throws IOException if the JSON structure is invalid
-    private static @Nullable Object readJsonValue(
-            JsonParser parser,
-            @Nullable JsonToken token
-    ) throws IOException {
-        if (token == null || token == JsonToken.VALUE_NULL) {
-            return null;
-        }
-        if (token == JsonToken.VALUE_STRING) {
-            return parser.getText();
-        }
-        if (token == JsonToken.VALUE_TRUE) {
-            return Boolean.TRUE;
-        }
-        if (token == JsonToken.VALUE_FALSE) {
-            return Boolean.FALSE;
-        }
-        if (token.isNumeric()) {
-            return parser.getNumberValue();
-        }
-        if (token == JsonToken.START_ARRAY) {
-            var values = new ArrayList<@Nullable Object>();
-            while (parser.nextToken() != JsonToken.END_ARRAY) {
-                values.add(readJsonValue(parser, parser.currentToken()));
+    private static @Nullable Object readJsonValue(JsonReader reader)
+            throws IOException {
+        return switch (reader.peek()) {
+            case NULL -> {
+                reader.nextNull();
+                yield null;
             }
-            return values;
-        }
-        if (token == JsonToken.START_OBJECT) {
-            var values = new LinkedHashMap<String, @Nullable Object>();
-            while (parser.nextToken() != JsonToken.END_OBJECT) {
-                if (parser.currentToken() != JsonToken.FIELD_NAME) {
-                    throw new IOException("invalid package manifest object");
+            case STRING -> reader.nextString();
+            case BOOLEAN -> reader.nextBoolean();
+            case NUMBER -> new BigDecimal(reader.nextString());
+            case BEGIN_ARRAY -> {
+                reader.beginArray();
+                var values = new ArrayList<@Nullable Object>();
+                while (reader.hasNext()) {
+                    values.add(readJsonValue(reader));
                 }
-                var name = parser.currentName();
-                values.put(
-                        name,
-                        readJsonValue(parser, parser.nextToken())
-                );
+                reader.endArray();
+                yield values;
             }
-            return values;
-        }
-        throw new IOException("unsupported token in package manifest: " + token);
+            case BEGIN_OBJECT -> {
+                reader.beginObject();
+                var values = new LinkedHashMap<String, @Nullable Object>();
+                while (reader.hasNext()) {
+                    values.put(reader.nextName(), readJsonValue(reader));
+                }
+                reader.endObject();
+                yield values;
+            }
+            default -> throw new IOException(
+                    "unsupported token in package manifest: " + reader.peek()
+            );
+        };
     }
 
     /// Converts a JSON object to its string-keyed representation.

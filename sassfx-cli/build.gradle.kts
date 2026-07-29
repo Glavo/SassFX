@@ -14,7 +14,7 @@ version = rootProject.version
 dependencies {
     implementation(project(":sassfx-core"))
     implementation(project(":sassfx-embedded"))
-    implementation("com.fasterxml.jackson.core:jackson-core:2.22.1")
+    implementation("com.google.code.gson:gson:2.14.0")
     implementation("info.picocli:picocli:4.7.7")
 
     compileOnly("org.jetbrains:annotations:26.1.0")
@@ -78,7 +78,11 @@ tasks.shadowJar {
     filesMatching("META-INF/services/**") {
         duplicatesStrategy = DuplicatesStrategy.INCLUDE
     }
-    relocate("com.fasterxml.jackson", "org.glavo.sassfx.internal.thirdparty.jackson")
+    relocate("com.google.gson", "org.glavo.sassfx.internal.thirdparty.gson")
+    relocate(
+        "com.google.errorprone",
+        "org.glavo.sassfx.internal.thirdparty.errorprone",
+    )
     relocate("picocli", "org.glavo.sassfx.internal.thirdparty.picocli")
     relocate("com.google.protobuf", "org.glavo.sassfx.internal.thirdparty.protobuf")
     relocate(
@@ -155,6 +159,8 @@ val verifyShadedJar = tasks.register("verifyShadedJar") {
         val forbiddenEntryPatterns = listOf(
             Regex("(^|/)javafx/", RegexOption.IGNORE_CASE),
             Regex("(^|/)com/sun/javafx/", RegexOption.IGNORE_CASE),
+            Regex("^com/google/errorprone/.*"),
+            Regex("^com/google/gson/.*"),
             Regex("^com/google/protobuf/.*"),
             Regex("^com/sass_lang/embedded_protocol/.*"),
             Regex(".*\\.(a|dll|dylib|exe|jnilib|lib|node|wasm)$", RegexOption.IGNORE_CASE),
@@ -175,6 +181,8 @@ val verifyShadedJar = tasks.register("verifyShadedJar") {
         val forbiddenReferences = mutableListOf<String>()
         val requiredEntries = listOf(
             "org/glavo/sassfx/embedded/EmbeddedCompiler.class",
+            "org/glavo/sassfx/internal/thirdparty/errorprone/annotations/CheckReturnValue.class",
+            "org/glavo/sassfx/internal/thirdparty/gson/stream/JsonReader.class",
             "org/glavo/sassfx/internal/thirdparty/protobuf/Message.class",
             "org/glavo/sassfx/internal/thirdparty/embedded_protocol/InboundMessage.class",
         )

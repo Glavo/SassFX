@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.sassfx.cli;
 
-import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml.jackson.core.JsonToken;
+import com.google.gson.Strictness;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
+import com.google.gson.stream.JsonWriter;
 import org.glavo.sassfx.SourceMap;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.io.IOException;
+import java.io.StringReader;
 import java.io.StringWriter;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -22,10 +25,6 @@ import java.util.Objects;
 /// the command line.
 @NotNullByDefault
 final class CliSourceMap {
-    /// The JSON parser and generator factory used for source-map documents.
-    private static final JsonFactory JSON_FACTORY =
-            JsonFactory.builder().build();
-
     /// Prevents instantiation.
     private CliSourceMap() {
     }
@@ -152,26 +151,31 @@ final class CliSourceMap {
         @Nullable String mappings = null;
         @Nullable ArrayList<@Nullable String> sourceContents = null;
 
-        try (var parser = JSON_FACTORY.createParser(json)) {
-            if (parser.nextToken() != JsonToken.START_OBJECT) {
+        try (var reader = new JsonReader(new StringReader(json))) {
+            reader.setStrictness(Strictness.STRICT);
+            if (reader.peek() != JsonToken.BEGIN_OBJECT) {
                 throw new IOException("source map is not a JSON object");
             }
-            while (parser.nextToken() != JsonToken.END_OBJECT) {
-                var field = parser.currentName();
-                if (field == null || parser.nextToken() == null) {
-                    throw new IOException("invalid source-map field");
-                }
+            reader.beginObject();
+            while (reader.hasNext()) {
+                var field = reader.nextName();
                 switch (field) {
-                    case "version" -> version = parser.getIntValue();
-                    case "sources" -> readStrings(parser, sources);
+                    case "version" -> version = readInteger(reader);
+                    case "sources" -> readStrings(reader, sources);
                     case "sourcesContent" -> {
                         sourceContents = new ArrayList<>();
-                        readNullableStrings(parser, sourceContents);
+                        readNullableStrings(reader, sourceContents);
                     }
-                    case "names" -> readStrings(parser, names);
-                    case "mappings" -> mappings = parser.getValueAsString();
-                    default -> parser.skipChildren();
+                    case "names" -> readStrings(reader, names);
+                    case "mappings" -> mappings = readScalarString(reader);
+                    default -> reader.skipValue();
                 }
+            }
+            reader.endObject();
+            if (reader.peek() != JsonToken.END_DOCUMENT) {
+                throw new IOException(
+                        "source map must contain exactly one JSON document"
+                );
             }
         }
         if (version != 3 || mappings == null) {
@@ -209,49 +213,92 @@ final class CliSourceMap {
         return sourceContents;
     }
 
-    /// Reads a JSON string array at the parser's current token.
+    /// Reads one integer JSON value.
     ///
-    /// @param parser the source-map parser
+    /// @param reader the source-map reader
+    /// @return the integer value
+    /// @throws IOException if the current value is not an integer in range
+    private static int readInteger(JsonReader reader) throws IOException {
+        if (reader.peek() != JsonToken.NUMBER) {
+            throw new IOException("source-map version is not an integer");
+        }
+        var value = reader.nextString();
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException failure) {
+            throw new IOException("source-map version is not an integer", failure);
+        }
+    }
+
+    /// Reads a scalar JSON value as text.
+    ///
+    /// @param reader the source-map reader
+    /// @return the scalar text, or {@code null} for null or a structured value
+    /// @throws IOException if JSON parsing fails
+    private static @Nullable String readScalarString(JsonReader reader)
+            throws IOException {
+        return switch (reader.peek()) {
+            case STRING, NUMBER -> reader.nextString();
+            case BOOLEAN -> Boolean.toString(reader.nextBoolean());
+            case NULL -> {
+                reader.nextNull();
+                yield null;
+            }
+            default -> {
+                reader.skipValue();
+                yield null;
+            }
+        };
+    }
+
+    /// Reads a JSON string array at the reader's current value.
+    ///
+    /// @param reader the source-map reader
     /// @param destination the mutable destination
     /// @throws IOException if the current value is not a string array
     private static void readStrings(
-            com.fasterxml.jackson.core.JsonParser parser,
+            JsonReader reader,
             List<String> destination
     ) throws IOException {
-        if (parser.currentToken() != JsonToken.START_ARRAY) {
+        if (reader.peek() != JsonToken.BEGIN_ARRAY) {
             throw new IOException("source-map field is not an array");
         }
-        while (parser.nextToken() != JsonToken.END_ARRAY) {
-            if (parser.currentToken() != JsonToken.VALUE_STRING) {
+        reader.beginArray();
+        while (reader.hasNext()) {
+            if (reader.peek() != JsonToken.STRING) {
                 throw new IOException("source-map array contains a non-string");
             }
-            destination.add(parser.getText());
+            destination.add(reader.nextString());
         }
+        reader.endArray();
     }
 
     /// Reads a JSON array containing strings or null values.
     ///
-    /// @param parser the source-map parser
+    /// @param reader the source-map reader
     /// @param destination the mutable destination
     /// @throws IOException if the current value has another shape
     private static void readNullableStrings(
-            com.fasterxml.jackson.core.JsonParser parser,
+            JsonReader reader,
             List<@Nullable String> destination
     ) throws IOException {
-        if (parser.currentToken() != JsonToken.START_ARRAY) {
+        if (reader.peek() != JsonToken.BEGIN_ARRAY) {
             throw new IOException("source-map field is not an array");
         }
-        while (parser.nextToken() != JsonToken.END_ARRAY) {
-            if (parser.currentToken() == JsonToken.VALUE_NULL) {
+        reader.beginArray();
+        while (reader.hasNext()) {
+            if (reader.peek() == JsonToken.NULL) {
+                reader.nextNull();
                 destination.add(null);
-            } else if (parser.currentToken() == JsonToken.VALUE_STRING) {
-                destination.add(parser.getText());
+            } else if (reader.peek() == JsonToken.STRING) {
+                destination.add(reader.nextString());
             } else {
                 throw new IOException(
                         "source-map sourcesContent contains an invalid value"
                 );
             }
         }
+        reader.endArray();
     }
 
     /// Writes the rewritten source-map document as compact JSON.
@@ -273,39 +320,37 @@ final class CliSourceMap {
             @Nullable List<@Nullable String> sourceContents
     ) throws IOException {
         var writer = new StringWriter();
-        try (var generator = JSON_FACTORY.createGenerator(writer)) {
-            generator.writeStartObject();
-            generator.writeNumberField("version", version);
-            generator.writeStringField("sourceRoot", "");
-            generator.writeArrayFieldStart("sources");
+        try (var generator = new JsonWriter(writer)) {
+            generator.setStrictness(Strictness.STRICT);
+            generator.beginObject();
+            generator.name("version").value(version);
+            generator.name("sourceRoot").value("");
+            generator.name("sources").beginArray();
             for (var source : sources) {
-                generator.writeString(source);
+                generator.value(source);
             }
-            generator.writeEndArray();
-            generator.writeArrayFieldStart("names");
+            generator.endArray();
+            generator.name("names").beginArray();
             for (var name : names) {
-                generator.writeString(name);
+                generator.value(name);
             }
-            generator.writeEndArray();
-            generator.writeStringField("mappings", mappings);
+            generator.endArray();
+            generator.name("mappings").value(mappings);
             if (destination != null) {
-                generator.writeStringField(
-                        "file",
-                        pathUrl(destination.getFileName())
-                );
+                generator.name("file").value(pathUrl(destination.getFileName()));
             }
             if (sourceContents != null) {
-                generator.writeArrayFieldStart("sourcesContent");
+                generator.name("sourcesContent").beginArray();
                 for (@Nullable var contents : sourceContents) {
                     if (contents == null) {
-                        generator.writeNull();
+                        generator.nullValue();
                     } else {
-                        generator.writeString(contents);
+                        generator.value(contents);
                     }
                 }
-                generator.writeEndArray();
+                generator.endArray();
             }
-            generator.writeEndObject();
+            generator.endObject();
         }
         return writer.toString();
     }

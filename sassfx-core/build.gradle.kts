@@ -13,7 +13,7 @@ version = rootProject.version
 dependencies {
     compileOnly("org.jetbrains:annotations:26.1.0")
 
-    implementation("com.fasterxml.jackson.core:jackson-core:2.22.1")
+    implementation("com.google.code.gson:gson:2.14.0")
 
     testImplementation(platform("org.junit:junit-bom:6.0.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")

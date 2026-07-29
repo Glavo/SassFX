@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.sassfx.sassspec;
 
-import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml.jackson.core.JsonGenerator;
+import com.google.gson.Strictness;
+import com.google.gson.stream.JsonWriter;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Unmodifiable;
 
@@ -27,9 +27,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 /// cannot hide structural risk.
 @NotNullByDefault
 final class SassSpecSummary {
-    /// Creates JSON reports for completed fixture runs.
-    private static final JsonFactory JSON_FACTORY = new JsonFactory();
-
     /// Counts all manifest-selected fixtures.
     private final int total;
 
@@ -210,57 +207,61 @@ final class SassSpecSummary {
                         reportDirectory.resolve("summary.json"),
                         StandardCharsets.UTF_8
                 );
-                JsonGenerator generator = JSON_FACTORY.createGenerator(writer)
+                var generator = new JsonWriter(writer)
         ) {
-            generator.writeStartObject();
-            generator.writeNumberField("total", total);
-            generator.writeNumberField("enabled", enabled);
-            generator.writeNumberField("passed", passedCount);
-            generator.writeNumberField("failed", failedCount);
-            generator.writeNumberField("skipped", skipped.get());
-            generator.writeNumberField("compatibility", ratio(passedCount, passedCount + failedCount));
-            generator.writeNumberField("coverage", ratio(enabled, total));
+            generator.setStrictness(Strictness.STRICT);
+            generator.beginObject();
+            generator.name("total").value(total);
+            generator.name("enabled").value(enabled);
+            generator.name("passed").value(passedCount);
+            generator.name("failed").value(failedCount);
+            generator.name("skipped").value(skipped.get());
+            generator.name("compatibility")
+                    .value(ratio(passedCount, passedCount + failedCount));
+            generator.name("coverage").value(ratio(enabled, total));
             writeCorpus(generator, "upstream", upstreamTotal.get(), upstreamPassed.get(), upstreamFailed.get());
             writeCorpus(generator, "owned", ownedTotal.get(), ownedPassed.get(), ownedFailed.get());
             writeKind(generator, "output", outputPassed.get(), outputFailed.get());
             writeKind(generator, "diagnostic", diagnosticPassed.get(), diagnosticFailed.get());
-            generator.writeObjectFieldStart("skippedByCategory");
+            generator.name("skippedByCategory").beginObject();
             for (Map.Entry<String, Integer> entry : actualSkippedByCategory().entrySet()) {
-                generator.writeNumberField(entry.getKey(), entry.getValue());
+                generator.name(entry.getKey()).value(entry.getValue());
             }
-            generator.writeEndObject();
-            generator.writeEndObject();
+            generator.endObject();
+            generator.endObject();
         }
     }
 
     /// Writes one corpus ownership block.
     private static void writeCorpus(
-            JsonGenerator generator,
+            JsonWriter generator,
             String name,
             int totalCount,
             int passedCount,
             int failedCount
     ) throws IOException {
-        generator.writeObjectFieldStart(name);
-        generator.writeNumberField("total", totalCount);
-        generator.writeNumberField("passed", passedCount);
-        generator.writeNumberField("failed", failedCount);
-        generator.writeNumberField("compatibility", ratio(passedCount, passedCount + failedCount));
-        generator.writeEndObject();
+        generator.name(name).beginObject();
+        generator.name("total").value(totalCount);
+        generator.name("passed").value(passedCount);
+        generator.name("failed").value(failedCount);
+        generator.name("compatibility")
+                .value(ratio(passedCount, passedCount + failedCount));
+        generator.endObject();
     }
 
     /// Writes one assertion-kind block.
     private static void writeKind(
-            JsonGenerator generator,
+            JsonWriter generator,
             String name,
             int passedCount,
             int failedCount
     ) throws IOException {
-        generator.writeObjectFieldStart(name);
-        generator.writeNumberField("passed", passedCount);
-        generator.writeNumberField("failed", failedCount);
-        generator.writeNumberField("compatibility", ratio(passedCount, passedCount + failedCount));
-        generator.writeEndObject();
+        generator.name(name).beginObject();
+        generator.name("passed").value(passedCount);
+        generator.name("failed").value(failedCount);
+        generator.name("compatibility")
+                .value(ratio(passedCount, passedCount + failedCount));
+        generator.endObject();
     }
 
     /// Returns actual skip counts in deterministic category order.

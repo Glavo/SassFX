@@ -77,8 +77,12 @@ tasks.shadowJar {
         duplicatesStrategy = DuplicatesStrategy.INCLUDE
     }
     relocate(
-        "com.fasterxml.jackson",
-        "org.glavo.sassfx.internal.thirdparty.jackson",
+        "com.google.gson",
+        "org.glavo.sassfx.internal.thirdparty.gson",
+    )
+    relocate(
+        "com.google.errorprone",
+        "org.glavo.sassfx.internal.thirdparty.errorprone",
     )
     relocate(
         "com.google.protobuf",
@@ -158,7 +162,8 @@ val verifyShadedJar = tasks.register("verifyShadedJar") {
         val forbiddenEntryPatterns = listOf(
             Regex("(^|/)javafx/", RegexOption.IGNORE_CASE),
             Regex("(^|/)com/sun/javafx/", RegexOption.IGNORE_CASE),
-            Regex("^com/fasterxml/jackson/.*"),
+            Regex("^com/google/errorprone/.*"),
+            Regex("^com/google/gson/.*"),
             Regex("^com/google/protobuf/.*"),
             Regex("^com/sass_lang/embedded_protocol/.*"),
             Regex(".*\\.(a|dll|dylib|exe|jnilib|lib|node|wasm)$", RegexOption.IGNORE_CASE),
@@ -180,7 +185,8 @@ val verifyShadedJar = tasks.register("verifyShadedJar") {
         val requiredEntries = listOf(
             "org/glavo/sassfx/embedded/SassFXEmbeddedMain.class",
             "org/glavo/sassfx/embedded/EmbeddedCompiler.class",
-            "org/glavo/sassfx/internal/thirdparty/jackson/core/JsonFactory.class",
+            "org/glavo/sassfx/internal/thirdparty/errorprone/annotations/CheckReturnValue.class",
+            "org/glavo/sassfx/internal/thirdparty/gson/stream/JsonReader.class",
             "org/glavo/sassfx/internal/thirdparty/protobuf/Message.class",
             "org/glavo/sassfx/internal/thirdparty/embedded_protocol/InboundMessage.class",
         )

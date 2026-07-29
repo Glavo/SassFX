@@ -25,7 +25,7 @@ ship native libraries. Local builds use `0.1.0-SNAPSHOT` unless
 - Reproducible conformance checks against pinned Dart Sass, sass-spec, and
   OpenJFX releases.
 
-The core runtime uses Jackson Core. The embedded endpoint additionally uses
+The core runtime uses Gson. The embedded endpoint additionally uses
 the generated Sass Embedded Protocol messages and Protocol Buffers Java. The
 command-line application uses Picocli and includes the endpoint. All runtime
 dependencies are pure Java.

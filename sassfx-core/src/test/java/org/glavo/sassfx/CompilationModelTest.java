@@ -102,6 +102,22 @@ final class CompilationModelTest {
         assertThrows(IllegalArgumentException.class, () -> new SourceMap("{\"version\":4}"));
         assertThrows(
                 IllegalArgumentException.class,
+                () -> new SourceMap("{\"version\":3.0}")
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new SourceMap("{\"version\":\"3\"}")
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new SourceMap("{\"version\":3,\"version\":3}")
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new SourceMap("{\"version\":3,}")
+        );
+        assertThrows(
+                IllegalArgumentException.class,
                 () -> new SourceMap("{\"version\":3}{\"version\":3}")
         );
     }

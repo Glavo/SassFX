@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.sassfx;
 
-import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml. jackson.core.JsonToken;
+import com.google.gson.Strictness;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import java.io.IOException;
+import java.io.StringReader;
 import java.util.Objects;
 
 /// Contains a version 3 source map encoded as JSON.
@@ -13,9 +15,6 @@ import java.util.Objects;
 /// @param json the complete source-map JSON document
 @NotNullByDefault
 public record SourceMap(String json) {
-    /// The parser factory used to validate source-map documents.
-    private static final JsonFactory JSON_FACTORY = JsonFactory.builder().build();
-
     /// Creates and validates source-map data.
     ///
     /// @throws IllegalArgumentException if {@code json} is not exactly one JSON
@@ -30,23 +29,16 @@ public record SourceMap(String json) {
     /// @param json the JSON document to validate
     /// @throws IllegalArgumentException if the document is malformed or is not version 3
     private static void validate(String json) {
-        try (var parser = JSON_FACTORY.createParser(json)) {
-            if (parser.nextToken() != JsonToken.START_OBJECT) {
+        try (var reader = new JsonReader(new StringReader(json))) {
+            reader.setStrictness(Strictness.STRICT);
+            if (reader.peek() != JsonToken.BEGIN_OBJECT) {
                 throw new IllegalArgumentException("Source map must be a JSON object");
             }
 
+            reader.beginObject();
             var foundVersion = false;
-            while (parser.nextToken() != JsonToken.END_OBJECT) {
-                if (parser.currentToken() != JsonToken.FIELD_NAME) {
-                    throw new IllegalArgumentException("Invalid source-map JSON object");
-                }
-
-                var fieldName = parser.currentName();
-                var valueToken = parser.nextToken();
-                if (valueToken == null) {
-                    throw new IllegalArgumentException("Source-map field has no value");
-                }
-
+            while (reader.hasNext()) {
+                var fieldName = reader.nextName();
                 if ("version".equals(fieldName)) {
                     if (foundVersion) {
                         throw new IllegalArgumentException(
@@ -54,23 +46,24 @@ public record SourceMap(String json) {
                         );
                     }
                     foundVersion = true;
-                    if (valueToken != JsonToken.VALUE_NUMBER_INT
-                            || parser.getIntValue() != 3) {
+                    if (reader.peek() != JsonToken.NUMBER
+                            || !"3".equals(reader.nextString())) {
                         throw new IllegalArgumentException(
                                 "Source-map version must be the integer 3"
                         );
                     }
                 } else {
-                    parser.skipChildren();
+                    reader.skipValue();
                 }
             }
+            reader.endObject();
 
             if (!foundVersion) {
                 throw new IllegalArgumentException(
                         "Source map must contain a version field"
                 );
             }
-            if (parser.nextToken() != null) {
+            if (reader.peek() != JsonToken.END_DOCUMENT) {
                 throw new IllegalArgumentException(
                         "Source map must contain exactly one JSON document"
                 );
