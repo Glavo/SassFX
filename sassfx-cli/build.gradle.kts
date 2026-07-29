@@ -1,14 +1,26 @@
+import org.glavo.sassfx.build.VerifyNativeCliTask
 import org.glavo.sassfx.build.VerifyShadedCompilerJarTask
+import org.graalvm.buildtools.gradle.tasks.BuildNativeImageTask
 import org.gradle.api.publish.maven.MavenPublication
 
 plugins {
     application
     id("com.gradleup.shadow") version "9.6.1"
+    id("org.graalvm.buildtools.native") version "1.1.5"
     `maven-publish`
 }
 
 group = rootProject.group
 version = rootProject.version
+
+val nativeReachabilityMetadata = configurations.create(
+    "nativeReachabilityMetadata",
+) {
+    // Resolve the archive through Gradle so dependency verification covers it.
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+}
 
 dependencies {
     implementation(project(":sassfx-core"))
@@ -16,7 +28,13 @@ dependencies {
     implementation("com.google.code.gson:gson:2.14.0")
     implementation("info.picocli:picocli:4.7.7")
 
+    annotationProcessor("info.picocli:picocli-codegen:4.7.7")
     compileOnly("org.jetbrains:annotations:26.1.0")
+    add(
+        nativeReachabilityMetadata.name,
+        "org.graalvm.buildtools:graalvm-reachability-metadata:"
+                + "1.1.5:repository@zip",
+    )
 
     testImplementation(platform("org.junit:junit-bom:6.0.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
@@ -40,6 +58,16 @@ tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     options.release = 17
     options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-processing"))
+}
+
+tasks.compileJava {
+    options.compilerArgs.addAll(
+        listOf(
+            "-Aproject=sassfx-cli",
+            "-Adisable.proxy.config=true",
+            "-Adisable.resource.config=true",
+        ),
+    )
 }
 
 tasks.withType<Javadoc>().configureEach {
@@ -125,6 +153,24 @@ publishing {
     }
 }
 
+graalvmNative {
+    metadataRepository {
+        uri.set(
+            nativeReachabilityMetadata.elements.map { files ->
+                files.single().asFile.toURI()
+            },
+        )
+    }
+    binaries {
+        named("main") {
+            imageName.set("sassfx")
+            mainClass.set(application.mainClass)
+            fallback.set(false)
+            buildArgs.add("-march=compatibility")
+        }
+    }
+}
+
 tasks.withType<AbstractArchiveTask>().configureEach {
     isPreserveFileTimestamps = false
     isReproducibleFileOrder = true
@@ -173,6 +219,23 @@ val smokeTestShadedEmbeddedCli = tasks.register<JavaExec>(
     classpath = files(tasks.shadowJar.flatMap { it.archiveFile })
     mainClass.set(application.mainClass)
     args("--embedded", "--version")
+}
+
+val nativeCompile = tasks.named<BuildNativeImageTask>("nativeCompile")
+val nativeExecutableName = providers.systemProperty("os.name").map { osName ->
+    if (osName.startsWith("Windows")) "sassfx.exe" else "sassfx"
+}
+
+val verifyNativeCli = tasks.register<VerifyNativeCliTask>("verifyNativeCli") {
+    group = LifecycleBasePlugin.VERIFICATION_GROUP
+    description = "Builds and verifies the GraalVM native CLI executable."
+    dependsOn(nativeCompile)
+    executableFile.set(
+        nativeCompile.flatMap { task ->
+            task.outputDirectory.file(nativeExecutableName)
+        },
+    )
+    expectedVersion.set(project.version.toString())
 }
 
 tasks.assemble {

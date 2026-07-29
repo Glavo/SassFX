@@ -33,6 +33,8 @@ with library, command-line, Embedded Sass, and Gradle interfaces.
   recompilation, and a persistent interactive SassScript shell.
 - Uses a single strict `--target` value: `css`, `css/javafx@8` through
   `css/javafx@27`, or `bss/javafx@8` through `bss/javafx@27`.
+- Supports GraalVM Native Image builds with end-to-end CSS, BSS, version, and
+  Embedded Protocol smoke checks on Linux and Windows.
 
 ### Embedded Sass Protocol
 

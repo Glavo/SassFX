@@ -34,6 +34,37 @@ jobs:
         if: runner.os == 'Windows'
         run: .\gradlew.bat --no-daemon clean check --warning-mode all
 
+  native-cli:
+    name: Native CLI (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: "25"
+          distribution: graalvm
+          github-token: ${{ github.token }}
+          cache: gradle
+          native-image-job-reports: "true"
+      - name: Build and verify native CLI on Unix
+        if: runner.os != 'Windows'
+        run: >-
+          ./gradlew --no-daemon
+          :sassfx-cli:verifyNativeCli
+          --warning-mode all
+      - name: Build and verify native CLI on Windows
+        if: runner.os == 'Windows'
+        run: >-
+          .\gradlew.bat --no-daemon
+          :sassfx-cli:verifyNativeCli
+          --warning-mode all
+
   delivery:
     name: Delivery verification
     runs-on: ubuntu-latest

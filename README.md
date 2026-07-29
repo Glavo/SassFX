@@ -22,6 +22,7 @@ ship native libraries. Local builds use `0.1.0-SNAPSHOT` unless
 - Cacheable Gradle task for CSS, JavaFX CSS, and BSS generation.
 - Embedded Sass Protocol 3.2.0 framing, version negotiation, concurrent
   compilation dispatch, diagnostics, and compile responses.
+- Optional GraalVM Native Image executable for the complete CLI.
 - Reproducible conformance checks against pinned Dart Sass, sass-spec, and
   OpenJFX releases.
 
@@ -53,6 +54,31 @@ pinned sass-spec corpus and project-owned fixtures, shaded-application smoke
 tests, artifact boundary checks, and source-isolation checks. Generating
 Javadoc additionally requires a JDK 25 toolchain because the source uses
 Markdown-style `///` documentation comments.
+
+The CLI also supports ahead-of-time compilation with GraalVM Native Image.
+The supported native build uses a GraalVM JDK 25 installation exposed through
+`GRAALVM_HOME`:
+
+```shell
+GRAALVM_HOME=/path/to/graalvm-jdk-25 \
+  ./gradlew :sassfx-cli:verifyNativeCli
+```
+
+On Windows, use an x64 Developer PowerShell with the Microsoft C++ toolchain
+available:
+
+```powershell
+$env:GRAALVM_HOME = "C:\path\to\graalvm-jdk-25"
+.\gradlew.ps1 :sassfx-cli:verifyNativeCli
+```
+
+`nativeCompile` only builds the executable. `verifyNativeCli` additionally
+checks version reporting, standard-input CSS compilation, JavaFX 27 BSS
+serialization, and the Embedded Protocol endpoint. The executable is written
+to `sassfx-cli/build/native/nativeCompile/sassfx` on Unix or
+`sassfx-cli/build/native/nativeCompile/sassfx.exe` on Windows. It is an
+optional local and CI build output, not part of the Maven publications or
+GitHub Release assets.
 
 The build produces:
 

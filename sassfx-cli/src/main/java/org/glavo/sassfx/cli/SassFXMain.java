@@ -139,22 +139,35 @@ public final class SassFXMain implements Callable<Integer> {
     )
     private String style = "expanded";
 
-    /// Controls whether textual output declares UTF-8 when it contains
-    /// non-ASCII characters.
+    /// The explicit charset-marker selection, or `null` when unspecified.
+    private @Nullable Boolean charsetOption;
+
+    /// Records an explicit charset-marker selection.
+    ///
+    /// @param enabled whether charset markers are enabled
     @Option(
             names = "--charset",
             negatable = true,
             description = "Emit a UTF-8 charset marker when needed."
     )
-    private @Nullable Boolean charsetOption;
+    private void setCharsetOption(boolean enabled) {
+        charsetOption = enabled;
+    }
 
-    /// Controls source-map generation for file and embedded output.
+    /// The explicit source-map selection, or `null` when unspecified.
+    private @Nullable Boolean sourceMapOption;
+
+    /// Records an explicit source-map selection.
+    ///
+    /// @param enabled whether source-map generation is enabled
     @Option(
             names = "--source-map",
             negatable = true,
             description = "Generate source maps for file output."
     )
-    private @Nullable Boolean sourceMapOption;
+    private void setSourceMapOption(boolean enabled) {
+        sourceMapOption = enabled;
+    }
 
     /// Selects relative or absolute source URLs in generated maps.
     @Option(
@@ -181,14 +194,20 @@ public final class SassFXMain implements Callable<Integer> {
     )
     private boolean embedSourceMap;
 
-    /// Controls whether a failed textual file compilation is replaced with an
-    /// error stylesheet.
+    /// The explicit error-stylesheet selection, or `null` when unspecified.
+    private @Nullable Boolean errorCss;
+
+    /// Records an explicit error-stylesheet selection.
+    ///
+    /// @param enabled whether failed compilations emit error stylesheets
     @Option(
             names = "--error-css",
             negatable = true,
             description = "Emit a stylesheet that displays compilation errors."
     )
-    private @Nullable Boolean errorCss;
+    private void setErrorCss(boolean enabled) {
+        errorCss = enabled;
+    }
 
     /// Compiles only jobs whose source dependency snapshot is newer than its
     /// destination.
@@ -205,13 +224,20 @@ public final class SassFXMain implements Callable<Integer> {
     )
     private boolean watch;
 
-    /// Selects recursive metadata polling instead of native filesystem events.
+    /// The explicit filesystem-polling selection, or `null` when unspecified.
+    private @Nullable Boolean pollOption;
+
+    /// Records an explicit filesystem-polling selection.
+    ///
+    /// @param enabled whether watching uses recursive metadata polling
     @Option(
             names = "--poll",
             negatable = true,
             description = "Poll for changes; only valid with --watch."
     )
-    private @Nullable Boolean pollOption;
+    private void setPollOption(boolean enabled) {
+        pollOption = enabled;
+    }
 
     /// Runs the Embedded Sass Protocol 3.2.0 compiler endpoint.
     @Option(
@@ -322,21 +348,35 @@ public final class SassFXMain implements Callable<Integer> {
     )
     private final List<String> futureDeprecations = new ArrayList<>();
 
-    /// Controls whether diagnostic messages contain ANSI terminal styling.
+    /// The explicit ANSI-color selection, or `null` when unspecified.
+    private @Nullable Boolean colorOption;
+
+    /// Records an explicit ANSI-color selection.
+    ///
+    /// @param enabled whether diagnostics use ANSI terminal styling
     @Option(
             names = {"-c", "--color"},
             negatable = true,
             description = "Use terminal colors for messages."
     )
-    private @Nullable Boolean colorOption;
+    private void setColorOption(boolean enabled) {
+        colorOption = enabled;
+    }
 
-    /// Controls whether diagnostic frames use Unicode glyphs.
+    /// The explicit diagnostic-glyph selection, or `null` when unspecified.
+    private @Nullable Boolean unicodeOption;
+
+    /// Records an explicit diagnostic-glyph selection.
+    ///
+    /// @param enabled whether diagnostic frames use Unicode glyphs
     @Option(
             names = "--unicode",
             negatable = true,
             description = "Use Unicode characters for messages."
     )
-    private @Nullable Boolean unicodeOption;
+    private void setUnicodeOption(boolean enabled) {
+        unicodeOption = enabled;
+    }
 
     /// Includes Java implementation stack traces after Sass and IO errors.
     @Option(
