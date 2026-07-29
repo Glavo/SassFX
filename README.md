@@ -64,14 +64,14 @@ The build produces:
 | `sassfx-gradle-plugin` | Gradle build integration | `sassfx-gradle-plugin/build/libs/sassfx-gradle-plugin-0.1.0-SNAPSHOT.jar` |
 
 The core JAR has the automatic module name `org.glavo.sassfx` and is not a fat
-JAR. The unclassified embedded and CLI JARs are self-contained shaded
-applications with automatic module names `org.glavo.sassfx.embedded` and
-`org.glavo.sassfx.cli`. They contain relocated runtime dependencies but no
-JavaFX, FFI, or native content.
+JAR. The unclassified embedded, CLI, and Gradle plugin JARs are self-contained
+shaded artifacts with automatic module names `org.glavo.sassfx.embedded`,
+`org.glavo.sassfx.cli`, and `org.glavo.sassfx.gradle`. They contain relocated
+runtime dependencies but no JavaFX, FFI, or native content.
 
 All four projects are configured for signed Maven Central publication with
-sources, Javadoc, license, developer, and SCM metadata. CLI and Embedded
-publications use their self-contained shaded JARs as the main artifacts. The
+sources, Javadoc, license, developer, and SCM metadata. CLI, Embedded, and the
+Gradle plugin use their self-contained shaded JARs as the main artifacts. The
 Gradle plugin is also configured for Plugin Portal publication.
 `verifyPublishedConsumer` stages every publication in an isolated repository,
 resolves the plugin and library from a consumer build, compiles Java and SCSS,
