@@ -36,7 +36,7 @@ final class SassSpecDartSassTodos {
                 fixture.directory(),
                 SassSpecManifest.Action.SKIP,
                 fixture.category(),
-                "sass-spec options.yml marks todo for dart-sass at pin 1.101.3",
+                "sass-spec options.yml marks todo for dart-sass at pin 1.102.0",
                 List.of(),
                 List.of()
         );

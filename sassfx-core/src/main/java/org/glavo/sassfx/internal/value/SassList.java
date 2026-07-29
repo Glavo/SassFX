@@ -77,7 +77,7 @@ public record SassList(
     /// @throws SassValueException if an element cannot be represented in CSS
     @Override
     public String toCssString() {
-        return serialize(true, true);
+        return serialize(true, true, false);
     }
 
     /// Returns a CSS representation with configurable element-string quoting.
@@ -89,7 +89,21 @@ public record SassList(
     /// @throws SassValueException if this list or an element cannot be represented in CSS
     @Override
     public String toCssString(boolean quote) {
-        return serialize(true, quote);
+        return serialize(true, quote, false);
+    }
+
+    /// Returns a CSS representation with configurable element-string quoting
+    /// and optional whitespace compaction.
+    ///
+    /// Blank elements are omitted before separators are written.
+    ///
+    /// @param quote      whether quoted strings retain surrounding quotes
+    /// @param compressed whether optional separator whitespace is omitted
+    /// @return the serialized list
+    /// @throws SassValueException if this list or an element cannot be represented in CSS
+    @Override
+    public String toCssString(boolean quote, boolean compressed) {
+        return serialize(true, quote, compressed);
     }
 
     /// Compares elements, separator, and bracket state.
@@ -125,16 +139,17 @@ public record SassList(
     /// @return the serialized list
     @Override
     public String toString() {
-        return serialize(false, true);
+        return serialize(false, true, false);
     }
 
     /// Serializes this list for CSS or inspect output.
     ///
-    /// @param css   whether elements use CSS rather than inspect serialization
-    /// @param quote whether CSS serialization retains string quotes
+    /// @param css        whether elements use CSS rather than inspect serialization
+    /// @param quote      whether CSS serialization retains string quotes
+    /// @param compressed whether optional CSS separator whitespace is omitted
     /// @return the serialized contents with square brackets when requested
     /// @throws SassValueException if CSS serialization is unavailable
-    private String serialize(boolean css, boolean quote) {
+    private String serialize(boolean css, boolean quote, boolean compressed) {
         if (contents.isEmpty() && !hasBrackets) {
             if (css) {
                 throw new SassValueException("() isn't a valid CSS value.");
@@ -152,8 +167,8 @@ public record SassList(
             result.append('(');
         }
         var delimiter = switch (separator) {
-            case COMMA -> ", ";
-            case SLASH -> " / ";
+            case COMMA -> compressed ? "," : ", ";
+            case SLASH -> compressed ? "/" : " / ";
             case SPACE -> " ";
             case UNDECIDED -> "";
         };
@@ -167,7 +182,7 @@ public record SassList(
             }
             first = false;
             if (css) {
-                result.append(element.toCssString(quote));
+                result.append(element.toCssString(quote, compressed));
             } else {
                 var needsParens = elementNeedsParens(separator, element);
                 if (needsParens) {

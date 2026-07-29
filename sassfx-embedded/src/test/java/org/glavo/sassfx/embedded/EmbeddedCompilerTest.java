@@ -26,7 +26,7 @@ final class EmbeddedCompilerTest {
                 """
                         {
                           "protocolVersion": "3.2.0",
-                          "compilerVersion": "1.101.3",
+                          "compilerVersion": "1.102.0",
                           "implementationVersion": "%s",
                           "implementationName": "sassfx",
                           "id": 0

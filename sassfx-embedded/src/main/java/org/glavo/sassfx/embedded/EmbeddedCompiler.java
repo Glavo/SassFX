@@ -64,7 +64,7 @@ public final class EmbeddedCompiler {
     public static final String PROTOCOL_VERSION = "3.2.0";
 
     /// The Dart Sass language-compatibility baseline implemented by SassFX.
-    public static final String COMPILER_VERSION = "1.101.3";
+    public static final String COMPILER_VERSION = "1.102.0";
 
     /// The current SassFX implementation version.
     public static final String IMPLEMENTATION_VERSION = SassFXVersion.current();

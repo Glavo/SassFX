@@ -59409,7 +59409,17 @@
           "category": "EXPRESSIONS"
         },
         {
-          "directory": "alone/no_else",
+          "directory": "alone/no_else/unquoted",
+          "action": "run",
+          "category": "EXPRESSIONS"
+        },
+        {
+          "directory": "alone/no_else/quoted",
+          "action": "run",
+          "category": "EXPRESSIONS"
+        },
+        {
+          "directory": "alone/no_else/list",
           "action": "run",
           "category": "EXPRESSIONS"
         },

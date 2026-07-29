@@ -112,6 +112,17 @@ public final class SassArgumentList implements SassValue {
         return new SassList(contents, separator, false).toCssString();
     }
 
+    /// Returns the CSS representation of the positional list with configurable
+    /// string quoting and output compaction.
+    ///
+    /// @param quote      whether quoted strings retain surrounding quotes
+    /// @param compressed whether optional separator whitespace is omitted
+    /// @return the CSS text
+    @Override
+    public String toCssString(boolean quote, boolean compressed) {
+        return new SassList(contents, separator, false).toCssString(quote, compressed);
+    }
+
     /// Returns the inspect representation.
     ///
     /// @return the inspect text

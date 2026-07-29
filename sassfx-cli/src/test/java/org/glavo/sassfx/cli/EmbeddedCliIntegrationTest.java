@@ -68,7 +68,7 @@ final class EmbeddedCliIntegrationTest {
 
         var fields = readVersionResponse(versionMessage);
         assertEquals("3.2.0", fields.strings().get(1));
-        assertEquals("1.101.3", fields.strings().get(2));
+        assertEquals("1.102.0", fields.strings().get(2));
         assertEquals(SassFXVersion.current(), fields.strings().get(3));
         assertEquals("sassfx", fields.strings().get(4));
         assertEquals(requestId, fields.id());

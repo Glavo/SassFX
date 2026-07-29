@@ -49,12 +49,12 @@ final class ColorModuleTest {
         assertEquals(
                 """
                         .example {
-                          midpoint: rgb(127.5, 127.5, 127.5);
-                          named: rgb(191.25, 191.25, 191.25);
-                          alpha-mix: rgba(63.75, 0, 191.25, 0.5);
+                          midpoint: rgb(50%, 50%, 50%);
+                          named: rgb(75%, 75%, 75%);
+                          alpha-mix: rgba(25%, 0%, 75%, 0.5);
                           transparent-mix: rgba(255, 0, 0, 0.5);
                           inverted: #eeddcc;
-                          partial-invert: rgb(72.25, 80.75, 89.25);
+                          partial-invert: rgb(28.3333333333%, 31.6666666667%, 35%);
                           css-invert: invert(0.5);
                           css-grayscale: grayscale(0.25);
                           rounded-channel: 128;
@@ -63,7 +63,7 @@ final class ColorModuleTest {
                           hue: 0deg;
                           saturation: 100%;
                           lightness: 50%;
-                          grayscale: rgb(127.5, 127.5, 127.5);
+                          grayscale: rgb(50%, 50%, 50%);
                           complement: aqua;
                         }""",
                 result.output()
@@ -94,7 +94,7 @@ final class ColorModuleTest {
                         .example {
                           change-blue: fuchsia;
                           adjust-lightness: #cc0000;
-                          scale-lightness: rgb(127.5, 0, 0);
+                          scale-lightness: rgb(50%, 0%, 0%);
                           adjust-alpha: rgba(255, 0, 0, 0.75);
                           change-hue: lime;
                           scale-red: #996699;
@@ -165,7 +165,7 @@ final class ColorModuleTest {
         assertEquals(
                 """
                         .example {
-                          mix-rgb: rgb(127.5, 0, 127.5);
+                          mix-rgb: rgb(50%, 0%, 50%);
                           mix-oklab: rgb;
                           invert-hsl: aqua;
                           complement-oklch: rgb;
@@ -306,7 +306,7 @@ final class ColorModuleTest {
                                 a {
                                   b: color.same(
                                     color(rec2020 0.5 none 0.2),
-                                    oklab(44.66886691637825% 0.2366736512579 0.01872833430856)
+                                    oklab(39.853163697274695% 0.20545316630805802 0.04451650543021851)
                                   );
                                 }
                                 """

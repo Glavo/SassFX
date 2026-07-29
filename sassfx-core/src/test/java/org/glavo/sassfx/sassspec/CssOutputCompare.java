@@ -9,7 +9,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 /// while still matching current dart-sass expanded output; consecutive blank
 /// lines are collapsed.
 ///
-/// Color conversion follows dart-sass 1.101.3 matrices and operation order.
+/// Color conversion follows dart-sass 1.102.0 matrices and operation order.
 /// A tiny numeric tolerance remains only for residual differences between Java
 /// and Dart implementations of {@code Math.pow} / {@code pow} on extreme
 /// out-of-range channels — not for alternate conversion algorithms.

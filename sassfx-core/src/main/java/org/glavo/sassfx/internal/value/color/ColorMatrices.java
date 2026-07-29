@@ -5,7 +5,7 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Unmodifiable;
 
-/// Linear color-space matrices copied from dart-sass 1.101.3
+/// Linear color-space matrices copied from dart-sass 1.102.0
 /// {@code lib/src/value/color/conversions.dart}.
 @ApiStatus.Internal
 @NotNullByDefault

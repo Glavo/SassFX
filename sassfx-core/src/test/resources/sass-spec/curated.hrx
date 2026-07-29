@@ -224,19 +224,19 @@ $library-mixins: meta.module-mixins("library");
 }
 <===> modules/color-transforms/output.css
 .example {
-  midpoint: rgb(127.5, 127.5, 127.5);
-  named: rgb(191.25, 191.25, 191.25);
-  alpha-mix: rgba(63.75, 0, 191.25, 0.5);
+  midpoint: rgb(50%, 50%, 50%);
+  named: rgb(75%, 75%, 75%);
+  alpha-mix: rgba(25%, 0%, 75%, 0.5);
   transparent-mix: rgba(255, 0, 0, 0.5);
   inverted: #eeddcc;
-  partial-invert: rgb(72.25, 80.75, 89.25);
+  partial-invert: rgb(28.3333333333%, 31.6666666667%, 35%);
   css-invert: invert(0.5);
   css-grayscale: grayscale(0.25);
   rounded-channel: 128;
   hue: 0deg;
   saturation: 100%;
   lightness: 50%;
-  grayscale: rgb(127.5, 127.5, 127.5);
+  grayscale: rgb(50%, 50%, 50%);
   complement: aqua;
 }
 <===> modules/selectors/input.scss
@@ -677,7 +677,7 @@ $on: true
 .item {
   change: fuchsia;
   adjust: #cc0000;
-  scale: rgb(127.5, 0, 0);
+  scale: rgb(50%, 0%, 0%);
 }
 <===> modules/meta-load-css/input.scss
 @use "sass:meta";

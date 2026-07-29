@@ -22,7 +22,7 @@ a {b: color.scale(plum, $saturation: -100%)}
 
 <===> saturation/min/output.css
 a {
-  b: rgb(190.5, 190.5, 190.5);
+  b: rgb(74.7058823529%, 74.7058823529%, 74.7058823529%);
 }
 
 <===> saturation/high/input.scss
@@ -31,7 +31,7 @@ a {b: color.scale(plum, $saturation: 67%)}
 
 <===> saturation/high/output.css
 a {
-  b: rgb(243.78, 137.22, 243.78);
+  b: rgb(95.6%, 53.8117647059%, 95.6%);
 }
 
 <===> saturation/low/input.scss
@@ -40,7 +40,7 @@ a {b: color.scale(plum, $saturation: -43%)}
 
 <===> saturation/low/output.css
 a {
-  b: rgb(207.885, 173.115, 207.885);
+  b: rgb(81.5235294118%, 67.8882352941%, 81.5235294118%);
 }
 
 <===> lightness/max/input.scss
@@ -76,7 +76,7 @@ a {b: color.scale(red, $lightness: 94%)}
 
 <===> lightness/high/output.css
 a {
-  b: rgb(255, 239.7, 239.7);
+  b: rgb(100%, 94%, 94%);
 }
 
 <===> lightness/low/input.scss
@@ -85,7 +85,7 @@ a {b: color.scale(red, $lightness: -14%)}
 
 <===> lightness/low/output.css
 a {
-  b: rgb(219.3, 0, 0);
+  b: rgb(86%, 0%, 0%);
 }
 
 <===> all/input.scss
@@ -94,7 +94,7 @@ a {b: color.scale(turquoise, $saturation: 24%, $lightness: -48%)}
 
 <===> all/output.css
 a {
-  b: rgb(15.8934486486, 133.8665513514, 122.0692410811);
+  b: rgb(6.2327249603%, 52.4966868045%, 47.87029062%);
 }
 
 <===> alpha_input/input.scss
@@ -103,7 +103,7 @@ a {b: color.scale(rgba(turquoise, 0.7), $saturation: 24%, $lightness: -48%)}
 
 <===> alpha_input/output.css
 a {
-  b: rgba(15.8934486486, 133.8665513514, 122.0692410811, 0.7);
+  b: rgba(6.2327249603%, 52.4966868045%, 47.87029062%, 0.7);
 }
 
 <===> alpha_arg/input.scss
@@ -112,7 +112,7 @@ a {b: color.scale(turquoise, $saturation: 24%, $lightness: -48%, $alpha: -70%)}
 
 <===> alpha_arg/output.css
 a {
-  b: rgba(15.8934486486, 133.8665513514, 122.0692410811, 0.3);
+  b: rgba(6.2327249603%, 52.4966868045%, 47.87029062%, 0.3);
 }
 
 <===> named/input.scss
@@ -121,5 +121,5 @@ a {b: color.scale($color: turquoise, $saturation: 24%, $lightness: -48%)}
 
 <===> named/output.css
 a {
-  b: rgb(15.8934486486, 133.8665513514, 122.0692410811);
+  b: rgb(6.2327249603%, 52.4966868045%, 47.87029062%);
 }

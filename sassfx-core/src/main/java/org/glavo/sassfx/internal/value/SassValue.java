@@ -120,6 +120,22 @@ public sealed interface SassValue permits
         return toCssString();
     }
 
+    /// Returns a plain-CSS representation with configurable string quoting and
+    /// output compaction.
+    ///
+    /// Atomic values whose CSS spelling is independent of output style may
+    /// ignore {@code compressed}. Composite values pass both options to their
+    /// elements.
+    ///
+    /// @param quote      whether quoted strings retain surrounding quotes
+    /// @param compressed whether optional CSS whitespace and long equivalent
+    ///                   spellings are omitted
+    /// @return the CSS representation
+    /// @throws SassValueException if this value cannot be represented in CSS
+    default String toCssString(boolean quote, boolean compressed) {
+        return toCssString(quote);
+    }
+
     /// Evaluates the SassScript single-equals operation.
     ///
     /// @param other the right operand

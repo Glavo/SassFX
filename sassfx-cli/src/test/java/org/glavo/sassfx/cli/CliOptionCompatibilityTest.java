@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies the command-option surface inherited from Dart Sass 1.101.3.
+/// Verifies the command-option surface inherited from Dart Sass 1.102.0.
 @NotNullByDefault
 final class CliOptionCompatibilityTest {
     /// Accepts the short style alias and the hidden sass-spec compatibility

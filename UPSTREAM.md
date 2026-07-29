@@ -5,9 +5,9 @@ against the following fixed upstream releases.
 
 | Component | Baseline | Purpose |
 | --- | --- | --- |
-| Dart Sass | `1.101.3` (`e8c12331ea5304a1d641d6a6bd4cb526cb3800b9`) | Sass language and diagnostic behavior |
+| Dart Sass | `1.102.0` (`45d1efe6517319ecd7b1409f1fa8355f969b0547`) | Sass language and diagnostic behavior |
 | Embedded Sass Protocol | `3.2.0` (`embedded-protocol-3.2.0`) | Binary host protocol and message schema |
-| sass-spec | `24e61bf508f5b48968546fbf1a4c16af61048709` | Sass language conformance suite |
+| sass-spec | `67c3b83a26fd3f9772dd0d3e318fe32aefb38eef` | Sass language conformance suite |
 | JavaFX | `8u352` | JavaFX CSS and BSS version 5 oracle |
 | JavaFX | `17.0.20` | JavaFX CSS and BSS version 6 baseline |
 | JavaFX | `18.0.2` | Extended blend-mode boundary |

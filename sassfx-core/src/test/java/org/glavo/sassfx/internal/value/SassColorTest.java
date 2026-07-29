@@ -134,8 +134,8 @@ final class SassColorTest {
 
         var complement = red.complemented();
         assertEquals(0.0, complement.red());
-        assertEquals(255.0, complement.green());
-        assertEquals(255.0, complement.blue());
+        assertEquals(255.0, complement.green(), 1e-12);
+        assertEquals(255.0, complement.blue(), 1e-12);
     }
 
     /// Verifies channel equality and hashing use the same Sass fuzzy buckets

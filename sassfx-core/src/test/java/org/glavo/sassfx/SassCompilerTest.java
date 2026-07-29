@@ -192,7 +192,7 @@ final class SassCompilerTest {
                 )
         );
 
-        assertEquals("a{-fx-text-fill:#f00}", result.output());
+        assertEquals("a{-fx-text-fill:red}", result.output());
         assertNull(result.sourceMap());
     }
 

@@ -10,7 +10,7 @@ import org.jetbrains.annotations.Unmodifiable;
 /// Conversion helpers and matrices for CSS Color Level 4 color spaces.
 ///
 /// Algorithms and matrix values follow the CSS Color 4 specification and the
-/// Dart Sass 1.101.3 reference implementation.
+/// Dart Sass 1.102.0 reference implementation.
 @ApiStatus.Internal
 @NotNullByDefault
 public final class ColorConversions {
@@ -167,12 +167,6 @@ public final class ColorConversions {
             -0.12455047452159074, 1.13289989712596030, -0.00834942260436947,
             -0.01815076335490530, -0.10057889800800737, 1.11872966136291270
     };
-
-    /// The Rec. 2020 transfer-function alpha constant.
-    private static final double REC2020_ALPHA = 1.09929682680944;
-
-    /// The Rec. 2020 transfer-function beta threshold.
-    private static final double REC2020_BETA = 0.018053968510807;
 
     /// Prevents instantiation.
     private ColorConversions() {
@@ -664,9 +658,9 @@ public final class ColorConversions {
         }
         if (dest == ColorSpace.RGB) {
             return new ConvertedChannels(
-                    normalizeRgbEndpoint(red * 255.0),
-                    normalizeRgbEndpoint(green * 255.0),
-                    normalizeRgbEndpoint(blue * 255.0),
+                    red * 255.0,
+                    green * 255.0,
+                    blue * 255.0,
                     alpha
             );
         }
@@ -716,9 +710,9 @@ public final class ColorConversions {
         }
         if (dest == ColorSpace.RGB) {
             return new ConvertedChannels(
-                    normalizeRgbEndpoint(red * 255.0),
-                    normalizeRgbEndpoint(green * 255.0),
-                    normalizeRgbEndpoint(blue * 255.0),
+                    red * 255.0,
+                    green * 255.0,
+                    blue * 255.0,
                     alpha
             );
         }
@@ -742,17 +736,6 @@ public final class ColorConversions {
                 false,
                 hue == null
         );
-    }
-
-    /// Normalizes RGB endpoints that differ only by Sass numeric fuzziness.
-    private static double normalizeRgbEndpoint(double channel) {
-        if (SassFuzzy.equals(channel, 0.0)) {
-            return 0.0;
-        }
-        if (SassFuzzy.equals(channel, 255.0)) {
-            return 255.0;
-        }
-        return channel;
     }
 
     /// Converts channels from Lab into {@code dest}.
@@ -1724,18 +1707,12 @@ public final class ColorConversions {
 
     /// Converts a gamma-encoded rec2020 channel into linear light.
     static double rec2020ToLinear(double channel) {
-        var abs = Math.abs(channel);
-        return abs < REC2020_BETA * 4.5
-                ? channel / 4.5
-                : Math.signum(channel) * Math.pow((abs + REC2020_ALPHA - 1.0) / REC2020_ALPHA, 1.0 / 0.45);
+        return Math.signum(channel) * Math.pow(Math.abs(channel), 2.4);
     }
 
     /// Converts a linear rec2020 channel into gamma-encoded form.
     static double rec2020FromLinear(double channel) {
-        var abs = Math.abs(channel);
-        return abs > REC2020_BETA
-                ? Math.signum(channel) * (REC2020_ALPHA * Math.pow(abs, 0.45) - (REC2020_ALPHA - 1.0))
-                : 4.5 * channel;
+        return Math.signum(channel) * Math.pow(Math.abs(channel), 1.0 / 2.4);
     }
 
     /// Converts a Lab f-component into an XYZ X or Z channel.

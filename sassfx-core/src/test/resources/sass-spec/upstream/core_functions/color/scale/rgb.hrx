@@ -31,7 +31,7 @@ a {b: color.scale(lightcoral, $red: -33%)}
 
 <===> red/low/output.css
 a {
-  b: rgb(160.8, 128, 128);
+  b: rgb(63.0588235294%, 50.1960784314%, 50.1960784314%);
 }
 
 <===> red/high/input.scss
@@ -40,7 +40,7 @@ a {b: color.scale(turquoise, $red: 86%)}
 
 <===> red/high/output.css
 a {
-  b: rgb(228.26, 224, 208);
+  b: rgb(89.5137254902%, 87.8431372549%, 81.568627451%);
 }
 
 <===> green/max/input.scss
@@ -76,7 +76,7 @@ a {b: color.scale(seagreen, $green: -86%)}
 
 <===> green/low/output.css
 a {
-  b: rgb(46, 19.46, 87);
+  b: rgb(18.0392156863%, 7.631372549%, 34.1176470588%);
 }
 
 <===> green/high/input.scss
@@ -85,7 +85,7 @@ a {b: color.scale(cadetblue, $green: 12%)}
 
 <===> green/high/output.css
 a {
-  b: rgb(95, 169.64, 160);
+  b: rgb(37.2549019608%, 66.5254901961%, 62.7450980392%);
 }
 
 <===> blue/max/input.scss
@@ -121,7 +121,7 @@ a {b: color.scale(slategray, $blue: -16%)}
 
 <===> blue/low/output.css
 a {
-  b: rgb(112, 128, 120.96);
+  b: rgb(43.9215686275%, 50.1960784314%, 47.4352941176%);
 }
 
 <===> blue/high/input.scss
@@ -130,7 +130,7 @@ a {b: color.scale(salmon, $blue: 42%)}
 
 <===> blue/high/output.css
 a {
-  b: rgb(250, 128, 173.22);
+  b: rgb(98.0392156863%, 50.1960784314%, 67.9294117647%);
 }
 
 <===> all/input.scss
@@ -139,7 +139,7 @@ a {b: color.scale(sienna, $red: 12%, $green: 24%, $blue: 48%)}
 
 <===> all/output.css
 a {
-  b: rgb(171.4, 123.52, 145.8);
+  b: rgb(67.2156862745%, 48.4392156863%, 57.1764705882%);
 }
 
 <===> alpha_input/input.scss
@@ -148,7 +148,7 @@ a {b: color.scale(rgba(sienna, 0.3), $red: 12%, $green: 24%, $blue: 48%)}
 
 <===> alpha_input/output.css
 a {
-  b: rgba(171.4, 123.52, 145.8, 0.3);
+  b: rgba(67.2156862745%, 48.4392156863%, 57.1764705882%, 0.3);
 }
 
 <===> alpha_arg/input.scss
@@ -157,7 +157,7 @@ a {b: color.scale(sienna, $red: 12%, $green: 24%, $blue: 48%, $alpha: -70%)}
 
 <===> alpha_arg/output.css
 a {
-  b: rgba(171.4, 123.52, 145.8, 0.3);
+  b: rgba(67.2156862745%, 48.4392156863%, 57.1764705882%, 0.3);
 }
 
 <===> named/input.scss
@@ -166,5 +166,5 @@ a {b: color.scale($color: sienna, $red: 12%, $green: 24%, $blue: 48%)}
 
 <===> named/output.css
 a {
-  b: rgb(171.4, 123.52, 145.8);
+  b: rgb(67.2156862745%, 48.4392156863%, 57.1764705882%);
 }

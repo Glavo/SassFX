@@ -699,7 +699,7 @@ Importer and compile API processing reports relative string URLs, relative
 canonical importer results, and successful implicit current-working-directory
 loads at their Dart Sass trigger points.
 
-`SassDeprecation` is the typed Dart Sass 1.101.3 deprecation registry. It
+`SassDeprecation` is the typed Dart Sass 1.102.0 deprecation registry. It
 exposes the command-line ID, activation and obsolescence versions, status, and
 description for each entry. Logger callbacks may run concurrently when compile
 options are shared and must be thread-safe. A runtime exception thrown by a
@@ -849,7 +849,7 @@ The current release has the following boundaries:
   27 are outside this release's target range.
 - `OutputTarget` is sealed to the three built-in backends.
 
-The current fixed sass-spec run passes 13,924 enabled fixtures with no failure;
+The current fixed sass-spec run passes 13,926 enabled fixtures with no failure;
 five upstream fixtures remain disabled by their own compatibility metadata.
 This result describes the pinned suite, not unspecified future Sass behavior.
 

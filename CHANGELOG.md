@@ -16,9 +16,11 @@ with library, command-line, Embedded Sass, and Gradle interfaces.
   maps, and retained source text for failure reporting.
 - Supports synchronous custom importers, file importers, Node package
   resolution, custom functions, logging, and deprecation policies.
-- Implements the Dart Sass 1.101.3 language and diagnostic baseline, including
+- Implements the Dart Sass 1.102.0 language and diagnostic baseline, including
   modules, legacy imports, calculations, modern color spaces, first-class
   functions and mixins, selector operations, and deprecation metadata.
+- Matches Dart Sass 1.102.0 legacy RGB percentage serialization, plain-CSS
+  `if()` branch serialization, and the Rec. 2020 gamma 2.4 transfer curve.
 
 ### Command line
 
@@ -64,7 +66,7 @@ with library, command-line, Embedded Sass, and Gradle interfaces.
 
 ### Verification
 
-- The pinned sass-spec corpus passes 13,924 enabled fixtures; five upstream
+- The pinned sass-spec corpus passes 13,926 enabled fixtures; five upstream
   fixtures remain skipped by their own metadata.
 - Runtime oracles cover JavaFX 8, 17, 18, 23, 25, 26, and 27.
 - Artifact checks keep JavaFX, FFI, native content, local upstream checkouts,

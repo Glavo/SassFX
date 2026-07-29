@@ -91,6 +91,31 @@ final class ColorSpaceModelTest {
         assertEquals("color(srgb 0.5 0.25 0.125 / 0.4)", translucent.toString());
     }
 
+    /// Verifies Rec.2020 uses the CSS Color 4 display-referred 2.4 gamma.
+    @Test
+    void appliesRec2020Gamma24TransferFunction() {
+        assertEquals(
+                0.18946457081379978,
+                ColorConversions.rec2020ToLinear(0.5),
+                1e-15
+        );
+        assertEquals(
+                -0.18946457081379978,
+                ColorConversions.rec2020ToLinear(-0.5),
+                1e-15
+        );
+        assertEquals(
+                0.7491535384383408,
+                ColorConversions.rec2020FromLinear(0.5),
+                1e-15
+        );
+        assertEquals(
+                -0.7491535384383408,
+                ColorConversions.rec2020FromLinear(-0.5),
+                1e-15
+        );
+    }
+
     /// Verifies gamut checks and missing-channel queries.
     @Test
     void reportsGamutAndMissingChannels() {

@@ -13,7 +13,7 @@ a {b: color.adjust(pink, $saturation: -5%, $space: hsl)}
 
 <===> legacy/to_legacy/output.css
 a {
-  b: rgb(253.425, 193.575, 204.025);
+  b: rgb(99.3823529412%, 75.9117647059%, 80.0098039216%);
 }
 
 <===> legacy/to_modern/input.scss
@@ -22,7 +22,7 @@ a {b: color.adjust(pink, $chroma: -0.01, $space: oklch)}
 
 <===> legacy/to_modern/output.css
 a {
-  b: rgb(249.5073881917, 194.8272088582, 204.1290059224);
+  b: rgb(97.846034585%, 76.4028270032%, 80.0505905578%);
 }
 
 <===> modern/to_legacy/input.scss

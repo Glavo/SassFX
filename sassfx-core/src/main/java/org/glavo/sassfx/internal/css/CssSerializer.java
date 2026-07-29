@@ -953,7 +953,7 @@ public final class CssSerializer {
                     : null;
             var css = legacyGradient != null
                     ? legacyGradient
-                    : value.toCssString();
+                    : value.toCssString(true, compressed);
             buffer.forSpan(declaration.value().span(), () -> buffer.append(css));
         } catch (SassValueException cause) {
             throw new CssSerializeException(

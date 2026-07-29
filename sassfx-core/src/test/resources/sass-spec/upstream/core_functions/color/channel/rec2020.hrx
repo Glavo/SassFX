@@ -31,7 +31,7 @@ a {b: color.channel(pink, "red", $space: rec2020)}
 
 <===> foreign/red/output.css
 a {
-  b: 0.9098509852;
+  b: 0.9238307533;
 }
 
 <===> foreign/green/input.scss
@@ -40,7 +40,7 @@ a {b: color.channel(pink, "green", $space: rec2020)}
 
 <===> foreign/green/output.css
 a {
-  b: 0.747938727;
+  b: 0.7857199421;
 }
 
 <===> foreign/blue/input.scss
@@ -49,5 +49,5 @@ a {b: color.channel(pink, "blue", $space: rec2020)}
 
 <===> foreign/blue/output.css
 a {
-  b: 0.7726929727;
+  b: 0.8069535686;
 }

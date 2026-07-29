@@ -10,7 +10,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-/// Identifies a Dart Sass 1.101.3 deprecation category.
+/// Identifies a Dart Sass 1.102.0 deprecation category.
 ///
 /// Each value exposes the stable kebab-case identifier accepted by Sass
 /// command-line and embedded protocol options. Version metadata follows the
@@ -169,7 +169,7 @@ public enum SassDeprecation {
         return future;
     }
 
-    /// Returns the current lifecycle status in Dart Sass 1.101.3.
+    /// Returns the current lifecycle status in Dart Sass 1.102.0.
     ///
     /// @return the deprecation status
     public SassDeprecationStatus status() {
