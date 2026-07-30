@@ -172,11 +172,11 @@ final class EmbeddedCompilationDispatcher implements AutoCloseable {
         }
     }
 
-    /// Sends an outbound callback message.
+    /// Sends an outbound message on one compilation channel.
     @FunctionalInterface
     @NotNullByDefault
     interface Sender {
-        /// Writes one callback message.
+        /// Writes one outbound message.
         ///
         /// @param message the outbound wrapper
         /// @throws IOException if the stream cannot be written
