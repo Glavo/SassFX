@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.function.Predicate;
 
 /// Parses JavaFX shadow effect functions without loading JavaFX classes.
 ///
@@ -43,13 +44,20 @@ final class JavaFXEffectParser {
 
     /// Parses one complete JavaFX shadow effect.
     ///
-    /// @param value the evaluated Sass value
-    /// @param span  the source range associated with the declaration
+    /// @param value            the evaluated Sass value
+    /// @param span             the source range associated with the declaration
+    /// @param registeredLookup tests whether a color identifier names a
+    ///                         declaration already registered by JavaFX
     /// @return the normalized shadow effect
     /// @throws BssSerializeException if the value does not follow the JavaFX grammar
-    static ShadowEffect parse(SassValue value, SourceSpan span) {
+    static ShadowEffect parse(
+            SassValue value,
+            SourceSpan span,
+            Predicate<String> registeredLookup
+    ) {
         Objects.requireNonNull(value, "value");
         Objects.requireNonNull(span, "span");
+        Objects.requireNonNull(registeredLookup, "registeredLookup");
         if (!(value instanceof SassString string) || string.hasQuotes()) {
             throw invalidEffect(span);
         }
@@ -65,7 +73,11 @@ final class JavaFXEffectParser {
         return new ShadowEffect(
                 kind,
                 parseBlurType(arguments.get(0), span),
-                JavaFXPaintParser.parseColorPaint(arguments.get(1), span),
+                JavaFXPaintParser.parseColorPaint(
+                        arguments.get(1),
+                        span,
+                        registeredLookup
+                ),
                 parseSize(arguments.get(2), span),
                 parseSize(arguments.get(3), span),
                 parseSize(arguments.get(4), span),

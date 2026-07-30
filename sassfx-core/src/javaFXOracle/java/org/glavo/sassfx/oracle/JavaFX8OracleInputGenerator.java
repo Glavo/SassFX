@@ -201,6 +201,44 @@ public final class JavaFX8OracleInputGenerator {
             }
             """;
 
+    /// Contains a representative plain-CSS JavaFX declaration matrix.
+    private static final String PLAIN_CSS_SOURCE = """
+            @font-face {
+              font-family: "Plain Oracle";
+              src: url("font.ttf");
+            }
+            PlainPane {
+              property: red;
+              _property: 1px;
+              -property: true;
+              property-: "value";
+              A0_B-c: 250ms;
+              red: #123456;
+              green: #abcdef;
+              -fx-opacity: .5 ! IMPORTANT;
+              -fx-disable: true;
+              -fx-font-family: "Plain Oracle";
+              -fx-font-size: 12px;
+              -fx-padding: 1px 2px 3px 4px;
+              -fx-background-color:
+                  red,
+                  linear-gradient(red, blue);
+              -fx-background-insets: 1px 2px, 3px;
+              -fx-background-radius: 4px 5px / 6px 7px, 8%;
+              -fx-border-color: #123456 red green blue, #abcdef;
+              -fx-border-insets: 1px;
+              -fx-border-radius: 4px / 8px;
+              -fx-border-width: 1px 2px;
+              -fx-border-style:
+                  segments(1px, 2px) outside,
+                  dashed centered;
+              -fx-fill: red;
+              -fx-effect:
+                  dropshadow(gaussian, green, 8px, 20%, 1px, 2px);
+              -fx-stroke-dash-array: 1px 2px;
+            }
+            """;
+
     /// Prevents instantiation.
     private JavaFX8OracleInputGenerator() {
     }
@@ -218,6 +256,13 @@ public final class JavaFX8OracleInputGenerator {
         var cssPath = directory.resolve("fixture.css");
         var actualBssPath = directory.resolve("actual.bss");
         var source = SassSource.fromString(SOURCE, Syntax.SCSS, cssPath.toUri());
+        var plainCssPath = directory.resolve("plain-fixture.css");
+        var plainActualBssPath = directory.resolve("plain-actual.bss");
+        var plainSource = SassSource.fromString(
+                PLAIN_CSS_SOURCE,
+                Syntax.CSS,
+                plainCssPath.toUri()
+        );
         var compiler = new SassCompiler();
 
         Files.writeString(
@@ -234,6 +279,23 @@ public final class JavaFX8OracleInputGenerator {
                 actualBssPath,
                 remainingBytes(compiler.compile(
                         source,
+                        new BssTarget(JavaFXTarget.JAVAFX8)
+                ).output())
+        );
+        Files.writeString(
+                plainCssPath,
+                compiler.compile(
+                        plainSource,
+                        new JavaFXCssTarget(
+                                JavaFXTarget.JAVAFX8,
+                                OutputStyle.EXPANDED
+                        )
+                ).output()
+        );
+        Files.write(
+                plainActualBssPath,
+                remainingBytes(compiler.compile(
+                        plainSource,
                         new BssTarget(JavaFXTarget.JAVAFX8)
                 ).output())
         );

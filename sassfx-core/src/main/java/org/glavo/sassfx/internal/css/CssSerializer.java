@@ -825,6 +825,11 @@ public final class CssSerializer {
         } else if (node instanceof CssFontFace fontFace) {
             buffer.forSpan(fontFace.span(), () -> buffer.append("@font-face{"));
             writeCompressedChildren(fontFace, buffer, javaFX);
+            if (javaFX) {
+                // OpenJFX's font-face parser needs a final descriptor separator
+                // before the closing brace or it consumes the following rule.
+                buffer.append(';');
+            }
             buffer.append('}');
         } else if (node instanceof CssStyleRule rule) {
             buffer.forSpan(rule.selector().span(), () ->

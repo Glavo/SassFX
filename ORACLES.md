@@ -22,6 +22,11 @@ JavaFX 17 through 27 run in isolated processes with one matching
 distribution that does not bundle JavaFX, because bundled modules may shadow
 or conflict with the pinned artifacts.
 
+Gradle-provisioned launchers are pinned to Adoptium so a locally installed
+full JDK cannot supply an older JavaFX module. At startup, each modular oracle
+also reads `javafx.runtime.version` from the loaded `javafx.base` module and
+fails if it does not match the requested target.
+
 Each task accepts a version-specific override:
 
 ```text
@@ -99,10 +104,14 @@ The byte-exact matrix currently covers:
   selectors, including JavaFX token concatenation and `dir(...)` orientation;
 - case-insensitive declaration names and source-ordered property lookup
   normalization, including self, prior, forward, unresolved, and import-local
-  lookup state;
+  lookup state, plus rejection of declaration names outside OpenJFX's ASCII
+  identifier grammar;
 - scalar sizes, durations, URLs, fonts, blend modes, shadow effects, and
   generic quoted strings, including empty strings and special keyword/color
   recognition in root and imported plain-CSS stylesheets;
+- plain-CSS declaration evaluation, including named colors in layered paints
+  and registered-property precedence at the top level and inside gradients
+  and shadow effects;
 - generic single sizes and space-separated size sequences across every
   non-time JavaFX `SizeUnits` value, including negative and mixed-unit series;
 - case-insensitive function-name prefix dispatch for colors, effects,

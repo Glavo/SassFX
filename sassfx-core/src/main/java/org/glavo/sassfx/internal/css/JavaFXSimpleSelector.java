@@ -241,7 +241,7 @@ public record JavaFXSimpleSelector(
     ///
     /// @param value the identifier candidate
     /// @return whether JavaFX emits one identifier token for the complete value
-    private static boolean isIdentifier(String value) {
+    public static boolean isIdentifier(String value) {
         return !value.isEmpty() && identifierEnd(value, 0) == value.length();
     }
 

@@ -273,7 +273,14 @@ public final class JavaFXCssValidator {
             CssDeclaration declaration,
             JavaFXTarget compatibility
     ) {
-        var property = declaration.name().value().toLowerCase(Locale.ROOT);
+        var sourceProperty = declaration.name().value();
+        if (!JavaFXSimpleSelector.isIdentifier(sourceProperty)) {
+            throw failure(
+                    "JavaFX CSS does not support this declaration name.",
+                    declaration.name().span()
+            );
+        }
+        var property = sourceProperty.toLowerCase(Locale.ROOT);
         if (!compatibility.supports(CSS_TRANSITIONS)
                 && TRANSITION_PROPERTIES.contains(property)) {
             throw failure(

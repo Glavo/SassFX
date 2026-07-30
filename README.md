@@ -886,11 +886,17 @@ A platform feature may still be unsupported by a particular output backend.
 | 26 | Viewport/range media, multi-rule media, and advanced easing | v8 |
 | 27 | Conditional imports and JavaFX platform media features | v9 |
 
-For every BSS version, declaration names are canonicalized to lower case.
+JavaFX declaration names must contain an optional single leading hyphen,
+followed by an ASCII letter or underscore, then ASCII letters, digits,
+underscores, or hyphens. Custom-property names, non-ASCII names, and other
+names that OpenJFX would silently discard are rejected. For every BSS version,
+accepted declaration names are canonicalized to lower case.
 Unquoted property lookups are canonicalized only after that property has been
 encountered in the same source stylesheet; forward and unresolved identifiers
 retain their source spelling. Each imported stylesheet has independent
-source-order lookup state, matching OpenJFX's parser behavior.
+source-order lookup state, matching OpenJFX's parser behavior. Registered
+property names take precedence over same-spelled named colors, including
+colors nested in gradients, ladders, derived paints, and shadow effects.
 
 JavaFX value functions use OpenJFX's case-insensitive prefix dispatch for
 colors, effects, gradients, image patterns, ladders, Region references, and

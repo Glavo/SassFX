@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.sassfx.oracle;
 
+import javafx.beans.Observable;
 import javafx.css.CssParser;
 import javafx.css.Stylesheet;
 import org.glavo.sassfx.BssTarget;
@@ -15,6 +16,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
+import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -56,7 +59,18 @@ public final class JavaFXCssOracle {
                     "Unsupported JavaFX version: " + arguments[0]
             );
         };
+        var runtimeVersion = runtimeJavaFXVersion();
+        var expectedRuntimeVersion = Integer.toString(target.version());
+        if (!runtimeVersion.equals(expectedRuntimeVersion)
+                && !runtimeVersion.startsWith(expectedRuntimeVersion + ".")
+                && !runtimeVersion.startsWith(expectedRuntimeVersion + "-")) {
+            throw new IllegalStateException(
+                    "JavaFX " + target.version()
+                            + " oracle loaded JavaFX " + runtimeVersion + "."
+            );
+        }
 
+        verifyDeclarationNameSemantics();
         verifyVersionedParserSemantics(target);
         for (var fixture : acceptedFixtures(target)) {
             verifyAccepted(fixture, target);
@@ -73,6 +87,32 @@ public final class JavaFXCssOracle {
         }
     }
 
+    /// Returns the runtime version embedded in the loaded JavaFX base module.
+    ///
+    /// @return the complete JavaFX runtime version
+    /// @throws IOException if the module version resource cannot be read
+    private static String runtimeJavaFXVersion() throws IOException {
+        try (var input = Observable.class.getModule()
+                .getResourceAsStream("javafx.properties")) {
+            if (input == null) {
+                throw new IllegalStateException(
+                        "Loaded JavaFX base module has no javafx.properties."
+                );
+            }
+            var properties = new Properties();
+            properties.load(input);
+            @Nullable var version = properties.getProperty(
+                    "javafx.runtime.version"
+            );
+            if (version == null) {
+                throw new IllegalStateException(
+                        "Loaded JavaFX base module reports no runtime version."
+                );
+            }
+            return version;
+        }
+    }
+
     /// Returns fixtures that must compile and parse without JavaFX CSS errors.
     ///
     /// @param target the selected JavaFX release
@@ -83,6 +123,54 @@ public final class JavaFXCssOracle {
                 "basic",
                 "Pane { -fx-opacity: 0.5; -fx-text-fill: #ff0000; }",
                 Syntax.SCSS
+        ));
+        fixtures.add(new Fixture(
+                "plain-css-values",
+                """
+                        @font-face {
+                          font-family: "Plain Oracle";
+                          src: url("https://example.invalid/font.ttf");
+                        }
+                        PlainPane {
+                          -fx-opacity: .5 ! IMPORTANT;
+                          -fx-disable: true;
+                          -fx-font-family: "Plain Oracle";
+                          -fx-font-size: 12px;
+                          -fx-padding: 1px 2px 3px 4px;
+                          red: #123456;
+                          green: #abcdef;
+                          -fx-background-color:
+                              red,
+                              linear-gradient(red, blue);
+                          -fx-background-insets: 1px 2px, 3px;
+                          -fx-background-radius: 4px 5px / 6px 7px, 8%;
+                          -fx-border-color: #123456 red green blue, #abcdef;
+                          -fx-border-insets: 1px;
+                          -fx-border-radius: 4px / 8px;
+                          -fx-border-width: 1px 2px;
+                          -fx-border-style:
+                              segments(1px, 2px) outside,
+                              dashed centered;
+                          -fx-fill: red;
+                          -fx-effect:
+                              dropshadow(gaussian, green, 8px, 20%, 1px, 2px);
+                          -fx-stroke-dash-array: 1px 2px;
+                        }
+                        """,
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
+                "declaration-names",
+                """
+                        PropertyNames {
+                          property: red;
+                          _property: 1px;
+                          -property: true;
+                          property-: "value";
+                          A0_B-c: 250ms;
+                        }
+                        """,
+                Syntax.CSS
         ));
         fixtures.add(new Fixture(
                 "functional-pseudo-classes",
@@ -483,6 +571,16 @@ public final class JavaFXCssOracle {
                 Syntax.CSS
         ));
         fixtures.add(new Fixture(
+                "custom-property",
+                "Pane { --custom: red; }",
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
+                "non-ascii-property",
+                "Pane { 属性: red; }",
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
                 "media-type",
                 "@media screen and (min-width: 600px) { Pane { -fx-opacity: 1; } }",
                 Syntax.SCSS
@@ -609,7 +707,9 @@ public final class JavaFXCssOracle {
             );
         }
         if (stylesheet.getRules().isEmpty()) {
-            throw new AssertionError(fixture.name() + " produced no JavaFX rules.");
+            throw new AssertionError(
+                    fixture.name() + " produced no JavaFX rules from: " + css
+            );
         }
         if (fixture.name().equals("media-multiple-rules")
                 && stylesheet.getRules().size() != 2) {
@@ -620,7 +720,9 @@ public final class JavaFXCssOracle {
             );
         }
         var compareBss = switch (fixture.name()) {
-            case "functional-pseudo-classes",
+            case "plain-css-values",
+                 "declaration-names",
+                 "functional-pseudo-classes",
                  "case-insensitive-properties",
                  "effects",
                  "function-prefix-dispatch",
@@ -971,6 +1073,26 @@ public final class JavaFXCssOracle {
                             + " reported an unexpected transition converter: "
                             + transitionConverter
             );
+        }
+    }
+
+    /// Verifies the ASCII-only declaration-name grammar shared by all releases.
+    private static void verifyDeclarationNameSemantics() {
+        for (var source : List.of(
+                "Pane { --custom: red; }",
+                "Pane { 属性: red; }"
+        )) {
+            CssParser.errorsProperty().clear();
+            var stylesheet = new CssParser().parse(source);
+            var retainedDeclaration = !stylesheet.getRules().isEmpty()
+                    && !stylesheet.getRules().get(0).getDeclarations().isEmpty();
+            if (retainedDeclaration) {
+                throw new AssertionError(
+                        "JavaFX unexpectedly retained declaration source: "
+                                + source
+                                + "; errors=" + CssParser.errorsProperty()
+                );
+            }
         }
     }
 

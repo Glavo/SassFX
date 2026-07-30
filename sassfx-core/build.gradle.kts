@@ -2,6 +2,7 @@ import org.glavo.sassfx.build.FailTask
 import org.glavo.sassfx.build.VerifyCoreLibraryJarTask
 import org.glavo.sassfx.build.VerifyReferenceIsolationTask
 import org.gradle.api.publish.maven.MavenPublication
+import org.gradle.jvm.toolchain.JvmVendorSpec
 
 plugins {
     `java-library`
@@ -253,6 +254,7 @@ val javaFXOracleLauncherVersions = mapOf(
 val javaFXOracleLaunchers = javaFXOracleLauncherVersions.mapValues { (_, javaVersion) ->
     javaToolchains.launcherFor {
         languageVersion = JavaLanguageVersion.of(javaVersion)
+        vendor.set(JvmVendorSpec.ADOPTIUM)
     }
 }
 val javaFXOracleJavaHome = providers.gradleProperty("javaFXOracleJavaHome")
@@ -310,6 +312,8 @@ val generateJavaFX8OracleInputs =
         outputs.files(
             javaFX8OracleDirectory.map { it.file("fixture.css") },
             javaFX8OracleDirectory.map { it.file("actual.bss") },
+            javaFX8OracleDirectory.map { it.file("plain-fixture.css") },
+            javaFX8OracleDirectory.map { it.file("plain-actual.bss") },
         )
     }
 

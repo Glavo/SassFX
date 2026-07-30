@@ -596,6 +596,64 @@ final class JavaFXCssValidatorTest {
         );
     }
 
+    /// Accepts declaration names emitted as one JavaFX identifier token.
+    ///
+    /// @param property the accepted declaration name
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "property",
+            "_property",
+            "-property",
+            "property-",
+            "A0_B-c"
+    })
+    void acceptsJavaFXDeclarationNames(String property) {
+        for (var compatibility : JavaFXTarget.values()) {
+            assertDoesNotThrow(
+                    () -> JavaFXCssValidator.validate(
+                            stylesheet(
+                                    styleRuleWithDeclaration(
+                                            "Pane",
+                                            property,
+                                            "red"
+                                    )
+                            ),
+                            compatibility
+                    )
+            );
+        }
+    }
+
+    /// Rejects declaration names outside JavaFX's ASCII identifier grammar.
+    ///
+    /// @param property the unsupported declaration name
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "--custom",
+            "-",
+            "0property",
+            "property.name",
+            "property\\31",
+            "属性"
+    })
+    void rejectsUnsupportedJavaFXDeclarationNames(String property) {
+        for (var compatibility : JavaFXTarget.values()) {
+            assertThrows(
+                    CssSerializeException.class,
+                    () -> JavaFXCssValidator.validate(
+                            stylesheet(
+                                    styleRuleWithDeclaration(
+                                            "Pane",
+                                            property,
+                                            "red"
+                                    )
+                            ),
+                            compatibility
+                    )
+            );
+        }
+    }
+
     /// Accepts the value-function name prefixes dispatched by OpenJFX.
     ///
     /// @param value the supported function value

@@ -601,6 +601,7 @@ public final class BssSerializer {
             if (!(child instanceof CssDeclaration declaration)) {
                 throw unsupported(child, "font-face CSS node");
             }
+            requireDeclarationName(declaration);
             if (!declaration.parsedAsSassScript()) {
                 throw new BssSerializeException(
                         "BSS @font-face doesn't support raw CSS descriptor values.",
@@ -620,6 +621,20 @@ public final class BssSerializer {
             }
         }
         return new BssFontFace(descriptors, sources, fontFace.span());
+    }
+
+    /// Requires a declaration name accepted by JavaFX's ASCII identifier lexer.
+    ///
+    /// @param declaration the declaration whose name is validated
+    /// @throws BssSerializeException if JavaFX CSS cannot tokenize the name
+    private static void requireDeclarationName(CssDeclaration declaration) {
+        if (!JavaFXSimpleSelector.isIdentifier(declaration.name().value())) {
+            throw new BssSerializeException(
+                    "JavaFX CSS does not support this declaration name.",
+                    declaration.name().span(),
+                    null
+            );
+        }
     }
 
     /// Returns one JavaFX font-face descriptor value without priority syntax.
@@ -1068,14 +1083,78 @@ public final class BssSerializer {
         var property = declaration.property();
         output.writeShort(strings.add(property));
         var value = splitImportant(source.value().value());
-        writeDeclarationValue(
-                output,
+        var normalizedValue = normalizeLayeredPaintColors(
                 property,
                 value.value(),
                 source.value().span(),
                 strings
         );
+        writeDeclarationValue(
+                output,
+                property,
+                normalizedValue,
+                source.value().span(),
+                strings
+        );
         output.writeBoolean(value.important());
+    }
+
+    /// Converts named colors in JavaFX's layered paint properties.
+    ///
+    /// Plain CSS evaluation retains named colors as strings, while SCSS
+    /// evaluation generally produces [SassColor] values. OpenJFX resolves a
+    /// previously registered declaration name as a property lookup before
+    /// interpreting the same token as a color.
+    ///
+    /// @param property the normalized declaration name
+    /// @param value    the evaluated declaration value
+    /// @param span     the source range associated with the declaration
+    /// @param strings  the current property-lookup registry
+    /// @return the value with applicable named colors normalized
+    private static SassValue normalizeLayeredPaintColors(
+            String property,
+            SassValue value,
+            SourceSpan span,
+            StringStore strings
+    ) {
+        if (!isBackgroundColorProperty(property)
+                && !isBorderColorProperty(property)) {
+            return value;
+        }
+        return normalizeLayeredPaintColor(value, span, strings);
+    }
+
+    /// Recursively normalizes one layered paint value.
+    ///
+    /// @param value   the atomic paint or nested list
+    /// @param span    the declaration source range
+    /// @param strings the current property-lookup registry
+    /// @return the normalized paint value
+    private static SassValue normalizeLayeredPaintColor(
+            SassValue value,
+            SourceSpan span,
+            StringStore strings
+    ) {
+        if (value instanceof SassString string
+                && (string.hasQuotes()
+                || !strings.isRegisteredLookupKey(string.text()))) {
+            @Nullable var color = JavaFXPaintParser.tryParseSolidColor(
+                    string.text(),
+                    span
+            );
+            if (color != null) {
+                return color.color();
+            }
+            return value;
+        }
+        if (!(value instanceof SassList list)) {
+            return value;
+        }
+        var normalized = new ArrayList<SassValue>(list.contents().size());
+        for (var item : list.contents()) {
+            normalized.add(normalizeLayeredPaintColor(item, span, strings));
+        }
+        return new SassList(normalized, list.separator(), list.hasBrackets());
     }
 
     /// Separates a trailing Sass representation of {@code !important}.
@@ -1213,23 +1292,54 @@ public final class BssSerializer {
         }
         if (isEffectProperty(property)) {
             if (JavaFXEffectParser.isEffectFunction(value)) {
-                writeEffectValue(output, JavaFXEffectParser.parse(value, span), span, strings);
+                writeEffectValue(
+                        output,
+                        JavaFXEffectParser.parse(
+                                value,
+                                span,
+                                strings::isRegisteredLookupKey
+                        ),
+                        span,
+                        strings
+                );
             } else if (value instanceof SassString string
                     && !string.hasQuotes()
                     && JavaFXPaintParser.isLookupIdentifier(string.text())) {
                 writeStringValue(output, property, string, strings);
             } else {
-                JavaFXEffectParser.parse(value, span);
+                JavaFXEffectParser.parse(
+                        value,
+                        span,
+                        strings::isRegisteredLookupKey
+                );
                 throw new AssertionError("invalid JavaFX effect parsing returned normally");
             }
             return;
         }
         if (JavaFXEffectParser.isEffectFunction(value)) {
-            writeEffectValue(output, JavaFXEffectParser.parse(value, span), span, strings);
+            writeEffectValue(
+                    output,
+                    JavaFXEffectParser.parse(
+                            value,
+                            span,
+                            strings::isRegisteredLookupKey
+                    ),
+                    span,
+                    strings
+            );
             return;
         }
         if (JavaFXPaintParser.isPaintFunction(value)) {
-            writePaintValue(output, JavaFXPaintParser.parse(value, span), span, strings);
+            writePaintValue(
+                    output,
+                    JavaFXPaintParser.parse(
+                            value,
+                            span,
+                            strings::isRegisteredLookupKey
+                    ),
+                    span,
+                    strings
+            );
             return;
         }
         if (isScalarUrlValue(value)) {
@@ -1257,7 +1367,16 @@ public final class BssSerializer {
         } else if (value instanceof SassNumber number) {
             writeNumberValue(output, property, number, span, strings);
         } else if (value instanceof SassColor color) {
-            writeColorValue(output, color, span, strings);
+            @Nullable String lookup =
+                    JavaFXPaintParser.registeredSourceColorLookup(
+                            color,
+                            strings::isRegisteredLookupKey
+                    );
+            if (lookup == null) {
+                writeColorValue(output, color, span, strings);
+            } else {
+                writeLookupValue(output, lookup, strings);
+            }
         } else if (value instanceof SassString string) {
             if (usesGenericStringGrammar(property)) {
                 writeGenericStringValue(output, property, string, span, strings);
@@ -2184,7 +2303,7 @@ public final class BssSerializer {
             SourceSpan span,
             StringStore strings
     ) throws IOException {
-        var paints = backgroundPaintValues(value, span);
+        var paints = backgroundPaintValues(value, span, strings);
         writeParsedHeader(output, false, PAINT_SEQUENCE_CONVERTER, strings);
         writeParsedValueArrayPrefix(output, paints.size());
         for (var paint : paints) {
@@ -2198,20 +2317,30 @@ public final class BssSerializer {
     /// Solid colors, property lookups, JavaFX linear or radial gradients, and
     /// image-pattern paint forms share JavaFX's paint sequence converter.
     ///
-    /// @param value the evaluated Sass value
-    /// @param span  the source value span
+    /// @param value   the evaluated Sass value
+    /// @param span    the source value span
+    /// @param strings the property-lookup registry for this declaration
     /// @return the paints in layer order
     /// @throws BssSerializeException if a layer is not a supported paint
     private static @Unmodifiable List<JavaFXPaintParser.Paint> backgroundPaintValues(
             SassValue value,
-            SourceSpan span
+            SourceSpan span,
+            StringStore strings
     ) {
         if (!(value instanceof SassList list)) {
-            return List.of(JavaFXPaintParser.parse(value, span));
+            return List.of(JavaFXPaintParser.parse(
+                    value,
+                    span,
+                    strings::isRegisteredLookupKey
+            ));
         }
         if (list.separator() == ListSeparator.SPACE
                 && JavaFXLegacyGradient.serialize(value) != null) {
-            return List.of(JavaFXPaintParser.parse(value, span));
+            return List.of(JavaFXPaintParser.parse(
+                    value,
+                    span,
+                    strings::isRegisteredLookupKey
+            ));
         }
         if (list.hasBrackets()
                 || list.separator() != ListSeparator.COMMA
@@ -2224,7 +2353,11 @@ public final class BssSerializer {
         }
         var paints = new ArrayList<JavaFXPaintParser.Paint>(list.contents().size());
         for (var item : list.contents()) {
-            paints.add(JavaFXPaintParser.parse(item, span));
+            paints.add(JavaFXPaintParser.parse(
+                    item,
+                    span,
+                    strings::isRegisteredLookupKey
+            ));
         }
         return List.copyOf(paints);
     }
@@ -3335,7 +3468,7 @@ public final class BssSerializer {
             SourceSpan span,
             StringStore strings
     ) throws IOException {
-        var layers = borderPaintLayers(value, span);
+        var layers = borderPaintLayers(value, span, strings);
         writeParsedHeader(output, false, LAYERED_BORDER_PAINT_CONVERTER, strings);
         writeParsedValueArrayPrefix(output, layers.size());
         for (var layer : layers) {
@@ -3354,13 +3487,15 @@ public final class BssSerializer {
     /// Solid colors, property lookups, JavaFX linear or radial gradients, and
     /// image-pattern paint forms are supported.
     ///
-    /// @param value the evaluated Sass value
-    /// @param span  the source value span
+    /// @param value   the evaluated Sass value
+    /// @param span    the source value span
+    /// @param strings the property-lookup registry for this declaration
     /// @return the normalized paint layers in source order
     /// @throws BssSerializeException if a layer is not one to four supported paints
     private static @Unmodifiable List<BorderPaintLayer> borderPaintLayers(
             SassValue value,
-            SourceSpan span
+            SourceSpan span,
+            StringStore strings
     ) {
         var values = layeredValues(
                 value,
@@ -3369,23 +3504,31 @@ public final class BssSerializer {
         );
         var layers = new ArrayList<BorderPaintLayer>(values.size());
         for (var layer : values) {
-            layers.add(new BorderPaintLayer(expandBorderPaints(borderPaintValues(layer, span))));
+            layers.add(new BorderPaintLayer(expandBorderPaints(
+                    borderPaintValues(layer, span, strings)
+            )));
         }
         return List.copyOf(layers);
     }
 
     /// Returns the one-to-four paints supplied for one border paint layer.
     ///
-    /// @param value the evaluated Sass value for one layer
-    /// @param span  the source value span
+    /// @param value   the evaluated Sass value for one layer
+    /// @param span    the source value span
+    /// @param strings the property-lookup registry for this declaration
     /// @return the source-order paints
     /// @throws BssSerializeException if the layer is not a supported paint sequence
     private static @Unmodifiable List<JavaFXPaintParser.Paint> borderPaintValues(
             SassValue value,
-            SourceSpan span
+            SourceSpan span,
+            StringStore strings
     ) {
         if (!(value instanceof SassList list)) {
-            return List.of(JavaFXPaintParser.parse(value, span));
+            return List.of(JavaFXPaintParser.parse(
+                    value,
+                    span,
+                    strings::isRegisteredLookupKey
+            ));
         }
         if (list.hasBrackets()
                 || list.separator() != ListSeparator.SPACE
@@ -3401,13 +3544,15 @@ public final class BssSerializer {
             if (legacyGradient != null) {
                 paints.add(JavaFXPaintParser.parse(
                         new SassString(legacyGradient.css(), false),
-                        span
+                        span,
+                        strings::isRegisteredLookupKey
                 ));
                 index = legacyGradient.nextIndex();
             } else {
                 paints.add(JavaFXPaintParser.parse(
                         list.contents().get(index),
-                        span
+                        span,
+                        strings::isRegisteredLookupKey
                 ));
                 index++;
             }
@@ -5020,6 +5165,7 @@ public final class BssSerializer {
         /// @return the declaration with its canonical name and visible lookup names
         private BssDeclaration register(CssDeclaration declaration) {
             Objects.requireNonNull(declaration, "declaration");
+            requireDeclarationName(declaration);
             var property = declaration.name().value().toLowerCase(Locale.ROOT);
             properties.add(property);
             return new BssDeclaration(declaration, property, properties);

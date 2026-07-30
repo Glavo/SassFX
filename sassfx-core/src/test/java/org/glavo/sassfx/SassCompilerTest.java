@@ -196,6 +196,37 @@ final class SassCompilerTest {
         assertNull(result.sourceMap());
     }
 
+    /// Terminates the final compressed font-face descriptor for OpenJFX.
+    @Test
+    void terminatesCompressedJavaFXFontFaceDescriptors() throws Exception {
+        var compiler = new SassCompiler();
+        var source = SassSource.fromString(
+                """
+                        @font-face { src: local(Example); }
+                        Pane { -fx-opacity: 1; }
+                        """,
+                Syntax.SCSS
+        );
+
+        assertEquals(
+                "@font-face{src:local(Example);}Pane{-fx-opacity:1}",
+                compiler.compile(
+                        source,
+                        new JavaFXCssTarget(
+                                JavaFXTarget.JAVAFX27,
+                                OutputStyle.COMPRESSED
+                        )
+                ).output()
+        );
+        assertEquals(
+                "@font-face{src:local(Example)}Pane{-fx-opacity:1}",
+                compiler.compile(
+                        source,
+                        new CssTarget(OutputStyle.COMPRESSED, false)
+                ).output()
+        );
+    }
+
     /// Restores legacy JavaFX gradient grouping only for JavaFX CSS targets.
     @Test
     void serializesDirectLegacyJavaFXGradients() throws Exception {

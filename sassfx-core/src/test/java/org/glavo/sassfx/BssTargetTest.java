@@ -311,6 +311,22 @@ final class BssTargetTest {
         );
     }
 
+    /// Compiles plain-CSS font-face descriptors and source functions.
+    @Test
+    void compilesPlainCssFontFace() throws Exception {
+        var compiler = new SassCompiler();
+        var expected = compiler.compile(
+                SassSource.fromString(FONT_FACE_SOURCE, Syntax.SCSS),
+                BssTarget.DEFAULT
+        ).output();
+        var actual = compiler.compile(
+                SassSource.fromString(FONT_FACE_SOURCE, Syntax.CSS),
+                BssTarget.DEFAULT
+        ).output();
+
+        assertArrayEquals(remainingBytes(expected), remainingBytes(actual));
+    }
+
     /// Serializes an unquoted JavaFX local-font source.
     @Test
     void compilesUnquotedLocalFontFaceSource() throws Exception {
@@ -343,6 +359,73 @@ final class BssTargetTest {
                 remainingBytes(output)
         );
         assertNull(result.sourceMap());
+    }
+
+    /// Compiles plain-CSS declaration values through the JavaFX BSS encoders.
+    @Test
+    void compilesPlainCssDeclarationValues() throws Exception {
+        var compiler = new SassCompiler();
+        var expected = compiler.compile(
+                SassSource.fromString(SUPPORTED_SOURCE, Syntax.SCSS),
+                BssTarget.DEFAULT
+        ).output();
+        var actual = compiler.compile(
+                SassSource.fromString(SUPPORTED_SOURCE, Syntax.CSS),
+                BssTarget.DEFAULT
+        ).output();
+
+        assertArrayEquals(remainingBytes(expected), remainingBytes(actual));
+    }
+
+    /// Matches SCSS BSS for named-color and property-lookup precedence.
+    @Test
+    void compilesPlainCssLayeredNamedColors() throws Exception {
+        var source = """
+                Pane {
+                  red: #123456;
+                  green: #abcdef;
+                  -fx-background-color: red, blue;
+                  -fx-border-color: red green blue black, linear-gradient(red, blue);
+                  -fx-fill: red;
+                  -fx-effect: dropshadow(gaussian, green, 8px, 20%, 1px, 2px);
+                }
+                """;
+        var compiler = new SassCompiler();
+        var expected = compiler.compile(
+                SassSource.fromString(source, Syntax.SCSS),
+                BssTarget.DEFAULT
+        ).output();
+        var actual = compiler.compile(
+                SassSource.fromString(source, Syntax.CSS),
+                BssTarget.DEFAULT
+        ).output();
+
+        assertArrayEquals(remainingBytes(expected), remainingBytes(actual));
+    }
+
+    /// Rejects declaration names that the JavaFX CSS lexer cannot tokenize.
+    @Test
+    void rejectsUnsupportedJavaFXDeclarationNames() {
+        var compiler = new SassCompiler();
+        for (var source : List.of(
+                "Pane { --custom: red; }",
+                "Pane { 属性: red; }"
+        )) {
+            var input = SassSource.fromString(source, Syntax.CSS);
+            for (var target : List.<OutputTarget<?>>of(
+                    JavaFXCssTarget.DEFAULT,
+                    BssTarget.DEFAULT
+            )) {
+                var failure = assertThrows(
+                        SassCompilationException.class,
+                        () -> compiler.compile(input, target)
+                );
+                assertTrue(
+                        failure.getMessage().contains("declaration name"),
+                        failure.getMessage()
+                );
+            }
+        }
     }
 
     /// Stores functional pseudo-classes with JavaFX's token concatenation.

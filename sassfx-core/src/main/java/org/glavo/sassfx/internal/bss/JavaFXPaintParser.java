@@ -8,6 +8,7 @@ import org.glavo.sassfx.internal.value.SassColor;
 import org.glavo.sassfx.internal.value.SassNumber;
 import org.glavo.sassfx.internal.value.SassString;
 import org.glavo.sassfx.internal.value.SassValue;
+import org.glavo.sassfx.internal.value.SpanColorFormat;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
@@ -16,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -51,30 +53,73 @@ final class JavaFXPaintParser {
     /// Contains the hundred-percent gradient coordinate.
     private static final SassNumber ONE_HUNDRED_PERCENT = SassNumber.of(100.0, "%");
 
+    /// Rejects every identifier as an already registered property lookup.
+    private static final Predicate<String> NO_REGISTERED_LOOKUPS = ignored -> false;
+
     /// Prevents instantiation.
     private JavaFXPaintParser() {
     }
 
     /// Parses one BSS paint declaration value.
     ///
-    /// @param value the evaluated Sass value
-    /// @param span  the source range associated with the value
+    /// @param value            the evaluated Sass value
+    /// @param span             the source range associated with the value
+    /// @param registeredLookup tests whether an identifier names a declaration
+    ///                         already registered by the JavaFX parser
     /// @return the normalized solid or gradient paint
     /// @throws BssSerializeException if the value is not a supported JavaFX paint
-    static Paint parse(SassValue value, SourceSpan span) {
+    static Paint parse(
+            SassValue value,
+            SourceSpan span,
+            Predicate<String> registeredLookup
+    ) {
         Objects.requireNonNull(value, "value");
         Objects.requireNonNull(span, "span");
+        Objects.requireNonNull(registeredLookup, "registeredLookup");
         if (value instanceof SassColor color) {
+            @Nullable String lookup = registeredSourceColorLookup(
+                    color,
+                    registeredLookup
+            );
+            if (lookup != null) {
+                return new LookupPaint(lookup);
+            }
             return new SolidPaint(color);
         }
         @Nullable var legacyGradient = JavaFXLegacyGradient.serialize(value);
         if (legacyGradient != null) {
-            return parseTextPaint(legacyGradient, span);
+            return parseTextPaint(legacyGradient, span, registeredLookup);
         }
         if (!(value instanceof SassString string) || string.hasQuotes()) {
             throw invalidPaint(span);
         }
-        return parseTextPaint(string.text(), span);
+        return parseTextPaint(string.text(), span, registeredLookup);
+    }
+
+    /// Returns the lookup key represented by a source-spelled named color.
+    ///
+    /// Sass evaluates named colors before BSS serialization. Retaining the
+    /// source spelling is therefore necessary when OpenJFX would reinterpret
+    /// the emitted identifier as an already registered property lookup.
+    ///
+    /// @param color            the evaluated Sass color
+    /// @param registeredLookup tests whether an identifier names a declaration
+    ///                         already registered by the JavaFX parser
+    /// @return the source identifier, or {@code null} when the color remains a
+    ///         concrete color
+    static @Nullable String registeredSourceColorLookup(
+            SassColor color,
+            Predicate<String> registeredLookup
+    ) {
+        Objects.requireNonNull(color, "color");
+        Objects.requireNonNull(registeredLookup, "registeredLookup");
+        if (!(color.format() instanceof SpanColorFormat format)) {
+            return null;
+        }
+        var original = format.original().trim();
+        return isLookupIdentifier(original) && registeredLookup.test(original)
+                ? original
+                : null;
     }
 
     /// Returns whether a value is one of JavaFX's paint function forms.
@@ -119,23 +164,29 @@ final class JavaFXPaintParser {
 
     /// Parses one unquoted JavaFX paint value.
     ///
-    /// @param text the preserved CSS text
-    /// @param span the source range associated with the value
+    /// @param text             the preserved CSS text
+    /// @param span             the source range associated with the value
+    /// @param registeredLookup tests whether an identifier names a declaration
+    ///                         already registered by the JavaFX parser
     /// @return the normalized lookup, gradient, or image-pattern paint
     /// @throws BssSerializeException if the text is not a supported JavaFX paint
-    private static Paint parseTextPaint(String text, SourceSpan span) {
+    private static Paint parseTextPaint(
+            String text,
+            SourceSpan span,
+            Predicate<String> registeredLookup
+    ) {
         var trimmed = text.trim();
         if (isLookupIdentifier(trimmed)) {
             return new LookupPaint(trimmed);
         }
         if (beginsLegacyGradient(trimmed, "linear")) {
-            return parseLegacyLinearGradient(trimmed, span);
+            return parseLegacyLinearGradient(trimmed, span, registeredLookup);
         }
         if (beginsLegacyGradient(trimmed, "radial")) {
-            return parseLegacyRadialGradient(trimmed, span);
+            return parseLegacyRadialGradient(trimmed, span, registeredLookup);
         }
         if (beginsLegacyGradient(trimmed, "ladder")) {
-            return parseLegacyLadderColor(trimmed, span);
+            return parseLegacyLadderColor(trimmed, span, registeredLookup);
         }
         var function = parseFunctionInvocation(trimmed, span);
         @Nullable var functionKind = JavaFXValueFunction.fromName(function.name());
@@ -144,13 +195,17 @@ final class JavaFXPaintParser {
         }
         return switch (functionKind) {
             case RGB, HSB -> new SolidPaint(parseColorFunction(function, span));
-            case LINEAR_GRADIENT -> parseLinearGradient(function.arguments(), span);
-            case RADIAL_GRADIENT -> parseRadialGradient(function.arguments(), span);
+            case LINEAR_GRADIENT ->
+                    parseLinearGradient(function.arguments(), span, registeredLookup);
+            case RADIAL_GRADIENT ->
+                    parseRadialGradient(function.arguments(), span, registeredLookup);
             case IMAGE_PATTERN -> parseImagePattern(function.arguments(), span);
             case REPEATING_IMAGE_PATTERN ->
                     parseRepeatingImagePattern(function.arguments(), span);
-            case DERIVE -> parseDerivedColor(function.arguments(), span);
-            case LADDER -> parseLadderColor(function.arguments(), span);
+            case DERIVE ->
+                    parseDerivedColor(function.arguments(), span, registeredLookup);
+            case LADDER ->
+                    parseLadderColor(function.arguments(), span, registeredLookup);
             case REGION -> parseRegionReference(function.arguments(), span);
             default -> throw invalidPaint(span);
         };
@@ -173,13 +228,16 @@ final class JavaFXPaintParser {
 
     /// Parses JavaFX's deprecated `linear (...) to (...) stops ...` grammar.
     ///
-    /// @param text the complete legacy gradient text
-    /// @param span the source range associated with the declaration
+    /// @param text             the complete legacy gradient text
+    /// @param span             the source range associated with the declaration
+    /// @param registeredLookup tests whether a color identifier names a
+    ///                         registered declaration
     /// @return the normalized linear gradient
     /// @throws BssSerializeException if the legacy grammar is invalid
     private static LinearGradientPaint parseLegacyLinearGradient(
             String text,
-            SourceSpan span
+            SourceSpan span,
+            Predicate<String> registeredLookup
     ) {
         var cursor = new LegacyGradientCursor(text, span);
         cursor.requireKeyword("linear");
@@ -187,7 +245,7 @@ final class JavaFXPaintParser {
         cursor.requireKeyword("to");
         var end = parseLegacyPoint(cursor.parenthesized(), span);
         cursor.requireKeyword("stops");
-        var stops = parseLegacyStops(cursor, span);
+        var stops = parseLegacyStops(cursor, span, registeredLookup);
         var cycleMethod = parseLegacyCycleMethod(cursor, span);
         return new LinearGradientPaint(
                 start.x(),
@@ -202,13 +260,16 @@ final class JavaFXPaintParser {
 
     /// Parses JavaFX's deprecated `radial ... stops ...` grammar.
     ///
-    /// @param text the complete legacy gradient text
-    /// @param span the source range associated with the declaration
+    /// @param text             the complete legacy gradient text
+    /// @param span             the source range associated with the declaration
+    /// @param registeredLookup tests whether a color identifier names a
+    ///                         registered declaration
     /// @return the normalized radial gradient
     /// @throws BssSerializeException if the legacy grammar is invalid
     private static RadialGradientPaint parseLegacyRadialGradient(
             String text,
-            SourceSpan span
+            SourceSpan span,
+            Predicate<String> registeredLookup
     ) {
         var cursor = new LegacyGradientCursor(text, span);
         cursor.requireKeyword("radial");
@@ -229,7 +290,7 @@ final class JavaFXPaintParser {
         }
         var radius = parseGradientSize(cursor.token(), span);
         cursor.requireKeyword("stops");
-        var stops = parseLegacyStops(cursor, span);
+        var stops = parseLegacyStops(cursor, span, registeredLookup);
         var cycleMethod = parseLegacyCycleMethod(cursor, span);
         return new RadialGradientPaint(
                 focusAngle,
@@ -245,18 +306,25 @@ final class JavaFXPaintParser {
 
     /// Parses JavaFX's deprecated `ladder color stops ...` grammar.
     ///
-    /// @param text the complete legacy ladder text
-    /// @param span the source range associated with the declaration
+    /// @param text             the complete legacy ladder text
+    /// @param span             the source range associated with the declaration
+    /// @param registeredLookup tests whether a color identifier names a
+    ///                         registered declaration
     /// @return the normalized ladder color
     /// @throws BssSerializeException if the legacy grammar is invalid
     private static LadderPaint parseLegacyLadderColor(
             String text,
-            SourceSpan span
+            SourceSpan span,
+            Predicate<String> registeredLookup
     ) {
         var cursor = new LegacyGradientCursor(text, span);
         cursor.requireKeyword("ladder");
-        var base = parseColorPaint(cursor.valueBeforeStopsKeyword(), span);
-        var stops = parseLegacyStops(cursor, span);
+        var base = parseColorPaint(
+                cursor.valueBeforeStopsKeyword(),
+                span,
+                registeredLookup
+        );
+        var stops = parseLegacyStops(cursor, span, registeredLookup);
         cursor.requireEnd();
         return new LadderPaint(base, stops);
     }
@@ -283,13 +351,16 @@ final class JavaFXPaintParser {
 
     /// Parses consecutive legacy `(offset, color)` stops.
     ///
-    /// @param cursor the cursor positioned at the first stop
-    /// @param span the source range associated with the declaration
+    /// @param cursor           the cursor positioned at the first stop
+    /// @param span             the source range associated with the declaration
+    /// @param registeredLookup tests whether a color identifier names a
+    ///                         registered declaration
     /// @return immutable stops in source order
     /// @throws BssSerializeException if no stop or an invalid stop is present
     private static @Unmodifiable List<GradientStop> parseLegacyStops(
             LegacyGradientCursor cursor,
-            SourceSpan span
+            SourceSpan span,
+            Predicate<String> registeredLookup
     ) {
         var result = new ArrayList<GradientStop>();
         while (cursor.nextIsParenthesized()) {
@@ -302,7 +373,7 @@ final class JavaFXPaintParser {
             }
             result.add(new GradientStop(
                     parseGradientSize(components.get(0), span),
-                    parseGradientColor(components.get(1), span)
+                    parseGradientColor(components.get(1), span, registeredLookup)
             ));
         }
         if (result.isEmpty()) {
@@ -381,41 +452,51 @@ final class JavaFXPaintParser {
 
     /// Parses JavaFX's `derive(color, brightness)` color function.
     ///
-    /// @param arguments the function body without its parentheses
-    /// @param span      the source range associated with the declaration
+    /// @param arguments        the function body without its parentheses
+    /// @param span             the source range associated with the declaration
+    /// @param registeredLookup tests whether a color identifier names a
+    ///                         registered declaration
     /// @return the normalized derived color
     /// @throws BssSerializeException if the grammar is invalid
     private static DerivedPaint parseDerivedColor(
             String arguments,
-            SourceSpan span
+            SourceSpan span,
+            Predicate<String> registeredLookup
     ) {
         var values = splitTopLevelCommas(arguments, span);
         if (values.size() != 2) {
             throw invalidPaint(span);
         }
         return new DerivedPaint(
-                parseColorPaint(values.get(0), span),
+                parseColorPaint(values.get(0), span, registeredLookup),
                 parseSize(values.get(1), span)
         );
     }
 
     /// Parses JavaFX's `ladder(color, stops...)` color function.
     ///
-    /// @param arguments the function body without its parentheses
-    /// @param span      the source range associated with the declaration
+    /// @param arguments        the function body without its parentheses
+    /// @param span             the source range associated with the declaration
+    /// @param registeredLookup tests whether a color identifier names a
+    ///                         registered declaration
     /// @return the normalized ladder color
     /// @throws BssSerializeException if the grammar is invalid
     private static LadderPaint parseLadderColor(
             String arguments,
-            SourceSpan span
+            SourceSpan span,
+            Predicate<String> registeredLookup
     ) {
         var values = splitTopLevelCommas(arguments, span);
         if (values.size() < 3) {
             throw invalidPaint(span);
         }
         return new LadderPaint(
-                parseColorPaint(values.get(0), span),
-                parseGradientStops(values.subList(1, values.size()), span)
+                parseColorPaint(values.get(0), span, registeredLookup),
+                parseGradientStops(
+                        values.subList(1, values.size()),
+                        span,
+                        registeredLookup
+                )
         );
     }
 
@@ -526,11 +607,17 @@ final class JavaFXPaintParser {
 
     /// Parses JavaFX's {@code linear-gradient(...)} grammar.
     ///
-    /// @param arguments the function body without its parentheses
-    /// @param span      the source range associated with the declaration
+    /// @param arguments        the function body without its parentheses
+    /// @param span             the source range associated with the declaration
+    /// @param registeredLookup tests whether a color identifier names a
+    ///                         registered declaration
     /// @return the normalized linear gradient
     /// @throws BssSerializeException if the grammar is invalid
-    private static LinearGradientPaint parseLinearGradient(String arguments, SourceSpan span) {
+    private static LinearGradientPaint parseLinearGradient(
+            String arguments,
+            SourceSpan span,
+            Predicate<String> registeredLookup
+    ) {
         var argumentsList = splitTopLevelCommas(arguments, span);
         if (argumentsList.size() < 2) {
             throw invalidPaint(span);
@@ -556,7 +643,11 @@ final class JavaFXPaintParser {
             }
         }
 
-        var stops = parseGradientStops(argumentsList.subList(index, argumentsList.size()), span);
+        var stops = parseGradientStops(
+                argumentsList.subList(index, argumentsList.size()),
+                span,
+                registeredLookup
+        );
         return new LinearGradientPaint(
                 new RawGradientSize(direction.startX()),
                 new RawGradientSize(direction.startY()),
@@ -570,11 +661,17 @@ final class JavaFXPaintParser {
 
     /// Parses JavaFX's {@code radial-gradient(...)} grammar.
     ///
-    /// @param arguments the function body without its parentheses
-    /// @param span      the source range associated with the declaration
+    /// @param arguments        the function body without its parentheses
+    /// @param span             the source range associated with the declaration
+    /// @param registeredLookup tests whether a color identifier names a
+    ///                         registered declaration
     /// @return the normalized radial gradient
     /// @throws BssSerializeException if the grammar is invalid
-    private static RadialGradientPaint parseRadialGradient(String arguments, SourceSpan span) {
+    private static RadialGradientPaint parseRadialGradient(
+            String arguments,
+            SourceSpan span,
+            Predicate<String> registeredLookup
+    ) {
         var argumentsList = splitTopLevelCommas(arguments, span);
         if (argumentsList.size() < 3) {
             throw invalidPaint(span);
@@ -627,7 +724,11 @@ final class JavaFXPaintParser {
             }
         }
 
-        var stops = parseGradientStops(argumentsList.subList(index, argumentsList.size()), span);
+        var stops = parseGradientStops(
+                argumentsList.subList(index, argumentsList.size()),
+                span,
+                registeredLookup
+        );
         return new RadialGradientPaint(
                 focusAngle == null ? null : new RawGradientSize(focusAngle),
                 focusDistance == null
@@ -770,11 +871,14 @@ final class JavaFXPaintParser {
     ///
     /// @param arguments the remaining comma-separated color-stop arguments
     /// @param span      the source range associated with the declaration
+    /// @param registeredLookup tests whether a color identifier names a
+    ///                         registered declaration
     /// @return normalized color stops in source order
     /// @throws BssSerializeException if fewer than two valid stops are present
     private static @Unmodifiable List<GradientStop> parseGradientStops(
             List<String> arguments,
-            SourceSpan span
+            SourceSpan span,
+            Predicate<String> registeredLookup
     ) {
         if (arguments.size() < 2) {
             throw invalidPaint(span);
@@ -782,23 +886,33 @@ final class JavaFXPaintParser {
 
         var rawStops = new ArrayList<RawGradientStop>(arguments.size());
         for (var argument : arguments) {
-            rawStops.add(parseGradientStop(argument, span));
+            rawStops.add(parseGradientStop(argument, span, registeredLookup));
         }
         return normalizeGradientStops(rawStops);
     }
 
     /// Parses one JavaFX {@code <color-stop>} argument.
     ///
-    /// @param argument the complete comma-separated color-stop argument
-    /// @param span     the source range associated with the declaration
+    /// @param argument         the complete comma-separated color-stop argument
+    /// @param span             the source range associated with the declaration
+    /// @param registeredLookup tests whether the color identifier names a
+    ///                         registered declaration
     /// @return the unnormalized color stop
     /// @throws BssSerializeException if the color-stop grammar is invalid
-    private static RawGradientStop parseGradientStop(String argument, SourceSpan span) {
+    private static RawGradientStop parseGradientStop(
+            String argument,
+            SourceSpan span,
+            Predicate<String> registeredLookup
+    ) {
         var components = splitComponents(argument, span);
         if (components.isEmpty() || components.size() > 2) {
             throw invalidPaint(span);
         }
-        var color = parseGradientColor(components.get(0), span);
+        var color = parseGradientColor(
+                components.get(0),
+                span,
+                registeredLookup
+        );
         @Nullable SassNumber offset = components.size() == 2
                 ? parseSize(components.get(1), span)
                 : null;
@@ -1097,24 +1211,42 @@ final class JavaFXPaintParser {
     }
     /// Parses one CSS gradient color, preserving recursive JavaFX color forms.
     ///
-    /// @param text the raw color text
-    /// @param span the source range associated with the declaration
+    /// @param text             the raw color text
+    /// @param span             the source range associated with the declaration
+    /// @param registeredLookup tests whether the color identifier names a
+    ///                         registered declaration
     /// @return a solid, lookup, derived, or ladder color
     /// @throws BssSerializeException if the color syntax is not supported
-    private static ColorPaint parseGradientColor(String text, SourceSpan span) {
-        return parseColorPaint(text, span);
+    private static ColorPaint parseGradientColor(
+            String text,
+            SourceSpan span,
+            Predicate<String> registeredLookup
+    ) {
+        return parseColorPaint(text, span, registeredLookup);
     }
 
     /// Parses one JavaFX value whose runtime type is `Color`.
     ///
-    /// @param text the raw color text
-    /// @param span the source range associated with the declaration
+    /// Registered property names take precedence over named colors, matching
+    /// the source-ordered lookup state maintained by OpenJFX.
+    ///
+    /// @param text             the raw color text
+    /// @param span             the source range associated with the declaration
+    /// @param registeredLookup tests whether the color identifier names a
+    ///                         registered declaration
     /// @return a solid, lookup, derived, or ladder color
     /// @throws BssSerializeException if the color syntax is unsupported
-    static ColorPaint parseColorPaint(String text, SourceSpan span) {
+    static ColorPaint parseColorPaint(
+            String text,
+            SourceSpan span,
+            Predicate<String> registeredLookup
+    ) {
         var trimmed = text.trim();
         if (trimmed.isEmpty()) {
             throw invalidPaint(span);
+        }
+        if (isLookupIdentifier(trimmed) && registeredLookup.test(trimmed)) {
+            return new LookupPaint(trimmed);
         }
         @Nullable SassColor named = SassColor.named(trimmed, span);
         if (named != null) {
@@ -1136,8 +1268,10 @@ final class JavaFXPaintParser {
         }
         return switch (functionKind) {
             case RGB, HSB -> new SolidPaint(parseColorFunction(function, span));
-            case DERIVE -> parseDerivedColor(function.arguments(), span);
-            case LADDER -> parseLadderColor(function.arguments(), span);
+            case DERIVE ->
+                    parseDerivedColor(function.arguments(), span, registeredLookup);
+            case LADDER ->
+                    parseLadderColor(function.arguments(), span, registeredLookup);
             default -> throw invalidPaint(span);
         };
     }
@@ -1150,7 +1284,7 @@ final class JavaFXPaintParser {
     ///         concrete JavaFX color
     static @Nullable SolidPaint tryParseSolidColor(String text, SourceSpan span) {
         try {
-            var color = parseColorPaint(text, span);
+            var color = parseColorPaint(text, span, NO_REGISTERED_LOOKUPS);
             return color instanceof SolidPaint solid ? solid : null;
         } catch (BssSerializeException ignored) {
             return null;

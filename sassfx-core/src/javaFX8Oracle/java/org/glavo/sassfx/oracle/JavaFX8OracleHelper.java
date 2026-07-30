@@ -49,33 +49,75 @@ public final class JavaFX8OracleHelper {
         }
 
         Path directory = Paths.get(arguments[0]).toAbsolutePath();
-        Path source = directory.resolve("fixture.css");
-        Path expectedPath = directory.resolve("expected.bss");
-        Path actualPath = directory.resolve("actual.bss");
         Method convertToBinary = stylesheetClass.getMethod(
                 "convertToBinary",
                 File.class,
                 File.class
         );
+        Method loadBinary = stylesheetClass.getMethod("loadBinary", java.net.URL.class);
+        verifyFixture(
+                directory,
+                "fixture.css",
+                "expected.bss",
+                "actual.bss",
+                "SCSS compatibility fixture",
+                convertToBinary,
+                loadBinary
+        );
+        verifyFixture(
+                directory,
+                "plain-fixture.css",
+                "plain-expected.bss",
+                "plain-actual.bss",
+                "plain-CSS fixture",
+                convertToBinary,
+                loadBinary
+        );
+    }
+
+    /// Converts, compares, and loads one generated fixture.
+    ///
+    /// @param directory       the generated input directory
+    /// @param sourceName      the CSS input filename
+    /// @param expectedName    the OpenJFX BSS filename
+    /// @param actualName      the SassFX BSS filename
+    /// @param fixtureName     the diagnostic fixture name
+    /// @param convertToBinary the reflective OpenJFX conversion method
+    /// @param loadBinary      the reflective OpenJFX loading method
+    /// @throws Exception if conversion, comparison, or loading fails
+    private static void verifyFixture(
+            Path directory,
+            String sourceName,
+            String expectedName,
+            String actualName,
+            String fixtureName,
+            Method convertToBinary,
+            Method loadBinary
+    ) throws Exception {
+        Path source = directory.resolve(sourceName);
+        Path expectedPath = directory.resolve(expectedName);
+        Path actualPath = directory.resolve(actualName);
         convertToBinary.invoke(null, source.toFile(), expectedPath.toFile());
 
         byte[] expected = Files.readAllBytes(expectedPath);
         byte[] actual = Files.readAllBytes(actualPath);
-        requireVersion5("OpenJFX", expected);
-        requireVersion5("SassFX", actual);
+        requireVersion5("OpenJFX " + fixtureName, expected);
+        requireVersion5("SassFX " + fixtureName, actual);
         int mismatch = firstMismatch(expected, actual);
         if (mismatch >= 0) {
             throw new AssertionError(
-                    "JavaFX 8 BSS differs at byte " + mismatch
+                    "JavaFX 8 " + fixtureName + " BSS differs at byte " + mismatch
                             + "; expected=" + Base64.getEncoder().encodeToString(expected)
                             + "; actual=" + Base64.getEncoder().encodeToString(actual)
             );
         }
 
-        Method loadBinary = stylesheetClass.getMethod("loadBinary", java.net.URL.class);
         @Nullable Object loaded = loadBinary.invoke(null, actualPath.toUri().toURL());
         if (loaded == null) {
-            throw new AssertionError("JavaFX 8 returned null when loading SassFX BSS.");
+            throw new AssertionError(
+                    "JavaFX 8 returned null when loading SassFX "
+                            + fixtureName + " BSS."
+            );
         }
     }
 
