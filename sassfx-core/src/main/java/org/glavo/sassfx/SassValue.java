@@ -13,7 +13,6 @@ import org.glavo.sassfx.internal.value.SassNull;
 import org.glavo.sassfx.internal.value.SassNumber;
 import org.glavo.sassfx.internal.value.SassString;
 import org.glavo.sassfx.internal.value.SassValueException;
-import org.glavo.sassfx.internal.value.color.ColorSpace;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -177,7 +176,7 @@ public final class SassValue {
     ) {
         Objects.requireNonNull(space, "space");
         return new SassValue(SassColor.forSpace(
-                (ColorSpace) space.bridgeToInternal(),
+                space.internal(),
                 channel1,
                 channel2,
                 channel3,
@@ -349,7 +348,7 @@ public final class SassValue {
     /// @return the represented public color space
     /// @throws IllegalStateException if this is not a color
     public SassColorSpace colorSpace() {
-        return SassColorSpace.bridgeFromInternal(
+        return SassColorSpace.fromInternal(
                 require(SassColor.class, SassValueType.COLOR).space()
         );
     }

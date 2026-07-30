@@ -90,11 +90,10 @@ public enum SassColorSpace {
         return internal.isLegacy();
     }
 
-    /// Returns the evaluator representation used by the internal value bridge.
+    /// Returns the evaluator representation of this color space.
     ///
     /// @return the internal color space
-    @org.jetbrains.annotations.ApiStatus.Internal
-    public Object bridgeToInternal() {
+    ColorSpace internal() {
         return internal;
     }
 
@@ -102,15 +101,13 @@ public enum SassColorSpace {
     ///
     /// @param space the evaluator color space
     /// @return the corresponding public space
-    @org.jetbrains.annotations.ApiStatus.Internal
-    public static SassColorSpace bridgeFromInternal(Object space) {
-        if (!(space instanceof ColorSpace internalSpace)
-                || internalSpace == ColorSpace.LMS) {
+    static SassColorSpace fromInternal(ColorSpace space) {
+        if (space == ColorSpace.LMS) {
             throw new IllegalArgumentException(
                     "space must be a public Sass color space"
             );
         }
-        return switch (internalSpace) {
+        return switch (space) {
             case RGB -> RGB;
             case HSL -> HSL;
             case HWB -> HWB;
