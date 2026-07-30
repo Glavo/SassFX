@@ -874,7 +874,7 @@ A platform feature may still be unsupported by a particular output backend.
 
 | JavaFX target | Modeled changes | BSS |
 | --- | --- | --- |
-| 8 | Baseline font faces, unconditional imports, and legacy gradients | v5 |
+| 8 | Baseline font faces, imports, legacy gradients, and functional pseudo-classes | v5 |
 | 9 | Public converter package names | v6 |
 | 10–16 | No additional modeled change | v6 |
 | 17 | No additional modeled change; extended blend modes unavailable | v6 |
@@ -897,9 +897,11 @@ The current release has the following boundaries:
   selectors, nodes, converter shapes, and values fail explicitly instead of
   producing a binary stylesheet that may not load.
 - JavaFX-target selectors currently support type, universal, class, ID, and
-  non-functional pseudo-class selectors with descendant and child
-  combinators. Namespaces, attributes, siblings, functional pseudo-classes,
-  and pseudo-elements are rejected.
+  pseudo-class selectors with descendant and child combinators. Functional
+  pseudo-class arguments may contain JavaFX ASCII identifiers, quoted strings,
+  whitespace, and comments; JavaFX concatenates the identifier and string
+  tokens. Namespaces, attributes, siblings, pseudo-elements, and other
+  functional argument tokens are rejected.
 - JavaFX targets reject native CSS nesting, `@supports`, and unknown at-rules.
   Font faces and retained imports must occur at the stylesheet root.
 - JavaFX media conditions begin at the modeled JavaFX 25 boundary. CSS media

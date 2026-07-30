@@ -3,12 +3,7 @@ package org.glavo.sassfx.internal.css;
 
 import org.glavo.sassfx.JavaFXTarget;
 import org.glavo.sassfx.SourceSpan;
-import org.glavo.sassfx.internal.ast.selector.ClassSelector;
 import org.glavo.sassfx.internal.ast.selector.Combinator;
-import org.glavo.sassfx.internal.ast.selector.IdSelector;
-import org.glavo.sassfx.internal.ast.selector.PseudoSelector;
-import org.glavo.sassfx.internal.ast.selector.TypeSelector;
-import org.glavo.sassfx.internal.ast.selector.UniversalSelector;
 import org.glavo.sassfx.internal.value.SassString;
 import org.glavo.sassfx.internal.value.SassValueException;
 import org.jetbrains.annotations.ApiStatus;
@@ -187,10 +182,11 @@ public final class JavaFXCssValidator {
 
     /// Validates the selector subset interpreted by JavaFX.
     ///
-    /// JavaFX supports type, universal, class, ID, and non-functional
-    /// pseudo-class selectors joined by descendant or child combinators.
-    /// Other CSS selector forms would either fail parsing or silently acquire
-    /// a different meaning.
+    /// JavaFX supports type, universal, class, ID, and pseudo-class selectors
+    /// joined by descendant or child combinators. Functional pseudo-class
+    /// arguments are limited to JavaFX's identifier-and-string token grammar.
+    /// Other CSS selector forms would either fail parsing or silently acquire a
+    /// different meaning.
     ///
     /// @param rule the visible style rule whose selector is validated
     private static void validateSelector(CssStyleRule rule) {
@@ -201,30 +197,21 @@ public final class JavaFXCssValidator {
             if (!complex.leadingCombinators().isEmpty()) {
                 throw unsupportedSelector(complex.span());
             }
-            for (var component : complex.components()) {
-                for (var combinator : component.combinators()) {
-                    if (combinator != Combinator.CHILD) {
+            var components = complex.components();
+            for (var index = 0; index < components.size(); index++) {
+                var component = components.get(index);
+                var combinators = component.combinators();
+                if (index == components.size() - 1) {
+                    if (!combinators.isEmpty()) {
                         throw unsupportedSelector(component.span());
                     }
+                } else if (!combinators.isEmpty()
+                        && (combinators.size() != 1
+                        || combinators.get(0) != Combinator.CHILD)) {
+                    throw unsupportedSelector(component.span());
                 }
-                for (var simple : component.selector().components()) {
-                    if (simple instanceof TypeSelector type
-                            && type.name().isUnqualified()) {
-                        continue;
-                    }
-                    if (simple instanceof UniversalSelector universal
-                            && universal.isUnqualified()) {
-                        continue;
-                    }
-                    if (simple instanceof ClassSelector || simple instanceof IdSelector) {
-                        continue;
-                    }
-                    if (simple instanceof PseudoSelector pseudo
-                            && pseudo.isClass()
-                            && pseudo.argument() == null) {
-                        continue;
-                    }
-                    throw unsupportedSelector(simple.span());
+                if (JavaFXSimpleSelector.from(component) == null) {
+                    throw unsupportedSelector(component.span());
                 }
             }
         }

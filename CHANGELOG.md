@@ -62,6 +62,8 @@ with library, command-line, Embedded Sass, and Gradle interfaces.
 - Models JavaFX targets 8 through 27 and BSS versions 5 through 9.
 - Validates selectors, at-rules, media conditions, conditional imports,
   transitions, properties, and values before serialization.
+- Supports JavaFX functional pseudo-class tokenization, duplicate elimination,
+  and `dir(...)` node-orientation encoding in textual CSS and BSS.
 - Serializes every supported non-transition JavaFX converter family,
   including paints, fonts, effects, URLs, durations, backgrounds, borders,
   and retained stylesheet imports.

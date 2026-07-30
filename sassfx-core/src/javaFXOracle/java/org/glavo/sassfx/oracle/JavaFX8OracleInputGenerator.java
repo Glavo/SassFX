@@ -42,6 +42,12 @@ public final class JavaFX8OracleInputGenerator {
               -fx-font-family: "Oracle Font";
               -fx-blend-mode: multiply;
             }
+            Pane:dir(rtl) { -fx-opacity: 0.5; }
+            Label:lang("en") { -fx-opacity: 0.5; }
+            Region:state(primary selected) { -fx-opacity: 0.5; }
+            Button:state(primary/**/secondary) { -fx-opacity: 0.5; }
+            Control:empty-state() { -fx-opacity: 0.5; }
+            Node:not(leaf) { -fx-opacity: 0.5; }
             QuotedStrings {
               -fx-ellipsis-string: "More";
               -fx-prompt-text: 'Type here';

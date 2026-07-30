@@ -4,16 +4,10 @@ package org.glavo.sassfx.internal.bss;
 import org.glavo.sassfx.BssTarget;
 import org.glavo.sassfx.JavaFXTarget;
 import org.glavo.sassfx.SourceSpan;
-import org.glavo.sassfx.internal.ast.selector.ClassSelector;
 import org.glavo.sassfx.internal.ast.selector.Combinator;
 import org.glavo.sassfx.internal.ast.selector.ComplexSelector;
 import org.glavo.sassfx.internal.ast.selector.ComplexSelectorComponent;
-import org.glavo.sassfx.internal.ast.selector.IdSelector;
-import org.glavo.sassfx.internal.ast.selector.PseudoSelector;
 import org.glavo.sassfx.internal.ast.selector.SelectorList;
-import org.glavo.sassfx.internal.ast.selector.SimpleSelector;
-import org.glavo.sassfx.internal.ast.selector.TypeSelector;
-import org.glavo.sassfx.internal.ast.selector.UniversalSelector;
 import org.glavo.sassfx.internal.css.CssComment;
 import org.glavo.sassfx.internal.css.CssDeclaration;
 import org.glavo.sassfx.internal.css.CssFontFace;
@@ -24,10 +18,11 @@ import org.glavo.sassfx.internal.css.CssSupportsRule;
 import org.glavo.sassfx.internal.css.CssStyleRule;
 import org.glavo.sassfx.internal.css.CssStylesheet;
 import org.glavo.sassfx.internal.css.CssUnknownAtRule;
-import org.glavo.sassfx.internal.css.JavaFXMediaQuery;
-import org.glavo.sassfx.internal.css.JavaFXMediaQueryValidator;
 import org.glavo.sassfx.internal.css.JavaFXCssImport;
 import org.glavo.sassfx.internal.css.JavaFXLegacyGradient;
+import org.glavo.sassfx.internal.css.JavaFXMediaQuery;
+import org.glavo.sassfx.internal.css.JavaFXMediaQueryValidator;
+import org.glavo.sassfx.internal.css.JavaFXSimpleSelector;
 import org.glavo.sassfx.internal.value.ListSeparator;
 import org.glavo.sassfx.internal.value.SassBoolean;
 import org.glavo.sassfx.internal.value.SassColor;
@@ -987,50 +982,36 @@ public final class BssSerializer {
             ComplexSelectorComponent component,
             StringStore strings
     ) throws IOException {
-        var typeName = "*";
-        var id = "";
-        var typeSpecified = false;
-        var classes = new ArrayList<String>();
-        var pseudoClasses = new ArrayList<String>();
-
-        for (var simple : component.selector().components()) {
-            if (simple instanceof TypeSelector type) {
-                if (!type.name().isUnqualified() || typeSpecified) {
-                    throw unsupportedSelector(simple, component.span());
-                }
-                typeName = type.name().name().value();
-                typeSpecified = true;
-            } else if (simple instanceof UniversalSelector universal) {
-                if (!universal.isUnqualified() || typeSpecified) {
-                    throw unsupportedSelector(simple, component.span());
-                }
-                typeSpecified = true;
-            } else if (simple instanceof ClassSelector styleClass) {
-                classes.add(styleClass.name().value());
-            } else if (simple instanceof IdSelector identifier) {
-                if (!id.isEmpty()) {
-                    throw unsupportedSelector(simple, component.span());
-                }
-                id = identifier.name().value();
-            } else if (simple instanceof PseudoSelector pseudo) {
-                if (pseudo.element() || pseudo.argument() != null) {
-                    throw unsupportedSelector(simple, component.span());
-                }
-                pseudoClasses.add(pseudo.name().value());
-            } else {
-                throw unsupportedSelector(simple, component.span());
-            }
+        var selector = JavaFXSimpleSelector.from(component);
+        if (selector == null) {
+            throw new BssSerializeException(
+                    "BSS output doesn't support selector "
+                            + component.selector().toCssString()
+                            + ".",
+                    component.span(),
+                    null
+            );
         }
 
         output.writeByte(SIMPLE_SELECTOR);
-        output.writeShort(strings.add(typeName));
-        writeShortCount(output, classes.size(), component.span(), "style classes");
-        for (var styleClass : classes) {
+        output.writeShort(strings.add(selector.typeName()));
+        writeShortCount(
+                output,
+                selector.styleClasses().size(),
+                component.span(),
+                "style classes"
+        );
+        for (var styleClass : selector.styleClasses()) {
             output.writeShort(strings.add(styleClass));
         }
-        output.writeShort(strings.add(id));
-        writeShortCount(output, pseudoClasses.size(), component.span(), "pseudo classes");
-        for (var pseudoClass : pseudoClasses) {
+        output.writeShort(strings.add(selector.id()));
+        writeShortCount(
+                output,
+                selector.pseudoClasses().size(),
+                component.span(),
+                "pseudo classes"
+        );
+        for (var pseudoClass : selector.pseudoClasses()) {
             output.writeShort(strings.add(pseudoClass));
         }
     }
@@ -4818,21 +4799,6 @@ public final class BssSerializer {
         );
     }
 
-    /// Creates a serialization failure for an unsupported simple selector.
-    ///
-    /// @param selector the unsupported selector
-    /// @param span     the containing selector span
-    /// @return the serialization failure
-    private static BssSerializeException unsupportedSelector(
-            SimpleSelector selector,
-            SourceSpan span
-    ) {
-        return new BssSerializeException(
-                "BSS output doesn't support selector " + selector.toCssString() + ".",
-                span,
-                null
-        );
-    }
     /// Stores one normalized JavaFX background-position layer.
     ///
     /// @param top    the top offset

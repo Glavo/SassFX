@@ -136,7 +136,8 @@ final class OutputTargetTest {
                 Set.of(
                         JavaFXFeature.FONT_FACE,
                         JavaFXFeature.UNCONDITIONAL_STYLESHEET_IMPORTS,
-                        JavaFXFeature.LEGACY_GRADIENT_SYNTAX
+                        JavaFXFeature.LEGACY_GRADIENT_SYNTAX,
+                        JavaFXFeature.FUNCTIONAL_PSEUDO_CLASSES
                 ),
                 JavaFXTarget.JAVAFX8.features()
         );

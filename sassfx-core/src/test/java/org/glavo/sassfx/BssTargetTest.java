@@ -345,6 +345,57 @@ final class BssTargetTest {
         assertNull(result.sourceMap());
     }
 
+    /// Stores functional pseudo-classes with JavaFX's token concatenation.
+    @Test
+    void compilesFunctionalPseudoClasses() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                Pane.repeat.repeat:dir(rtl):lang("en"):state(primary selected)\
+                                :state(primary selected):state(primary/**/secondary)\
+                                :empty-state():not(leaf):dir(ltr) {
+                                  -fx-opacity: 0.5;
+                                }
+                                """,
+                        Syntax.SCSS
+                ),
+                BssTarget.DEFAULT
+        ).output());
+        var strings = java.util.Arrays.asList(document.strings());
+
+        assertTrue(strings.contains("lang(\"en\")"));
+        assertTrue(strings.contains("state(primaryselected)"));
+        assertTrue(strings.contains("state(primarysecondary)"));
+        assertTrue(strings.contains("empty-state()"));
+        assertTrue(strings.contains("not(leaf)"));
+        assertTrue(strings.contains("dir(ltr)"));
+        assertFalse(strings.contains("dir(rtl)"));
+        assertFalse(strings.contains("state(primary selected)"));
+
+        var input = document.input();
+        input.readUnsignedShort(); // origin
+        assertEquals(1, input.readUnsignedShort());
+        assertEquals(1, input.readUnsignedShort());
+        assertEquals(1, input.readUnsignedByte());
+        assertEquals("Pane", document.strings()[input.readUnsignedShort()]);
+        assertEquals(1, input.readUnsignedShort());
+        assertEquals("repeat", document.strings()[input.readUnsignedShort()]);
+        assertEquals("", document.strings()[input.readUnsignedShort()]);
+        assertEquals(6, input.readUnsignedShort());
+        assertEquals("lang(\"en\")", document.strings()[input.readUnsignedShort()]);
+        assertEquals(
+                "state(primaryselected)",
+                document.strings()[input.readUnsignedShort()]
+        );
+        assertEquals(
+                "state(primarysecondary)",
+                document.strings()[input.readUnsignedShort()]
+        );
+        assertEquals("empty-state()", document.strings()[input.readUnsignedShort()]);
+        assertEquals("not(leaf)", document.strings()[input.readUnsignedShort()]);
+        assertEquals("dir(ltr)", document.strings()[input.readUnsignedShort()]);
+    }
+
     /// Serializes the JavaFX 27 import and media-rule framing of BSS v9.
     @Test
     void compilesJavaFX27Bss() throws Exception {

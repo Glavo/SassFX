@@ -19,6 +19,10 @@ public enum JavaFXFeature {
     /// Supports the deprecated token-series linear and radial gradient syntax.
     LEGACY_GRADIENT_SYNTAX(8),
 
+    /// Supports functional pseudo-classes whose arguments contain only
+    /// JavaFX identifier and string tokens.
+    FUNCTIONAL_PSEUDO_CLASSES(8),
+
     /// Correctly parses the `add`, `red`, `green`, and `blue` blend modes.
     EXTENDED_BLEND_MODES(18),
 

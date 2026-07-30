@@ -85,6 +85,18 @@ public final class JavaFXCssOracle {
                 Syntax.SCSS
         ));
         fixtures.add(new Fixture(
+                "functional-pseudo-classes",
+                """
+                        Pane:dir(rtl) { -fx-opacity: 0.5; }
+                        Label:lang("en") { -fx-opacity: 0.5; }
+                        Region:state(primary selected) { -fx-opacity: 0.5; }
+                        Button:state(primary/**/secondary) { -fx-opacity: 0.5; }
+                        Control:empty-state() { -fx-opacity: 0.5; }
+                        Node:not(leaf) { -fx-opacity: 0.5; }
+                        """,
+                Syntax.SCSS
+        ));
+        fixtures.add(new Fixture(
                 "blend-mode",
                 "Pane { -fx-blend-mode: multiply; }",
                 Syntax.SCSS
@@ -427,6 +439,31 @@ public final class JavaFXCssOracle {
                 "@media (hover) { Pane { -fx-opacity: 1; } }",
                 Syntax.SCSS
         ));
+        fixtures.add(new Fixture(
+                "selector-pseudo-argument",
+                "Pane:is(.active) { -fx-opacity: 1; }",
+                Syntax.SCSS
+        ));
+        fixtures.add(new Fixture(
+                "selector-numeric-pseudo-argument",
+                "Pane:nth-child(2n+1) { -fx-opacity: 1; }",
+                Syntax.SCSS
+        ));
+        fixtures.add(new Fixture(
+                "selector-multiple-ids",
+                "Pane#first#second { -fx-opacity: 1; }",
+                Syntax.SCSS
+        ));
+        fixtures.add(new Fixture(
+                "selector-escaped-id",
+                "Pane#\\31 abc { -fx-opacity: 1; }",
+                Syntax.SCSS
+        ));
+        fixtures.add(new Fixture(
+                "selector-non-ascii-identifier",
+                "窗格 { -fx-opacity: 1; }",
+                Syntax.SCSS
+        ));
         if (!target.supports(org.glavo.sassfx.JavaFXFeature.EXTENDED_BLEND_MODES)) {
             fixtures.add(new Fixture(
                     "extended-blend-mode",
@@ -530,7 +567,8 @@ public final class JavaFXCssOracle {
             );
         }
         var compareBss = switch (fixture.name()) {
-            case "effects",
+            case "functional-pseudo-classes",
+                 "effects",
                  "duration-scalars",
                  "quoted-strings",
                  "generic-size-sequence",

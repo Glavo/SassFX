@@ -604,7 +604,12 @@ final class JavaFXCssValidatorTest {
             "Pane",
             "*",
             ".button#main:hover",
-            "VBox > .button .label"
+            "VBox > .button .label",
+            "Pane:dir(rtl):lang(\"en\")",
+            "Pane:state(primary selected)",
+            "Pane:state(primary/**/selected)",
+            "Pane:not(leaf)",
+            "Pane:empty-state()"
     })
     void acceptsJavaFXSelectors(String selector) {
         for (var compatibility : JavaFXTarget.values()) {
@@ -633,6 +638,12 @@ final class JavaFXCssValidatorTest {
             "Pane ~ Label",
             "Pane::before",
             "Pane:is(.active)",
+            "Pane:nth-child(2n+1)",
+            "Pane:state(primary, selected)",
+            "Pane:url(icon)",
+            "Pane#first#second",
+            "Pane#\\31 abc",
+            "窗格",
             "svg|Pane"
     })
     void rejectsUnsupportedJavaFXSelectors(String selector) {

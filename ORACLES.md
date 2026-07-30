@@ -95,6 +95,8 @@ declarations, media payload, and font faces.
 
 The byte-exact matrix currently covers:
 
+- type, class, ID, ordinary pseudo-class, and functional pseudo-class
+  selectors, including JavaFX token concatenation and `dir(...)` orientation;
 - scalar sizes, durations, URLs, fonts, blend modes, shadow effects, and
   generic quoted strings, including empty strings and special keyword/color
   recognition;
