@@ -2,7 +2,6 @@
 package org.glavo.sassfx;
 
 import org.glavo.sassfx.internal.ast.VariableExpression;
-import org.glavo.sassfx.internal.callable.CustomFunctionCallable;
 import org.glavo.sassfx.internal.diagnostic.CompilationDiagnostics;
 import org.glavo.sassfx.internal.evaluate.EvaluationException;
 import org.glavo.sassfx.internal.evaluate.SassEvaluator;
@@ -58,7 +57,7 @@ public final class SassInteractiveSession {
                 "workingDirectory"
         ).toAbsolutePath().normalize();
         var customFunctions = options.functions().stream()
-                .map(CustomFunctionCallable::parse)
+                .map(SassCustomFunction::toCallable)
                 .toList();
         this.diagnosticReporter = new CompilationDiagnostics(
                 options.diagnosticOptions()

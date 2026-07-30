@@ -50,12 +50,19 @@ val moduleBoundarySources = files(
     },
 )
 
+val publicApiSources = fileTree(
+    "sassfx-core/src/main/java/org/glavo/sassfx",
+) {
+    include("*.java")
+}
+
 val verifyModuleBoundaries = tasks.register<VerifyModuleBoundariesTask>(
     "verifyModuleBoundaries",
 ) {
     group = LifecycleBasePlugin.VERIFICATION_GROUP
-    description = "Verifies that frontend modules do not depend on unsupported core internals."
+    description = "Verifies supported core and frontend API boundaries."
     sourceFiles.from(moduleBoundarySources)
+    publicApiSourceFiles.from(publicApiSources)
     rootDirectory.set(layout.projectDirectory)
 }
 

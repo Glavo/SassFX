@@ -20,7 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
 
-/// Verifies that frontend modules use only supported core API boundaries.
+/// Verifies the supported API boundary between core and frontend modules.
 @NotNullByDefault
 @DisableCachingByDefault(because = "Verification tasks have no outputs.")
 public abstract class VerifyModuleBoundariesTask extends DefaultTask {
@@ -29,11 +29,17 @@ public abstract class VerifyModuleBoundariesTask extends DefaultTask {
     @PathSensitive(PathSensitivity.RELATIVE)
     public abstract ConfigurableFileCollection getSourceFiles();
 
+    /// Returns top-level core sources that define the supported public API.
+    @InputFiles
+    @PathSensitive(PathSensitivity.RELATIVE)
+    public abstract ConfigurableFileCollection getPublicApiSourceFiles();
+
     /// Returns the repository root used to report relative source paths.
     @Internal
     public abstract DirectoryProperty getRootDirectory();
 
-    /// Scans frontend sources and rejects references to core internals.
+    /// Rejects frontend references to core internals and public API escape
+    /// hatches.
     ///
     /// @throws IOException if a configured source file cannot be read
     @TaskAction
@@ -56,8 +62,30 @@ public abstract class VerifyModuleBoundariesTask extends DefaultTask {
                         internalReference(lines.get(index));
                 if (internalType != null) {
                     violations.add(
-                            relativePath + ":" + (index + 1) + ": "
+                            relativePath + ":" + (index + 1)
+                                    + ": frontend reference to "
                                     + internalType
+                    );
+                }
+            }
+        }
+        for (var file : getPublicApiSourceFiles().getFiles()) {
+            if (!file.isFile()) {
+                continue;
+            }
+            var relativePath = root.relativize(file.toPath())
+                    .toString()
+                    .replace(File.separatorChar, '/');
+            var lines = Files.readAllLines(
+                    file.toPath(),
+                    StandardCharsets.UTF_8
+            );
+            for (var index = 0; index < lines.size(); index++) {
+                if (lines.get(index).contains("ApiStatus.Internal")) {
+                    violations.add(
+                            relativePath + ":" + (index + 1)
+                                    + ": supported public packages must not "
+                                    + "declare internal API escape hatches"
                     );
                 }
             }
@@ -65,7 +93,7 @@ public abstract class VerifyModuleBoundariesTask extends DefaultTask {
 
         if (!violations.isEmpty()) {
             throw new GradleException(
-                    "Frontend modules reference unsupported core internals:\n"
+                    "Unsupported API boundary violations:\n"
                             + String.join("\n", violations)
             );
         }

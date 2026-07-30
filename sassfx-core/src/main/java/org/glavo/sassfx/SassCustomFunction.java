@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.sassfx;
 
+import org.glavo.sassfx.internal.callable.CustomFunctionBridge;
 import org.glavo.sassfx.internal.callable.CustomFunctionCallable;
+import org.glavo.sassfx.internal.value.SassFunction;
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -42,10 +46,28 @@ public record SassCustomFunction(
     /// @throws IllegalArgumentException if the signature is not one complete
     /// function signature
     public static void validateSignature(String signature) {
-        CustomFunctionCallable.parse(new SassCustomFunction(
+        new SassCustomFunction(
                 signature,
                 ignored -> SassValue.nullValue()
-        ));
+        ).toCallable();
+    }
+
+    /// Creates the evaluator callable for this definition.
+    ///
+    /// @return a newly parsed callable
+    CustomFunctionCallable toCallable() {
+        return CustomFunctionCallable.parse(new Bridge(signature, callback));
+    }
+
+    /// Creates a first-class evaluator function for the active compilation.
+    ///
+    /// @return the compilation-bound function value
+    /// @throws IllegalStateException if no custom callback is active
+    SassFunction toFunctionValue() {
+        return new SassFunction(
+                toCallable(),
+                CustomFunctionCallable.callbackCompilationContext()
+        );
     }
 
     /// Implements one synchronous custom Sass function body.
@@ -63,5 +85,42 @@ public record SassCustomFunction(
         /// @return the non-{@code null} Sass result
         /// @throws Exception if the call fails
         SassValue apply(@Unmodifiable List<SassValue> arguments) throws Exception;
+    }
+
+    /// Converts values at the public callback boundary.
+    ///
+    /// @param signature the complete Sass function signature
+    /// @param callback the public callback
+    @NotNullByDefault
+    private record Bridge(
+            String signature,
+            Callback callback
+    ) implements CustomFunctionBridge {
+        /// Validates the retained public function definition.
+        private Bridge {
+            Objects.requireNonNull(signature, "signature");
+            Objects.requireNonNull(callback, "callback");
+        }
+
+        /// Invokes the callback with immutable public wrappers.
+        ///
+        /// @param arguments immutable evaluator arguments
+        /// @return the evaluator result, or `null` for an invalid callback
+        /// return
+        /// @throws Exception if the callback fails
+        @Override
+        public @Nullable org.glavo.sassfx.internal.value.SassValue invoke(
+                @Unmodifiable
+                List<org.glavo.sassfx.internal.value.SassValue> arguments
+        ) throws Exception {
+            var publicArguments = new ArrayList<SassValue>(arguments.size());
+            for (var argument : arguments) {
+                publicArguments.add(SassValue.wrap(argument));
+            }
+            @Nullable var result = callback.apply(
+                    List.copyOf(publicArguments)
+            );
+            return result == null ? null : result.internalValue();
+        }
     }
 }

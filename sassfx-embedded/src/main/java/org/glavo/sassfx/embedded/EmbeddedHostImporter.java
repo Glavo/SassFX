@@ -94,7 +94,7 @@ final class EmbeddedHostImporter implements SassImporter {
                 .setImporterId(importerId)
                 .setUrl(url.toString())
                 .setFromImport(context.fromImport());
-        @Nullable var containingUrl = context.containingUrlWithoutMarking();
+        @Nullable var containingUrl = context.peekContainingUrl();
         if (containingUrl != null) {
             callback.setContainingUrl(containingUrl.toString());
         }
@@ -187,7 +187,7 @@ final class EmbeddedHostImporter implements SassImporter {
                     .setUrl(url.toString())
                     .setFromImport(context.fromImport());
             @Nullable var containingUrl =
-                    context.containingUrlWithoutMarking();
+                    context.peekContainingUrl();
             if (containingUrl != null) {
                 callback.setContainingUrl(containingUrl.toString());
             }

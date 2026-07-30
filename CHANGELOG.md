@@ -16,6 +16,8 @@ with library, command-line, Embedded Sass, and Gradle interfaces.
   maps, and retained source text for failure reporting.
 - Supports synchronous custom importers, file importers, Node package
   resolution, custom functions, logging, and deprecation policies.
+- Exposes explicit containing-URL access tracking for importer adapters while
+  keeping evaluator values behind the typed custom-function boundary.
 - Implements the Dart Sass 1.102.0 language and diagnostic baseline, including
   modules, legacy imports, calculations, modern color spaces, first-class
   functions and mixins, selector operations, and deprecation metadata.

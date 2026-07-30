@@ -4,19 +4,36 @@ package org.glavo.sassfx;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Modifier;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /// Verifies structural construction through the public Sass value API.
 @NotNullByDefault
 final class SassValueApiTest {
+    /// Keeps raw evaluator objects out of the supported public value API.
+    @Test
+    void doesNotExposeEvaluatorBridgeMethods() {
+        assertFalse(Arrays.stream(SassValue.class.getDeclaredMethods())
+                .filter(method -> Modifier.isPublic(method.getModifiers()))
+                .filter(method -> !method.getName().equals("equals"))
+                .anyMatch(method ->
+                        method.getName().contains("bridge")
+                                || method.getReturnType() == Object.class
+                                || Arrays.asList(method.getParameterTypes())
+                                .contains(Object.class)
+                ));
+    }
+
     /// Snapshots argument-list contents and exposes keywords with explicit
     /// access tracking.
     @Test

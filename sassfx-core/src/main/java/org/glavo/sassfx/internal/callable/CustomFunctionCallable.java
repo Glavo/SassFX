@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.sassfx.internal.callable;
 
-import org.glavo.sassfx.SassCustomFunction;
-import org.glavo.sassfx.SassValue;
 import org.glavo.sassfx.Syntax;
 import org.glavo.sassfx.internal.ast.FunctionRule;
 import org.glavo.sassfx.internal.ast.ParameterList;
@@ -14,7 +12,6 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -23,8 +20,8 @@ import java.util.Objects;
 @NotNullByDefault
 public final class CustomFunctionCallable implements Callable {
     /// Contains the active evaluator identity while a Java callback runs.
-    private static final ThreadLocal<Object> CALLBACK_COMPILATION_CONTEXT =
-            new ThreadLocal<>();
+    private static final ThreadLocal<@Nullable Object>
+            CALLBACK_COMPILATION_CONTEXT = new ThreadLocal<>();
 
     /// Contains the normalized callable name.
     private final String name;
@@ -32,30 +29,31 @@ public final class CustomFunctionCallable implements Callable {
     /// Contains the parsed Sass parameter declaration.
     private final ParameterList parameters;
 
-    /// Contains the public callback.
-    private final SassCustomFunction.Callback callback;
+    /// Contains the public-value conversion and callback bridge.
+    private final CustomFunctionBridge bridge;
 
     /// Creates a parsed custom function.
     private CustomFunctionCallable(
             String name,
             ParameterList parameters,
-            SassCustomFunction.Callback callback
+            CustomFunctionBridge bridge
     ) {
         this.name = Objects.requireNonNull(name, "name");
         this.parameters = Objects.requireNonNull(parameters, "parameters");
-        this.callback = Objects.requireNonNull(callback, "callback");
+        this.bridge = Objects.requireNonNull(bridge, "bridge");
     }
 
-    /// Parses and validates one public function signature.
+    /// Parses and validates one bridged public function signature.
     ///
-    /// @param function the public custom function definition
+    /// @param bridge the public callback bridge
     /// @return the evaluator callable
     /// @throws IllegalArgumentException if the signature is not one complete
     /// function signature
-    public static CustomFunctionCallable parse(SassCustomFunction function) {
-        Objects.requireNonNull(function, "function");
+    public static CustomFunctionCallable parse(CustomFunctionBridge bridge) {
+        Objects.requireNonNull(bridge, "bridge");
+        var signature = bridge.signature();
         var source = new SourceFile(
-                "@function " + function.signature() + " { @return null; }",
+                "@function " + signature + " { @return null; }",
                 null
         );
         try {
@@ -63,18 +61,18 @@ public final class CustomFunctionCallable implements Callable {
             if (stylesheet.children().size() != 1
                     || !(stylesheet.children().get(0) instanceof FunctionRule rule)) {
                 throw new IllegalArgumentException(
-                        "Invalid custom function signature: " + function.signature()
+                        "Invalid custom function signature: " + signature
                 );
             }
             return new CustomFunctionCallable(
                     rule.name(),
                     rule.parameters(),
-                    function.callback()
+                    bridge
             );
         } catch (ParseException failure) {
             throw new IllegalArgumentException(
                     "Invalid custom function signature \""
-                            + function.signature() + "\": " + failure.getMessage(),
+                            + signature + "\": " + failure.getMessage(),
                     failure
             );
         }
@@ -95,7 +93,7 @@ public final class CustomFunctionCallable implements Callable {
         return parameters;
     }
 
-    /// Invokes the public callback with wrapped immutable values.
+    /// Invokes the bridged public callback.
     ///
     /// @param arguments already-bound evaluator values
     /// @param compilationContext the active evaluator identity
@@ -107,22 +105,17 @@ public final class CustomFunctionCallable implements Callable {
             Object compilationContext
     ) throws Exception {
         Objects.requireNonNull(compilationContext, "compilationContext");
-        var publicArguments = new ArrayList<SassValue>(arguments.size());
-        for (var argument : arguments) {
-            publicArguments.add(SassValue.bridgeFromInternal(argument));
-        }
         @Nullable var previous = CALLBACK_COMPILATION_CONTEXT.get();
         CALLBACK_COMPILATION_CONTEXT.set(compilationContext);
         try {
-            var result = callback.apply(List.copyOf(publicArguments));
+            @Nullable var result = bridge.invoke(arguments);
             if (result == null) {
                 throw new IllegalStateException(
                         "Invalid return value for custom function \""
                                 + name + "\": null is not a SassValue."
                 );
             }
-            return (org.glavo.sassfx.internal.value.SassValue)
-                    result.bridgeToInternal();
+            return result;
         } finally {
             if (previous == null) {
                 CALLBACK_COMPILATION_CONTEXT.remove();

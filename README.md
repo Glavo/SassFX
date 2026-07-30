@@ -578,6 +578,10 @@ Returning `null` from `canonicalize` delegates to the next importer; returning
 `null` from `load` is a terminal not-found result.
 `SassCanonicalizeContext.fromImport()` distinguishes legacy `@import`, and
 `containingUrl()` supplies the canonical containing URL when applicable.
+Transport adapters that must send this value before knowing whether a remote
+importer used it can call `peekContainingUrl()` without affecting cache
+semantics, then call `markContainingUrlAccessed()` only when the receiver
+reports access. `isContainingUrlAccessed()` exposes the resulting state.
 
 After containing-file lookup, custom importers, and explicit load paths decline
 a relative request, the compiler retains Dart Sass's compatibility fallback
@@ -686,6 +690,8 @@ retain Sass precedence. Plain CSS sources do not invoke custom functions.
 `SassValue` preserves every evaluator value kind without converting through
 CSS text. Its factories and typed accessors cover scalars, lists, maps,
 argument lists, Color Level 4 values, and structural calculations.
+Evaluator objects remain private to the core implementation; callback
+conversion is performed by an internal typed bridge.
 `SassCalculationValue` represents calculation numbers, nested calculations,
 unquoted CSS text, and operations; `SassValue.calculation(...)` applies Sass
 simplification when constructing `calc()`, `min()`, `max()`, or `clamp()`.

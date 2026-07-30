@@ -290,8 +290,8 @@ public final class SassImportResolver {
                                 requestedUrl,
                                 context
                         );
-        var cacheable = context.containingUrlWithoutMarking() == null
-                || !context.wasContainingUrlAccessed();
+        var cacheable = context.peekContainingUrl() == null
+                || !context.isContainingUrlAccessed();
         if (cacheable) {
             importerCache.put(
                     key,

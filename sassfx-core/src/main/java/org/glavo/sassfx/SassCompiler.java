@@ -4,7 +4,6 @@ package org.glavo.sassfx;
 import org.glavo.sassfx.internal.bss.BssImportResolver;
 import org.glavo.sassfx.internal.bss.BssSerializeException;
 import org.glavo.sassfx.internal.bss.BssSerializer;
-import org.glavo.sassfx.internal.callable.CustomFunctionCallable;
 import org.glavo.sassfx.internal.css.CssSerializeException;
 import org.glavo.sassfx.internal.css.CssSerializer;
 import org.glavo.sassfx.internal.diagnostic.CompilationDiagnostics;
@@ -141,7 +140,7 @@ public final class SassCompiler {
         }
 
         var customFunctions = options.functions().stream()
-                .map(CustomFunctionCallable::parse)
+                .map(SassCustomFunction::toCallable)
                 .toList();
         var diagnosticReporter = new CompilationDiagnostics(
                 options.diagnosticOptions()

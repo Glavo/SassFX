@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.sassfx;
 
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -62,26 +61,29 @@ public final class SassCanonicalizeContext {
 
     /// Returns the containing URL without recording importer access.
     ///
-    /// This operation exists for protocol adapters that must send the value to
-    /// a remote importer before learning whether that importer used it.
+    /// This operation supports adapters that must transport the value before
+    /// learning whether the receiving importer used it. If the receiver uses
+    /// the value, the adapter must call [#markContainingUrlAccessed()].
     ///
     /// @return the containing canonical URL, or {@code null}
-    @ApiStatus.Internal
-    public @Nullable URI containingUrlWithoutMarking() {
+    public @Nullable URI peekContainingUrl() {
         return containingUrl;
     }
 
-    /// Records that an out-of-process importer used the containing URL.
-    @ApiStatus.Internal
+    /// Records that an importer adapter used the containing URL.
+    ///
+    /// Repeated calls have no additional effect.
     public void markContainingUrlAccessed() {
         containingUrlAccessed = true;
     }
 
     /// Returns whether this canonicalization observed the containing URL.
     ///
+    /// This reports access through [#containingUrl()] or an explicit call to
+    /// [#markContainingUrlAccessed()].
+    ///
     /// @return whether the result depends on the containing stylesheet
-    @ApiStatus.Internal
-    public boolean wasContainingUrlAccessed() {
+    public boolean isContainingUrlAccessed() {
         return containingUrlAccessed;
     }
 }

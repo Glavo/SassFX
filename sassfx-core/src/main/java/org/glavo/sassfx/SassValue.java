@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.sassfx;
 
-import org.glavo.sassfx.internal.callable.CustomFunctionCallable;
 import org.glavo.sassfx.internal.value.CalculationOperation;
 import org.glavo.sassfx.internal.value.CalculationOperator;
 import org.glavo.sassfx.internal.value.SassArgumentList;
@@ -15,7 +14,6 @@ import org.glavo.sassfx.internal.value.SassMixin;
 import org.glavo.sassfx.internal.value.SassNull;
 import org.glavo.sassfx.internal.value.SassNumber;
 import org.glavo.sassfx.internal.value.SassString;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
@@ -343,13 +341,9 @@ public final class SassValue {
     /// @throws IllegalArgumentException if the signature is invalid
     /// @throws IllegalStateException if no custom function callback is active
     public static SassValue function(SassCustomFunction function) {
-        var callable = CustomFunctionCallable.parse(
-                Objects.requireNonNull(function, "function")
+        return new SassValue(
+                Objects.requireNonNull(function, "function").toFunctionValue()
         );
-        return new SassValue(new SassFunction(
-                callable,
-                CustomFunctionCallable.callbackCompilationContext()
-        ));
     }
 
     /// Returns this value's runtime kind.
@@ -669,29 +663,15 @@ public final class SassValue {
         return value.hashCode();
     }
 
-    /// Wraps an evaluator value for an internal callback bridge.
+    /// Returns the evaluator value used by package-local callback adapters.
     ///
-    /// @param value an internal evaluator value
-    /// @return its public immutable view
-    /// @throws IllegalArgumentException if the object is not an evaluator value
-    @ApiStatus.Internal
-    public static SassValue bridgeFromInternal(Object value) {
-        if (!(value instanceof org.glavo.sassfx.internal.value.SassValue sassValue)) {
-            throw new IllegalArgumentException("value must be an internal Sass value");
-        }
-        return wrap(sassValue);
-    }
-
-    /// Returns the evaluator value used by the internal callback bridge.
-    ///
-    /// @return the internal immutable value
-    @ApiStatus.Internal
-    public Object bridgeToInternal() {
+    /// @return the represented evaluator value
+    org.glavo.sassfx.internal.value.SassValue internalValue() {
         return value;
     }
 
     /// Returns a cached or newly allocated wrapper.
-    private static SassValue wrap(
+    static SassValue wrap(
             org.glavo.sassfx.internal.value.SassValue value
     ) {
         return value == SassNull.NULL ? NULL : new SassValue(value);
