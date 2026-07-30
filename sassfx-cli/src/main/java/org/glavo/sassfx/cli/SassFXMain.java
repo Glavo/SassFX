@@ -3,7 +3,6 @@ package org.glavo.sassfx.cli;
 
 import org.glavo.sassfx.BssTarget;
 import org.glavo.sassfx.CompileOptions;
-import org.glavo.sassfx.CompileResult;
 import org.glavo.sassfx.CssTarget;
 import org.glavo.sassfx.Diagnostic;
 import org.glavo.sassfx.DiagnosticSeverity;
@@ -11,17 +10,13 @@ import org.glavo.sassfx.JavaFXCssTarget;
 import org.glavo.sassfx.OutputStyle;
 import org.glavo.sassfx.OutputTarget;
 import org.glavo.sassfx.SassCompilationException;
-import org.glavo.sassfx.SassCompiler;
 import org.glavo.sassfx.SassDependencyTracker;
 import org.glavo.sassfx.SassDeprecation;
 import org.glavo.sassfx.SassDiagnosticOptions;
-import org.glavo.sassfx.SassFileSource;
 import org.glavo.sassfx.SassImporter;
 import org.glavo.sassfx.SassInteractiveSession;
 import org.glavo.sassfx.SassLogger;
 import org.glavo.sassfx.SassNodePackageImporter;
-import org.glavo.sassfx.SassSource;
-import org.glavo.sassfx.SassStringSource;
 import org.glavo.sassfx.SourceSpan;
 import org.glavo.sassfx.embedded.EmbeddedCompiler;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -41,7 +36,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.Reader;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -572,7 +566,7 @@ public final class SassFXMain implements Callable<Integer> {
         OutputTarget<?> selectedTarget;
         CompileOptions compileOptions;
         CliCompilationPlan plan;
-        OutputPolicy outputPolicy;
+        CliOutputPolicy outputPolicy;
         String outputExtension;
         try {
             selectedTarget = selectedTarget();
@@ -613,23 +607,26 @@ public final class SassFXMain implements Callable<Integer> {
         }
 
         var stdinUrl = workingDirectory.resolve("stdin").toUri();
+        var color = colorEnabled();
         var diagnosticPrinter = new DiagnosticPrinter(
-                colorEnabled(),
+                color,
                 unicodeEnabled(),
                 workingDirectory,
                 stdinContents == null ? null : stdinUrl,
                 stdinContents
         );
-        var context = new ExecutionContext(
+        var context = new CliExecutionContext(
                 selectedTarget,
                 compileOptions,
                 outputPolicy,
                 stdinUrl,
                 stdinContents,
                 diagnosticPrinter,
-                colorEnabled(),
+                color,
+                quiet,
                 out,
-                err
+                err,
+                this::shouldPrintDiagnostic
         );
         if (!watch) {
             return runJobs(
@@ -867,83 +864,22 @@ public final class SassFXMain implements Callable<Integer> {
     /// @param previousStates prior watch states keyed by normalized source path
     /// @return the aggregate status and attempted job states
     private BatchResult runJobs(
-            ExecutionContext context,
+            CliExecutionContext context,
             Collection<CliCompilationPlan.Job> jobs,
             boolean incremental,
             Map<Path, WatchJobState> previousStates
     ) {
         var states = new LinkedHashMap<Path, WatchJobState>();
         var status = 0;
+        var engine = new CliCompilationEngine(context);
         for (var job : jobs) {
             var dependencyTracker = new SassDependencyTracker();
             try {
-                SassSource source = job.source() == null
-                        ? new SassStringSource(
-                                Objects.requireNonNull(context.stdinContents()),
-                                job.syntax(),
-                                context.stdinUrl()
-                        )
-                        : fileSource(job);
-                var selectedOutputTarget = context.outputTarget();
-                final JobCompilation compilation;
-                if (selectedOutputTarget instanceof CssTarget cssTarget) {
-                    compilation = compileText(
-                            source,
-                            job.source(),
-                            job.destination(),
-                            cssTarget,
-                            context.compileOptions(),
-                            context.outputPolicy(),
-                            context.stdinUrl(),
-                            job.source() == null
-                                    ? context.stdinContents()
-                                    : null,
-                            incremental,
-                            quiet,
-                            context.diagnosticPrinter(),
-                            context.out(),
-                            context.err(),
-                            dependencyTracker
-                    );
-                } else if (selectedOutputTarget
-                        instanceof JavaFXCssTarget javaFXCssTarget) {
-                    compilation = compileText(
-                            source,
-                            job.source(),
-                            job.destination(),
-                            javaFXCssTarget,
-                            context.compileOptions(),
-                            context.outputPolicy(),
-                            context.stdinUrl(),
-                            job.source() == null
-                                    ? context.stdinContents()
-                                    : null,
-                            incremental,
-                            quiet,
-                            context.diagnosticPrinter(),
-                            context.out(),
-                            context.err(),
-                            dependencyTracker
-                    );
-                } else if (selectedOutputTarget instanceof BssTarget bssTarget) {
-                    compilation = compileBss(
-                            source,
-                            job.source(),
-                            Objects.requireNonNull(job.destination()),
-                            bssTarget,
-                            context.compileOptions(),
-                            incremental,
-                            quiet,
-                            context.diagnosticPrinter(),
-                            context.err(),
-                            dependencyTracker
-                    );
-                } else {
-                    throw new IllegalStateException(
-                            "unsupported output target implementation: "
-                                    + selectedOutputTarget.getClass().getName()
-                    );
-                }
+                var compilation = engine.compile(
+                        job,
+                        incremental,
+                        dependencyTracker
+                );
                 if (job.source() != null) {
                     states.put(
                             pathKey(job.source()),
@@ -962,13 +898,9 @@ public final class SassFXMain implements Callable<Integer> {
                 }
             } catch (SassCompilationException failure) {
                 try {
-                    handleSassFailure(
-                            context.outputTarget(),
+                    engine.handleSassFailure(
                             job.destination(),
-                            context.outputPolicy().errorCss(),
-                            failure,
-                            context.diagnosticPrinter(),
-                            context.out()
+                            failure
                     );
                 } catch (IOException outputFailure) {
                     printIoFailure(outputFailure, context.err());
@@ -991,7 +923,7 @@ public final class SassFXMain implements Callable<Integer> {
                 recordFailedState(
                         states,
                         job,
-                        fileDependencies(
+                        CliCompilationEngine.fileDependencies(
                                 failure.loadedUrls(),
                                 job.source()
                         ),
@@ -1029,7 +961,7 @@ public final class SassFXMain implements Callable<Integer> {
     /// @throws IOException if filesystem observation or output cleanup fails
     /// @throws InterruptedException if the watching thread is interrupted
     private int watch(
-            ExecutionContext context,
+            CliExecutionContext context,
             CliCompilationPlan initialPlan,
             String outputExtension
     ) throws IOException, InterruptedException {
@@ -1225,7 +1157,7 @@ public final class SassFXMain implements Callable<Integer> {
             CliCompilationPlan previousPlan,
             CliCompilationPlan refreshedPlan,
             Map<Path, WatchJobState> states,
-            ExecutionContext context
+            CliExecutionContext context
     ) throws IOException {
         var refreshedSources = new LinkedHashSet<Path>();
         for (var job : refreshedPlan.jobs()) {
@@ -1263,7 +1195,7 @@ public final class SassFXMain implements Callable<Integer> {
     /// @throws IOException if an existing owned output cannot be deleted
     private void deleteOwnedOutput(
             CliCompilationPlan.Job job,
-            ExecutionContext context
+            CliExecutionContext context
     ) throws IOException {
         @Nullable Path destination = job.destination();
         if (destination == null) {
@@ -1283,7 +1215,7 @@ public final class SassFXMain implements Callable<Integer> {
     /// @throws IOException if the existing file cannot be deleted
     private void deleteOwnedFile(
             Path path,
-            ExecutionContext context
+            CliExecutionContext context
     ) throws IOException {
         if (!Files.deleteIfExists(path)) {
             return;
@@ -1297,262 +1229,6 @@ public final class SassFXMain implements Callable<Integer> {
         }
         context.out().println();
         context.out().flush();
-    }
-
-    /// Compiles a stylesheet to one textual output target.
-    ///
-    /// @param source the root stylesheet
-    /// @param sourcePath the root file, or {@code null} for stdin
-    /// @param destination the optional destination file, or {@code null} for standard output
-    /// @param selectedOutputTarget the resolved textual output target
-    /// @param options the resolved compile options
-    /// @param outputPolicy the resolved CLI output policy
-    /// @param stdinUrl the synthetic compiler URL assigned to stdin
-    /// @param stdinContents the stdin text, or {@code null} for file input
-    /// @param incremental whether a fresh destination may be skipped
-    /// @param quietOutput whether non-error diagnostics are suppressed
-    /// @param diagnosticPrinter the command-line diagnostic formatter
-    /// @param out the standard-output writer
-    /// @param err the standard-error writer used for non-error diagnostics
-    /// @param dependencyTracker tracker receiving import-resolution candidates
-    /// @return the dependency snapshot and whether output was written
-    /// @throws IOException if the destination cannot be written
-    /// @throws SassCompilationException if Sass evaluation or serialization fails
-    private JobCompilation compileText(
-            SassSource source,
-            @Nullable Path sourcePath,
-            @Nullable Path destination,
-            OutputTarget<String> selectedOutputTarget,
-            CompileOptions options,
-            OutputPolicy outputPolicy,
-            java.net.URI stdinUrl,
-            @Nullable String stdinContents,
-            boolean incremental,
-            boolean quietOutput,
-            DiagnosticPrinter diagnosticPrinter,
-            java.io.PrintWriter out,
-            java.io.PrintWriter err,
-            SassDependencyTracker dependencyTracker
-    ) throws IOException, SassCompilationException {
-        CompileResult<String> result = new SassCompiler().compile(
-                source,
-                selectedOutputTarget,
-                options,
-                dependencyTracker
-        );
-        var dependencies = fileDependencies(
-                result.loadedUrls(),
-                sourcePath
-        );
-        if (incremental
-                && !hasUntrackedDependencies(result.loadedUrls())
-                && !modifiedSince(destination, sourcePath, dependencies)) {
-            return new JobCompilation(
-                    dependencies,
-                    dependencyTracker.candidatePaths(),
-                    dependencyTracker.isComplete(),
-                    false
-            );
-        }
-        if (!quietOutput) {
-            printNonErrorDiagnostics(result, diagnosticPrinter, err);
-        }
-
-        var css = result.output();
-        @Nullable CliSourceMap.Output preparedMap = null;
-        if (outputPolicy.sourceMap()) {
-            preparedMap = CliSourceMap.prepare(
-                    Objects.requireNonNull(result.sourceMap()),
-                    destination,
-                    outputPolicy.sourceMapUrlMode(),
-                    outputPolicy.embedSources(),
-                    outputPolicy.embedSourceMap(),
-                    stdinUrl,
-                    stdinContents
-            );
-            css += CliSourceMap.comment(
-                    preparedMap.commentUrl(),
-                    selectedOutputTarget instanceof CssTarget cssTarget
-                            ? cssTarget.style() == OutputStyle.COMPRESSED
-                            : ((JavaFXCssTarget) selectedOutputTarget).style()
-                            == OutputStyle.COMPRESSED
-            );
-        }
-        if (destination == null) {
-            out.print(css);
-            if (!css.isEmpty() && !css.endsWith("\n")) {
-                out.println();
-            }
-            if (out.checkError()) {
-                throw new IOException("could not write standard output");
-            }
-        } else {
-            var text = css.endsWith("\n") ? css : css + "\n";
-            if (preparedMap != null && !outputPolicy.embedSourceMap()) {
-                writeTextWithSourceMap(
-                        destination,
-                        text,
-                        preparedMap.json()
-                );
-            } else {
-                CliFileWriter.writeString(destination, text);
-            }
-        }
-        return new JobCompilation(
-                dependencies,
-                dependencyTracker.candidatePaths(),
-                dependencyTracker.isComplete(),
-                true
-        );
-    }
-
-    /// Compiles a stylesheet to one JavaFX BSS output target.
-    ///
-    /// @param source the root stylesheet
-    /// @param sourcePath the root file
-    /// @param destination the required BSS destination file
-    /// @param selectedOutputTarget the resolved binary output target
-    /// @param options the resolved compile options
-    /// @param incremental whether a fresh destination may be skipped
-    /// @param quietOutput whether non-error diagnostics are suppressed
-    /// @param diagnosticPrinter the command-line diagnostic formatter
-    /// @param err the standard-error writer used for non-error diagnostics
-    /// @param dependencyTracker tracker receiving import-resolution candidates
-    /// @return the dependency snapshot and whether output was written
-    /// @throws IOException if the destination cannot be written
-    /// @throws SassCompilationException if Sass evaluation or BSS serialization fails
-    private JobCompilation compileBss(
-            SassSource source,
-            @Nullable Path sourcePath,
-            Path destination,
-            BssTarget selectedOutputTarget,
-            CompileOptions options,
-            boolean incremental,
-            boolean quietOutput,
-            DiagnosticPrinter diagnosticPrinter,
-            java.io.PrintWriter err,
-            SassDependencyTracker dependencyTracker
-    ) throws IOException, SassCompilationException {
-        var result = new SassCompiler().compile(
-                source,
-                selectedOutputTarget,
-                options,
-                dependencyTracker
-        );
-        var dependencies = fileDependencies(
-                result.loadedUrls(),
-                sourcePath
-        );
-        if (incremental
-                && !hasUntrackedDependencies(result.loadedUrls())
-                && !modifiedSince(destination, sourcePath, dependencies)) {
-            return new JobCompilation(
-                    dependencies,
-                    dependencyTracker.candidatePaths(),
-                    dependencyTracker.isComplete(),
-                    false
-            );
-        }
-        if (!quietOutput) {
-            printNonErrorDiagnostics(result, diagnosticPrinter, err);
-        }
-
-        var bss = result.output().duplicate();
-        var bytes = new byte[bss.remaining()];
-        bss.get(bytes);
-        CliFileWriter.write(destination, bytes);
-        return new JobCompilation(
-                dependencies,
-                dependencyTracker.candidatePaths(),
-                dependencyTracker.isComplete(),
-                true
-        );
-    }
-
-    /// Returns file dependencies from one compiler result.
-    ///
-    /// @param loadedUrls canonical URLs loaded by the compiler
-    /// @param sourcePath the explicit root path, or {@code null}
-    /// @return immutable normalized file paths
-    private static @Unmodifiable Set<Path> fileDependencies(
-            Set<URI> loadedUrls,
-            @Nullable Path sourcePath
-    ) {
-        var dependencies = new LinkedHashSet<Path>();
-        if (sourcePath != null) {
-            dependencies.add(pathKey(sourcePath));
-        }
-        for (var url : loadedUrls) {
-            if (!"file".equalsIgnoreCase(url.getScheme())) {
-                continue;
-            }
-            try {
-                dependencies.add(pathKey(Path.of(url)));
-            } catch (IllegalArgumentException ignored) {
-                // A malformed file URL is treated as an untracked dependency
-                // by hasUntrackedDependencies().
-            }
-        }
-        return Set.copyOf(dependencies);
-    }
-
-    /// Reports whether a result contains a mutable dependency without file
-    /// metadata.
-    ///
-    /// Built-in {@code sass:} modules are immutable compiler resources and do
-    /// not participate in filesystem freshness.
-    ///
-    /// @param loadedUrls canonical URLs loaded by the compiler
-    /// @return whether incremental freshness cannot be proven
-    private static boolean hasUntrackedDependencies(Set<URI> loadedUrls) {
-        for (var url : loadedUrls) {
-            if ("sass".equalsIgnoreCase(url.getScheme())) {
-                continue;
-            }
-            if (!"file".equalsIgnoreCase(url.getScheme())) {
-                return true;
-            }
-            try {
-                Path.of(url);
-            } catch (IllegalArgumentException ignored) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /// Reports whether an output is older than its root or a dependency.
-    ///
-    /// @param destination the output file, or {@code null}
-    /// @param sourcePath the root file, or {@code null} for stdin
-    /// @param dependencies normalized file dependencies
-    /// @return whether the job must publish a new output
-    private static boolean modifiedSince(
-            @Nullable Path destination,
-            @Nullable Path sourcePath,
-            Set<Path> dependencies
-    ) {
-        if (destination == null || sourcePath == null) {
-            return true;
-        }
-
-        final java.nio.file.attribute.FileTime outputTime;
-        try {
-            outputTime = Files.getLastModifiedTime(destination);
-        } catch (IOException ignored) {
-            return true;
-        }
-        for (var dependency : dependencies) {
-            try {
-                if (Files.getLastModifiedTime(dependency)
-                        .compareTo(outputTime) > 0) {
-                    return true;
-                }
-            } catch (IOException ignored) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /// Records a Sass-failed job with the resolution work completed before the
@@ -1630,7 +1306,7 @@ public final class SassFXMain implements Callable<Integer> {
     /// @param context immutable invocation settings
     private void printCompiledStatus(
             CliCompilationPlan.Job job,
-            ExecutionContext context
+            CliExecutionContext context
     ) {
         var timestamp = LocalDateTime.now().format(
                 DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
@@ -1682,104 +1358,6 @@ public final class SassFXMain implements Callable<Integer> {
         return path.toAbsolutePath().normalize();
     }
 
-    /// Writes a source-map sidecar and CSS file as one recoverable operation.
-    ///
-    /// The sidecar is committed first. If the CSS replacement fails, the
-    /// previous sidecar contents are restored or the newly created sidecar is
-    /// removed.
-    ///
-    /// @param destination the CSS destination
-    /// @param css the complete CSS contents
-    /// @param sourceMapJson the compact source-map JSON
-    /// @throws IOException if either output cannot be written
-    private static void writeTextWithSourceMap(
-            Path destination,
-            String css,
-            String sourceMapJson
-    ) throws IOException {
-        var sourceMapPath = Path.of(destination.toString() + ".map");
-        var hadSourceMap = Files.exists(sourceMapPath);
-        byte @Nullable [] previousSourceMap = hadSourceMap
-                ? Files.readAllBytes(sourceMapPath)
-                : null;
-
-        CliFileWriter.writeString(sourceMapPath, sourceMapJson);
-        try {
-            CliFileWriter.writeString(destination, css);
-        } catch (IOException failure) {
-            try {
-                if (previousSourceMap == null) {
-                    Files.deleteIfExists(sourceMapPath);
-                } else {
-                    CliFileWriter.write(sourceMapPath, previousSourceMap);
-                }
-            } catch (IOException rollbackFailure) {
-                failure.addSuppressed(rollbackFailure);
-            }
-            throw failure;
-        }
-    }
-
-    /// Applies error-CSS or failed-output deletion behavior.
-    ///
-    /// BSS failures never replace or delete the binary destination.
-    ///
-    /// @param outputTarget the selected output target
-    /// @param destination the failed job destination, or {@code null}
-    /// @param emitErrorCss whether an error stylesheet is enabled
-    /// @param failure the Sass compilation failure
-    /// @param diagnosticPrinter the command-line diagnostic formatter
-    /// @param out standard output
-    /// @throws IOException if error output cannot be written
-    private static void handleSassFailure(
-            OutputTarget<?> outputTarget,
-            @Nullable Path destination,
-            boolean emitErrorCss,
-            SassCompilationException failure,
-            DiagnosticPrinter diagnosticPrinter,
-            java.io.PrintWriter out
-    ) throws IOException {
-        if (outputTarget instanceof BssTarget) {
-            return;
-        }
-        if (!emitErrorCss) {
-            if (destination != null) {
-                try {
-                    Files.deleteIfExists(destination);
-                } catch (IOException ignored) {
-                    // Sass treats failed best-effort cleanup as part of the
-                    // original compilation failure.
-                }
-            }
-            return;
-        }
-
-        var css = CliErrorCss.format(failure, diagnosticPrinter);
-        if (destination == null) {
-            out.println(css);
-            if (out.checkError()) {
-                throw new IOException("could not write standard output");
-            }
-        } else {
-            CliFileWriter.writeString(destination, css + "\n");
-        }
-    }
-
-    /// Creates a validated file source for one planned job.
-    ///
-    /// @param job the file-backed job
-    /// @return the root file source
-    /// @throws IOException if the source is not a regular file
-    private static SassFileSource fileSource(
-            CliCompilationPlan.Job job
-    ) throws IOException {
-        var source = Objects.requireNonNull(job.source());
-        if (!Files.isRegularFile(source)) {
-            throw new IOException("input is not a file: " + source);
-        }
-        return new SassFileSource(source, job.syntax());
-    }
-
     /// Reads all standard-input characters without closing the injected reader.
     ///
     /// @return the complete standard-input text
@@ -1806,23 +1384,6 @@ public final class SassFXMain implements Callable<Integer> {
                 failure.getMessage(),
                 failure.getClass().getSimpleName()
         ));
-    }
-
-    /// Writes non-error diagnostics emitted during one successful compilation.
-    ///
-    /// @param result the completed compilation result
-    /// @param diagnosticPrinter the command-line diagnostic formatter
-    /// @param err the standard-error writer
-    private void printNonErrorDiagnostics(
-            CompileResult<?> result,
-            DiagnosticPrinter diagnosticPrinter,
-            java.io.PrintWriter err
-    ) {
-        printNonErrorDiagnostics(
-                result.diagnostics(),
-                diagnosticPrinter,
-                err
-        );
     }
 
     /// Writes non-error diagnostics from a completed or failed compilation.
@@ -1980,7 +1541,7 @@ public final class SassFXMain implements Callable<Integer> {
     /// @param plan the fully expanded compilation plan
     /// @return the resolved output policy
     /// @throws IllegalArgumentException if output options conflict
-    private OutputPolicy outputPolicy(
+    private CliOutputPolicy outputPolicy(
             OutputTarget<?> outputTarget,
             CliCompilationPlan plan
     ) {
@@ -2064,7 +1625,7 @@ public final class SassFXMain implements Callable<Integer> {
                 .anyMatch(job -> job.destination() != null);
         var emitErrorCss = !(outputTarget instanceof BssTarget)
                 && (errorCss != null ? errorCss : hasFileDestination);
-        return new OutputPolicy(
+        return new CliOutputPolicy(
                 emitSourceMap,
                 urlMode,
                 embedSources,
@@ -2247,64 +1808,6 @@ public final class SassFXMain implements Callable<Integer> {
         out.flush();
     }
 
-    /// Contains immutable settings shared by every job in one invocation.
-    ///
-    /// @param outputTarget the fully configured output target
-    /// @param compileOptions compiler options
-    /// @param outputPolicy resolved output policy
-    /// @param stdinUrl synthetic standard-input URL
-    /// @param stdinContents standard-input contents, or {@code null}
-    /// @param diagnosticPrinter diagnostic formatter
-    /// @param color whether terminal status lines use ANSI styling
-    /// @param out standard output
-    /// @param err standard error
-    @NotNullByDefault
-    private record ExecutionContext(
-            OutputTarget<?> outputTarget,
-            CompileOptions compileOptions,
-            OutputPolicy outputPolicy,
-            URI stdinUrl,
-            @Nullable String stdinContents,
-            DiagnosticPrinter diagnosticPrinter,
-            boolean color,
-            java.io.PrintWriter out,
-            java.io.PrintWriter err
-    ) {
-        /// Creates a non-null execution context.
-        private ExecutionContext {
-            Objects.requireNonNull(outputTarget, "outputTarget");
-            Objects.requireNonNull(compileOptions, "compileOptions");
-            Objects.requireNonNull(outputPolicy, "outputPolicy");
-            Objects.requireNonNull(stdinUrl, "stdinUrl");
-            Objects.requireNonNull(
-                    diagnosticPrinter,
-                    "diagnosticPrinter"
-            );
-            Objects.requireNonNull(out, "out");
-            Objects.requireNonNull(err, "err");
-        }
-    }
-
-    /// Describes one successful compiler attempt.
-    ///
-    /// @param dependencies normalized file dependencies
-    /// @param resolutionCandidates filesystem candidates consulted by imports
-    /// @param resolutionComplete whether custom importers were absent
-    /// @param compiled whether output was published rather than skipped
-    @NotNullByDefault
-    private record JobCompilation(
-            @Unmodifiable Set<Path> dependencies,
-            @Unmodifiable Set<Path> resolutionCandidates,
-            boolean resolutionComplete,
-            boolean compiled
-    ) {
-        /// Creates an immutable compilation result.
-        private JobCompilation {
-            dependencies = Set.copyOf(dependencies);
-            resolutionCandidates = Set.copyOf(resolutionCandidates);
-        }
-    }
-
     /// Retains the latest dependency state for one watched entrypoint.
     ///
     /// @param job current source and destination mapping
@@ -2338,30 +1841,6 @@ public final class SassFXMain implements Callable<Integer> {
         /// Creates an immutable batch result.
         private BatchResult {
             states = Map.copyOf(states);
-        }
-    }
-
-    /// Contains output behavior resolved after input planning.
-    ///
-    /// @param sourceMap whether compiler source-map generation is enabled
-    /// @param sourceMapUrlMode the source URL representation
-    /// @param embedSources whether source contents are included in maps
-    /// @param embedSourceMap whether the map is embedded in textual output
-    /// @param errorCss whether Sass failures emit an error stylesheet
-    @NotNullByDefault
-    private record OutputPolicy(
-            boolean sourceMap,
-            CliSourceMap.UrlMode sourceMapUrlMode,
-            boolean embedSources,
-            boolean embedSourceMap,
-            boolean errorCss
-    ) {
-        /// Creates a resolved immutable output policy.
-        private OutputPolicy {
-            Objects.requireNonNull(
-                    sourceMapUrlMode,
-                    "sourceMapUrlMode"
-            );
         }
     }
 
