@@ -6,14 +6,15 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 import java.io.Serial;
 
-/// Reports a Sass value operation that is undefined for its operands.
+/// Reports an internal Sass value operation that is undefined for its operands.
 ///
 /// This exception does not carry source information. An evaluator must attach
 /// the span of the expression that invoked the operation before exposing the
 /// failure outside the value layer.
 @ApiStatus.Internal
 @NotNullByDefault
-public final class SassValueException extends RuntimeException {
+public final class SassValueException
+        extends org.glavo.sassfx.SassValueException {
     /// Contains the serialization version of this exception representation.
     @Serial
     private static final long serialVersionUID = 1L;

@@ -799,6 +799,59 @@ final class EmbeddedValueCodecWireTest {
         );
     }
 
+    /// Simplifies host calculation operations before returning them to Sass.
+    @Test
+    void simplifiesHostCalculationOperations() throws Exception {
+        var pixels = Value.Calculation.CalculationValue.newBuilder()
+                .setNumber(Value.Number.newBuilder()
+                        .setValue(1)
+                        .addNumerators("px"))
+                .build();
+        var twoPixels = Value.Calculation.CalculationValue.newBuilder()
+                .setNumber(Value.Number.newBuilder()
+                        .setValue(2)
+                        .addNumerators("px"))
+                .build();
+        var operation = Value.Calculation.CalculationValue.newBuilder()
+                .setOperation(
+                        Value.Calculation.CalculationOperation.newBuilder()
+                                .setOperator(CalculationOperator.PLUS)
+                                .setLeft(pixels)
+                                .setRight(twoPixels)
+                )
+                .build();
+
+        try (var harness = new CompilerHarness()) {
+            harness.send(
+                    32,
+                    compileString(
+                            "a { value: simplify-calculation(); }",
+                            List.of("simplify-calculation()")
+                    )
+            );
+
+            var request = functionRequest(harness.receive(), 32);
+            harness.send(
+                    32,
+                    functionSuccess(
+                            request.getId(),
+                            calculation("calc", List.of(operation)),
+                            List.of()
+                    )
+            );
+
+            var response = compileResponse(harness.receive(), 32);
+            assertTrue(response.hasSuccess());
+            assertTrue(
+                    response.getSuccess().getCss().contains("value: 3px"),
+                    response.getSuccess().getCss()
+            );
+
+            harness.closeInput();
+            assertEquals(0, harness.awaitStatus());
+        }
+    }
+
     /// Reports calculation simplification errors as compilation failures
     /// without terminating the protocol connection.
     @Test

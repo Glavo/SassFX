@@ -8,24 +8,12 @@ import com.sass_lang.embedded_protocol.OutboundMessage;
 import com.sass_lang.embedded_protocol.ProtocolErrorType;
 import com.sass_lang.embedded_protocol.SingletonValue;
 import com.sass_lang.embedded_protocol.Value;
+import org.glavo.sassfx.SassCalculationValue;
+import org.glavo.sassfx.SassColorSpace;
 import org.glavo.sassfx.SassCustomFunction;
 import org.glavo.sassfx.SassListSeparator;
 import org.glavo.sassfx.SassValue;
-import org.glavo.sassfx.internal.callable.CustomFunctionCallable;
-import org.glavo.sassfx.internal.value.CalculationOperation;
-import org.glavo.sassfx.internal.value.SassArgumentList;
-import org.glavo.sassfx.internal.value.SassBoolean;
-import org.glavo.sassfx.internal.value.SassCalculation;
-import org.glavo.sassfx.internal.value.SassColor;
-import org.glavo.sassfx.internal.value.SassFunction;
-import org.glavo.sassfx.internal.value.SassList;
-import org.glavo.sassfx.internal.value.SassMap;
-import org.glavo.sassfx.internal.value.SassMixin;
-import org.glavo.sassfx.internal.value.SassNull;
-import org.glavo.sassfx.internal.value.SassNumber;
-import org.glavo.sassfx.internal.value.SassString;
-import org.glavo.sassfx.internal.value.SassValueException;
-import org.glavo.sassfx.internal.value.color.ColorSpace;
+import org.glavo.sassfx.SassValueException;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
@@ -48,13 +36,13 @@ final class EmbeddedValueCodec {
     private final EmbeddedCompilationDispatcher dispatcher;
 
     /// Maps compiler function identities to protocol IDs.
-    private final Map<SassFunction, Integer> functionIds = new HashMap<>();
+    private final Map<SassValue, Integer> functionIds = new HashMap<>();
 
     /// Maps protocol IDs back to compiler function identities.
     private final Map<Integer, SassValue> functions = new HashMap<>();
 
     /// Maps compiler mixin identities to protocol IDs.
-    private final Map<SassMixin, Integer> mixinIds = new HashMap<>();
+    private final Map<SassValue, Integer> mixinIds = new HashMap<>();
 
     /// Maps protocol IDs back to compiler mixin identities.
     private final Map<Integer, SassValue> mixins = new HashMap<>();
@@ -141,156 +129,134 @@ final class EmbeddedValueCodec {
     /// @return the protocol value
     private Value encode(SassValue value, EncodingContext context) {
         Objects.requireNonNull(value, "value");
-        return encodeInternal(
-                (org.glavo.sassfx.internal.value.SassValue)
-                        value.bridgeToInternal(),
-                context
-        );
-    }
-
-    /// Encodes one internal Sass value.
-    private Value encodeInternal(
-            org.glavo.sassfx.internal.value.SassValue value,
-            EncodingContext context
-    ) {
         var result = Value.newBuilder();
-        if (value instanceof SassString string) {
-            return result.setString(Value.String.newBuilder()
-                    .setText(string.text())
-                    .setQuoted(string.hasQuotes())).build();
-        }
-        if (value instanceof SassNumber number) {
-            return result.setNumber(encodeNumber(number)).build();
-        }
-        if (value instanceof SassBoolean bool) {
-            return result.setSingleton(
-                    bool.value() ? SingletonValue.TRUE : SingletonValue.FALSE
+        return switch (value.type()) {
+            case STRING -> result.setString(Value.String.newBuilder()
+                    .setText(value.stringValue())
+                    .setQuoted(value.isQuoted())).build();
+            case NUMBER -> result.setNumber(encodeNumber(value)).build();
+            case BOOLEAN -> result.setSingleton(
+                    value.booleanValue()
+                            ? SingletonValue.TRUE
+                            : SingletonValue.FALSE
             ).build();
-        }
-        if (value instanceof SassNull) {
-            return result.setSingleton(SingletonValue.NULL).build();
-        }
-        if (value instanceof SassArgumentList arguments) {
-            var id = context.idFor(arguments);
-            var list = Value.ArgumentList.newBuilder()
-                    .setId(id)
-                    .setSeparator(separator(arguments.separator()));
-            for (var element : arguments.asList()) {
-                list.addContents(encodeInternal(element, context));
+            case NULL -> result.setSingleton(SingletonValue.NULL).build();
+            case ARGUMENT_LIST -> {
+                var id = context.idFor(value);
+                var list = Value.ArgumentList.newBuilder()
+                        .setId(id)
+                        .setSeparator(separator(value.separator()));
+                for (var element : value.asList()) {
+                    list.addContents(encode(element, context));
+                }
+                for (var entry : value.keywordContents().entrySet()) {
+                    list.putKeywords(
+                            entry.getKey(),
+                            encode(entry.getValue(), context)
+                    );
+                }
+                yield result.setArgumentList(list).build();
             }
-            for (var entry : arguments.keywordsWithoutMarking().entrySet()) {
-                list.putKeywords(
-                        entry.getKey(),
-                        encodeInternal(entry.getValue(), context)
-                );
+            case LIST -> {
+                var encoded = Value.List.newBuilder()
+                        .setSeparator(separator(value.separator()))
+                        .setHasBrackets(value.isBracketed());
+                for (var element : value.asList()) {
+                    encoded.addContents(encode(element, context));
+                }
+                yield result.setList(encoded).build();
             }
-            return result.setArgumentList(list).build();
-        }
-        if (value instanceof SassList list) {
-            var encoded = Value.List.newBuilder()
-                    .setSeparator(separator(list.separator()))
-                    .setHasBrackets(list.hasBrackets());
-            for (var element : list.contents()) {
-                encoded.addContents(encodeInternal(element, context));
+            case MAP -> {
+                var encoded = Value.Map.newBuilder();
+                for (var entry : value.mapContents().entrySet()) {
+                    encoded.addEntries(Value.Map.Entry.newBuilder()
+                            .setKey(encode(entry.getKey(), context))
+                            .setValue(encode(entry.getValue(), context)));
+                }
+                yield result.setMap(encoded).build();
             }
-            return result.setList(encoded).build();
-        }
-        if (value instanceof SassMap map) {
-            var encoded = Value.Map.newBuilder();
-            for (var entry : map.contents().entrySet()) {
-                encoded.addEntries(Value.Map.Entry.newBuilder()
-                        .setKey(encodeInternal(entry.getKey(), context))
-                        .setValue(encodeInternal(entry.getValue(), context)));
+            case COLOR -> {
+                var encoded = Value.Color.newBuilder()
+                        .setSpace(value.colorSpace().cssName());
+                @Nullable var channel1 = value.colorChannelOrNull(0);
+                @Nullable var channel2 = value.colorChannelOrNull(1);
+                @Nullable var channel3 = value.colorChannelOrNull(2);
+                @Nullable var alpha = value.colorChannelOrNull(3);
+                if (channel1 != null) {
+                    encoded.setChannel1(channel1);
+                }
+                if (channel2 != null) {
+                    encoded.setChannel2(channel2);
+                }
+                if (channel3 != null) {
+                    encoded.setChannel3(channel3);
+                }
+                if (alpha != null) {
+                    encoded.setAlpha(alpha);
+                }
+                yield result.setColor(encoded).build();
             }
-            return result.setMap(encoded).build();
-        }
-        if (value instanceof SassColor color) {
-            var encoded = Value.Color.newBuilder()
-                    .setSpace(color.space().spaceName());
-            if (color.channel0OrNull() != null) {
-                encoded.setChannel1(color.channel0OrNull());
-            }
-            if (color.channel1OrNull() != null) {
-                encoded.setChannel2(color.channel1OrNull());
-            }
-            if (color.channel2OrNull() != null) {
-                encoded.setChannel3(color.channel2OrNull());
-            }
-            if (color.alphaOrNull() != null) {
-                encoded.setAlpha(color.alphaOrNull());
-            }
-            return result.setColor(encoded).build();
-        }
-        if (value instanceof SassCalculation calculation) {
-            return result.setCalculation(
-                    encodeCalculation(calculation, context)
+            case CALCULATION -> result.setCalculation(
+                    encodeCalculation(value)
             ).build();
-        }
-        if (value instanceof SassFunction function) {
-            var id = functionIds.computeIfAbsent(function, ignored -> {
-                var next = functionIds.size();
-                functions.put(next, SassValue.bridgeFromInternal(function));
-                return next;
-            });
-            return result.setCompilerFunction(
-                    Value.CompilerFunction.newBuilder().setId(id)
-            ).build();
-        }
-        if (value instanceof SassMixin mixin) {
-            var id = mixinIds.computeIfAbsent(mixin, ignored -> {
-                var next = mixinIds.size();
-                mixins.put(next, SassValue.bridgeFromInternal(mixin));
-                return next;
-            });
-            return result.setCompilerMixin(
-                    Value.CompilerMixin.newBuilder().setId(id)
-            ).build();
-        }
-        throw protocolError(
-                "Unsupported compiler Sass value: " + value.getClass().getName()
-        );
+            case FUNCTION -> {
+                var id = functionIds.computeIfAbsent(value, ignored -> {
+                    var next = functionIds.size();
+                    functions.put(next, value);
+                    return next;
+                });
+                yield result.setCompilerFunction(
+                        Value.CompilerFunction.newBuilder().setId(id)
+                ).build();
+            }
+            case MIXIN -> {
+                var id = mixinIds.computeIfAbsent(value, ignored -> {
+                    var next = mixinIds.size();
+                    mixins.put(next, value);
+                    return next;
+                });
+                yield result.setCompilerMixin(
+                        Value.CompilerMixin.newBuilder().setId(id)
+                ).build();
+            }
+        };
     }
 
     /// Encodes a Sass number.
-    private static Value.Number encodeNumber(SassNumber number) {
+    private static Value.Number encodeNumber(SassValue number) {
         return Value.Number.newBuilder()
-                .setValue(number.value())
+                .setValue(number.numberValue())
                 .addAllNumerators(number.numeratorUnits())
                 .addAllDenominators(number.denominatorUnits())
                 .build();
     }
 
     /// Encodes a CSS calculation.
-    private Value.Calculation encodeCalculation(
-            SassCalculation calculation,
-            EncodingContext context
-    ) {
+    private Value.Calculation encodeCalculation(SassValue calculation) {
         var result = Value.Calculation.newBuilder()
-                .setName(calculation.name());
-        for (var argument : calculation.arguments()) {
-            result.addArguments(encodeCalculationValue(argument, context));
+                .setName(calculation.calculationName());
+        for (var argument : calculation.calculationArguments()) {
+            result.addArguments(encodeCalculationValue(argument));
         }
         return result.build();
     }
 
     /// Encodes one calculation argument.
     private Value.Calculation.CalculationValue encodeCalculationValue(
-            Object argument,
-            EncodingContext context
+            SassCalculationValue argument
     ) {
         var result = Value.Calculation.CalculationValue.newBuilder();
-        if (argument instanceof SassNumber number) {
-            return result.setNumber(encodeNumber(number)).build();
+        if (argument instanceof SassCalculationValue.Value wrapped) {
+            var value = wrapped.value();
+            if (value.type() == org.glavo.sassfx.SassValueType.NUMBER) {
+                return result.setNumber(encodeNumber(value)).build();
+            }
+            return result.setCalculation(encodeCalculation(value)).build();
         }
-        if (argument instanceof SassString string) {
+        if (argument instanceof SassCalculationValue.StringValue string) {
             return result.setString(string.text()).build();
         }
-        if (argument instanceof SassCalculation calculation) {
-            return result.setCalculation(
-                    encodeCalculation(calculation, context)
-            ).build();
-        }
-        if (argument instanceof CalculationOperation operation) {
+        if (argument instanceof SassCalculationValue.Operation operation) {
             return result.setOperation(
                     Value.Calculation.CalculationOperation.newBuilder()
                             .setOperator(switch (operation.operator()) {
@@ -300,12 +266,10 @@ final class EmbeddedValueCodec {
                                 case DIVIDED_BY -> CalculationOperator.DIVIDE;
                             })
                             .setLeft(encodeCalculationValue(
-                                    operation.left(),
-                                    context
+                                    operation.left()
                             ))
                             .setRight(encodeCalculationValue(
-                                    operation.right(),
-                                    context
+                                    operation.right()
                             ))
             ).build();
         }
@@ -367,9 +331,7 @@ final class EmbeddedValueCodec {
                     context
             );
             case COLOR -> decodeColor(value.getColor());
-            case CALCULATION -> SassValue.bridgeFromInternal(
-                    decodeCalculation(value.getCalculation())
-            );
+            case CALCULATION -> decodeCalculation(value.getCalculation());
             case COMPILER_FUNCTION -> requireOpaque(
                     functions,
                     value.getCompilerFunction().getId(),
@@ -460,14 +422,11 @@ final class EmbeddedValueCodec {
             EncodingContext context
     ) {
         if (list.getId() != 0) {
-            return SassValue.bridgeFromInternal(
-                    context.argumentListForId(list.getId())
-            );
+            return context.argumentListForId(list.getId());
         }
-        var contents =
-                new ArrayList<org.glavo.sassfx.internal.value.SassValue>();
+        var contents = new ArrayList<SassValue>();
         for (var element : list.getContentsList()) {
-            contents.add(internal(decode(element, context)));
+            contents.add(decode(element, context));
         }
         if (list.getSeparator() == ListSeparator.UNDECIDED
                 && contents.size() > 1) {
@@ -476,23 +435,18 @@ final class EmbeddedValueCodec {
                     contents.size()
             );
         }
-        var keywords =
-                new LinkedHashMap<
-                        String,
-                        org.glavo.sassfx.internal.value.SassValue
-                        >();
+        var keywords = new LinkedHashMap<String, SassValue>();
         for (var entry : list.getKeywordsMap().entrySet()) {
             keywords.put(
                     entry.getKey(),
-                    internal(decode(entry.getValue(), context))
+                    decode(entry.getValue(), context)
             );
         }
-        var arguments = new SassArgumentList(
+        return SassValue.argumentList(
                 contents,
-                internalSeparator(list.getSeparator()),
+                separator(list.getSeparator()),
                 keywords
         );
-        return SassValue.bridgeFromInternal(arguments);
     }
 
     /// Creates the protocol error used for a multi-element list whose
@@ -514,20 +468,20 @@ final class EmbeddedValueCodec {
 
     /// Decodes a protocol color with missing-channel presence intact.
     private static SassValue decodeColor(Value.Color color) {
-        final ColorSpace space;
+        final SassColorSpace space;
         try {
-            space = ColorSpace.fromName(color.getSpace());
+            space = SassColorSpace.fromCssName(color.getSpace());
         } catch (IllegalArgumentException failure) {
             throw new SassValueException(failure.getMessage());
         }
         try {
-            return SassValue.bridgeFromInternal(SassColor.forSpace(
+            return SassValue.color(
                     space,
                     color.hasChannel1() ? color.getChannel1() : null,
                     color.hasChannel2() ? color.getChannel2() : null,
                     color.hasChannel3() ? color.getChannel3() : null,
                     color.hasAlpha() ? color.getAlpha() : null
-            ));
+            );
         } catch (IllegalArgumentException failure) {
             if (color.hasAlpha()) {
                 throw protocolError(
@@ -540,10 +494,10 @@ final class EmbeddedValueCodec {
     }
 
     /// Decodes a protocol calculation using Dart Sass-compatible factories.
-    private org.glavo.sassfx.internal.value.SassValue decodeCalculation(
+    private SassValue decodeCalculation(
             Value.Calculation calculation
     ) {
-        var arguments = new ArrayList<>();
+        var arguments = new ArrayList<SassCalculationValue>();
         for (var argument : calculation.getArgumentsList()) {
             arguments.add(decodeCalculationValue(argument));
         }
@@ -555,15 +509,15 @@ final class EmbeddedValueCodec {
                                     + "one argument for calc()."
                     );
                 }
-                yield SassCalculation.calc(arguments.get(0));
+                yield SassValue.calculation("calc", arguments);
             }
             case "min" -> {
                 requireCalculationArguments("min", arguments);
-                yield SassCalculation.min(arguments);
+                yield SassValue.calculation("min", arguments);
             }
             case "max" -> {
                 requireCalculationArguments("max", arguments);
-                yield SassCalculation.max(arguments);
+                yield SassValue.calculation("max", arguments);
             }
             case "clamp" -> {
                 if (arguments.isEmpty() || arguments.size() > 3) {
@@ -572,11 +526,7 @@ final class EmbeddedValueCodec {
                                     + "arguments for clamp()."
                     );
                 }
-                yield SassCalculation.clamp(
-                        arguments.get(0),
-                        arguments.size() > 1 ? arguments.get(1) : null,
-                        arguments.size() > 2 ? arguments.get(2) : null
-                );
+                yield SassValue.calculation("clamp", arguments);
             }
             default -> throw protocolError(
                     "Value.Calculation.name \"" + calculation.getName()
@@ -586,27 +536,32 @@ final class EmbeddedValueCodec {
     }
 
     /// Decodes one protocol calculation argument.
-    private Object decodeCalculationValue(
+    private SassCalculationValue decodeCalculationValue(
             Value.Calculation.CalculationValue value
     ) {
         return switch (value.getValueCase()) {
-            case NUMBER -> internal(decodeNumber(value.getNumber()));
-            case STRING -> new SassString(value.getString(), false);
+            case NUMBER -> new SassCalculationValue.Value(
+                    decodeNumber(value.getNumber())
+            );
+            case STRING -> new SassCalculationValue.StringValue(
+                    value.getString()
+            );
             case INTERPOLATION ->
-                    new SassString("(" + value.getInterpolation() + ")", false);
-            case CALCULATION -> decodeCalculation(value.getCalculation());
+                    new SassCalculationValue.StringValue(
+                            "(" + value.getInterpolation() + ")"
+                    );
+            case CALCULATION -> new SassCalculationValue.Value(
+                    decodeCalculation(value.getCalculation())
+            );
             case OPERATION -> {
                 var operation = value.getOperation();
-                yield new CalculationOperation(
+                yield new SassCalculationValue.Operation(
                         switch (operation.getOperator()) {
-                            case PLUS ->
-                                    org.glavo.sassfx.internal.value.CalculationOperator.PLUS;
-                            case MINUS ->
-                                    org.glavo.sassfx.internal.value.CalculationOperator.MINUS;
-                            case TIMES ->
-                                    org.glavo.sassfx.internal.value.CalculationOperator.TIMES;
+                            case PLUS -> SassCalculationValue.Operator.PLUS;
+                            case MINUS -> SassCalculationValue.Operator.MINUS;
+                            case TIMES -> SassCalculationValue.Operator.TIMES;
                             case DIVIDE ->
-                                    org.glavo.sassfx.internal.value.CalculationOperator.DIVIDED_BY;
+                                    SassCalculationValue.Operator.DIVIDED_BY;
                             case UNRECOGNIZED -> throw new SassValueException(
                                     "Unknown CalculationOperator "
                                             + operation.getOperator()
@@ -630,25 +585,19 @@ final class EmbeddedValueCodec {
         if (signatureError != null) {
             throw new SassValueException(signatureError);
         }
-        var callable = CustomFunctionCallable.parse(
-                new SassCustomFunction(
-                        signature,
-                        arguments -> callById(
-                                function.getId(),
-                                arguments
-                        )
+        return SassValue.function(new SassCustomFunction(
+                signature,
+                arguments -> callById(
+                        function.getId(),
+                        arguments
                 )
-        );
-        return SassValue.bridgeFromInternal(new SassFunction(
-                callable,
-                CustomFunctionCallable.callbackCompilationContext()
         ));
     }
 
     /// Marks compiler-created argument lists observed by the host.
     private static void markAccessedArgumentLists(
             List<Integer> ids,
-            Map<Integer, SassArgumentList> argumentLists
+            Map<Integer, SassValue> argumentLists
     ) {
         for (var id : ids) {
             if (id == 0) {
@@ -685,21 +634,13 @@ final class EmbeddedValueCodec {
         return value;
     }
 
-    /// Returns a public value's internal representation.
-    private static org.glavo.sassfx.internal.value.SassValue internal(
-            SassValue value
-    ) {
-        return (org.glavo.sassfx.internal.value.SassValue)
-                value.bridgeToInternal();
-    }
-
     /// Requires a nonempty variadic calculation argument list.
     ///
     /// @param name the calculation function name
     /// @param arguments the decoded arguments
     private static void requireCalculationArguments(
             String name,
-            List<Object> arguments
+            List<SassCalculationValue> arguments
     ) {
         if (arguments.isEmpty()) {
             throw protocolError(
@@ -709,10 +650,8 @@ final class EmbeddedValueCodec {
         }
     }
 
-    /// Converts an internal list separator to the protocol enum.
-    private static ListSeparator separator(
-            org.glavo.sassfx.internal.value.ListSeparator separator
-    ) {
+    /// Converts a public list separator to the protocol enum.
+    private static ListSeparator separator(SassListSeparator separator) {
         return switch (separator) {
             case COMMA -> ListSeparator.COMMA;
             case SPACE -> ListSeparator.SPACE;
@@ -734,25 +673,6 @@ final class EmbeddedValueCodec {
         };
     }
 
-    /// Converts a protocol list separator to the internal enum.
-    private static org.glavo.sassfx.internal.value.ListSeparator internalSeparator(
-            ListSeparator separator
-    ) {
-        return switch (separator) {
-            case COMMA ->
-                    org.glavo.sassfx.internal.value.ListSeparator.COMMA;
-            case SPACE ->
-                    org.glavo.sassfx.internal.value.ListSeparator.SPACE;
-            case SLASH ->
-                    org.glavo.sassfx.internal.value.ListSeparator.SLASH;
-            case UNDECIDED ->
-                    org.glavo.sassfx.internal.value.ListSeparator.UNDECIDED;
-            case UNRECOGNIZED -> throw new SassValueException(
-                    "Unknown ListSeparator " + separator
-            );
-        };
-    }
-
     /// Creates a protocol parameter error for invalid host data.
     private static EmbeddedProtocolException protocolError(String message) {
         return new EmbeddedProtocolException(
@@ -766,7 +686,7 @@ final class EmbeddedValueCodec {
     @NotNullByDefault
     private static final class EncodingContext {
         /// Maps IDs back to the compiler-created argument lists.
-        private final Map<Integer, SassArgumentList> argumentLists =
+        private final Map<Integer, SassValue> argumentLists =
                 new HashMap<>();
 
         /// Contains the next request-local argument-list ID.
@@ -780,7 +700,7 @@ final class EmbeddedValueCodec {
         ///
         /// @param arguments the compiler-created argument list
         /// @return its request-local ID
-        private int idFor(SassArgumentList arguments) {
+        private int idFor(SassValue arguments) {
             var id = nextArgumentListId++;
             argumentLists.put(id, arguments);
             return id;
@@ -792,7 +712,7 @@ final class EmbeddedValueCodec {
         /// @param id the unsigned protocol ID stored in a Java integer
         /// @return the compiler-created argument list
         /// @throws EmbeddedProtocolException if the ID is unknown
-        private SassArgumentList argumentListForId(int id) {
+        private SassValue argumentListForId(int id) {
             @Nullable var arguments = argumentLists.get(id);
             if (arguments == null) {
                 throw protocolError(

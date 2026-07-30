@@ -83,6 +83,18 @@ public enum SassColorSpace {
         return cssName;
     }
 
+    /// Resolves a public color space by its CSS name.
+    ///
+    /// Comparison is case-insensitive. Both `xyz` and `xyz-d65` resolve to
+    /// [#XYZ_D65].
+    ///
+    /// @param cssName the CSS color-space name
+    /// @return the corresponding public color space
+    /// @throws IllegalArgumentException if the name is unknown
+    public static SassColorSpace fromCssName(String cssName) {
+        return fromInternal(ColorSpace.fromName(cssName));
+    }
+
     /// Returns whether this is one of Sass's legacy RGB, HSL, or HWB spaces.
     ///
     /// @return whether legacy color accessors apply to this space

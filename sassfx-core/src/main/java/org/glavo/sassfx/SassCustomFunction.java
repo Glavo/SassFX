@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.sassfx;
 
+import org.glavo.sassfx.internal.callable.CustomFunctionCallable;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Unmodifiable;
 
@@ -23,13 +24,28 @@ public record SassCustomFunction(
         String signature,
         Callback callback
 ) {
-    /// Validates a custom function definition.
+    /// Ensures that both components are present and the signature is nonempty.
     public SassCustomFunction {
         Objects.requireNonNull(signature, "signature");
         Objects.requireNonNull(callback, "callback");
         if (signature.isBlank()) {
             throw new IllegalArgumentException("signature must not be blank");
         }
+    }
+
+    /// Parses and validates one complete custom function signature.
+    ///
+    /// This performs the same signature validation used when compile options
+    /// register a custom function. It does not invoke a callback.
+    ///
+    /// @param signature the complete function signature
+    /// @throws IllegalArgumentException if the signature is not one complete
+    /// function signature
+    public static void validateSignature(String signature) {
+        CustomFunctionCallable.parse(new SassCustomFunction(
+                signature,
+                ignored -> SassValue.nullValue()
+        ));
     }
 
     /// Implements one synchronous custom Sass function body.

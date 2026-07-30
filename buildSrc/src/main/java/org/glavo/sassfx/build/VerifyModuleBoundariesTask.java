@@ -13,51 +13,27 @@ import org.gradle.api.tasks.TaskAction;
 import org.gradle.work.DisableCachingByDefault;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.Unmodifiable;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.Set;
 
 /// Verifies that frontend modules use only supported core API boundaries.
 @NotNullByDefault
 @DisableCachingByDefault(because = "Verification tasks have no outputs.")
 public abstract class VerifyModuleBoundariesTask extends DefaultTask {
-    /// Core implementation types intentionally used by the embedded protocol
-    /// value bridge.
-    private static final @Unmodifiable Set<String>
-            EMBEDDED_INTERNAL_IMPORTS = Set.of(
-                    "org.glavo.sassfx.internal.callable.CustomFunctionCallable",
-                    "org.glavo.sassfx.internal.callable.FatalSassCallbackException",
-                    "org.glavo.sassfx.internal.value.CalculationOperation",
-                    "org.glavo.sassfx.internal.value.SassArgumentList",
-                    "org.glavo.sassfx.internal.value.SassBoolean",
-                    "org.glavo.sassfx.internal.value.SassCalculation",
-                    "org.glavo.sassfx.internal.value.SassColor",
-                    "org.glavo.sassfx.internal.value.SassFunction",
-                    "org.glavo.sassfx.internal.value.SassList",
-                    "org.glavo.sassfx.internal.value.SassMap",
-                    "org.glavo.sassfx.internal.value.SassMixin",
-                    "org.glavo.sassfx.internal.value.SassNull",
-                    "org.glavo.sassfx.internal.value.SassNumber",
-                    "org.glavo.sassfx.internal.value.SassString",
-                    "org.glavo.sassfx.internal.value.SassValueException",
-                    "org.glavo.sassfx.internal.value.color.ColorSpace"
-            );
-
     /// Returns production Java sources from frontend modules.
     @InputFiles
     @PathSensitive(PathSensitivity.RELATIVE)
     public abstract ConfigurableFileCollection getSourceFiles();
 
-    /// Returns the repository root used to classify module paths.
+    /// Returns the repository root used to report relative source paths.
     @Internal
     public abstract DirectoryProperty getRootDirectory();
 
-    /// Scans frontend imports and rejects unsupported core dependencies.
+    /// Scans frontend sources and rejects references to core internals.
     ///
     /// @throws IOException if a configured source file cannot be read
     @TaskAction
@@ -76,13 +52,12 @@ public abstract class VerifyModuleBoundariesTask extends DefaultTask {
                     StandardCharsets.UTF_8
             );
             for (var index = 0; index < lines.size(); index++) {
-                @Nullable String importedType =
-                        internalImport(lines.get(index));
-                if (importedType != null
-                        && isForbidden(relativePath, importedType)) {
+                @Nullable String internalType =
+                        internalReference(lines.get(index));
+                if (internalType != null) {
                     violations.add(
                             relativePath + ":" + (index + 1) + ": "
-                                    + importedType
+                                    + internalType
                     );
                 }
             }
@@ -90,51 +65,32 @@ public abstract class VerifyModuleBoundariesTask extends DefaultTask {
 
         if (!violations.isEmpty()) {
             throw new GradleException(
-                    "Frontend modules import unsupported core internals:\n"
+                    "Frontend modules reference unsupported core internals:\n"
                             + String.join("\n", violations)
             );
         }
     }
 
-    /// Extracts a core-internal type from one Java import statement.
+    /// Extracts a core-internal qualified name from one source line.
     ///
     /// @param line one source line
-    /// @return the imported internal type, or `null`
-    private static @Nullable String internalImport(String line) {
-        var statement = line.strip();
-        if (!statement.startsWith("import ")
-                || !statement.endsWith(";")) {
+    /// @return the referenced internal name, or `null`
+    private static @Nullable String internalReference(String line) {
+        var prefix = "org.glavo.sassfx.internal.";
+        var start = line.indexOf(prefix);
+        if (start < 0) {
             return null;
         }
-        var importedType = statement.substring(
-                "import ".length(),
-                statement.length() - 1
-        );
-        if (importedType.startsWith("static ")) {
-            importedType = importedType.substring("static ".length());
+        var end = start + prefix.length();
+        while (end < line.length()) {
+            var character = line.charAt(end);
+            if (character != '.'
+                    && character != '*'
+                    && !Character.isJavaIdentifierPart(character)) {
+                break;
+            }
+            end++;
         }
-        return importedType.startsWith("org.glavo.sassfx.internal.")
-                ? importedType
-                : null;
-    }
-
-    /// Reports whether one internal import crosses a protected boundary.
-    ///
-    /// CLI and Gradle plugin code must use only supported APIs. The embedded
-    /// protocol module has a narrow allowlist for its value-translation bridge.
-    ///
-    /// @param relativePath repository-relative source path
-    /// @param importedType imported core-internal type
-    /// @return whether the import violates the module boundary
-    private static boolean isForbidden(
-            String relativePath,
-            String importedType
-    ) {
-        if (relativePath.startsWith("sassfx-cli/")
-                || relativePath.startsWith("sassfx-gradle-plugin/")) {
-            return true;
-        }
-        return relativePath.startsWith("sassfx-embedded/")
-                && !EMBEDDED_INTERNAL_IMPORTS.contains(importedType);
+        return line.substring(start, end);
     }
 }

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.sassfx;
 
+import org.glavo.sassfx.internal.callable.CustomFunctionCallable;
+import org.glavo.sassfx.internal.value.CalculationOperation;
+import org.glavo.sassfx.internal.value.CalculationOperator;
 import org.glavo.sassfx.internal.value.SassArgumentList;
 import org.glavo.sassfx.internal.value.SassBoolean;
 import org.glavo.sassfx.internal.value.SassCalculation;
@@ -12,7 +15,6 @@ import org.glavo.sassfx.internal.value.SassMixin;
 import org.glavo.sassfx.internal.value.SassNull;
 import org.glavo.sassfx.internal.value.SassNumber;
 import org.glavo.sassfx.internal.value.SassString;
-import org.glavo.sassfx.internal.value.SassValueException;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -29,9 +31,9 @@ import java.util.Objects;
 ///
 /// Values passed to a [SassCustomFunction] retain their complete Sass identity,
 /// including opaque color, calculation, function, and mixin values. Common
-/// scalar, list, and map values can also be constructed using this class's
-/// factories. A value may be returned directly from a callback without
-/// conversion.
+/// scalar, collection, color, calculation, and callback-bound function values
+/// can also be constructed using this class's factories. A value may be
+/// returned directly from a callback without conversion.
 @NotNullByDefault
 public final class SassValue {
     /// The public wrapper for Sass null.
@@ -152,6 +154,70 @@ public final class SassValue {
         return new SassValue(new SassMap(internal));
     }
 
+    /// Creates an immutable Sass argument list.
+    ///
+    /// Argument lists carry positional rest arguments and leftover keyword
+    /// arguments. Calling [#keywords()] on the returned value marks its
+    /// keywords as observed; [#keywordContents()] reads them without changing
+    /// that state.
+    ///
+    /// @param contents the positional elements in source order
+    /// @param separator the positional element separator
+    /// @param keywords leftover keyword arguments without dollar signs
+    /// @return the Sass argument list
+    /// @throws IllegalArgumentException if a multi-element list has an
+    /// undecided separator
+    public static SassValue argumentList(
+            List<SassValue> contents,
+            SassListSeparator separator,
+            Map<String, SassValue> keywords
+    ) {
+        Objects.requireNonNull(contents, "contents");
+        Objects.requireNonNull(separator, "separator");
+        Objects.requireNonNull(keywords, "keywords");
+        if (contents.size() > 1
+                && separator == SassListSeparator.UNDECIDED) {
+            throw new IllegalArgumentException(
+                    "A multi-element argument list must have a separator."
+            );
+        }
+
+        var internalContents =
+                new ArrayList<org.glavo.sassfx.internal.value.SassValue>(
+                        contents.size()
+                );
+        for (var element : contents) {
+            internalContents.add(
+                    Objects.requireNonNull(
+                            element,
+                            "argument-list element"
+                    ).value
+            );
+        }
+        var internalKeywords =
+                new LinkedHashMap<
+                        String,
+                        org.glavo.sassfx.internal.value.SassValue
+                        >(keywords.size());
+        for (var entry : keywords.entrySet()) {
+            internalKeywords.put(
+                    Objects.requireNonNull(
+                            entry.getKey(),
+                            "argument-list keyword"
+                    ),
+                    Objects.requireNonNull(
+                            entry.getValue(),
+                            "argument-list keyword value"
+                    ).value
+            );
+        }
+        return new SassValue(new SassArgumentList(
+                internalContents,
+                toInternalSeparator(separator),
+                internalKeywords
+        ));
+    }
+
     /// Creates a Sass color in an explicitly selected color space.
     ///
     /// A `null` channel represents the CSS missing-channel value `none`.
@@ -181,6 +247,108 @@ public final class SassValue {
                 channel2,
                 channel3,
                 alpha
+        ));
+    }
+
+    /// Creates and simplifies a supported CSS calculation.
+    ///
+    /// The supported names are `calc`, `min`, `max`, and `clamp`. `calc`
+    /// requires exactly one argument, `min` and `max` require at least one,
+    /// and `clamp` accepts one through three. Simplification may return a
+    /// number rather than a value whose type is [SassValueType#CALCULATION].
+    ///
+    /// @param name the lowercase calculation name
+    /// @param arguments the structural calculation arguments
+    /// @return the simplified Sass number or calculation
+    /// @throws IllegalArgumentException if the name or argument count is
+    /// unsupported
+    /// @throws SassValueException if the arguments are semantically
+    /// incompatible
+    public static SassValue calculation(
+            String name,
+            List<SassCalculationValue> arguments
+    ) {
+        Objects.requireNonNull(name, "name");
+        Objects.requireNonNull(arguments, "arguments");
+        var internalArguments = new ArrayList<Object>(arguments.size());
+        for (var argument : arguments) {
+            internalArguments.add(toInternalCalculationValue(
+                    Objects.requireNonNull(
+                            argument,
+                            "calculation argument"
+                    )
+            ));
+        }
+
+        org.glavo.sassfx.internal.value.SassValue result =
+                switch (name) {
+                    case "calc" -> {
+                        if (internalArguments.size() != 1) {
+                            throw new IllegalArgumentException(
+                                    "calc() requires exactly one argument"
+                            );
+                        }
+                        yield SassCalculation.calc(
+                                internalArguments.get(0)
+                        );
+                    }
+                    case "min" -> {
+                        if (internalArguments.isEmpty()) {
+                            throw new IllegalArgumentException(
+                                    "min() requires at least one argument"
+                            );
+                        }
+                        yield SassCalculation.min(internalArguments);
+                    }
+                    case "max" -> {
+                        if (internalArguments.isEmpty()) {
+                            throw new IllegalArgumentException(
+                                    "max() requires at least one argument"
+                            );
+                        }
+                        yield SassCalculation.max(internalArguments);
+                    }
+                    case "clamp" -> {
+                        if (internalArguments.isEmpty()
+                                || internalArguments.size() > 3) {
+                            throw new IllegalArgumentException(
+                                    "clamp() requires one to three arguments"
+                            );
+                        }
+                        yield SassCalculation.clamp(
+                                internalArguments.get(0),
+                                internalArguments.size() > 1
+                                        ? internalArguments.get(1)
+                                        : null,
+                                internalArguments.size() > 2
+                                        ? internalArguments.get(2)
+                                        : null
+                        );
+                    }
+                    default -> throw new IllegalArgumentException(
+                            "Unsupported calculation name: " + name
+                    );
+                };
+        return wrap(result);
+    }
+
+    /// Creates a first-class function value for the active compilation.
+    ///
+    /// The returned value may be invoked through `sass:meta`. It remains bound
+    /// to the compilation whose callback created it and cannot be reused by a
+    /// different compilation.
+    ///
+    /// @param function the custom function implementation
+    /// @return a Sass function value bound to the active compilation
+    /// @throws IllegalArgumentException if the signature is invalid
+    /// @throws IllegalStateException if no custom function callback is active
+    public static SassValue function(SassCustomFunction function) {
+        var callable = CustomFunctionCallable.parse(
+                Objects.requireNonNull(function, "function")
+        );
+        return new SassValue(new SassFunction(
+                callable,
+                CustomFunctionCallable.callbackCompilationContext()
         ));
     }
 
@@ -330,6 +498,26 @@ public final class SassValue {
         return Collections.unmodifiableMap(result);
     }
 
+    /// Returns rest keyword arguments without marking them as observed.
+    ///
+    /// This accessor is intended for adapters that must serialize an argument
+    /// list before a remote callback reports whether it consumed the
+    /// keywords. Most custom functions should call [#keywords()] instead.
+    ///
+    /// @return an immutable insertion-ordered keyword map without dollar signs
+    /// @throws IllegalStateException if this is not an argument list
+    public @Unmodifiable Map<String, SassValue> keywordContents() {
+        var arguments = require(
+                SassArgumentList.class,
+                SassValueType.ARGUMENT_LIST
+        );
+        var result = new LinkedHashMap<String, SassValue>();
+        for (var entry : arguments.keywordsWithoutMarking().entrySet()) {
+            result.put(entry.getKey(), wrap(entry.getValue()));
+        }
+        return Collections.unmodifiableMap(result);
+    }
+
     /// Returns this map's insertion-ordered contents.
     ///
     /// @return an immutable map of public Sass values
@@ -389,6 +577,57 @@ public final class SassValue {
         } catch (SassValueException failure) {
             throw new IllegalArgumentException(failure.getMessage(), failure);
         }
+    }
+
+    /// Returns one color channel while preserving a missing value.
+    ///
+    /// Indices zero through two address the native channels of
+    /// [#colorSpace()]. Index three addresses alpha.
+    ///
+    /// @param index the zero-based channel index
+    /// @return the channel value, or `null` when the channel is missing
+    /// @throws IllegalStateException if this is not a color
+    /// @throws IndexOutOfBoundsException if {@code index} is outside zero
+    /// through three
+    public @Nullable Double colorChannelOrNull(int index) {
+        var color = require(SassColor.class, SassValueType.COLOR);
+        return switch (index) {
+            case 0 -> color.channel0OrNull();
+            case 1 -> color.channel1OrNull();
+            case 2 -> color.channel2OrNull();
+            case 3 -> color.alphaOrNull();
+            default -> throw new IndexOutOfBoundsException(index);
+        };
+    }
+
+    /// Returns this calculation's function name.
+    ///
+    /// @return the lowercase calculation name
+    /// @throws IllegalStateException if this is not a calculation
+    public String calculationName() {
+        return require(
+                SassCalculation.class,
+                SassValueType.CALCULATION
+        ).name();
+    }
+
+    /// Returns this calculation's structural arguments.
+    ///
+    /// @return an immutable calculation argument list
+    /// @throws IllegalStateException if this is not a calculation
+    public @Unmodifiable List<SassCalculationValue> calculationArguments() {
+        var calculation = require(
+                SassCalculation.class,
+                SassValueType.CALCULATION
+        );
+        var result =
+                new ArrayList<SassCalculationValue>(
+                        calculation.arguments().size()
+                );
+        for (var argument : calculation.arguments()) {
+            result.add(fromInternalCalculationValue(argument));
+        }
+        return List.copyOf(result);
     }
 
     /// Returns the CSS representation of this value.
@@ -490,5 +729,65 @@ public final class SassValue {
             case SLASH -> SassListSeparator.SLASH;
             case UNDECIDED -> SassListSeparator.UNDECIDED;
         };
+    }
+
+    /// Converts a public calculation value to the evaluator representation.
+    private static Object toInternalCalculationValue(
+            SassCalculationValue value
+    ) {
+        if (value instanceof SassCalculationValue.Value wrapped) {
+            return wrapped.value().value;
+        }
+        if (value instanceof SassCalculationValue.StringValue string) {
+            return new SassString(string.text(), false);
+        }
+        if (value instanceof SassCalculationValue.Operation operation) {
+            return SassCalculation.operate(
+                    switch (operation.operator()) {
+                        case PLUS -> CalculationOperator.PLUS;
+                        case MINUS -> CalculationOperator.MINUS;
+                        case TIMES -> CalculationOperator.TIMES;
+                        case DIVIDED_BY -> CalculationOperator.DIVIDED_BY;
+                    },
+                    toInternalCalculationValue(operation.left()),
+                    toInternalCalculationValue(operation.right())
+            );
+        }
+        throw new AssertionError(
+                "Unsupported calculation value: "
+                        + value.getClass().getName()
+        );
+    }
+
+    /// Converts an evaluator calculation value to its public representation.
+    private static SassCalculationValue fromInternalCalculationValue(
+            Object value
+    ) {
+        if (value instanceof SassNumber number) {
+            return new SassCalculationValue.Value(wrap(number));
+        }
+        if (value instanceof SassCalculation calculation) {
+            return new SassCalculationValue.Value(wrap(calculation));
+        }
+        if (value instanceof SassString string) {
+            return new SassCalculationValue.StringValue(string.text());
+        }
+        if (value instanceof CalculationOperation operation) {
+            return new SassCalculationValue.Operation(
+                    switch (operation.operator()) {
+                        case PLUS -> SassCalculationValue.Operator.PLUS;
+                        case MINUS -> SassCalculationValue.Operator.MINUS;
+                        case TIMES -> SassCalculationValue.Operator.TIMES;
+                        case DIVIDED_BY ->
+                                SassCalculationValue.Operator.DIVIDED_BY;
+                    },
+                    fromInternalCalculationValue(operation.left()),
+                    fromInternalCalculationValue(operation.right())
+            );
+        }
+        throw new IllegalStateException(
+                "Unsupported internal calculation value: "
+                        + value.getClass().getName()
+        );
     }
 }

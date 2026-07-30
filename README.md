@@ -684,14 +684,23 @@ through `sass:meta`; stylesheet functions and built-in calculation behavior
 retain Sass precedence. Plain CSS sources do not invoke custom functions.
 
 `SassValue` preserves every evaluator value kind without converting through
-CSS text. It provides factories and typed accessors for common scalar, list,
-map, and Color Level 4 values. `SassColorSpace` exposes all 16 public Sass
-spaces; `SassValue.color(...)` preserves missing channels and requires an
-explicit space. Requiring the space avoids the ambiguous legacy constructor
-forms covered by Dart Sass's `null-alpha` and `color-4-api` deprecations, so
-those deprecated overloads are intentionally absent from the Java API.
-Opaque calculations, functions, and mixins may be returned directly. A
-callback must return a non-null value. Thrown exceptions become
+CSS text. Its factories and typed accessors cover scalars, lists, maps,
+argument lists, Color Level 4 values, and structural calculations.
+`SassCalculationValue` represents calculation numbers, nested calculations,
+unquoted CSS text, and operations; `SassValue.calculation(...)` applies Sass
+simplification when constructing `calc()`, `min()`, `max()`, or `clamp()`.
+`SassValue.function(...)` creates a first-class function value while a custom
+callback is active.
+
+`SassColorSpace` exposes all 16 public Sass spaces and resolves wire or CSS
+names with `fromCssName(...)`. `SassValue.color(...)` preserves missing
+channels and requires an explicit space. Requiring the space avoids the
+ambiguous legacy constructor forms covered by Dart Sass's `null-alpha` and
+`color-4-api` deprecations, so those deprecated overloads are intentionally
+absent from the Java API. Opaque compiler-created calculations, functions,
+and mixins may still be returned directly.
+
+A callback must return a non-null value. Thrown exceptions become
 source-associated compilation failures and remain in the cause chain. One
 callback instance may run concurrently when compile options are shared, so
 callback implementations must be thread-safe.

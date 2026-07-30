@@ -2,8 +2,6 @@
 package org.glavo.sassfx.embedded;
 
 import org.glavo.sassfx.SassCustomFunction;
-import org.glavo.sassfx.SassValue;
-import org.glavo.sassfx.internal.callable.CustomFunctionCallable;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -34,10 +32,7 @@ final class EmbeddedFunctionSignature {
         }
 
         try {
-            CustomFunctionCallable.parse(new SassCustomFunction(
-                    signature,
-                    arguments -> SassValue.nullValue()
-            ));
+            SassCustomFunction.validateSignature(signature);
             return null;
         } catch (IllegalArgumentException failure) {
             var message = Objects.requireNonNullElse(

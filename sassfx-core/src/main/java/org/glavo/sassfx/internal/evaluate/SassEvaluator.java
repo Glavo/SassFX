@@ -3,6 +3,7 @@ package org.glavo.sassfx.internal.evaluate;
 
 import org.glavo.sassfx.Diagnostic;
 import org.glavo.sassfx.DiagnosticSeverity;
+import org.glavo.sassfx.SassCallbackAbortException;
 import org.glavo.sassfx.SassDiagnosticOptions;
 import org.glavo.sassfx.SassStackFrame;
 import org.glavo.sassfx.SourceSpan;
@@ -83,7 +84,6 @@ import org.glavo.sassfx.internal.ast.WhileRule;
 import org.glavo.sassfx.internal.callable.BuiltInCallable;
 import org.glavo.sassfx.internal.callable.Callable;
 import org.glavo.sassfx.internal.callable.CustomFunctionCallable;
-import org.glavo.sassfx.internal.callable.FatalSassCallbackException;
 import org.glavo.sassfx.internal.callable.PlainCssCallable;
 import org.glavo.sassfx.internal.css.CssImport;
 import org.glavo.sassfx.internal.callable.UserDefinedCallable;
@@ -4951,7 +4951,7 @@ public final class SassEvaluator implements
                 org.glavo.sassfx.internal.value.SassValue result;
                 try {
                     result = custom.invoke(bound.values(), compilationContext);
-                } catch (FatalSassCallbackException failure) {
+                } catch (SassCallbackAbortException failure) {
                     throw failure;
                 } catch (Exception failure) {
                     var message = failure.getMessage();

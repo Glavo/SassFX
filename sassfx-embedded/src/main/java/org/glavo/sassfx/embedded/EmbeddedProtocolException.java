@@ -2,7 +2,7 @@
 package org.glavo.sassfx.embedded;
 
 import com.sass_lang.embedded_protocol.ProtocolErrorType;
-import org.glavo.sassfx.internal.callable.FatalSassCallbackException;
+import org.glavo.sassfx.SassCallbackAbortException;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import java.io.Serial;
@@ -10,7 +10,7 @@ import java.util.Objects;
 
 /// Reports a connection-level Embedded Sass protocol violation.
 @NotNullByDefault
-final class EmbeddedProtocolException extends FatalSassCallbackException {
+final class EmbeddedProtocolException extends SassCallbackAbortException {
     /// Identifies the serialized exception form.
     @Serial
     private static final long serialVersionUID = 1L;
