@@ -6,6 +6,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -53,7 +54,9 @@ public final class SassResolutionTracker {
     /// @return candidate paths whose addition, removal, or replacement may
     /// affect the compilation
     public @Unmodifiable Set<Path> candidatePaths() {
-        return Set.copyOf(candidatePaths);
+        return Collections.unmodifiableSet(
+                new LinkedHashSet<>(candidatePaths)
+        );
     }
 
     /// Reports whether the recorded paths completely describe mutable

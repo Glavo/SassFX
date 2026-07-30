@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-package org.glavo.sassfx.internal.repl;
+package org.glavo.sassfx;
 
-import org.glavo.sassfx.CompileOptions;
-import org.glavo.sassfx.DiagnosticSeverity;
-import org.glavo.sassfx.SassCompilationException;
-import org.glavo.sassfx.SassDeprecation;
-import org.glavo.sassfx.SassDiagnosticOptions;
-import org.glavo.sassfx.SassFileImporter;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

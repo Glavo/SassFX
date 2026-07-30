@@ -439,9 +439,21 @@ var result = compiler.compile(
 String css = result.output();
 ```
 
+Canonical string selectors shared by the CLI and Gradle plugin can be parsed
+with `OutputTarget.parse("css/javafx@27")`. The parser accepts only the target
+forms documented for `--target` and returns targets with expanded output and
+charset emission enabled where applicable.
+
 Standard CSS uses `CssTarget`. `JavaFXCssTarget` validates structures and
 values against the selected JavaFX release without loading JavaFX classes.
 Its default is JavaFX 17 with expanded output.
+
+Incremental frontends can pass a `SassDependencyTracker` to the four-argument
+`SassCompiler.compile` overload. After success or failure, it exposes the
+filesystem candidates that could change import resolution and reports whether
+custom resolvers left that snapshot incomplete. `SassInteractiveSession`
+provides the same persistent SassScript environment used by the CLI's
+interactive mode.
 
 ### BSS output
 

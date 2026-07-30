@@ -7,25 +7,23 @@ import org.glavo.sassfx.CompileResult;
 import org.glavo.sassfx.CssTarget;
 import org.glavo.sassfx.Diagnostic;
 import org.glavo.sassfx.DiagnosticSeverity;
-import org.glavo.sassfx.JavaFXTarget;
 import org.glavo.sassfx.JavaFXCssTarget;
 import org.glavo.sassfx.OutputStyle;
 import org.glavo.sassfx.OutputTarget;
 import org.glavo.sassfx.SassCompilationException;
 import org.glavo.sassfx.SassCompiler;
+import org.glavo.sassfx.SassDependencyTracker;
 import org.glavo.sassfx.SassDeprecation;
 import org.glavo.sassfx.SassDiagnosticOptions;
 import org.glavo.sassfx.SassFileSource;
 import org.glavo.sassfx.SassImporter;
+import org.glavo.sassfx.SassInteractiveSession;
 import org.glavo.sassfx.SassLogger;
 import org.glavo.sassfx.SassNodePackageImporter;
 import org.glavo.sassfx.SassSource;
 import org.glavo.sassfx.SassStringSource;
 import org.glavo.sassfx.SourceSpan;
 import org.glavo.sassfx.embedded.EmbeddedCompiler;
-import org.glavo.sassfx.internal.diagnostic.CompilationDiagnostics;
-import org.glavo.sassfx.internal.repl.SassInteractiveSession;
-import org.glavo.sassfx.internal.module.SassResolutionTracker;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
@@ -571,22 +569,16 @@ public final class SassFXMain implements Callable<Integer> {
             return USAGE_EXIT_STATUS;
         }
 
-        CliTarget selectedTarget;
-        CliBackend targetBackend;
-        @Nullable OutputStyle selectedOutputStyle;
+        OutputTarget<?> selectedTarget;
         CompileOptions compileOptions;
         CliCompilationPlan plan;
         OutputPolicy outputPolicy;
         String outputExtension;
         try {
             selectedTarget = selectedTarget();
-            targetBackend = selectedTarget.backend();
-            outputExtension = targetBackend == CliBackend.BSS
+            outputExtension = selectedTarget instanceof BssTarget
                     ? ".bss"
                     : ".css";
-            selectedOutputStyle = targetBackend == CliBackend.BSS
-                    ? null
-                    : selectedOutputStyle();
             validateTargetOptions(selectedTarget);
             plan = CliCompilationPlan.create(
                     inputs,
@@ -595,9 +587,9 @@ public final class SassFXMain implements Callable<Integer> {
                     indented,
                     outputExtension
             );
-            validatePlan(targetBackend, plan);
+            validatePlan(selectedTarget, plan);
             validateIncrementalPlan(plan);
-            outputPolicy = outputPolicy(targetBackend, plan);
+            outputPolicy = outputPolicy(selectedTarget, plan);
             compileOptions = compileOptions(outputPolicy.sourceMap());
         } catch (IllegalArgumentException failure) {
             printUsageFailure(commandLine, Objects.requireNonNullElse(
@@ -629,9 +621,7 @@ public final class SassFXMain implements Callable<Integer> {
                 stdinContents
         );
         var context = new ExecutionContext(
-                targetBackend,
-                selectedTarget.javaFXTarget(),
-                selectedOutputStyle,
+                selectedTarget,
                 compileOptions,
                 outputPolicy,
                 stdinUrl,
@@ -885,7 +875,7 @@ public final class SassFXMain implements Callable<Integer> {
         var states = new LinkedHashMap<Path, WatchJobState>();
         var status = 0;
         for (var job : jobs) {
-            var resolutionTracker = new SassResolutionTracker();
+            var dependencyTracker = new SassDependencyTracker();
             try {
                 SassSource source = job.source() == null
                         ? new SassStringSource(
@@ -894,15 +884,14 @@ public final class SassFXMain implements Callable<Integer> {
                                 context.stdinUrl()
                         )
                         : fileSource(job);
-                var compilation = switch (context.targetBackend()) {
-                    case CSS -> compileText(
+                var selectedOutputTarget = context.outputTarget();
+                final JobCompilation compilation;
+                if (selectedOutputTarget instanceof CssTarget cssTarget) {
+                    compilation = compileText(
                             source,
                             job.source(),
                             job.destination(),
-                            new CssTarget(
-                                    Objects.requireNonNull(context.outputStyle()),
-                                    charsetEnabled()
-                            ),
+                            cssTarget,
                             context.compileOptions(),
                             context.outputPolicy(),
                             context.stdinUrl(),
@@ -914,19 +903,15 @@ public final class SassFXMain implements Callable<Integer> {
                             context.diagnosticPrinter(),
                             context.out(),
                             context.err(),
-                            resolutionTracker
+                            dependencyTracker
                     );
-                    case JAVAFX_CSS -> compileText(
+                } else if (selectedOutputTarget
+                        instanceof JavaFXCssTarget javaFXCssTarget) {
+                    compilation = compileText(
                             source,
                             job.source(),
                             job.destination(),
-                            new JavaFXCssTarget(
-                                    Objects.requireNonNull(
-                                            context.javaFXTarget()
-                                    ),
-                                    Objects.requireNonNull(context.outputStyle()),
-                                    charsetEnabled()
-                            ),
+                            javaFXCssTarget,
                             context.compileOptions(),
                             context.outputPolicy(),
                             context.stdinUrl(),
@@ -938,23 +923,27 @@ public final class SassFXMain implements Callable<Integer> {
                             context.diagnosticPrinter(),
                             context.out(),
                             context.err(),
-                            resolutionTracker
+                            dependencyTracker
                     );
-                    case BSS -> compileBss(
+                } else if (selectedOutputTarget instanceof BssTarget bssTarget) {
+                    compilation = compileBss(
                             source,
                             job.source(),
                             Objects.requireNonNull(job.destination()),
-                            new BssTarget(Objects.requireNonNull(
-                                    context.javaFXTarget()
-                            )),
+                            bssTarget,
                             context.compileOptions(),
                             incremental,
                             quiet,
                             context.diagnosticPrinter(),
                             context.err(),
-                            resolutionTracker
+                            dependencyTracker
                     );
-                };
+                } else {
+                    throw new IllegalStateException(
+                            "unsupported output target implementation: "
+                                    + selectedOutputTarget.getClass().getName()
+                    );
+                }
                 if (job.source() != null) {
                     states.put(
                             pathKey(job.source()),
@@ -974,7 +963,7 @@ public final class SassFXMain implements Callable<Integer> {
             } catch (SassCompilationException failure) {
                 try {
                     handleSassFailure(
-                            context.targetBackend(),
+                            context.outputTarget(),
                             job.destination(),
                             context.outputPolicy().errorCss(),
                             failure,
@@ -1006,7 +995,7 @@ public final class SassFXMain implements Callable<Integer> {
                                 failure.loadedUrls(),
                                 job.source()
                         ),
-                        resolutionTracker
+                        dependencyTracker
                 );
                 if (stopOnError) {
                     break;
@@ -1021,7 +1010,7 @@ public final class SassFXMain implements Callable<Integer> {
                         states,
                         previousStates,
                         job,
-                        resolutionTracker
+                        dependencyTracker
                 );
                 if (stopOnError) {
                     break;
@@ -1325,7 +1314,7 @@ public final class SassFXMain implements Callable<Integer> {
     /// @param diagnosticPrinter the command-line diagnostic formatter
     /// @param out the standard-output writer
     /// @param err the standard-error writer used for non-error diagnostics
-    /// @param resolutionTracker tracker receiving import-resolution candidates
+    /// @param dependencyTracker tracker receiving import-resolution candidates
     /// @return the dependency snapshot and whether output was written
     /// @throws IOException if the destination cannot be written
     /// @throws SassCompilationException if Sass evaluation or serialization fails
@@ -1343,13 +1332,13 @@ public final class SassFXMain implements Callable<Integer> {
             DiagnosticPrinter diagnosticPrinter,
             java.io.PrintWriter out,
             java.io.PrintWriter err,
-            SassResolutionTracker resolutionTracker
+            SassDependencyTracker dependencyTracker
     ) throws IOException, SassCompilationException {
         CompileResult<String> result = new SassCompiler().compile(
                 source,
                 selectedOutputTarget,
                 options,
-                resolutionTracker
+                dependencyTracker
         );
         var dependencies = fileDependencies(
                 result.loadedUrls(),
@@ -1360,8 +1349,8 @@ public final class SassFXMain implements Callable<Integer> {
                 && !modifiedSince(destination, sourcePath, dependencies)) {
             return new JobCompilation(
                     dependencies,
-                    resolutionTracker.candidatePaths(),
-                    resolutionTracker.isComplete(),
+                    dependencyTracker.candidatePaths(),
+                    dependencyTracker.isComplete(),
                     false
             );
         }
@@ -1411,8 +1400,8 @@ public final class SassFXMain implements Callable<Integer> {
         }
         return new JobCompilation(
                 dependencies,
-                resolutionTracker.candidatePaths(),
-                resolutionTracker.isComplete(),
+                dependencyTracker.candidatePaths(),
+                dependencyTracker.isComplete(),
                 true
         );
     }
@@ -1428,7 +1417,7 @@ public final class SassFXMain implements Callable<Integer> {
     /// @param quietOutput whether non-error diagnostics are suppressed
     /// @param diagnosticPrinter the command-line diagnostic formatter
     /// @param err the standard-error writer used for non-error diagnostics
-    /// @param resolutionTracker tracker receiving import-resolution candidates
+    /// @param dependencyTracker tracker receiving import-resolution candidates
     /// @return the dependency snapshot and whether output was written
     /// @throws IOException if the destination cannot be written
     /// @throws SassCompilationException if Sass evaluation or BSS serialization fails
@@ -1442,13 +1431,13 @@ public final class SassFXMain implements Callable<Integer> {
             boolean quietOutput,
             DiagnosticPrinter diagnosticPrinter,
             java.io.PrintWriter err,
-            SassResolutionTracker resolutionTracker
+            SassDependencyTracker dependencyTracker
     ) throws IOException, SassCompilationException {
         var result = new SassCompiler().compile(
                 source,
                 selectedOutputTarget,
                 options,
-                resolutionTracker
+                dependencyTracker
         );
         var dependencies = fileDependencies(
                 result.loadedUrls(),
@@ -1459,8 +1448,8 @@ public final class SassFXMain implements Callable<Integer> {
                 && !modifiedSince(destination, sourcePath, dependencies)) {
             return new JobCompilation(
                     dependencies,
-                    resolutionTracker.candidatePaths(),
-                    resolutionTracker.isComplete(),
+                    dependencyTracker.candidatePaths(),
+                    dependencyTracker.isComplete(),
                     false
             );
         }
@@ -1474,8 +1463,8 @@ public final class SassFXMain implements Callable<Integer> {
         CliFileWriter.write(destination, bytes);
         return new JobCompilation(
                 dependencies,
-                resolutionTracker.candidatePaths(),
-                resolutionTracker.isComplete(),
+                dependencyTracker.candidatePaths(),
+                dependencyTracker.isComplete(),
                 true
         );
     }
@@ -1572,12 +1561,12 @@ public final class SassFXMain implements Callable<Integer> {
     /// @param states attempted states for the current batch
     /// @param job the failed job
     /// @param dependencies file URLs loaded before the failure
-    /// @param resolutionTracker resolution candidates observed before failure
+    /// @param dependencyTracker resolution candidates observed before failure
     private static void recordFailedState(
             Map<Path, WatchJobState> states,
             CliCompilationPlan.Job job,
             Set<Path> dependencies,
-            SassResolutionTracker resolutionTracker
+            SassDependencyTracker dependencyTracker
     ) {
         @Nullable Path source = job.source();
         if (source == null) {
@@ -1591,8 +1580,8 @@ public final class SassFXMain implements Callable<Integer> {
                 new WatchJobState(
                         job,
                         resolvedDependencies,
-                        resolutionTracker.candidatePaths(),
-                        resolutionTracker.isComplete()
+                        dependencyTracker.candidatePaths(),
+                        dependencyTracker.isComplete()
                 )
         );
     }
@@ -1602,12 +1591,12 @@ public final class SassFXMain implements Callable<Integer> {
     /// @param states attempted states for the current batch
     /// @param previousStates prior watch states
     /// @param job the failed job
-    /// @param resolutionTracker resolution candidates observed before failure
+    /// @param dependencyTracker resolution candidates observed before failure
     private static void recordIoFailedState(
             Map<Path, WatchJobState> states,
             Map<Path, WatchJobState> previousStates,
             CliCompilationPlan.Job job,
-            SassResolutionTracker resolutionTracker
+            SassDependencyTracker dependencyTracker
     ) {
         @Nullable Path source = job.source();
         if (source == null) {
@@ -1618,11 +1607,11 @@ public final class SassFXMain implements Callable<Integer> {
         var dependencies = previous == null
                 ? Set.of(key)
                 : previous.dependencies();
-        var candidates = resolutionTracker.candidatePaths().isEmpty()
+        var candidates = dependencyTracker.candidatePaths().isEmpty()
                 && previous != null
                 ? previous.resolutionCandidates()
-                : resolutionTracker.candidatePaths();
-        var complete = resolutionTracker.isComplete()
+                : dependencyTracker.candidatePaths();
+        var complete = dependencyTracker.isComplete()
                 && (previous == null || previous.resolutionComplete());
         states.put(
                 key,
@@ -1735,7 +1724,7 @@ public final class SassFXMain implements Callable<Integer> {
     ///
     /// BSS failures never replace or delete the binary destination.
     ///
-    /// @param targetBackend the selected output backend
+    /// @param outputTarget the selected output target
     /// @param destination the failed job destination, or {@code null}
     /// @param emitErrorCss whether an error stylesheet is enabled
     /// @param failure the Sass compilation failure
@@ -1743,14 +1732,14 @@ public final class SassFXMain implements Callable<Integer> {
     /// @param out standard output
     /// @throws IOException if error output cannot be written
     private static void handleSassFailure(
-            CliBackend targetBackend,
+            OutputTarget<?> outputTarget,
             @Nullable Path destination,
             boolean emitErrorCss,
             SassCompilationException failure,
             DiagnosticPrinter diagnosticPrinter,
             java.io.PrintWriter out
     ) throws IOException {
-        if (targetBackend == CliBackend.BSS) {
+        if (outputTarget instanceof BssTarget) {
             return;
         }
         if (!emitErrorCss) {
@@ -1916,9 +1905,7 @@ public final class SassFXMain implements Callable<Integer> {
         configurationWarningMessages.clear();
         emittedConfigurationWarningMessages.clear();
         for (var warning
-                : CompilationDiagnostics.configurationWarnings(
-                        diagnosticOptions
-                )) {
+                : diagnosticOptions.configurationWarnings()) {
             configurationWarningMessages.add(warning.message());
         }
         return new CompileOptions(
@@ -1989,12 +1976,12 @@ public final class SassFXMain implements Callable<Integer> {
 
     /// Resolves source-map and failure-output behavior for a compilation plan.
     ///
-    /// @param targetBackend the selected output backend
+    /// @param outputTarget the selected output target
     /// @param plan the fully expanded compilation plan
     /// @return the resolved output policy
     /// @throws IllegalArgumentException if output options conflict
     private OutputPolicy outputPolicy(
-            CliBackend targetBackend,
+            OutputTarget<?> outputTarget,
             CliCompilationPlan plan
     ) {
         var urlMode = switch (sourceMapUrls.toLowerCase(Locale.ROOT)) {
@@ -2028,7 +2015,7 @@ public final class SassFXMain implements Callable<Integer> {
         var writesToStdout = plan.jobs().size() == 1
                 && plan.jobs().get(0).destination() == null;
         boolean emitSourceMap;
-        if (targetBackend == CliBackend.BSS) {
+        if (outputTarget instanceof BssTarget) {
             if (sourceMapEnabled && sourceMapParsed
                     || sourceMapUrlsParsed
                     || embedSources
@@ -2075,7 +2062,7 @@ public final class SassFXMain implements Callable<Integer> {
 
         var hasFileDestination = plan.jobs().stream()
                 .anyMatch(job -> job.destination() != null);
-        var emitErrorCss = targetBackend != CliBackend.BSS
+        var emitErrorCss = !(outputTarget instanceof BssTarget)
                 && (errorCss != null ? errorCss : hasFileDestination);
         return new OutputPolicy(
                 emitSourceMap,
@@ -2171,30 +2158,25 @@ public final class SassFXMain implements Callable<Integer> {
     ///
     /// @param selectedTarget the parsed output target
     /// @throws IllegalArgumentException if the target or its options are unsupported
-    private void validateTargetOptions(CliTarget selectedTarget) {
-        switch (selectedTarget.backend()) {
-            case CSS, JAVAFX_CSS -> {
-            }
-            case BSS -> {
-                if (isOptionSpecified("--style")) {
-                    throw new IllegalArgumentException(
-                            "--style is supported only for css targets"
-                    );
-                }
-            }
+    private void validateTargetOptions(OutputTarget<?> selectedTarget) {
+        if (selectedTarget instanceof BssTarget
+                && isOptionSpecified("--style")) {
+            throw new IllegalArgumentException(
+                    "--style is supported only for css targets"
+            );
         }
     }
 
     /// Validates destination requirements after expanding every input.
     ///
-    /// @param targetBackend the selected output backend
+    /// @param outputTarget the selected output target
     /// @param plan the fully expanded compilation plan
     /// @throws IllegalArgumentException if a job cannot use its destination
     private static void validatePlan(
-            CliBackend targetBackend,
+            OutputTarget<?> outputTarget,
             CliCompilationPlan plan
     ) {
-        if (targetBackend == CliBackend.BSS
+        if (outputTarget instanceof BssTarget
                 && plan.jobs().stream().anyMatch(
                         job -> job.destination() == null
                 )) {
@@ -2265,47 +2247,9 @@ public final class SassFXMain implements Callable<Integer> {
         out.flush();
     }
 
-    /// Identifies the compiler backend selected by a command-line target.
-    @NotNullByDefault
-    private enum CliBackend {
-        /// Emits standard CSS.
-        CSS,
-
-        /// Emits JavaFX-compatible CSS.
-        JAVAFX_CSS,
-
-        /// Emits JavaFX binary CSS.
-        BSS
-    }
-
-    /// Describes one parsed command-line output target.
-    ///
-    /// @param backend the compiler backend
-    /// @param javaFXTarget the selected JavaFX release, or {@code null} for
-    /// standard CSS
-    @NotNullByDefault
-    private record CliTarget(
-            CliBackend backend,
-            @Nullable JavaFXTarget javaFXTarget
-    ) {
-        /// Validates the backend and JavaFX-version relationship.
-        private CliTarget {
-            Objects.requireNonNull(backend, "backend");
-            var requiresJavaFX = backend != CliBackend.CSS;
-            if (requiresJavaFX != (javaFXTarget != null)) {
-                throw new IllegalArgumentException(
-                        "JavaFX backends must select a JavaFX target"
-                );
-            }
-        }
-    }
-
     /// Contains immutable settings shared by every job in one invocation.
     ///
-    /// @param targetBackend the selected output backend
-    /// @param javaFXTarget selected JavaFX release, or {@code null} for
-    /// standard CSS
-    /// @param outputStyle text output style, or {@code null} for BSS
+    /// @param outputTarget the fully configured output target
     /// @param compileOptions compiler options
     /// @param outputPolicy resolved output policy
     /// @param stdinUrl synthetic standard-input URL
@@ -2316,9 +2260,7 @@ public final class SassFXMain implements Callable<Integer> {
     /// @param err standard error
     @NotNullByDefault
     private record ExecutionContext(
-            CliBackend targetBackend,
-            @Nullable JavaFXTarget javaFXTarget,
-            @Nullable OutputStyle outputStyle,
+            OutputTarget<?> outputTarget,
             CompileOptions compileOptions,
             OutputPolicy outputPolicy,
             URI stdinUrl,
@@ -2330,7 +2272,7 @@ public final class SassFXMain implements Callable<Integer> {
     ) {
         /// Creates a non-null execution context.
         private ExecutionContext {
-            Objects.requireNonNull(targetBackend, "targetBackend");
+            Objects.requireNonNull(outputTarget, "outputTarget");
             Objects.requireNonNull(compileOptions, "compileOptions");
             Objects.requireNonNull(outputPolicy, "outputPolicy");
             Objects.requireNonNull(stdinUrl, "stdinUrl");
@@ -2425,33 +2367,33 @@ public final class SassFXMain implements Callable<Integer> {
 
     /// Resolves the complete output target selected by the command line.
     ///
-    /// @return the parsed backend and optional JavaFX release
+    /// @return the fully configured output target
     /// @throws IllegalArgumentException if the target value is unsupported
-    private CliTarget selectedTarget() {
-        if (target.equals("css")) {
-            return new CliTarget(CliBackend.CSS, null);
-        }
-
-        var separator = target.indexOf("/javafx@");
-        if (separator <= 0
-                || separator != target.lastIndexOf("/javafx@")) {
-            throw unsupportedTarget();
-        }
-        var format = target.substring(0, separator);
-        var versionText = target.substring(separator + "/javafx@".length());
-        if ((!format.equals("css") && !format.equals("bss"))
-                || !versionText.matches("[89]|1[0-9]|2[0-7]")) {
+    private OutputTarget<?> selectedTarget() {
+        final OutputTarget<?> parsedTarget;
+        try {
+            parsedTarget = OutputTarget.parse(target);
+        } catch (IllegalArgumentException ignored) {
             throw unsupportedTarget();
         }
 
-        var javaFXTarget = JavaFXTarget.forVersion(
-                Integer.parseInt(versionText)
-        );
-        return new CliTarget(
-                format.equals("css")
-                        ? CliBackend.JAVAFX_CSS
-                        : CliBackend.BSS,
-                javaFXTarget
+        if (parsedTarget instanceof BssTarget) {
+            return parsedTarget;
+        }
+        var outputStyle = selectedOutputStyle();
+        if (parsedTarget instanceof CssTarget) {
+            return new CssTarget(outputStyle, charsetEnabled());
+        }
+        if (parsedTarget instanceof JavaFXCssTarget javaFXCssTarget) {
+            return new JavaFXCssTarget(
+                    javaFXCssTarget.javaFXTarget(),
+                    outputStyle,
+                    charsetEnabled()
+            );
+        }
+        throw new IllegalStateException(
+                "unsupported output target implementation: "
+                        + parsedTarget.getClass().getName()
         );
     }
 

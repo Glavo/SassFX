@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-package org.glavo.sassfx.internal.repl;
+package org.glavo.sassfx;
 
-import org.glavo.sassfx.CompileOptions;
-import org.glavo.sassfx.Diagnostic;
-import org.glavo.sassfx.DiagnosticSeverity;
-import org.glavo.sassfx.SassCompilationException;
 import org.glavo.sassfx.internal.ast.VariableExpression;
 import org.glavo.sassfx.internal.callable.CustomFunctionCallable;
 import org.glavo.sassfx.internal.diagnostic.CompilationDiagnostics;
@@ -14,7 +10,6 @@ import org.glavo.sassfx.internal.module.ModuleRegistry;
 import org.glavo.sassfx.internal.parse.ParseException;
 import org.glavo.sassfx.internal.parse.SassScriptParser;
 import org.glavo.sassfx.internal.source.SourceFile;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
@@ -31,7 +26,6 @@ import java.util.Objects;
 /// deprecation repetition state. It accepts expressions, variable
 /// declarations, and {@code @use} rules. Instances are not thread-safe;
 /// callers must evaluate and drain diagnostics serially.
-@ApiStatus.Internal
 @NotNullByDefault
 public final class SassInteractiveSession {
     /// Evaluates expressions and statements in the persistent environment.
@@ -205,7 +199,6 @@ public final class SassInteractiveSession {
     /// @param value inspected SassScript value, or {@code null} when the line
     ///              produces no value
     /// @param diagnostics warnings and debug events emitted by the line
-    @ApiStatus.Internal
     @NotNullByDefault
     public record Result(
             @Nullable String value,

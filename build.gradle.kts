@@ -1,3 +1,4 @@
+import org.glavo.sassfx.build.VerifyModuleBoundariesTask
 import org.glavo.sassfx.build.VerifyReleaseVersionTask
 import org.gradle.api.publish.maven.tasks.PublishToMavenRepository
 import org.gradle.external.javadoc.StandardJavadocDocletOptions
@@ -37,6 +38,27 @@ val cleanStagingRepository = tasks.register<Delete>(
     delete(layout.buildDirectory.dir("staging-repository"))
 }
 
+val moduleBoundarySources = files(
+    fileTree("sassfx-cli/src/main/java") {
+        include("**/*.java")
+    },
+    fileTree("sassfx-embedded/src/main/java") {
+        include("**/*.java")
+    },
+    fileTree("sassfx-gradle-plugin/src/main/java") {
+        include("**/*.java")
+    },
+)
+
+val verifyModuleBoundaries = tasks.register<VerifyModuleBoundariesTask>(
+    "verifyModuleBoundaries",
+) {
+    group = LifecycleBasePlugin.VERIFICATION_GROUP
+    description = "Verifies that frontend modules do not depend on unsupported core internals."
+    sourceFiles.from(moduleBoundarySources)
+    rootDirectory.set(layout.projectDirectory)
+}
+
 subprojects {
     tasks.withType<Test>().configureEach {
         useJUnitPlatform()
@@ -67,6 +89,7 @@ tasks.assemble {
 }
 
 tasks.check {
+    dependsOn(verifyModuleBoundaries)
     dependsOn(":sassfx-core:check")
     dependsOn(":sassfx-cli:check")
     dependsOn(":sassfx-embedded:check")

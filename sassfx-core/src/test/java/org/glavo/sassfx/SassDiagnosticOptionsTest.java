@@ -238,9 +238,16 @@ final class SassDiagnosticOptionsTest {
                 Set.of(SassDeprecation.TYPE_FUNCTION),
                 Set.of(SassDeprecation.IMPORT)
         );
+        var configurationWarnings =
+                diagnosticOptions.configurationWarnings();
+        assertEquals(4, configurationWarnings.size());
+        assertThrows(
+                UnsupportedOperationException.class,
+                configurationWarnings::clear
+        );
         var result = compile("", options(diagnosticOptions));
 
-        assertEquals(4, result.diagnostics().size());
+        assertEquals(configurationWarnings, result.diagnostics());
         assertEquals(4, events.size());
         assertTrue(result.diagnostics().stream().allMatch(
                 diagnostic -> diagnostic.severity() == DiagnosticSeverity.WARNING

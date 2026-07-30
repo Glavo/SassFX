@@ -19,7 +19,6 @@ import org.glavo.sassfx.internal.source.SourceFile;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
-import org.jetbrains.annotations.ApiStatus;
 
 import java.io.IOException;
 import java.net.URI;
@@ -77,31 +76,41 @@ public final class SassCompiler {
 
     /// Compiles a source while recording mutable import-resolution inputs.
     ///
-    /// This overload supports incremental frontends and is not part of the
-    /// stable compiler API.
+    /// The tracker is cleared before source processing begins and receives
+    /// final or partial state before this method returns or throws. Reusing the
+    /// same tracker concurrently is not permitted.
     ///
     /// @param source the root stylesheet source
     /// @param target the output representation to produce
     /// @param options shared compilation options
-    /// @param resolutionTracker the tracker receiving filesystem candidates
+    /// @param dependencyTracker the tracker receiving filesystem candidates
     /// @param <T> the output representation type
     /// @return the compilation result
     /// @throws IOException if the root source cannot be read
     /// @throws SassCompilationException if compilation fails
-    @ApiStatus.Internal
+    /// @throws IllegalStateException if `dependencyTracker` is already in use
     public <T> CompileResult<T> compile(
             SassSource source,
             OutputTarget<T> target,
             CompileOptions options,
-            SassResolutionTracker resolutionTracker
+            SassDependencyTracker dependencyTracker
     ) throws IOException, SassCompilationException {
-        Objects.requireNonNull(resolutionTracker, "resolutionTracker");
-        return compileInternal(
-                source,
-                target,
-                options,
-                resolutionTracker
-        );
+        Objects.requireNonNull(dependencyTracker, "dependencyTracker");
+        var resolutionTracker = new SassResolutionTracker();
+        dependencyTracker.beginCompilation();
+        try {
+            return compileInternal(
+                    source,
+                    target,
+                    options,
+                    resolutionTracker
+            );
+        } finally {
+            dependencyTracker.finishCompilation(
+                    resolutionTracker.candidatePaths(),
+                    resolutionTracker.isComplete()
+            );
+        }
     }
 
     /// Implements compilation with optional resolution tracking.

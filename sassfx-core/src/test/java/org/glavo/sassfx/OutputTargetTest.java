@@ -5,6 +5,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
+import java.util.List;
 import java.util.Set;
 
 import static org.glavo.sassfx.JavaFXFeature.ADVANCED_TRANSITION_EASING;
@@ -24,6 +25,52 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /// Verifies output target configuration contracts.
 @NotNullByDefault
 final class OutputTargetTest {
+    /// Parses every canonical target-selector form.
+    @Test
+    void parsesCanonicalSelectors() {
+        assertSame(CssTarget.DEFAULT, OutputTarget.parse("css"));
+
+        for (var version = 8; version <= 27; version++) {
+            var javaFXCss = assertInstanceOf(
+                    JavaFXCssTarget.class,
+                    OutputTarget.parse("css/javafx@" + version)
+            );
+            assertEquals(version, javaFXCss.javaFXTarget().version());
+            assertEquals(OutputStyle.EXPANDED, javaFXCss.style());
+            assertTrue(javaFXCss.charset());
+
+            var bss = assertInstanceOf(
+                    BssTarget.class,
+                    OutputTarget.parse("bss/javafx@" + version)
+            );
+            assertEquals(version, bss.javaFXTarget().version());
+        }
+    }
+
+    /// Rejects aliases, malformed versions, and unsupported releases.
+    @Test
+    void rejectsNoncanonicalSelectors() {
+        var selectors = List.of(
+                "",
+                "CSS",
+                "css/javafx",
+                "css/javafx@7",
+                "css/javafx@28",
+                "css/javafx@08",
+                "css/javafx@17.0",
+                "css/javafx@١٧",
+                "bss",
+                "BSS/javafx@17"
+        );
+        for (var selector : selectors) {
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> OutputTarget.parse(selector),
+                    selector
+            );
+        }
+    }
+
     /// Verifies the standard CSS target defaults.
     @Test
     void providesCssDefaults() {
@@ -115,6 +162,7 @@ final class OutputTargetTest {
     @Test
     @SuppressWarnings("DataFlowIssue")
     void rejectsNullComponents() {
+        assertThrows(NullPointerException.class, () -> OutputTarget.parse(null));
         assertThrows(NullPointerException.class, () -> new CssTarget(null, true));
         assertThrows(
                 NullPointerException.class,

@@ -8,7 +8,6 @@ import org.glavo.sassfx.CssTarget;
 import org.glavo.sassfx.Diagnostic;
 import org.glavo.sassfx.DiagnosticSeverity;
 import org.glavo.sassfx.JavaFXCssTarget;
-import org.glavo.sassfx.JavaFXTarget;
 import org.glavo.sassfx.OutputStyle;
 import org.glavo.sassfx.OutputTarget;
 import org.glavo.sassfx.SassCompilationException;
@@ -351,38 +350,41 @@ public abstract class SassFXCompile extends DefaultTask {
                             + "'; expected 'expanded' or 'compressed'."
             );
         };
-        if (targetValue.equals("css")) {
-            return new ParsedTarget(new CssTarget(style, charset), ".css");
-        }
-
-        var separator = targetValue.indexOf("/javafx@");
-        if (separator <= 0
-                || separator != targetValue.lastIndexOf("/javafx@")) {
+        final OutputTarget<?> parsedTarget;
+        try {
+            parsedTarget = OutputTarget.parse(targetValue);
+        } catch (IllegalArgumentException ignored) {
             throw unsupportedTarget(targetValue);
         }
-        var format = targetValue.substring(0, separator);
-        var versionText = targetValue.substring(
-                separator + "/javafx@".length()
-        );
-        if ((!format.equals("css") && !format.equals("bss"))
-                || !versionText.matches("[89]|1[0-9]|2[0-7]")) {
-            throw unsupportedTarget(targetValue);
-        }
-        var javaFXTarget = JavaFXTarget.forVersion(
-                Integer.parseInt(versionText)
-        );
-        if (format.equals("css")) {
+        if (parsedTarget instanceof CssTarget) {
             return new ParsedTarget(
-                    new JavaFXCssTarget(javaFXTarget, style, charset),
+                    new CssTarget(style, charset),
                     ".css"
             );
         }
-        if (style != OutputStyle.EXPANDED) {
+        if (parsedTarget instanceof JavaFXCssTarget javaFXCssTarget) {
+            return new ParsedTarget(
+                    new JavaFXCssTarget(
+                            javaFXCssTarget.javaFXTarget(),
+                            style,
+                            charset
+                    ),
+                    ".css"
+            );
+        }
+        if (parsedTarget instanceof BssTarget bssTarget
+                && style != OutputStyle.EXPANDED) {
             throw new GradleException(
                     "SassFX style is not supported for BSS output."
             );
         }
-        return new ParsedTarget(new BssTarget(javaFXTarget), ".bss");
+        if (parsedTarget instanceof BssTarget bssTarget) {
+            return new ParsedTarget(bssTarget, ".bss");
+        }
+        throw new IllegalStateException(
+                "Unsupported output target implementation: "
+                        + parsedTarget.getClass().getName()
+        );
     }
 
     /// Creates a failure for a noncanonical target selector.
