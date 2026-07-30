@@ -2,6 +2,7 @@
 package org.glavo.sassfx.internal.bss;
 
 import org.glavo.sassfx.SourceSpan;
+import org.glavo.sassfx.internal.css.JavaFXValueFunction;
 import org.glavo.sassfx.internal.value.ListSeparator;
 import org.glavo.sassfx.internal.value.SassList;
 import org.glavo.sassfx.internal.value.SassNumber;
@@ -203,7 +204,9 @@ final class JavaFXBorderStyleParser {
     /// @param text the candidate function text
     /// @return whether the text begins with the JavaFX segments function name
     private static boolean isSegmentsInvocation(String text) {
-        return text.regionMatches(true, 0, "segments(", 0, "segments(".length());
+        @Nullable var name = JavaFXValueFunction.invocationName(text);
+        return name != null
+                && name.regionMatches(true, 0, "segments", 0, "segments".length());
     }
 
     /// Parses one JavaFX {@code segments(...)} dash-style invocation.
@@ -214,7 +217,13 @@ final class JavaFXBorderStyleParser {
     /// @throws BssSerializeException if the function syntax is malformed
     private static SegmentsDashStyle parseSegments(String text, SourceSpan span) {
         var invocation = parseFunctionInvocation(text, span);
-        if (!invocation.name().equalsIgnoreCase("segments")) {
+        if (!invocation.name().regionMatches(
+                true,
+                0,
+                "segments",
+                0,
+                "segments".length()
+        )) {
             throw invalidBorderStyle(span);
         }
         var arguments = splitTopLevelCommas(invocation.arguments(), span);

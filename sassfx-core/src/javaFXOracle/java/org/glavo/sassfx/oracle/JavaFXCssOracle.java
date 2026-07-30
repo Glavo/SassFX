@@ -93,6 +93,22 @@ public final class JavaFXCssOracle {
                         Button:state(primary/**/secondary) { -fx-opacity: 0.5; }
                         Control:empty-state() { -fx-opacity: 0.5; }
                         Node:not(leaf) { -fx-opacity: 0.5; }
+                """,
+                Syntax.SCSS
+        ));
+        fixtures.add(new Fixture(
+                "case-insensitive-properties",
+                """
+                        Pane {
+                          -FX-BASE: #123456;
+                          -FX-SELF: -FX-SELF;
+                          -FX-FORWARD: -FX-LATER;
+                          -FX-BACKGROUND-COLOR:
+                              linear-gradient(-FX-BASE, derive(-FX-BASE, 10%));
+                          -FX-PADDING: 1px 2px 3px 4px;
+                          -FX-LATER: red;
+                          -FX-CUSTOM-TOKEN: MixedCase;
+                        }
                         """,
                 Syntax.SCSS
         ));
@@ -117,6 +133,38 @@ public final class JavaFXCssOracle {
                           -fx-effect: innershadow(three-pass-box, hsba(240, 100%, 50%, 0.5), 8px, 0.2, 1px, 2px);
                         }
                 """,
+                Syntax.SCSS
+        ));
+        fixtures.add(new Fixture(
+                "function-prefix-dispatch",
+                """
+                        PrefixColors {
+                          -fx-a: RgBSuffix(18, 52, 86, 0.3);
+                          -fx-b: hsbSuffix(210, 79%, 34%, 0.3);
+                          -fx-c: deriveSuffix(#123456, 10%);
+                          -fx-d: ladderSuffix(#123456, red 0%, blue 100%);
+                        }
+                        PrefixEffects {
+                          -fx-effect: dropshadowSuffix(
+                              gaussian, #123456, 8px, 20%, 1px, 2px);
+                        }
+                        PrefixInnerEffect {
+                          -fx-effect: innershadowSuffix(
+                              three-pass-box, #123456, 8px, 20%, 1px, 2px);
+                        }
+                        PrefixPaints {
+                          -fx-background-color:
+                              linear-gradientSuffix(red, blue),
+                              radial-gradientSuffix(radius 50%, red, blue);
+                          -fx-fill: image-patternSuffix(
+                              "image.png", 0%, 0%, 100%, 100%, false);
+                          -fx-stroke: repeating-image-patternSuffix("tile.png");
+                          -fx-text-fill: regionSuffix("#glyph");
+                        }
+                        PrefixBorder {
+                          -fx-border-style: SeGmEnTsSuffix(1px, 2px);
+                        }
+                        """,
                 Syntax.SCSS
         ));
         fixtures.add(new Fixture(
@@ -425,6 +473,11 @@ public final class JavaFXCssOracle {
                 Syntax.SCSS
         ));
         fixtures.add(new Fixture(
+                "unsupported-value-function",
+                "Pane { -fx-custom: unsupported(1); }",
+                Syntax.SCSS
+        ));
+        fixtures.add(new Fixture(
                 "native-nesting",
                 ".parent { .child { -fx-opacity: 1; } }",
                 Syntax.CSS
@@ -568,7 +621,9 @@ public final class JavaFXCssOracle {
         }
         var compareBss = switch (fixture.name()) {
             case "functional-pseudo-classes",
+                 "case-insensitive-properties",
                  "effects",
+                 "function-prefix-dispatch",
                  "duration-scalars",
                  "quoted-strings",
                  "generic-size-sequence",
@@ -655,13 +710,17 @@ public final class JavaFXCssOracle {
             System.setProperty("binary.css", "false");
             Files.writeString(
                     imported,
-                    "ImportedPane { -fx-opacity: 0.75; }"
+                    "ImportedPane { -FX-SHARED: red; }"
             );
             Files.writeString(
                     source,
                     """
                             @import "theme.css" (prefers-color-scheme: dark);
-                            RootPane { -fx-opacity: 0.5; }
+                            RootPane {
+                              -FX-FILL: -FX-SHARED;
+                              -FX-LOCAL: red;
+                              -FX-STROKE: -FX-LOCAL;
+                            }
                             """
             );
             CssParser.errorsProperty().clear();
@@ -679,19 +738,27 @@ public final class JavaFXCssOracle {
             ).output());
             if (!Arrays.equals(expected, actual)) {
                 throw new AssertionError(
-                        "conditional import BSS differs from OpenJFX output."
+                        "conditional import BSS differs from OpenJFX output at byte "
+                                + Arrays.mismatch(expected, actual)
+                                + "; expected="
+                                + Base64.getEncoder().encodeToString(expected)
+                                + "; actual="
+                                + Base64.getEncoder().encodeToString(actual)
                 );
             }
 
             Files.writeString(
                     nested,
-                    "NestedPane { -fx-opacity: 0.25; }"
+                    "NestedPane { -FX-NESTED: red; }"
             );
             Files.writeString(
                     imported,
                     """
                             @import "nested.css" (prefers-reduced-motion);
-                            ImportedPane { -fx-opacity: 0.75; }
+                            ImportedPane {
+                              -FX-FILL: -FX-NESTED;
+                              -FX-SHARED: red;
+                            }
                             """
             );
             CssParser.errorsProperty().clear();
@@ -709,7 +776,12 @@ public final class JavaFXCssOracle {
             ).output());
             if (!Arrays.equals(expected, actual)) {
                 throw new AssertionError(
-                        "nested import BSS differs from OpenJFX output."
+                        "nested import BSS differs from OpenJFX output at byte "
+                                + Arrays.mismatch(expected, actual)
+                                + "; expected="
+                                + Base64.getEncoder().encodeToString(expected)
+                                + "; actual="
+                                + Base64.getEncoder().encodeToString(actual)
                 );
             }
         } finally {

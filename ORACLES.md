@@ -97,16 +97,23 @@ The byte-exact matrix currently covers:
 
 - type, class, ID, ordinary pseudo-class, and functional pseudo-class
   selectors, including JavaFX token concatenation and `dir(...)` orientation;
+- case-insensitive declaration names and source-ordered property lookup
+  normalization, including self, prior, forward, unresolved, and import-local
+  lookup state;
 - scalar sizes, durations, URLs, fonts, blend modes, shadow effects, and
   generic quoted strings, including empty strings and special keyword/color
-  recognition;
+  recognition in root and imported plain-CSS stylesheets;
 - generic single sizes and space-separated size sequences across every
   non-time JavaFX `SizeUnits` value, including negative and mixed-unit series;
+- case-insensitive function-name prefix dispatch for colors, effects,
+  gradients, image patterns, ladders, Region references, and border
+  `segments(...)`, plus rejection of unsupported leading functions;
 - solid, lookup, derived, ladder, gradient, image-pattern, and repeating
   image-pattern paints, plus `region("selector")` references;
 - Region background and border colors, insets, radii, widths, images,
   positions, repeats, sizes, slices, and stroke styles;
-- JavaFX 25–27 media-query framing and JavaFX 27 conditional imports.
+- JavaFX 25–27 media-query framing and JavaFX 27 conditional imports,
+  including nested import parser-state isolation.
 
 `BssTargetTest.coversEverySupportedConverterFamilyWithPinnedFixtures` checks
 the pinned OpenJFX bytes and a composite fixture against every converter class

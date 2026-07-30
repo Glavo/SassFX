@@ -36,6 +36,32 @@ public final class JavaFX8OracleInputGenerator {
               -fx-fill: url("fill.png");
               -fx-effect: dropshadow(gaussian, rgba(18, 52, 86, 0.3), 8px, 20%, 1px, 2px);
             }
+            PrefixColors {
+              -fx-a: RgBSuffix(18, 52, 86, 0.3);
+              -fx-b: hsbSuffix(210, 79%, 34%, 0.3);
+              -fx-c: deriveSuffix(#123456, 10%);
+              -fx-d: ladderSuffix(#123456, red 0%, blue 100%);
+            }
+            PrefixEffects {
+              -fx-effect: dropshadowSuffix(
+                  gaussian, #123456, 8px, 20%, 1px, 2px);
+            }
+            PrefixInnerEffect {
+              -fx-effect: innershadowSuffix(
+                  three-pass-box, #123456, 8px, 20%, 1px, 2px);
+            }
+            PrefixPaints {
+              -fx-background-color:
+                  linear-gradientSuffix(red, blue),
+                  radial-gradientSuffix(radius 50%, red, blue);
+              -fx-fill: image-patternSuffix(
+                  "image.png", 0%, 0%, 100%, 100%, false);
+              -fx-stroke: repeating-image-patternSuffix("tile.png");
+              -fx-text-fill: regionSuffix("#glyph");
+            }
+            PrefixBorder {
+              -fx-border-style: SeGmEnTsSuffix(1px, 2px);
+            }
             Pane {
               -fx-graphic: url("icon.png");
               -fx-background-color: linear-gradient(red, blue);
@@ -48,6 +74,16 @@ public final class JavaFX8OracleInputGenerator {
             Button:state(primary/**/secondary) { -fx-opacity: 0.5; }
             Control:empty-state() { -fx-opacity: 0.5; }
             Node:not(leaf) { -fx-opacity: 0.5; }
+            CaseInsensitiveProperties {
+              -FX-BASE: #123456;
+              -FX-SELF: -FX-SELF;
+              -FX-FORWARD: -FX-LATER;
+              -FX-BACKGROUND-COLOR:
+                  linear-gradient(-FX-BASE, derive(-FX-BASE, 10%));
+              -FX-PADDING: 1px 2px 3px 4px;
+              -FX-LATER: red;
+              -FX-CUSTOM-TOKEN: MixedCase;
+            }
             QuotedStrings {
               -fx-ellipsis-string: "More";
               -fx-prompt-text: 'Type here';

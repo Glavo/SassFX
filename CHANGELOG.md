@@ -64,6 +64,10 @@ with library, command-line, Embedded Sass, and Gradle interfaces.
   transitions, properties, and values before serialization.
 - Supports JavaFX functional pseudo-class tokenization, duplicate elimination,
   and `dir(...)` node-orientation encoding in textual CSS and BSS.
+- Canonicalizes declaration names and source-ordered property lookups with
+  independent parser state for each imported stylesheet.
+- Matches OpenJFX's case-insensitive value-function prefix dispatch and
+  rejects unsupported function tokens before textual or binary output.
 - Serializes every supported non-transition JavaFX converter family,
   including paints, fonts, effects, URLs, durations, backgrounds, borders,
   and retained stylesheet imports.

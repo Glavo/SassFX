@@ -736,6 +736,92 @@ final class BssTargetTest {
         assertFalse(strings.contains("\"#123456\""));
     }
 
+    /// Lowercases declaration names and only canonicalizes lookup keys that
+    /// JavaFX has already encountered.
+    @Test
+    void normalizesCaseInsensitivePropertiesAndLookupKeys() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                Pane {
+                                  -FX-BASE: #123456;
+                                  -FX-SELF: -FX-SELF;
+                                  -FX-FORWARD: -FX-LATER;
+                                  -FX-BACKGROUND-COLOR:
+                                      linear-gradient(-FX-BASE, derive(-FX-BASE, 10%));
+                                  -FX-PADDING: 1px 2px 3px 4px;
+                                  -FX-LATER: red;
+                                  -FX-CUSTOM-TOKEN: MixedCase;
+                                }
+                                """,
+                        Syntax.SCSS
+                ),
+                BssTarget.DEFAULT
+        ).output());
+        var strings = java.util.Arrays.asList(document.strings());
+
+        assertTrue(strings.contains("-fx-base"));
+        assertTrue(strings.contains("-fx-self"));
+        assertTrue(strings.contains("-fx-forward"));
+        assertTrue(strings.contains("-fx-background-color"));
+        assertTrue(strings.contains("-fx-padding"));
+        assertTrue(strings.contains("-fx-later"));
+        assertTrue(strings.contains("-fx-custom-token"));
+        assertTrue(strings.contains("-FX-LATER"));
+        assertTrue(strings.contains("MixedCase"));
+        assertTrue(strings.contains("javafx.css.converter.InsetsConverter"));
+        assertTrue(strings.contains(
+                "javafx.css.converter.PaintConverter$SequenceConverter"
+        ));
+        assertFalse(strings.contains("-FX-BASE"));
+        assertFalse(strings.contains("-FX-SELF"));
+        assertFalse(strings.contains("-FX-PADDING"));
+    }
+
+    /// Keeps each imported stylesheet's source-ordered property lookup registry
+    /// independent from its importer.
+    @Test
+    void isolatesLookupPropertiesForImportedStylesheets(
+            @TempDir Path directory
+    ) throws Exception {
+        var imported = directory.resolve("theme.css");
+        var root = directory.resolve("root.css");
+        Files.writeString(
+                imported,
+                "ImportedPane { -FX-SHARED: red; }",
+                StandardCharsets.UTF_8
+        );
+        Files.writeString(
+                root,
+                """
+                        @import "theme.css";
+                        RootPane {
+                          -FX-FILL: -FX-SHARED;
+                          -FX-LOCAL: red;
+                          -FX-STROKE: -FX-LOCAL;
+                        }
+                        """,
+                StandardCharsets.UTF_8
+        );
+
+        for (var target : List.of(
+                JavaFXTarget.JAVAFX17,
+                JavaFXTarget.JAVAFX27
+        )) {
+            var document = decodeDocument(new SassCompiler().compile(
+                    SassSource.fromFile(root),
+                    new BssTarget(target)
+            ).output());
+            var strings = java.util.Arrays.asList(document.strings());
+
+            assertTrue(strings.contains("-fx-shared"), target.toString());
+            assertTrue(strings.contains("-FX-SHARED"), target.toString());
+            assertTrue(strings.contains("-fx-local"), target.toString());
+            assertFalse(strings.contains("-FX-LOCAL"), target.toString());
+            assertFalse(strings.contains("red"), target.toString());
+        }
+    }
+
     /// Serializes all generic non-time size units with the sequence converter.
     @Test
     void compilesGenericSizeSequence() throws Exception {
@@ -1526,6 +1612,63 @@ final class BssTargetTest {
         assertTrue(strings.contains("-fx-radius"));
     }
 
+    /// Dispatches every supported JavaFX value function by its OpenJFX
+    /// case-insensitive name prefix.
+    @Test
+    void compilesOpenJFXFunctionNamePrefixes() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                PrefixColors {
+                                  -fx-a: RgBSuffix(18, 52, 86, 0.3);
+                                  -fx-b: hsbSuffix(210, 79%, 34%, 0.3);
+                                  -fx-c: deriveSuffix(#123456, 10%);
+                                  -fx-d: ladderSuffix(#123456, red 0%, blue 100%);
+                                }
+                                PrefixEffects {
+                                  -fx-effect: dropshadowSuffix(
+                                      gaussian, #123456, 8px, 20%, 1px, 2px);
+                                }
+                                PrefixInnerEffect {
+                                  -fx-effect: innershadowSuffix(
+                                      three-pass-box, #123456, 8px, 20%, 1px, 2px);
+                                }
+                                PrefixPaints {
+                                  -fx-background-color:
+                                      linear-gradientSuffix(red, blue),
+                                      radial-gradientSuffix(radius 50%, red, blue);
+                                  -fx-fill: image-patternSuffix(
+                                      "image.png", 0%, 0%, 100%, 100%, false);
+                                  -fx-stroke:
+                                      repeating-image-patternSuffix("tile.png");
+                                  -fx-text-fill: regionSuffix("#glyph");
+                                }
+                                PrefixBorder {
+                                  -fx-border-style: SeGmEnTsSuffix(1px, 2px);
+                                }
+                                """,
+                        Syntax.SCSS
+                ),
+                BssTarget.DEFAULT
+        ).output());
+        var strings = java.util.Arrays.asList(document.strings());
+
+        for (var converter : List.of(
+                "javafx.css.converter.DeriveColorConverter",
+                "javafx.css.converter.LadderConverter",
+                "javafx.css.converter.EffectConverter$DropShadowConverter",
+                "javafx.css.converter.EffectConverter$InnerShadowConverter",
+                "javafx.css.converter.PaintConverter$LinearGradientConverter",
+                "javafx.css.converter.PaintConverter$RadialGradientConverter",
+                "javafx.css.converter.PaintConverter$ImagePatternConverter",
+                "javafx.css.converter.PaintConverter$RepeatingImagePatternConverter",
+                "javafx.css.converter.SizeConverter$SequenceConverter",
+                "javafx.css.converter.StringConverter"
+        )) {
+            assertTrue(strings.contains(converter), converter);
+        }
+    }
+
     /// Uses JavaFX 8's internal converter package for shadow effects.
     @Test
     void compilesJavaFX8ShadowConverterNames() throws Exception {
@@ -1583,6 +1726,31 @@ final class BssTargetTest {
             assertEquals(
                     "BSS effects require dropshadow() or innershadow() with a blur"
                             + " type, color, radius, spread or choke, and two offsets.",
+                    failure.getMessage()
+            );
+        }
+    }
+
+    /// Rejects function tokens outside OpenJFX's value-function dispatch table.
+    @Test
+    void rejectsUnsupportedValueFunctions() {
+        for (var value : List.of(
+                "unsupported(1)",
+                "hslSuffix(0, 100%, 50%)"
+        )) {
+            var failure = assertThrows(
+                    SassCompilationException.class,
+                    () -> new SassCompiler().compile(
+                            SassSource.fromString(
+                                    "Pane { -fx-custom: " + value + "; }",
+                                    Syntax.SCSS
+                            ),
+                            BssTarget.DEFAULT
+                    )
+            );
+
+            assertEquals(
+                    "BSS output doesn't support this JavaFX value function.",
                     failure.getMessage()
             );
         }
@@ -1682,6 +1850,7 @@ final class BssTargetTest {
                 "transition: opacity 250ms ease-in 10ms",
                 "transition-delay: 10ms",
                 "transition-duration: 250ms",
+                "TrAnSiTiOn-DuRaTiOn: 250ms",
                 "transition-property: opacity",
                 "transition-timing-function: ease-in"
         };

@@ -886,6 +886,17 @@ A platform feature may still be unsupported by a particular output backend.
 | 26 | Viewport/range media, multi-rule media, and advanced easing | v8 |
 | 27 | Conditional imports and JavaFX platform media features | v9 |
 
+For every BSS version, declaration names are canonicalized to lower case.
+Unquoted property lookups are canonicalized only after that property has been
+encountered in the same source stylesheet; forward and unresolved identifiers
+retain their source spelling. Each imported stylesheet has independent
+source-order lookup state, matching OpenJFX's parser behavior.
+
+JavaFX value functions use OpenJFX's case-insensitive prefix dispatch for
+colors, effects, gradients, image patterns, ladders, Region references, and
+the border-style-specific `segments(...)` form. `url(...)` requires its exact
+function name. Other leading function tokens are rejected before output.
+
 The enum documentation records the detailed boundary for every individual
 release.
 

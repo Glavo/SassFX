@@ -8,6 +8,7 @@ import org.glavo.sassfx.internal.value.SassString;
 import org.glavo.sassfx.internal.value.SassValueException;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.Locale;
@@ -307,6 +308,48 @@ public final class JavaFXCssValidator {
                 );
             }
         }
+        if (!(declaration.parent() instanceof CssFontFace)
+                && !TRANSITION_PROPERTIES.contains(property)) {
+            validateValueFunction(declaration, property);
+        }
+    }
+
+    /// Validates a leading JavaFX value-function token.
+    ///
+    /// OpenJFX accepts its built-in function-name prefixes and exact
+    /// `url(...)` tokens. Other leading function tokens fail declaration
+    /// parsing instead of becoming property lookups.
+    ///
+    /// @param declaration the declaration whose emitted value is inspected
+    /// @param property    the normalized declaration name
+    private static void validateValueFunction(
+            CssDeclaration declaration,
+            String property
+    ) {
+        var value = declarationValueText(declaration).strip();
+        var importanceStart = trailingImportanceStart(value);
+        if (importanceStart >= 0) {
+            value = value.substring(0, importanceStart).stripTrailing();
+        }
+        @Nullable var functionName = JavaFXValueFunction.invocationName(value);
+        if (functionName == null
+                || functionName.equalsIgnoreCase("url")
+                || property.equals("-fx-border-style")
+                && functionName.regionMatches(
+                        true,
+                        0,
+                        "segments",
+                        0,
+                        "segments".length()
+                )
+                || JavaFXValueFunction.fromName(functionName) != null) {
+            return;
+        }
+        throw failure(
+                "JavaFX CSS does not support value function "
+                        + functionName + "().",
+                declaration.value().span()
+        );
     }
 
     /// Normalizes a blend-mode token for legacy JavaFX conflict detection.

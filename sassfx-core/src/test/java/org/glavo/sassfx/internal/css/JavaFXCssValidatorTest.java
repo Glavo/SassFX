@@ -596,6 +596,89 @@ final class JavaFXCssValidatorTest {
         );
     }
 
+    /// Accepts the value-function name prefixes dispatched by OpenJFX.
+    ///
+    /// @param value the supported function value
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "RgBSuffix(18, 52, 86)",
+            "hsbSuffix(210, 79%, 34%)",
+            "deriveSuffix(#123456, 10%)",
+            "dropshadowSuffix(gaussian, black, 8px, 0, 1px, 2px)",
+            "innershadowSuffix(gaussian, black, 8px, 0, 1px, 2px)",
+            "linear-gradientSuffix(red, blue)",
+            "radial-gradientSuffix(radius 50%, red, blue)",
+            "image-patternSuffix(\"image.png\")",
+            "repeating-image-patternSuffix(\"image.png\")",
+            "ladderSuffix(red, black 0%, white 100%)",
+            "regionSuffix(\"#glyph\")",
+            "url(\"image.png\")"
+    })
+    void acceptsJavaFXValueFunctionPrefixes(String value) {
+        for (var compatibility : JavaFXTarget.values()) {
+            assertDoesNotThrow(
+                    () -> JavaFXCssValidator.validate(
+                            stylesheet(
+                                    styleRuleWithDeclaration(
+                                            "Pane",
+                                            "-fx-custom",
+                                            value
+                                    )
+                            ),
+                            compatibility
+                    )
+            );
+        }
+    }
+
+    /// Accepts the border-style-specific `segments` function-name prefix.
+    @Test
+    void acceptsJavaFXBorderSegmentsFunctionPrefix() {
+        for (var compatibility : JavaFXTarget.values()) {
+            assertDoesNotThrow(
+                    () -> JavaFXCssValidator.validate(
+                            stylesheet(
+                                    styleRuleWithDeclaration(
+                                            "Pane",
+                                            "-fx-border-style",
+                                            "SeGmEnTsSuffix(1px, 2px)"
+                                    )
+                            ),
+                            compatibility
+                    )
+            );
+        }
+    }
+
+    /// Rejects leading functions outside OpenJFX's value-function table.
+    ///
+    /// @param value the unsupported function value
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "unsupported(1)",
+            "hslSuffix(0, 100%, 50%)",
+            "calc(1px + 2px)",
+            "segments(1px, 2px)",
+            "urlSuffix(\"image.png\")"
+    })
+    void rejectsUnsupportedJavaFXValueFunctions(String value) {
+        for (var compatibility : JavaFXTarget.values()) {
+            assertThrows(
+                    CssSerializeException.class,
+                    () -> JavaFXCssValidator.validate(
+                            stylesheet(
+                                    styleRuleWithDeclaration(
+                                            "Pane",
+                                            "-fx-custom",
+                                            value
+                                    )
+                            ),
+                            compatibility
+                    )
+            );
+        }
+    }
+
     /// Accepts selector forms interpreted by JavaFX.
     ///
     /// @param selector the accepted selector

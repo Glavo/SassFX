@@ -2,6 +2,7 @@
 package org.glavo.sassfx.internal.bss;
 
 import org.glavo.sassfx.SourceSpan;
+import org.glavo.sassfx.internal.css.JavaFXValueFunction;
 import org.glavo.sassfx.internal.value.SassNumber;
 import org.glavo.sassfx.internal.value.SassString;
 import org.glavo.sassfx.internal.value.SassValue;
@@ -272,28 +273,28 @@ final class JavaFXEffectParser {
     enum EffectKind {
         /// Selects `EffectConverter.DropShadowConverter`.
         DROP_SHADOW(
-                "dropshadow",
+                JavaFXValueFunction.DROP_SHADOW,
                 "javafx.css.converter.EffectConverter$DropShadowConverter"
         ),
 
         /// Selects `EffectConverter.InnerShadowConverter`.
         INNER_SHADOW(
-                "innershadow",
+                JavaFXValueFunction.INNER_SHADOW,
                 "javafx.css.converter.EffectConverter$InnerShadowConverter"
         );
 
-        /// Contains the case-insensitive CSS function name.
-        private final String functionName;
+        /// Contains the OpenJFX function classifier.
+        private final JavaFXValueFunction function;
 
         /// Contains the JavaFX converter class name.
         private final String converterClass;
 
         /// Creates one effect kind.
         ///
-        /// @param functionName  the CSS function name
+        /// @param function      the OpenJFX function classifier
         /// @param converterClass the JavaFX converter class name
-        EffectKind(String functionName, String converterClass) {
-            this.functionName = Objects.requireNonNull(functionName, "functionName");
+        EffectKind(JavaFXValueFunction function, String converterClass) {
+            this.function = Objects.requireNonNull(function, "function");
             this.converterClass = Objects.requireNonNull(converterClass, "converterClass");
         }
 
@@ -311,8 +312,9 @@ final class JavaFXEffectParser {
         private static @Nullable EffectKind forFunctionName(
                 String name
         ) {
+            @Nullable var function = JavaFXValueFunction.fromName(name);
             for (var kind : values()) {
-                if (kind.functionName.equalsIgnoreCase(name)) {
+                if (kind.function == function) {
                     return kind;
                 }
             }

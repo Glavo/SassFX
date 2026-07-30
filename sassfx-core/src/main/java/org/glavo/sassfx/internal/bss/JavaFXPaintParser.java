@@ -3,6 +3,7 @@ package org.glavo.sassfx.internal.bss;
 
 import org.glavo.sassfx.SourceSpan;
 import org.glavo.sassfx.internal.css.JavaFXLegacyGradient;
+import org.glavo.sassfx.internal.css.JavaFXValueFunction;
 import org.glavo.sassfx.internal.value.SassColor;
 import org.glavo.sassfx.internal.value.SassNumber;
 import org.glavo.sassfx.internal.value.SassString;
@@ -96,19 +97,22 @@ final class JavaFXPaintParser {
         if (parenthesis <= 0) {
             return false;
         }
-        var functionName = text.substring(0, parenthesis).trim().toLowerCase(Locale.ROOT);
-        if (functionName.startsWith("region")) {
-            return true;
+        @Nullable var function = JavaFXValueFunction.fromName(
+                text.substring(0, parenthesis).trim()
+        );
+        if (function == null) {
+            return false;
         }
-        return switch (functionName) {
-            case "linear",
-                 "radial",
-                 "linear-gradient",
-                 "radial-gradient",
-                 "image-pattern",
-                 "repeating-image-pattern",
-                 "derive",
-                 "ladder" -> true;
+        return switch (function) {
+            case RGB,
+                 HSB,
+                 DERIVE,
+                 LINEAR_GRADIENT,
+                 RADIAL_GRADIENT,
+                 IMAGE_PATTERN,
+                 REPEATING_IMAGE_PATTERN,
+                 LADDER,
+                 REGION -> true;
             default -> false;
         };
     }
@@ -134,17 +138,20 @@ final class JavaFXPaintParser {
             return parseLegacyLadderColor(trimmed, span);
         }
         var function = parseFunctionInvocation(trimmed, span);
-        var functionName = function.name().toLowerCase(Locale.ROOT);
-        if (functionName.startsWith("region")) {
-            return parseRegionReference(function.arguments(), span);
+        @Nullable var functionKind = JavaFXValueFunction.fromName(function.name());
+        if (functionKind == null) {
+            throw invalidPaint(span);
         }
-        return switch (functionName) {
-            case "linear-gradient" -> parseLinearGradient(function.arguments(), span);
-            case "radial-gradient" -> parseRadialGradient(function.arguments(), span);
-            case "image-pattern" -> parseImagePattern(function.arguments(), span);
-            case "repeating-image-pattern" -> parseRepeatingImagePattern(function.arguments(), span);
-            case "derive" -> parseDerivedColor(function.arguments(), span);
-            case "ladder" -> parseLadderColor(function.arguments(), span);
+        return switch (functionKind) {
+            case RGB, HSB -> new SolidPaint(parseColorFunction(function, span));
+            case LINEAR_GRADIENT -> parseLinearGradient(function.arguments(), span);
+            case RADIAL_GRADIENT -> parseRadialGradient(function.arguments(), span);
+            case IMAGE_PATTERN -> parseImagePattern(function.arguments(), span);
+            case REPEATING_IMAGE_PATTERN ->
+                    parseRepeatingImagePattern(function.arguments(), span);
+            case DERIVE -> parseDerivedColor(function.arguments(), span);
+            case LADDER -> parseLadderColor(function.arguments(), span);
+            case REGION -> parseRegionReference(function.arguments(), span);
             default -> throw invalidPaint(span);
         };
     }
@@ -1123,11 +1130,14 @@ final class JavaFXPaintParser {
             return new LookupPaint(trimmed);
         }
         var function = parseFunctionInvocation(trimmed, span);
-        return switch (function.name().toLowerCase(Locale.ROOT)) {
-            case "rgb", "rgba", "hsl", "hsla", "hsb", "hsba" ->
-                    new SolidPaint(parseColor(trimmed, span));
-            case "derive" -> parseDerivedColor(function.arguments(), span);
-            case "ladder" -> parseLadderColor(function.arguments(), span);
+        @Nullable var functionKind = JavaFXValueFunction.fromName(function.name());
+        if (functionKind == null) {
+            throw invalidPaint(span);
+        }
+        return switch (functionKind) {
+            case RGB, HSB -> new SolidPaint(parseColorFunction(function, span));
+            case DERIVE -> parseDerivedColor(function.arguments(), span);
+            case LADDER -> parseLadderColor(function.arguments(), span);
             default -> throw invalidPaint(span);
         };
     }
@@ -1247,12 +1257,27 @@ final class JavaFXPaintParser {
     /// @return the decoded RGB color
     /// @throws BssSerializeException if the function is not a supported color
     private static SassColor parseColorFunction(String text, SourceSpan span) {
-        var function = parseFunctionInvocation(text, span);
+        return parseColorFunction(parseFunctionInvocation(text, span), span);
+    }
+
+    /// Parses one classified functional JavaFX color.
+    ///
+    /// @param function the parsed function invocation
+    /// @param span     the source range associated with the declaration
+    /// @return the decoded RGB color
+    /// @throws BssSerializeException if the function is not a supported color
+    private static SassColor parseColorFunction(
+            FunctionInvocation function,
+            SourceSpan span
+    ) {
         var components = colorFunctionComponents(function.arguments(), span);
-        return switch (function.name().toLowerCase(Locale.ROOT)) {
-            case "rgb", "rgba" -> parseRgbColor(components, span);
-            case "hsl", "hsla" -> parseHslColor(components, span);
-            case "hsb", "hsba" -> parseHsbColor(components, span);
+        @Nullable var functionKind = JavaFXValueFunction.fromName(function.name());
+        if (functionKind == null) {
+            throw invalidPaint(span);
+        }
+        return switch (functionKind) {
+            case RGB -> parseRgbColor(components, span);
+            case HSB -> parseHsbColor(components, span);
             default -> throw invalidPaint(span);
         };
     }
@@ -1298,73 +1323,6 @@ final class JavaFXPaintParser {
                 parseRgbChannel(components.get(0), span),
                 parseRgbChannel(components.get(1), span),
                 parseRgbChannel(components.get(2), span),
-                alpha,
-                null
-        );
-    }
-
-    /// Parses an {@code hsl(...)} or {@code hsla(...)} color.
-    ///
-    /// @param components the hue, saturation, lightness, and optional alpha
-    /// @param span       the source range associated with the declaration
-    /// @return the decoded RGB color
-    /// @throws BssSerializeException if a component is invalid
-    private static SassColor parseHslColor(List<String> components, SourceSpan span) {
-        if (components.size() != 3 && components.size() != 4) {
-            throw invalidPaint(span);
-        }
-        var hue = parseHue(components.get(0), span);
-        var saturation = parsePercentage(components.get(1), span);
-        var lightness = parsePercentage(components.get(2), span);
-        var alpha = components.size() == 4 ? parseAlpha(components.get(3), span) : 1.0;
-
-        var chroma = (1.0 - Math.abs(2.0 * lightness - 1.0)) * saturation;
-        var normalizedHue = hue % 360.0;
-        if (normalizedHue < 0.0) {
-            normalizedHue += 360.0;
-        }
-        var secondary = chroma * (1.0 - Math.abs(normalizedHue / 60.0 % 2.0 - 1.0));
-        var match = lightness - chroma / 2.0;
-        var sector = (int) (normalizedHue / 60.0);
-        final double red;
-        final double green;
-        final double blue;
-        switch (sector) {
-            case 0 -> {
-                red = chroma;
-                green = secondary;
-                blue = 0.0;
-            }
-            case 1 -> {
-                red = secondary;
-                green = chroma;
-                blue = 0.0;
-            }
-            case 2 -> {
-                red = 0.0;
-                green = chroma;
-                blue = secondary;
-            }
-            case 3 -> {
-                red = 0.0;
-                green = secondary;
-                blue = chroma;
-            }
-            case 4 -> {
-                red = secondary;
-                green = 0.0;
-                blue = chroma;
-            }
-            default -> {
-                red = chroma;
-                green = 0.0;
-                blue = secondary;
-            }
-        }
-        return SassColor.rgb(
-                (red + match) * 255.0,
-                (green + match) * 255.0,
-                (blue + match) * 255.0,
                 alpha,
                 null
         );
@@ -1514,36 +1472,6 @@ final class JavaFXPaintParser {
         return alpha;
     }
 
-    /// Parses one CSS percentage as a normalized fraction.
-    ///
-    /// @param text the raw percentage text
-    /// @param span the source range associated with the declaration
-    /// @return the percentage divided by one hundred
-    /// @throws BssSerializeException if the value is not a percentage in range
-    private static double parsePercentage(String text, SourceSpan span) {
-        var size = parseSize(text, span);
-        if (!"%".equals(sizeUnit(size)) || size.value() < 0.0 || size.value() > 100.0) {
-            throw invalidPaint(span);
-        }
-        return size.value() / 100.0;
-    }
-
-    /// Parses one hue value as degrees.
-    ///
-    /// @param text the raw hue text
-    /// @param span the source range associated with the declaration
-    /// @return the hue in degrees
-    /// @throws BssSerializeException if the unit is not a CSS angle
-    private static double parseHue(String text, SourceSpan span) {
-        var size = parseSize(text, span);
-        return switch (sizeUnit(size)) {
-            case "", "deg" -> size.value();
-            case "grad" -> size.value() * 0.9;
-            case "rad" -> Math.toDegrees(size.value());
-            case "turn" -> size.value() * 360.0;
-            default -> throw invalidPaint(span);
-        };
-    }
     /// Parses one simple CSS size token.
     ///
     /// @param text the raw size text

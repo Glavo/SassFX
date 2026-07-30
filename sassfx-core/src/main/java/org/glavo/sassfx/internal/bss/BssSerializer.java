@@ -20,6 +20,7 @@ import org.glavo.sassfx.internal.css.CssStylesheet;
 import org.glavo.sassfx.internal.css.CssUnknownAtRule;
 import org.glavo.sassfx.internal.css.JavaFXCssImport;
 import org.glavo.sassfx.internal.css.JavaFXLegacyGradient;
+import org.glavo.sassfx.internal.css.JavaFXValueFunction;
 import org.glavo.sassfx.internal.css.JavaFXMediaQuery;
 import org.glavo.sassfx.internal.css.JavaFXMediaQueryValidator;
 import org.glavo.sassfx.internal.css.JavaFXSimpleSelector;
@@ -45,11 +46,13 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 import static org.glavo.sassfx.JavaFXFeature.MULTIPLE_RULES_PER_MEDIA_QUERY;
 
@@ -371,6 +374,7 @@ public final class BssSerializer {
         var imports = new ArrayList<BssImport>();
         var rules = new ArrayList<BssRule>();
         var fontFaces = new ArrayList<BssFontFace>();
+        var properties = new JavaFXPropertyRegistry();
         var sawStyleRule = false;
         for (var child : stylesheet.children()) {
             if (child instanceof CssComment || child.isInvisible()) {
@@ -421,7 +425,11 @@ public final class BssSerializer {
                 }
             } else if (child instanceof CssStyleRule rule) {
                 sawStyleRule = true;
-                @Nullable BssRule converted = collectRule(rule, null);
+                @Nullable BssRule converted = collectRule(
+                        rule,
+                        null,
+                        properties
+                );
                 if (converted != null) {
                     rules.add(converted);
                 }
@@ -436,7 +444,13 @@ public final class BssSerializer {
                 fontFaces.add(collectFontFace(fontFace));
             } else if (child instanceof CssMediaRule mediaRule) {
                 sawStyleRule = true;
-                collectMediaRule(mediaRule, null, compatibility, rules);
+                collectMediaRule(
+                        mediaRule,
+                        null,
+                        compatibility,
+                        rules,
+                        properties
+                );
             } else if (child instanceof CssSupportsRule supportsRule) {
                 throw new BssSerializeException(
                         "BSS output doesn't support @supports rules.",
@@ -499,11 +513,13 @@ public final class BssSerializer {
     /// @param parent        the enclosing binary media rule, or `null`
     /// @param compatibility the selected JavaFX release
     /// @param rules         the destination rule list
+    /// @param properties    the declaration names seen in this source stylesheet
     private static void collectMediaRule(
             CssMediaRule mediaRule,
             @Nullable BssMediaRule parent,
             JavaFXTarget compatibility,
-            List<BssRule> rules
+            List<BssRule> rules,
+            JavaFXPropertyRegistry properties
     ) {
         if (!compatibility.supports(MULTIPLE_RULES_PER_MEDIA_QUERY)
                 && mediaRule.children().stream()
@@ -541,12 +557,22 @@ public final class BssSerializer {
                 continue;
             }
             if (child instanceof CssStyleRule rule) {
-                @Nullable BssRule converted = collectRule(rule, binaryMediaRule);
+                @Nullable BssRule converted = collectRule(
+                        rule,
+                        binaryMediaRule,
+                        properties
+                );
                 if (converted != null) {
                     rules.add(converted);
                 }
             } else if (child instanceof CssMediaRule nested) {
-                collectMediaRule(nested, binaryMediaRule, compatibility, rules);
+                collectMediaRule(
+                        nested,
+                        binaryMediaRule,
+                        compatibility,
+                        rules,
+                        properties
+                );
             } else if (child instanceof CssSupportsRule supportsRule) {
                 throw new BssSerializeException(
                         "BSS output doesn't support @supports rules.",
@@ -627,12 +653,15 @@ public final class BssSerializer {
     /// encodes only a flat list of selectors and declarations.
     ///
     /// @param rule the CSS style rule
+    /// @param mediaRule the enclosing media rule, or `null`
+    /// @param properties the declaration names seen in this source stylesheet
     /// @return a binary-ready rule, or {@code null} when comments are its only content
     private static @Nullable BssRule collectRule(
             CssStyleRule rule,
-            @Nullable BssMediaRule mediaRule
+            @Nullable BssMediaRule mediaRule,
+            JavaFXPropertyRegistry properties
     ) {
-        var declarations = new ArrayList<CssDeclaration>();
+        var declarations = new ArrayList<BssDeclaration>();
         for (var child : rule.children()) {
             if (child instanceof CssComment || child.isInvisible()) {
                 continue;
@@ -644,7 +673,7 @@ public final class BssSerializer {
                         null
                 );
             } else if (child instanceof CssDeclaration declaration) {
-                declarations.add(declaration);
+                declarations.add(properties.register(declaration));
             } else if (child instanceof CssStyleRule nested) {
                 throw new BssSerializeException(
                         "BSS output doesn't support nested style rules.",
@@ -1018,30 +1047,32 @@ public final class BssSerializer {
     /// Writes one BSS declaration.
     ///
     /// @param output      the declaration output stream
-    /// @param declaration the source declaration
+    /// @param declaration the normalized declaration and lookup context
     /// @param strings     the shared string table
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeDeclaration(
             DataOutputStream output,
-            CssDeclaration declaration,
+            BssDeclaration declaration,
             StringStore strings
     ) throws IOException {
-        if (!declaration.parsedAsSassScript()) {
+        var source = declaration.source();
+        if (!source.parsedAsSassScript()) {
             throw new BssSerializeException(
                     "BSS output doesn't support raw CSS declaration values.",
-                    declaration.value().span(),
+                    source.value().span(),
                     null
             );
         }
 
-        var property = declaration.name().value();
+        strings.useLookupProperties(declaration.lookupProperties());
+        var property = declaration.property();
         output.writeShort(strings.add(property));
-        var value = splitImportant(declaration.value().value());
+        var value = splitImportant(source.value().value());
         writeDeclarationValue(
                 output,
                 property,
                 value.value(),
-                declaration.value().span(),
+                source.value().span(),
                 strings
         );
         output.writeBoolean(value.important());
@@ -1084,7 +1115,7 @@ public final class BssSerializer {
             String property,
             SassValue value,
             SourceSpan span,
-        StringStore strings
+            StringStore strings
     ) throws IOException {
         if (isTransitionProperty(property)) {
             throw new BssSerializeException(
@@ -1810,7 +1841,11 @@ public final class BssSerializer {
             return;
         }
         if (color instanceof JavaFXPaintParser.LookupPaint lookup) {
-            writeLookupValue(output, lookup.key(), strings);
+            writeLookupValue(
+                    output,
+                    strings.normalizeLookupKey(lookup.key()),
+                    strings
+            );
             return;
         }
         if (color instanceof JavaFXPaintParser.DerivedPaint derived) {
@@ -4049,6 +4084,9 @@ public final class BssSerializer {
                 : string.hasQuotes() && !fontFamily ? text : string.toCssString();
         @Nullable String converter = !specialKeyword && fontFamily ? STRING_CONVERTER : null;
         var lookup = !fontFamily && !string.hasQuotes() && !specialKeyword;
+        if (lookup) {
+            serializedText = strings.normalizeLookupKey(serializedText);
+        }
         writeParsedHeader(output, lookup, converter, strings);
         output.writeByte(STRING_VALUE);
         output.writeShort(strings.add(serializedText));
@@ -4083,13 +4121,22 @@ public final class BssSerializer {
                 output.writeShort(strings.add(lower));
             }
             default -> {
-                if (string.hasQuotes()) {
+                if (string.hasQuotes()
+                        || !strings.isRegisteredLookupKey(string.text())) {
                     @Nullable JavaFXPaintParser.SolidPaint color =
                             JavaFXPaintParser.tryParseSolidColor(string.text(), span);
                     if (color != null) {
                         writeColorValue(output, color.color(), span, strings);
                         return;
                     }
+                }
+                if (!string.hasQuotes()
+                        && JavaFXValueFunction.invocationName(string.text()) != null) {
+                    throw new BssSerializeException(
+                            "BSS output doesn't support this JavaFX value function.",
+                            span,
+                            null
+                    );
                 }
                 writeStringValue(output, property, string, strings);
             }
@@ -4958,6 +5005,47 @@ public final class BssSerializer {
         }
     }
 
+    /// Tracks declaration names encountered while collecting one source stylesheet.
+    ///
+    /// Imported stylesheets use independent registries because OpenJFX parses
+    /// each imported document with a new CSS parser.
+    @NotNullByDefault
+    private static final class JavaFXPropertyRegistry {
+        /// Contains lower-case declaration names seen in source order.
+        private final Set<String> properties = new HashSet<>();
+
+        /// Registers one declaration before its value is interpreted.
+        ///
+        /// @param declaration the source declaration
+        /// @return the declaration with its canonical name and visible lookup names
+        private BssDeclaration register(CssDeclaration declaration) {
+            Objects.requireNonNull(declaration, "declaration");
+            var property = declaration.name().value().toLowerCase(Locale.ROOT);
+            properties.add(property);
+            return new BssDeclaration(declaration, property, properties);
+        }
+    }
+
+    /// Holds one declaration and the property names visible while parsing it.
+    ///
+    /// @param source           the evaluated source declaration
+    /// @param property         the lower-case JavaFX property name
+    /// @param lookupProperties the lower-case property names registered through
+    ///                         this declaration
+    @NotNullByDefault
+    private record BssDeclaration(
+            CssDeclaration source,
+            String property,
+            @Unmodifiable Set<String> lookupProperties
+    ) {
+        /// Creates an immutable declaration snapshot.
+        private BssDeclaration {
+            Objects.requireNonNull(source, "source");
+            Objects.requireNonNull(property, "property");
+            lookupProperties = Set.copyOf(lookupProperties);
+        }
+    }
+
     /// Holds one style rule ready for BSS encoding.
     ///
     /// @param selectors    the resolved selector list
@@ -4966,7 +5054,7 @@ public final class BssSerializer {
     @NotNullByDefault
     private record BssRule(
             SelectorList selectors,
-            List<CssDeclaration> declarations,
+            @Unmodifiable List<BssDeclaration> declarations,
             @Nullable BssMediaRule mediaRule,
             SourceSpan span
     ) {
@@ -5031,6 +5119,9 @@ public final class BssSerializer {
         /// Contains the BSS version whose class names are encoded.
         private final int version;
 
+        /// Contains declaration names visible while encoding the current value.
+        private @Unmodifiable Set<String> lookupProperties = Set.of();
+
         /// Maps non-null strings to their BSS indices.
         private final Map<String, Integer> indices = new HashMap<>();
 
@@ -5057,6 +5148,34 @@ public final class BssSerializer {
         /// @return the BSS version written by this string store's serializer
         private int version() {
             return version;
+        }
+
+        /// Selects the property-name snapshot visible to one declaration value.
+        ///
+        /// @param properties the immutable lower-case property-name snapshot
+        private void useLookupProperties(@Unmodifiable Set<String> properties) {
+            lookupProperties = Objects.requireNonNull(properties, "properties");
+        }
+
+        /// Returns whether an identifier names an already registered property.
+        ///
+        /// @param key the unquoted identifier considered as a property lookup
+        /// @return whether the current declaration can look up the identifier
+        private boolean isRegisteredLookupKey(String key) {
+            return lookupProperties.contains(key.toLowerCase(Locale.ROOT));
+        }
+
+        /// Normalizes a lookup key when JavaFX has already seen its property.
+        ///
+        /// Forward and unresolved lookup identifiers retain their original
+        /// spelling, matching OpenJFX's source-order parser state.
+        ///
+        /// @param key the unquoted identifier used as a property lookup
+        /// @return the lower-case registered property name, or the original key
+        private String normalizeLookupKey(String key) {
+            return isRegisteredLookupKey(key)
+                    ? key.toLowerCase(Locale.ROOT)
+                    : key;
         }
 
         /// Returns the BSS index for one string, interning it when necessary.
