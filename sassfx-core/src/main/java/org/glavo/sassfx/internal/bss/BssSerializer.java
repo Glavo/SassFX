@@ -22,6 +22,7 @@ import org.glavo.sassfx.internal.css.CssSerializeException;
 import org.glavo.sassfx.internal.css.JavaFXCssImport;
 import org.glavo.sassfx.internal.css.JavaFXCssLexer;
 import org.glavo.sassfx.internal.css.JavaFXFontFaceParser;
+import org.glavo.sassfx.internal.css.JavaFXFontParser;
 import org.glavo.sassfx.internal.css.JavaFXLegacyGradient;
 import org.glavo.sassfx.internal.css.JavaFXValueFunction;
 import org.glavo.sassfx.internal.css.JavaFXMediaQuery;
@@ -630,14 +631,24 @@ public final class BssSerializer {
                     );
                 }
             } catch (CssSerializeException failure) {
-                throw new BssSerializeException(
-                        failure.primaryDiagnostic(),
-                        failure.sassTrace(),
-                        failure
-                );
+                throw asBssFailure(failure);
             }
         }
         return new BssFontFace(descriptors, sources, fontFace.span());
+    }
+
+    /// Converts a shared CSS-parser failure into a BSS serialization failure.
+    ///
+    /// @param failure the source-associated CSS failure
+    /// @return an equivalent BSS failure preserving diagnostics and trace data
+    private static BssSerializeException asBssFailure(
+            CssSerializeException failure
+    ) {
+        return new BssSerializeException(
+                failure.primaryDiagnostic(),
+                failure.sassTrace(),
+                failure
+        );
     }
 
     /// Converts one parsed font source into its BSS representation.
@@ -1268,9 +1279,18 @@ public final class BssSerializer {
             SassValue value,
             SourceSpan span
     ) {
-        final String text;
+        requireTokenizableValue(cssValueText(value, span), span);
+    }
+
+    /// Returns the emitted CSS text for one evaluated declaration value.
+    ///
+    /// @param value the evaluated declaration value
+    /// @param span  the source range associated with the value
+    /// @return the CSS representation inspected by JavaFX-specific parsers
+    /// @throws BssSerializeException if the value has no CSS representation
+    private static String cssValueText(SassValue value, SourceSpan span) {
         try {
-            text = value.toCssString();
+            return value.toCssString();
         } catch (SassValueException failure) {
             throw new BssSerializeException(
                     Objects.requireNonNull(
@@ -1281,7 +1301,6 @@ public final class BssSerializer {
                     failure
             );
         }
-        requireTokenizableValue(text, span);
     }
 
     /// Requires emitted value text to use token forms accepted by JavaFX CSS.
@@ -1324,6 +1343,10 @@ public final class BssSerializer {
         }
         if (value instanceof SassString string && isGlobalKeyword(string)) {
             writeStringValue(output, property, string, strings);
+            return;
+        }
+        if (isFontFamilyProperty(property)) {
+            writeFontFamilyValue(output, value, span, strings);
             return;
         }
         if (isFontSizeProperty(property)) {
@@ -1617,6 +1640,14 @@ public final class BssSerializer {
         return property.endsWith("font-weight");
     }
 
+    /// Returns whether a property consumes a font-family scalar.
+    ///
+    /// @param property the CSS property name
+    /// @return whether the property uses the string converter as a font family
+    private static boolean isFontFamilyProperty(String property) {
+        return property.endsWith("font-family");
+    }
+
     /// Returns whether a property consumes a font-size scalar.
     ///
     /// @param property the CSS property name
@@ -1846,6 +1877,33 @@ public final class BssSerializer {
         writeSizeValue(output, number, span, strings);
     }
 
+    /// Writes one JavaFX font family through the string converter.
+    ///
+    /// @param output  the declaration output stream
+    /// @param value   the evaluated family value
+    /// @param span    the source value span
+    /// @param strings the shared string table
+    /// @throws IOException if an in-memory output stream rejects a write
+    private static void writeFontFamilyValue(
+            DataOutputStream output,
+            SassValue value,
+            SourceSpan span,
+            StringStore strings
+    ) throws IOException {
+        final String family;
+        try {
+            family = JavaFXFontParser.parseFamily(
+                    cssValueText(value, span),
+                    span
+            );
+        } catch (CssSerializeException failure) {
+            throw asBssFailure(failure);
+        }
+        writeParsedHeader(output, false, STRING_CONVERTER, strings);
+        output.writeByte(STRING_VALUE);
+        output.writeShort(strings.add(family));
+    }
+
     /// Writes a JavaFX font size after expanding its CSS keyword, if any.
     ///
     /// @param output  the declaration output stream
@@ -1859,41 +1917,22 @@ public final class BssSerializer {
             SourceSpan span,
             StringStore strings
     ) throws IOException {
-        @Nullable var size = normalizedFontSize(value);
-        if (size == null) {
-            throw new BssSerializeException(
-                    "BSS font sizes require a JavaFX size or font-size keyword.",
-                    span,
-                    null
+        final JavaFXFontParser.Size size;
+        try {
+            size = JavaFXFontParser.parseSize(
+                    cssValueText(value, span),
+                    span
             );
+        } catch (CssSerializeException failure) {
+            throw asBssFailure(failure);
         }
-        writeNumberValue(output, "-fx-font-size", size, span, strings);
-    }
-
-    /// Returns the OpenJFX numeric representation of a font-size value.
-    ///
-    /// @param value the evaluated size or keyword
-    /// @return the accepted number, or {@code null} when the value is invalid
-    private static @Nullable SassNumber normalizedFontSize(SassValue value) {
-        if (value instanceof SassNumber number) {
-            return isFontSize(number) ? number : null;
-        }
-        if (!(value instanceof SassString keyword) || keyword.hasQuotes()) {
-            return null;
-        }
-        var percentage = switch (keyword.text().toLowerCase(Locale.ROOT)) {
-            case "xx-small" -> 60.0;
-            case "x-small" -> 75.0;
-            case "small", "smaller" -> 80.0;
-            case "inherit", "medium" -> 100.0;
-            case "large", "larger" -> 120.0;
-            case "x-large" -> 150.0;
-            case "xx-large" -> 200.0;
-            default -> Double.NaN;
-        };
-        return Double.isNaN(percentage)
-                ? null
-                : SassNumber.of(percentage, "%");
+        writeNumberValue(
+                output,
+                "-fx-font-size",
+                SassNumber.of(size.value(), size.unit()),
+                span,
+                strings
+        );
     }
 
     /// Returns whether a Sass number has one JavaFX time unit.
@@ -4471,27 +4510,40 @@ public final class BssSerializer {
             SourceSpan span,
             StringStore strings
     ) throws IOException {
-        var font = parseFontShorthand(value, span);
+        final JavaFXFontParser.Font font;
+        try {
+            font = JavaFXFontParser.parseShorthand(
+                    cssValueText(value, span),
+                    span
+            );
+        } catch (CssSerializeException failure) {
+            throw asBssFailure(failure);
+        }
         writeParsedHeader(output, false, FONT_CONVERTER, strings);
         writeParsedValueArrayPrefix(output, 4);
 
         output.writeByte(NESTED_VALUE);
         writeParsedHeader(output, false, STRING_CONVERTER, strings);
         output.writeByte(STRING_VALUE);
-        output.writeShort(strings.add(fontFamilyText(font.family())));
+        output.writeShort(strings.add(font.family()));
 
         output.writeByte(NESTED_VALUE);
-        writeNumberValue(output, "-fx-font-size", font.size(), span, strings);
+        writeNumberValue(
+                output,
+                "-fx-font-size",
+                SassNumber.of(font.size().value(), font.size().unit()),
+                span,
+                strings
+        );
 
         if (font.weight() == null) {
             output.writeByte(NULL_VALUE);
         } else {
             output.writeByte(NESTED_VALUE);
-            writeFontKeywordValue(
+            writeCanonicalFontKeywordValue(
                     output,
-                    "-fx-font-weight",
+                    false,
                     font.weight(),
-                    span,
                     strings
             );
         }
@@ -4500,179 +4552,13 @@ public final class BssSerializer {
             output.writeByte(NULL_VALUE);
         } else {
             output.writeByte(NESTED_VALUE);
-            writeFontKeywordValue(
+            writeCanonicalFontKeywordValue(
                     output,
-                    "-fx-font-style",
+                    true,
                     font.style(),
-                    span,
                     strings
             );
         }
-    }
-
-    /// Parses the JavaFX font shorthand from its evaluated Sass list.
-    ///
-    /// @param value the evaluated declaration value
-    /// @param span  the source value span
-    /// @return the family, size, optional weight, and optional style
-    /// @throws BssSerializeException if the value does not follow JavaFX's grammar
-    private static FontShorthand parseFontShorthand(
-            SassValue value,
-            SourceSpan span
-    ) {
-        if (!(value instanceof SassList list)
-                || list.hasBrackets()
-                || list.separator() != ListSeparator.SPACE
-                || list.contents().size() < 2) {
-            throw invalidFontShorthand(span);
-        }
-        var terms = list.contents();
-        var familyValue = terms.get(terms.size() - 1);
-        if (!(familyValue instanceof SassString family)) {
-            throw invalidFontShorthand(span);
-        }
-
-        var sizeIndex = terms.size() - 2;
-        var size = fontShorthandSize(terms.get(sizeIndex), span);
-        @Nullable SassValue weight = null;
-        @Nullable SassValue style = null;
-        var sawVariant = false;
-
-        // OpenJFX parses the optional prefix backwards after locating the
-        // mandatory size and family terms.
-        for (var index = sizeIndex - 1; index >= 0; index--) {
-            var term = terms.get(index);
-            if (!(term instanceof SassString keyword) || keyword.hasQuotes()) {
-                throw invalidFontShorthand(span);
-            }
-            var normalized = keyword.text().toLowerCase(Locale.ROOT);
-            if (style == null && switch (normalized) {
-                case "normal", "italic", "oblique" -> true;
-                default -> false;
-            }) {
-                style = keyword;
-            } else if (!sawVariant && normalized.equals("small-caps")) {
-                sawVariant = true;
-            } else if (weight == null && switch (normalized) {
-                case "normal", "bold", "bolder", "lighter" -> true;
-                default -> false;
-            }) {
-                weight = keyword;
-            } else {
-                throw invalidFontShorthand(span);
-            }
-        }
-        return new FontShorthand(family, size, weight, style);
-    }
-
-    /// Returns the size retained by a font shorthand.
-    ///
-    /// @param value the size term or size/line-height slash list
-    /// @param span  the source value span
-    /// @return the font size before an optional line height
-    /// @throws BssSerializeException if either size is malformed
-    private static SassNumber fontShorthandSize(
-            SassValue value,
-            SourceSpan span
-    ) {
-        if (value instanceof SassNumber number) {
-            if (number.slashNumerator() != null
-                    && number.slashDenominator() != null) {
-                var numerator = number.slashNumerator();
-                var denominator = number.slashDenominator();
-                if (!isFontSize(numerator) || !isFontSize(denominator)) {
-                    throw invalidFontShorthand(span);
-                }
-                return numerator;
-            }
-            @Nullable var size = normalizedFontSize(number);
-            if (size != null) {
-                return size;
-            }
-        }
-        if (value instanceof SassList slash
-                && !slash.hasBrackets()
-                && slash.separator() == ListSeparator.SLASH
-                && slash.contents().size() == 2) {
-            @Nullable var size = normalizedFontSize(slash.contents().get(0));
-            @Nullable var lineHeight = normalizedFontSize(
-                    slash.contents().get(1)
-            );
-            if (size != null && lineHeight != null) {
-                return size;
-            }
-        }
-        if (value instanceof SassString slashText && !slashText.hasQuotes()) {
-            var separator = slashText.text().indexOf('/');
-            if (separator > 0
-                    && separator == slashText.text().lastIndexOf('/')
-                    && separator < slashText.text().length() - 1) {
-                @Nullable var size = normalizedFontSize(new SassString(
-                        slashText.text().substring(0, separator).trim(),
-                        false
-                ));
-                @Nullable var lineHeight = normalizedFontSize(new SassString(
-                        slashText.text().substring(separator + 1).trim(),
-                        false
-                ));
-                if (size != null && lineHeight != null) {
-                    return size;
-                }
-            }
-        }
-        @Nullable var keywordSize = normalizedFontSize(value);
-        if (keywordSize != null) {
-            return keywordSize;
-        }
-        throw invalidFontShorthand(span);
-    }
-
-    /// Returns whether a number is accepted by OpenJFX's font-size grammar.
-    ///
-    /// @param number the candidate size
-    /// @return whether the number has at most one supported font-size unit
-    private static boolean isFontSize(SassNumber number) {
-        if (!Double.isFinite(number.value())
-                || !number.denominatorUnits().isEmpty()
-                || number.numeratorUnits().size() > 1) {
-            return false;
-        }
-        if (number.numeratorUnits().isEmpty()) {
-            return true;
-        }
-        return switch (number.numeratorUnits().get(0).toLowerCase(Locale.ROOT)) {
-            case "%", "em", "ex", "px", "cm", "mm", "in", "pt", "pc" -> true;
-            default -> false;
-        };
-    }
-
-    /// Returns the string stored by JavaFX's font-family parser.
-    ///
-    /// @param family the parsed family token
-    /// @return the original CSS token, except for normalized generic families
-    private static String fontFamilyText(SassString family) {
-        if (family.hasQuotes()) {
-            return family.toCssString();
-        }
-        var lower = family.text().toLowerCase(Locale.ROOT);
-        return switch (lower) {
-            case "inherit", "serif", "sans-serif", "cursive", "fantasy", "monospace" -> lower;
-            default -> family.text();
-        };
-    }
-
-    /// Creates the standard failure for an invalid JavaFX font shorthand.
-    ///
-    /// @param span the source value span
-    /// @return the source-associated failure
-    private static BssSerializeException invalidFontShorthand(SourceSpan span) {
-        return new BssSerializeException(
-                "BSS font shorthand requires optional style, small-caps, and"
-                        + " weight identifiers followed by a size, optional"
-                        + " line height, and one font family.",
-                span,
-                null
-        );
     }
 
     /// Writes one font style or font weight value.
@@ -4691,100 +4577,35 @@ public final class BssSerializer {
             StringStore strings
     ) throws IOException {
         var style = isFontStyleProperty(property);
+        final String serialized;
+        try {
+            var text = cssValueText(value, span);
+            serialized = style
+                    ? JavaFXFontParser.parseStyle(text, span)
+                    : JavaFXFontParser.parseWeight(text, span);
+        } catch (CssSerializeException failure) {
+            throw asBssFailure(failure);
+        }
+        writeCanonicalFontKeywordValue(output, style, serialized, strings);
+    }
+
+    /// Writes one already canonicalized JavaFX font style or weight value.
+    ///
+    /// @param output     the declaration output stream
+    /// @param style      whether the value uses the font-style converter
+    /// @param serialized the canonical JavaFX enum or inherited spelling
+    /// @param strings    the shared string table
+    /// @throws IOException if an in-memory output stream rejects a write
+    private static void writeCanonicalFontKeywordValue(
+            DataOutputStream output,
+            boolean style,
+            String serialized,
+            StringStore strings
+    ) throws IOException {
         var converter = style ? FONT_STYLE_CONVERTER : FONT_WEIGHT_CONVERTER;
-        var serialized = style
-                ? canonicalFontStyle(value, span)
-                : canonicalFontWeight(value, span);
         writeParsedHeader(output, false, converter, strings);
         output.writeByte(STRING_VALUE);
         output.writeShort(strings.add(serialized));
-    }
-
-    /// Canonicalizes a JavaFX font-style CSS value for BSS storage.
-    ///
-    /// @param value the evaluated declaration value
-    /// @param span  the source value span
-    /// @return the JavaFX font posture spelling
-    /// @throws BssSerializeException if the value is not a supported font-style identifier
-    private static String canonicalFontStyle(SassValue value, SourceSpan span) {
-        if (!(value instanceof SassString string) || string.hasQuotes()) {
-            throw new BssSerializeException(
-                    "BSS font style requires an unquoted identifier.",
-                    span,
-                    null
-            );
-        }
-        return switch (string.text().toLowerCase(Locale.ROOT)) {
-            case "normal" -> "REGULAR";
-            case "italic", "oblique" -> "ITALIC";
-            default -> throw new BssSerializeException(
-                    "BSS output doesn't support this JavaFX font style.",
-                    span,
-                    null
-            );
-        };
-    }
-
-    /// Canonicalizes a JavaFX font-weight CSS value for BSS storage.
-    ///
-    /// @param value the evaluated declaration value
-    /// @param span  the source value span
-    /// @return the JavaFX font weight spelling
-    /// @throws BssSerializeException if the value is not a supported font-weight identifier or number
-    private static String canonicalFontWeight(SassValue value, SourceSpan span) {
-        if (value instanceof SassString string && !string.hasQuotes()) {
-            return switch (string.text().toLowerCase(Locale.ROOT)) {
-                case "normal" -> "NORMAL";
-                case "bold", "bolder" -> "BOLD";
-                case "lighter" -> "LIGHT";
-                default -> throw new BssSerializeException(
-                        "BSS output doesn't support this JavaFX font weight.",
-                        span,
-                        null
-                );
-            };
-        }
-        if (value instanceof SassNumber number) {
-            return canonicalNumericFontWeight(number, span);
-        }
-        throw new BssSerializeException(
-                "BSS font weight requires an unquoted identifier or a unitless 100-to-900 value.",
-                span,
-                null
-        );
-    }
-
-    /// Canonicalizes one numeric JavaFX font weight for BSS storage.
-    ///
-    /// @param number the evaluated Sass number
-    /// @param span   the source value span
-    /// @return the JavaFX font weight spelling
-    /// @throws BssSerializeException if the number is not one of JavaFX's unitless CSS weights
-    private static String canonicalNumericFontWeight(SassNumber number, SourceSpan span) {
-        var numericValue = number.value();
-        if (!number.isUnitless()
-                || !Double.isFinite(numericValue)
-                || numericValue < 100.0
-                || numericValue > 900.0
-                || numericValue % 100.0 != 0.0) {
-            throw new BssSerializeException(
-                    "BSS font weight requires a unitless value from 100 to 900 in steps of 100.",
-                    span,
-                    null
-            );
-        }
-        return switch ((int) numericValue) {
-            case 100 -> "THIN";
-            case 200 -> "EXTRA_LIGHT";
-            case 300 -> "LIGHT";
-            case 400 -> "NORMAL";
-            case 500 -> "MEDIUM";
-            case 600 -> "SEMI_BOLD";
-            case 700 -> "BOLD";
-            case 800 -> "EXTRA_BOLD";
-            case 900 -> "BLACK";
-            default -> throw new AssertionError("validated font weight is unsupported");
-        };
     }
 
     /// Writes one JavaFX enum parsed value.
@@ -5376,26 +5197,6 @@ public final class BssSerializer {
         /// Creates one declaration value snapshot.
         private DeclarationValue {
             Objects.requireNonNull(value, "value");
-        }
-    }
-
-    /// Stores the retained components of one JavaFX font shorthand.
-    ///
-    /// @param family the single font family token
-    /// @param size   the font size
-    /// @param weight the optional font-weight token, or {@code null}
-    /// @param style  the optional font-style token, or {@code null}
-    @NotNullByDefault
-    private record FontShorthand(
-            SassString family,
-            SassNumber size,
-            @Nullable SassValue weight,
-            @Nullable SassValue style
-    ) {
-        /// Validates retained font components.
-        private FontShorthand {
-            Objects.requireNonNull(family, "family");
-            Objects.requireNonNull(size, "size");
         }
     }
 

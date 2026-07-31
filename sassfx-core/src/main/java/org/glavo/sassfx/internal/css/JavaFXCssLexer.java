@@ -297,7 +297,7 @@ public final class JavaFXCssLexer {
     /// @param start the opening quote offset
     /// @param quote the opening quote character
     /// @return the offset after the closing quote, or `-1` when absent
-    private static int stringEnd(String text, int start, char quote) {
+    static int stringEnd(String text, int start, char quote) {
         var end = text.indexOf(quote, start + 1);
         return end < 0 ? -1 : end + 1;
     }
@@ -409,7 +409,7 @@ public final class JavaFXCssLexer {
     /// @param start the candidate start offset
     /// @return the exclusive number end, `start` when no number starts there,
     /// or `-1` when a number begins but has an unsupported suffix
-    private static int numberEnd(String text, int start) {
+    static int numberEnd(String text, int start) {
         var index = start;
         if (text.charAt(index) == '+' || text.charAt(index) == '-') {
             index++;

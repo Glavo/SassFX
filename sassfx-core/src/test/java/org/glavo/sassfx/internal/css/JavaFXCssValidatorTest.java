@@ -879,6 +879,105 @@ final class JavaFXCssValidatorTest {
         }
     }
 
+    /// Accepts the complete JavaFX font property grammar for every target.
+    @Test
+    void acceptsJavaFXFontProperties() {
+        var declarations = java.util.List.of(
+                java.util.Map.entry(
+                        "-fx-font-family",
+                        "\"SERIF\" !important"
+                ),
+                java.util.Map.entry("-fx-font-size", "45deg"),
+                java.util.Map.entry("-fx-font-style", "oblique"),
+                java.util.Map.entry("-fx-font-weight", "600"),
+                java.util.Map.entry(
+                        "-fx-font",
+                        "bold/**/inherit small-caps 14deg/18grad \"SERIF\""
+                )
+        );
+
+        for (var compatibility : JavaFXTarget.values()) {
+            for (var declaration : declarations) {
+                assertDoesNotThrow(
+                        () -> JavaFXCssValidator.validate(
+                                stylesheet(styleRuleWithDeclaration(
+                                        "Pane",
+                                        declaration.getKey(),
+                                        declaration.getValue()
+                                )),
+                                compatibility
+                        ),
+                        declaration.getKey() + ": " + declaration.getValue()
+                );
+            }
+        }
+    }
+
+    /// Accepts global keywords before JavaFX font property dispatch.
+    @Test
+    void acceptsGlobalJavaFXFontValues() {
+        for (var compatibility : JavaFXTarget.values()) {
+            for (var property : java.util.List.of(
+                    "-fx-font-family",
+                    "-fx-font-size",
+                    "-fx-font-style",
+                    "-fx-font-weight",
+                    "-fx-font"
+            )) {
+                for (var value : java.util.List.of("inherit", "none", "null")) {
+                    assertDoesNotThrow(
+                            () -> JavaFXCssValidator.validate(
+                                    stylesheet(styleRuleWithDeclaration(
+                                            "Pane",
+                                            property,
+                                            value
+                                    )),
+                                    compatibility
+                            ),
+                            property + ": " + value
+                    );
+                }
+            }
+        }
+    }
+
+    /// Rejects font values that OpenJFX cannot parse safely.
+    @Test
+    void rejectsInvalidJavaFXFontProperties() {
+        var declarations = java.util.List.of(
+                java.util.Map.entry("-fx-font-family", "Example Sans"),
+                java.util.Map.entry("-fx-font-size", "1s"),
+                java.util.Map.entry("-fx-font-style", "\"italic\""),
+                java.util.Map.entry("-fx-font-weight", "100.0"),
+                java.util.Map.entry("-fx-font", "700 12px Example"),
+                java.util.Map.entry(
+                        "-fx-font",
+                        "inherit bold 12px Example"
+                ),
+                java.util.Map.entry(
+                        "-fx-font",
+                        "italic italic 12px Example"
+                )
+        );
+
+        for (var compatibility : JavaFXTarget.values()) {
+            for (var declaration : declarations) {
+                assertThrows(
+                        CssSerializeException.class,
+                        () -> JavaFXCssValidator.validate(
+                                stylesheet(styleRuleWithDeclaration(
+                                        "Pane",
+                                        declaration.getKey(),
+                                        declaration.getValue()
+                                )),
+                                compatibility
+                        ),
+                        declaration.getKey() + ": " + declaration.getValue()
+                );
+            }
+        }
+    }
+
     /// Accepts the value-function name prefixes dispatched by OpenJFX.
     ///
     /// @param value the supported function value

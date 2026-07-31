@@ -913,6 +913,15 @@ source-order lookup state, matching OpenJFX's parser behavior. Registered
 property names take precedence over same-spelled named colors, including
 colors nested in gradients, ladders, derived paints, and shadow effects.
 
+Font-family, font-size, font-style, font-weight, and font shorthand properties
+use one grammar in the JavaFX CSS and BSS backends. Generic families are
+normalized even when quoted, and font sizes include every non-time unit that
+OpenJFX accepts, including its historical angle-unit behavior. A shorthand
+stores family, size, weight, and style; OpenJFX validates but discards
+small-caps and line height. SassFX rejects surplus family tokens and leading
+global keywords followed by more shorthand terms because OpenJFX would
+silently ignore the remainder.
+
 JavaFX value functions use OpenJFX's case-insensitive prefix dispatch for
 colors, effects, gradients, image patterns, ladders, Region references, and
 the border-style-specific `segments(...)` form. `url(...)` requires its exact
@@ -944,6 +953,10 @@ The current release has the following boundaries:
   names or surplus tokens that OpenJFX would silently reinterpret. Direct BSS
   output resolves font URLs and stores other descriptors using OpenJFX's
   whitespace-free token concatenation.
+- JavaFX font longhands and shorthand are validated before either backend
+  writes output. One quoted or unquoted family token is supported; family
+  lists and unquoted multi-token names are rejected because OpenJFX consumes
+  only the first token.
 - JavaFX media conditions begin at the modeled JavaFX 25 boundary. CSS media
   types such as `screen` and `print` are not JavaFX media conditions.
 - Textual JavaFX CSS supports transitions from JavaFX 23 and rejects timing

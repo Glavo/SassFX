@@ -289,6 +289,14 @@ public final class JavaFXCssValidator {
             }
             return;
         }
+        var propertyValue = withoutTrailingImportance(declarationValue);
+        if (validateFontProperty(
+                property,
+                propertyValue,
+                declaration.value().span()
+        )) {
+            return;
+        }
         if (!compatibility.supports(CSS_TRANSITIONS)
                 && TRANSITION_PROPERTIES.contains(property)) {
             throw failure(
@@ -298,14 +306,9 @@ public final class JavaFXCssValidator {
             );
         }
         if (TRANSITION_PROPERTIES.contains(property)) {
-            var value = declarationValue;
-            var importanceStart = trailingImportanceStart(value);
-            if (importanceStart >= 0) {
-                value = value.substring(0, importanceStart);
-            }
             JavaFXTransitionValidator.validate(
                     property,
-                    value,
+                    propertyValue,
                     declaration.value().span(),
                     compatibility
             );
@@ -326,6 +329,45 @@ public final class JavaFXCssValidator {
         if (!TRANSITION_PROPERTIES.contains(property)) {
             validateValueFunction(declaration, property, declarationValue);
         }
+    }
+
+    /// Validates one property dispatched through OpenJFX's font parsers.
+    ///
+    /// A complete global keyword bypasses the property-specific parser. The
+    /// suffix checks intentionally match OpenJFX's declaration dispatch.
+    ///
+    /// @param property the normalized declaration name
+    /// @param value    the declaration value without `!important`
+    /// @param span     the source range associated with the value
+    /// @return whether the property belongs to the JavaFX font family
+    private static boolean validateFontProperty(
+            String property,
+            String value,
+            SourceSpan span
+    ) {
+        var family = property.endsWith("font-family");
+        var size = property.endsWith("font-size");
+        var style = property.endsWith("font-style");
+        var weight = property.endsWith("font-weight");
+        var shorthand = property.endsWith("font");
+        if (!family && !size && !style && !weight && !shorthand) {
+            return false;
+        }
+        if (JavaFXFontParser.isGlobalKeyword(value, span)) {
+            return true;
+        }
+        if (family) {
+            JavaFXFontParser.parseFamily(value, span);
+        } else if (size) {
+            JavaFXFontParser.parseSize(value, span);
+        } else if (style) {
+            JavaFXFontParser.parseStyle(value, span);
+        } else if (weight) {
+            JavaFXFontParser.parseWeight(value, span);
+        } else {
+            JavaFXFontParser.parseShorthand(value, span);
+        }
+        return true;
     }
 
     /// Validates a leading JavaFX value-function token.
@@ -393,6 +435,17 @@ public final class JavaFXCssValidator {
         return end == start
                 ? ""
                 : value.substring(start, end).toLowerCase(Locale.ROOT);
+    }
+
+    /// Removes one trailing JavaFX importance token from a declaration value.
+    ///
+    /// @param value the complete emitted declaration value
+    /// @return the value prefix inspected by property-specific parsers
+    private static String withoutTrailingImportance(String value) {
+        var importanceStart = trailingImportanceStart(value);
+        return importanceStart < 0
+                ? value
+                : value.substring(0, importanceStart);
     }
 
     /// Finds a trailing CSS `!important` suffix.

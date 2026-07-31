@@ -1425,14 +1425,18 @@ final class BssTargetTest {
         );
     }
 
-    /// Encodes the JavaFX font shorthand with its composite converter.
+    /// Encodes JavaFX font longhands and shorthand with OpenJFX normalization.
     @Test
-    void compilesFontShorthand() throws Exception {
+    void compilesJavaFXFontProperties() throws Exception {
         var document = decodeDocument(new SassCompiler().compile(
                 SassSource.fromString(
                         """
                                 .button {
-                                  -fx-font: italic small-caps bold 14px/18px "Example Sans";
+                                  -fx-font-family: "SERIF";
+                                  -fx-font-size: 45deg;
+                                  -fx-font-style: oblique;
+                                  -fx-font-weight: 600;
+                                  -fx-font: bold inherit small-caps 14deg/18grad "SERIF";
                                 }
                                 """,
                         Syntax.SCSS
@@ -1445,6 +1449,15 @@ final class BssTargetTest {
                         "javafx.css.converter.FontConverter"
                 )
         );
+        var strings = java.util.Arrays.asList(document.strings());
+
+        assertTrue(strings.contains("serif"));
+        assertFalse(strings.contains("\"SERIF\""));
+        assertTrue(strings.contains("DEG"));
+        assertTrue(strings.contains("ITALIC"));
+        assertTrue(strings.contains("SEMI_BOLD"));
+        assertTrue(strings.contains("BOLD"));
+        assertTrue(strings.contains("inherit"));
     }
 
     /// Encodes every OpenJFX font-size keyword with its parser semantics.
@@ -1493,7 +1506,7 @@ final class BssTargetTest {
                 "\"large\"",
                 "extra-large",
                 "1s",
-                "45deg"
+                "45ms"
         }) {
             var failure = assertThrows(
                     SassCompilationException.class,
@@ -1508,7 +1521,37 @@ final class BssTargetTest {
             );
 
             assertEquals(
-                    "BSS font sizes require a JavaFX size or font-size keyword.",
+                    "JavaFX font size requires one size or font-size keyword.",
+                    failure.getMessage()
+            );
+        }
+    }
+
+    /// Rejects values outside OpenJFX's font shorthand grammar.
+    @Test
+    void rejectsInvalidFontShorthand() {
+        for (var value : new String[]{
+                "700 12px Example",
+                "inherit bold 12px Example",
+                "italic italic 12px Example",
+                "12px/\"normal\" Example"
+        }) {
+            var failure = assertThrows(
+                    SassCompilationException.class,
+                    () -> new SassCompiler().compile(
+                            SassSource.fromString(
+                                    "Pane { -fx-font: " + value + "; }",
+                                    Syntax.SCSS
+                            ),
+                            BssTarget.DEFAULT
+                    ),
+                    value
+            );
+
+            assertEquals(
+                    "JavaFX font shorthand requires optional style, small-caps,"
+                            + " and weight identifiers followed by a size, optional"
+                            + " line height, and one font family.",
                     failure.getMessage()
             );
         }

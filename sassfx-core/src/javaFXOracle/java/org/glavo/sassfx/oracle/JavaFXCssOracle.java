@@ -81,6 +81,7 @@ public final class JavaFXCssOracle {
         verifyLegacyValueTriviaSemantics();
         verifyStructuralTriviaSemantics(target);
         verifyFontFaceSourceSemantics(target);
+        verifyFontPropertySemantics(target);
         verifyVersionedParserSemantics(target);
         for (var fixture : acceptedFixtures(target)) {
             verifyAccepted(fixture, target);
@@ -361,6 +362,19 @@ public final class JavaFXCssOracle {
                 Syntax.SCSS
         ));
         fixtures.add(new Fixture(
+                "font-properties",
+                """
+                        FontProperties {
+                          -fx-font-family: "SERIF";
+                          -fx-font-size: 45deg;
+                          -fx-font-style: oblique;
+                          -fx-font-weight: 600;
+                          -fx-font: bold inherit small-caps 14deg/18grad "SERIF";
+                        }
+                        """,
+                Syntax.SCSS
+        ));
+        fixtures.add(new Fixture(
                 "region-geometry",
                 """
                         Pane {
@@ -556,15 +570,6 @@ public final class JavaFXCssOracle {
             ));
         }
         if (target == JavaFXTarget.JAVAFX27) {
-            fixtures.add(new Fixture(
-                    "font-shorthand",
-                    """
-                            Pane {
-                              -fx-font: italic small-caps bold 14px/18px "Example Sans";
-                            }
-                            """,
-                    Syntax.SCSS
-            ));
             fixtures.add(new Fixture(
                     "paint-functions",
                     """
@@ -817,6 +822,7 @@ public final class JavaFXCssOracle {
                  "unicode-string-and-url-payloads",
                  "generic-size-sequence",
                  "font-size-keywords",
+                 "font-properties",
                  "region-geometry",
                  "region-images",
                  "region-paints-and-styles",
@@ -827,7 +833,6 @@ public final class JavaFXCssOracle {
                  "media-multiple-rules",
                  "media-viewport",
                  "media-platform",
-                 "font-shorthand",
                  "font-face-values",
                  "paint-functions" -> true;
             default -> false;
@@ -1334,6 +1339,85 @@ public final class JavaFXCssOracle {
                             + " accepted an unknown font-source function."
             );
         }
+    }
+
+    /// Verifies the shared JavaFX font grammar and silent family truncation.
+    ///
+    /// OpenJFX ignores surplus font-family tokens after the first family.
+    /// SassFX rejects that spelling because it would silently select a
+    /// different family. Values rejected by OpenJFX must also fail before
+    /// SassFX emits JavaFX CSS.
+    ///
+    /// @param target the selected JavaFX release
+    /// @throws Exception if parser behavior or SassFX validation diverges
+    private static void verifyFontPropertySemantics(
+            JavaFXTarget target
+    ) throws Exception {
+        CssParser.errorsProperty().clear();
+        var truncated = new CssParser().parse(
+                "Pane { -fx-font-family: Example Sans; }"
+        );
+        @Nullable Object truncatedFamily = truncated.getRules().isEmpty()
+                || truncated.getRules().get(0).getDeclarations().isEmpty()
+                ? null
+                : truncated.getRules().get(0).getDeclarations().get(0)
+                .getParsedValue().getValue();
+        if (!CssParser.errorsProperty().isEmpty()
+                || !"Example".equals(truncatedFamily)) {
+            throw new AssertionError(
+                    "JavaFX " + target.version()
+                            + " no longer truncates multi-token font families: "
+                            + truncatedFamily + "; errors="
+                            + CssParser.errorsProperty()
+            );
+        }
+        requireFontCompilationFailure(
+                target,
+                "-fx-font-family: Example Sans"
+        );
+
+        for (var declaration : List.of(
+                "-fx-font-size: 1s",
+                "-fx-font: 700 12px Example",
+                "-fx-font: italic italic 12px Example"
+        )) {
+            CssParser.errorsProperty().clear();
+            new CssParser().parse("Pane { " + declaration + "; }");
+            if (CssParser.errorsProperty().isEmpty()) {
+                throw new AssertionError(
+                        "JavaFX " + target.version()
+                                + " unexpectedly accepted " + declaration
+                );
+            }
+            requireFontCompilationFailure(target, declaration);
+        }
+    }
+
+    /// Requires SassFX to reject one JavaFX font declaration.
+    ///
+    /// @param target      the selected JavaFX release
+    /// @param declaration the declaration without a trailing semicolon
+    /// @throws Exception if compilation fails outside the expected model
+    private static void requireFontCompilationFailure(
+            JavaFXTarget target,
+            String declaration
+    ) throws Exception {
+        try {
+            compile(
+                    new Fixture(
+                            "invalid-font-property",
+                            "Pane { " + declaration + "; }",
+                            Syntax.SCSS
+                    ),
+                    target
+            );
+        } catch (SassCompilationException expected) {
+            return;
+        }
+        throw new AssertionError(
+                "SassFX accepted unsafe JavaFX font declaration: "
+                        + declaration
+        );
     }
 
     /// Verifies parser semantics at the JavaFX 18 and JavaFX 23 boundaries.

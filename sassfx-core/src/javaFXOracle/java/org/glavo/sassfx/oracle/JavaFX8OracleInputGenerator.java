@@ -120,6 +120,13 @@ public final class JavaFX8OracleInputGenerator {
               -fx-j-font-size: larger;
               -fx-font: italic large/medium "Example Sans";
             }
+            FontProperties {
+              -fx-font-family: "SERIF";
+              -fx-font-size: 45deg;
+              -fx-font-style: oblique;
+              -fx-font-weight: 600;
+              -fx-font: bold inherit small-caps 14deg/18grad "SERIF";
+            }
             RegionGeometry {
               -fx-background-color: #123456, rgba(18, 52, 86, 0.3);
               -fx-background-insets: 1px 2px, 3px;

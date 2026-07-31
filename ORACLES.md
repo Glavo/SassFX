@@ -117,10 +117,14 @@ Across textual and byte-exact checks, the executable matrix currently covers:
   descriptor token concatenation, comment boundaries, byte-exact BSS
   persistence, and rejection of unquoted local names that OpenJFX silently
   concatenates;
+- font family, size, style, weight, and shorthand parsing across JavaFX 8–27,
+  including quoted generic-family normalization, keyword and angle sizes,
+  retained shorthand slots, discarded line height and small-caps, and
+  rejection of surplus terms that OpenJFX silently ignores;
 - JavaFX 23–27 transition text conversion, including target-specific easing
   functions and rejection of parser inputs that fail during conversion or
   contain surplus tokens that OpenJFX silently discards;
-- scalar sizes, durations, URLs, fonts, blend modes, shadow effects, and
+- scalar sizes, durations, URLs, blend modes, shadow effects, and
   generic quoted strings, including empty strings and special keyword/color
   recognition in root and imported plain-CSS stylesheets;
 - plain-CSS declaration evaluation, including named colors in layered paints
