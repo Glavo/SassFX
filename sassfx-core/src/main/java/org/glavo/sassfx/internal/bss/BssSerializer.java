@@ -24,10 +24,11 @@ import org.glavo.sassfx.internal.css.JavaFXCssLexer;
 import org.glavo.sassfx.internal.css.JavaFXFontFaceParser;
 import org.glavo.sassfx.internal.css.JavaFXFontParser;
 import org.glavo.sassfx.internal.css.JavaFXLegacyGradient;
-import org.glavo.sassfx.internal.css.JavaFXValueFunction;
 import org.glavo.sassfx.internal.css.JavaFXMediaQuery;
 import org.glavo.sassfx.internal.css.JavaFXMediaQueryValidator;
+import org.glavo.sassfx.internal.css.JavaFXScalarParser;
 import org.glavo.sassfx.internal.css.JavaFXSimpleSelector;
+import org.glavo.sassfx.internal.css.JavaFXValueFunction;
 import org.glavo.sassfx.internal.value.ListSeparator;
 import org.glavo.sassfx.internal.value.SassBoolean;
 import org.glavo.sassfx.internal.value.SassColor;
@@ -76,10 +77,9 @@ public final class BssSerializer {
     /// Contains the first BSS version with per-rule media framing.
     private static final int VERSION_7 = 7;
 
-    /// The BSS version introduced by JavaFX 27.
+    /// Contains the JavaFX 27 BSS version with stylesheet-import framing.
     private static final int VERSION_9 = 9;
 
-    /// Contains the first BSS version with stylesheet-import framing.
     /// Contains the maximum count and string-table index representable by BSS.
     private static final int MAXIMUM_SHORT_VALUE = Short.MAX_VALUE;
 
@@ -336,6 +336,7 @@ public final class BssSerializer {
             var strings = new StringStore(target.bssVersion(), stylesheet.span());
             byte[] body = writeBody(
                     target.bssVersion(),
+                    target.javaFXTarget(),
                     content,
                     strings,
                     stylesheet.span()
@@ -814,6 +815,7 @@ public final class BssSerializer {
     /// Writes the BSS stylesheet body after all output strings have been collected.
     ///
     /// @param version    the selected BSS version
+    /// @param compatibility the selected JavaFX release
     /// @param stylesheet the top-level stylesheet content
     /// @param strings    the shared string table
     /// @param span       the root source range
@@ -821,6 +823,7 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static byte[] writeBody(
             int version,
+            JavaFXTarget compatibility,
             BssStylesheet stylesheet,
             StringStore strings,
             SourceSpan span
@@ -834,6 +837,7 @@ public final class BssSerializer {
                         writeMediaQuery(output, imported.conditions(), strings);
                         var child = writeBody(
                                 version,
+                                compatibility,
                                 imported.stylesheet(),
                                 strings,
                                 imported.span()
@@ -861,7 +865,7 @@ public final class BssSerializer {
             output.writeShort(strings.add(AUTHOR_ORIGIN));
             writeShortCount(output, stylesheet.rules().size(), span, "style rules");
             for (var rule : stylesheet.rules()) {
-                writeRule(output, version, rule, strings);
+                writeRule(output, version, compatibility, rule, strings);
             }
             writeShortCount(output, stylesheet.fontFaces().size(), span, "font faces");
             for (var fontFace : stylesheet.fontFaces()) {
@@ -910,12 +914,14 @@ public final class BssSerializer {
     ///
     /// @param output  the stylesheet output stream
     /// @param version the selected BSS version
+    /// @param compatibility the selected JavaFX release
     /// @param rule    the rule to write
     /// @param strings the shared string table
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeRule(
             DataOutputStream output,
             int version,
+            JavaFXTarget compatibility,
             BssRule rule,
             StringStore strings
     ) throws IOException {
@@ -941,7 +947,12 @@ public final class BssSerializer {
                     "declarations"
             );
             for (var declaration : rule.declarations()) {
-                writeDeclaration(declarations, declaration, strings);
+                writeDeclaration(
+                        declarations,
+                        declaration,
+                        strings,
+                        compatibility
+                );
             }
             declarations.flush();
         }
@@ -1151,11 +1162,13 @@ public final class BssSerializer {
     /// @param output      the declaration output stream
     /// @param declaration the normalized declaration and lookup context
     /// @param strings     the shared string table
+    /// @param compatibility the selected JavaFX release
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeDeclaration(
             DataOutputStream output,
             BssDeclaration declaration,
-            StringStore strings
+            StringStore strings,
+            JavaFXTarget compatibility
     ) throws IOException {
         var source = declaration.source();
         if (!source.parsedAsSassScript()) {
@@ -1182,7 +1195,8 @@ public final class BssSerializer {
                 property,
                 normalizedValue,
                 source.value().span(),
-                strings
+                strings,
+                compatibility
         );
         output.writeBoolean(value.important());
     }
@@ -1326,13 +1340,15 @@ public final class BssSerializer {
     /// @param value    the evaluated Sass value
     /// @param span     the source value span
     /// @param strings  the shared string table
+    /// @param compatibility the selected JavaFX release
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeDeclarationValue(
             DataOutputStream output,
             String property,
             SassValue value,
             SourceSpan span,
-            StringStore strings
+            StringStore strings,
+            JavaFXTarget compatibility
     ) throws IOException {
         if (isTransitionProperty(property)) {
             throw new BssSerializeException(
@@ -1341,8 +1357,43 @@ public final class BssSerializer {
                     null
             );
         }
-        if (value instanceof SassString string && isGlobalKeyword(string)) {
-            writeStringValue(output, property, string, strings);
+        final @Nullable JavaFXScalarParser.Value scalarValue;
+        try {
+            scalarValue = JavaFXScalarParser.parse(
+                    property,
+                    cssValueText(value, span),
+                    span,
+                    compatibility
+            );
+        } catch (CssSerializeException failure) {
+            throw asBssFailure(failure);
+        }
+        if (scalarValue instanceof JavaFXScalarParser.GlobalKeyword global) {
+            writePlainStringValue(output, global.text(), strings);
+            return;
+        }
+        if (scalarValue instanceof JavaFXScalarParser.StoredString stored) {
+            writePlainStringValue(output, stored.text(), strings);
+            return;
+        }
+        if (scalarValue instanceof JavaFXScalarParser.LegacyString legacy) {
+            var normalized = legacy.text().toLowerCase(Locale.ROOT);
+            if (JavaFXScalarParser.isExtendedBlendMode(normalized)) {
+                throw new BssSerializeException(
+                        "JavaFX " + compatibility.version()
+                                + " does not support -fx-blend-mode value "
+                                + normalized + ".",
+                        span,
+                        null
+                );
+            }
+        }
+        if (scalarValue instanceof JavaFXScalarParser.EnumValue enumValue) {
+            writeEnumValue(output, enumValue, strings);
+            return;
+        }
+        if (scalarValue instanceof JavaFXScalarParser.SizeSequence sizes) {
+            writeStrokeDashArray(output, sizes, span, strings);
             return;
         }
         if (isFontFamilyProperty(property)) {
@@ -1353,31 +1404,12 @@ public final class BssSerializer {
             writeFontSizeValue(output, value, span, strings);
             return;
         }
-        if (property.equals("-fx-blend-mode")
-                && value instanceof SassColor color
-                && isExtendedBlendModeColor(color)) {
-            writePlainStringValue(output, color.toString().toLowerCase(Locale.ROOT), strings);
-            return;
-        }
         if (isFontProperty(property)) {
             writeFontValue(output, value, span, strings);
             return;
         }
         if (isFontStyleProperty(property) || isFontWeightProperty(property)) {
             writeFontKeywordValue(output, property, value, span, strings);
-            return;
-        }
-        if (isFontSmoothingProperty(property)) {
-            writeFontSmoothingValue(output, value, span, strings);
-            return;
-        }
-        @Nullable String enumClass = strokeEnumClass(property);
-        if (enumClass != null) {
-            writeEnumValue(output, value, enumClass, span, strings);
-            return;
-        }
-        if (isStrokeDashArrayProperty(property)) {
-            writeStrokeDashArray(output, value, span, strings);
             return;
         }
         if (isBackgroundColorProperty(property)) {
@@ -1591,22 +1623,7 @@ public final class BssSerializer {
     /// @return whether generic keyword and color recognition applies
     private static boolean usesGenericStringGrammar(String property) {
         return !property.endsWith("font-family")
-                && !property.endsWith("font-size")
-                && !property.equals("-fx-blend-mode");
-    }
-
-    /// Returns whether a string is one of JavaFX's global declaration keywords.
-    ///
-    /// @param string the evaluated Sass string
-    /// @return whether the string must bypass a property-specific converter
-    private static boolean isGlobalKeyword(SassString string) {
-        if (string.hasQuotes()) {
-            return false;
-        }
-        return switch (string.text().toLowerCase(Locale.ROOT)) {
-            case "inherit", "none", "null" -> true;
-            default -> false;
-        };
+                && !property.endsWith("font-size");
     }
 
     /// Returns whether a declaration belongs to JavaFX's transition property family.
@@ -1664,41 +1681,12 @@ public final class BssSerializer {
         return property.endsWith("font");
     }
 
-    /// Returns whether a property stores JavaFX font-smoothing text.
-    ///
-    /// @param property the CSS property name
-    /// @return whether the property is the JavaFX font-smoothing property
-    private static boolean isFontSmoothingProperty(String property) {
-        return property.equals("-fx-font-smoothing-type");
-    }
-
     /// Returns whether a property consumes a JavaFX effect or effect lookup.
     ///
     /// @param property the CSS property name
     /// @return whether the property is JavaFX's standard effect property
     private static boolean isEffectProperty(String property) {
         return property.equals("-fx-effect");
-    }
-
-    /// Returns the JavaFX enum class serialized for a supported stroke property.
-    ///
-    /// @param property the CSS property name
-    /// @return the enum class name, or {@code null} when the property is not supported here
-    private static @Nullable String strokeEnumClass(String property) {
-        return switch (property) {
-            case "-fx-stroke-line-cap" -> "javafx.scene.shape.StrokeLineCap";
-            case "-fx-stroke-line-join" -> "javafx.scene.shape.StrokeLineJoin";
-            case "-fx-stroke-type" -> "javafx.scene.shape.StrokeType";
-            default -> null;
-        };
-    }
-
-    /// Returns whether a property consumes a sequence of size values.
-    ///
-    /// @param property the CSS property name
-    /// @return whether the property uses the stroke-dash-array converter
-    private static boolean isStrokeDashArrayProperty(String property) {
-        return property.equals("-fx-stroke-dash-array");
     }
 
     /// Returns whether a property uses JavaFX's four-sided insets payload.
@@ -1794,21 +1782,6 @@ public final class BssSerializer {
         }
         var text = string.text().stripLeading();
         return text.startsWith("url(");
-    }
-
-    /// Returns whether a Sass color token is a JavaFX 18 blend-mode identifier.
-    ///
-    /// Sass evaluates the conflicting `red`, `green`, and `blue` identifiers as
-    /// colors before BSS serialization. JavaFX 18 and later instead retain them
-    /// as strings for `-fx-blend-mode`.
-    ///
-    /// @param color the evaluated Sass color
-    /// @return whether the color's preferred representation is a blend mode
-    private static boolean isExtendedBlendModeColor(SassColor color) {
-        return switch (color.toString().toLowerCase(Locale.ROOT)) {
-            case "red", "green", "blue" -> true;
-            default -> false;
-        };
     }
 
     /// Returns whether a property accepts comma-separated background-position layers.
@@ -4383,13 +4356,12 @@ public final class BssSerializer {
             StringStore strings
     ) throws IOException {
         var text = string.text();
-        var specialKeyword = isGlobalKeyword(string);
         var fontFamily = property.endsWith("font-family");
-        var serializedText = text.equalsIgnoreCase("none") && !string.hasQuotes()
-                ? "null"
-                : string.hasQuotes() && !fontFamily ? text : string.toCssString();
-        @Nullable String converter = !specialKeyword && fontFamily ? STRING_CONVERTER : null;
-        var lookup = !fontFamily && !string.hasQuotes() && !specialKeyword;
+        var serializedText = string.hasQuotes() && !fontFamily
+                ? text
+                : string.toCssString();
+        @Nullable String converter = fontFamily ? STRING_CONVERTER : null;
+        var lookup = !fontFamily && !string.hasQuotes();
         if (lookup) {
             serializedText = strings.normalizeLookupKey(serializedText);
         }
@@ -4449,39 +4421,10 @@ public final class BssSerializer {
         }
     }
 
-    /// Writes JavaFX's font-smoothing payload without treating the {@code gray}
-    /// keyword as a Sass color.
-    ///
-    /// @param output  the declaration output stream
-    /// @param value   the evaluated declaration value
-    /// @param span    the source value span
-    /// @param strings the shared string table
-    /// @throws IOException if an in-memory output stream rejects a write
-    private static void writeFontSmoothingValue(
-            DataOutputStream output,
-            SassValue value,
-            SourceSpan span,
-            StringStore strings
-    ) throws IOException {
-        if (value instanceof SassString string && !string.hasQuotes()) {
-            writePlainStringValue(output, string.text(), strings);
-            return;
-        }
-        if (value instanceof SassColor color && color.toString().equalsIgnoreCase("gray")) {
-            writePlainStringValue(output, "gray", strings);
-            return;
-        }
-        throw new BssSerializeException(
-                "BSS font smoothing requires an unquoted identifier.",
-                span,
-                null
-        );
-    }
-
     /// Writes one JavaFX string value without a converter or property lookup.
     ///
     /// @param output  the declaration output stream
-    /// @param value   the JavaFX font-smoothing identifier
+    /// @param value   the stored JavaFX scalar text
     /// @param strings the shared string table
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writePlainStringValue(
@@ -4610,87 +4553,47 @@ public final class BssSerializer {
 
     /// Writes one JavaFX enum parsed value.
     ///
-    /// @param output    the declaration output stream
-    /// @param value     the evaluated declaration value
-    /// @param enumClass the JavaFX enum class name
-    /// @param span      the source value span
-    /// @param strings   the shared string table
+    /// @param output  the declaration output stream
+    /// @param value   the validated enum text and JavaFX class name
+    /// @param strings the shared string table
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeEnumValue(
             DataOutputStream output,
-            SassValue value,
-            String enumClass,
-            SourceSpan span,
+            JavaFXScalarParser.EnumValue value,
             StringStore strings
     ) throws IOException {
-        if (!(value instanceof SassString string) || string.hasQuotes()) {
-            throw new BssSerializeException(
-                    "BSS enum values require an unquoted identifier.",
-                    span,
-                    null
-            );
-        }
         writeParsedHeader(output, false, ENUM_CONVERTER, strings);
-        output.writeShort(strings.add(enumClass));
+        output.writeShort(strings.add(value.enumClass()));
         output.writeByte(STRING_VALUE);
-        output.writeShort(strings.add(string.text()));
+        output.writeShort(strings.add(value.text()));
     }
 
     /// Writes JavaFX's stroke-dash-array size sequence representation.
     ///
     /// @param output  the declaration output stream
-    /// @param value   the evaluated declaration value
+    /// @param value   the validated source-order size sequence
     /// @param span    the source value span
     /// @param strings the shared string table
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeStrokeDashArray(
             DataOutputStream output,
-            SassValue value,
+            JavaFXScalarParser.SizeSequence value,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
-        var values = dashArrayValues(value, span);
         writeParsedHeader(output, false, SIZE_SEQUENCE_CONVERTER, strings);
         output.writeByte(VALUE_ARRAY);
         output.writeByte(NESTED_VALUE);
-        output.writeInt(values.size());
-        for (var number : values) {
+        output.writeInt(value.sizes().size());
+        for (var size : value.sizes()) {
             output.writeByte(NESTED_VALUE);
-            writeSizeValue(output, number, span, strings);
-        }
-    }
-
-    /// Returns a non-empty sequence of sizes for a stroke dash array.
-    ///
-    /// @param value the evaluated declaration value
-    /// @param span  the source value span
-    /// @return the source-order sequence of size values
-    private static List<SassNumber> dashArrayValues(SassValue value, SourceSpan span) {
-        if (value instanceof SassNumber number) {
-            return List.of(number);
-        }
-        if (!(value instanceof SassList list)
-                || list.hasBrackets()
-                || list.separator() != ListSeparator.SPACE
-                || list.contents().isEmpty()) {
-            throw new BssSerializeException(
-                    "BSS stroke dash arrays require one or more space-separated sizes.",
+            writeSizeValue(
+                    output,
+                    SassNumber.of(size.value(), size.unit()),
                     span,
-                    null
+                    strings
             );
         }
-        var values = new ArrayList<SassNumber>(list.contents().size());
-        for (var item : list.contents()) {
-            if (!(item instanceof SassNumber number)) {
-                throw new BssSerializeException(
-                        "BSS stroke dash arrays require one or more space-separated sizes.",
-                        span,
-                        null
-                );
-            }
-            values.add(number);
-        }
-        return List.copyOf(values);
     }
 
     /// Writes JavaFX's boolean converter representation.
@@ -5119,6 +5022,10 @@ public final class BssSerializer {
     private static final class JavaFXPropertyRegistry {
         /// Contains lower-case declaration names seen in source order.
         private final Set<String> properties = new HashSet<>();
+
+        /// Creates an empty source-local registry.
+        private JavaFXPropertyRegistry() {
+        }
 
         /// Registers one declaration before its value is interpreted.
         ///

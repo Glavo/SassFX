@@ -68,6 +68,18 @@ public final class JavaFX8OracleInputGenerator {
               -fx-font-family: "Oracle Font";
               -fx-blend-mode: multiply;
             }
+            SpecialScalars {
+              -fx-custom-inherit: InHeRiT;
+              -fx-custom-none: NONE;
+              -fx-custom-null: NuLl;
+              -fx-font-smoothing-type: "GRAY";
+              -fx-blend-mode: MULTIPLY;
+              -fx-stroke-line-cap: ROUND;
+              -fx-stroke-line-join: BeVeL;
+              -fx-stroke-type: INSIDE;
+              -fx-stroke-dash-array: 1PX 2em -3deg 4turn;
+            }
+            LegacyBlend { -fx-blend-mode: #123456; }
             Pane:dir(rtl) { -fx-opacity: 0.5; }
             Label:lang("en") { -fx-opacity: 0.5; }
             Region:state(primary selected) { -fx-opacity: 0.5; }

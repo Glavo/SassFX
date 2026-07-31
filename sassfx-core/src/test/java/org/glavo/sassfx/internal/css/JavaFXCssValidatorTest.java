@@ -646,7 +646,7 @@ final class JavaFXCssValidatorTest {
         );
     }
 
-    /// Preserves JavaFX's case-insensitive leading global keyword short circuit.
+    /// Preserves complete case-insensitive global keywords and rejects suffixes.
     @Test
     void validatesTransitionGlobalKeywords() {
         for (var property : java.util.List.of(
@@ -661,8 +661,16 @@ final class JavaFXCssValidatorTest {
             }
         }
 
-        assertTransitionAcceptedAll("transition", "NoNe, ignored");
-        assertTransitionAcceptedAll("transition-duration", "INHERIT, ignored");
+        assertTransitionRejected(
+                "transition",
+                "NoNe, ignored",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-duration",
+                "INHERIT, ignored",
+                JavaFXTarget.JAVAFX27
+        );
         assertTransitionAcceptedAll("transition-duration", "100MS");
         assertTransitionRejected(
                 "transition-timing-function",
@@ -707,6 +715,92 @@ final class JavaFXCssValidatorTest {
                         JavaFXTarget.JAVAFX26
                 )
         );
+    }
+
+    /// Accepts complete OpenJFX special scalar values for every target.
+    @Test
+    void acceptsSpecialScalarValues() {
+        var declarations = java.util.Map.ofEntries(
+                java.util.Map.entry("-fx-font-smoothing-type", "\"gray\""),
+                java.util.Map.entry("-fx-blend-mode", "multiply"),
+                java.util.Map.entry("-fx-stroke-line-cap", "ROUND"),
+                java.util.Map.entry("-fx-stroke-line-join", "BeVeL"),
+                java.util.Map.entry("-fx-stroke-type", "INSIDE"),
+                java.util.Map.entry(
+                        "-fx-stroke-dash-array",
+                        "1px/**/2em -3deg 4turn"
+                ),
+                java.util.Map.entry("-fx-custom-global", "NONE")
+        );
+
+        for (var compatibility : JavaFXTarget.values()) {
+            for (var declaration : declarations.entrySet()) {
+                assertDoesNotThrow(
+                        () -> JavaFXCssValidator.validate(
+                                stylesheet(styleRuleWithDeclaration(
+                                        "Pane",
+                                        declaration.getKey(),
+                                        declaration.getValue()
+                                )),
+                                compatibility
+                        ),
+                        declaration.getKey() + ": " + declaration.getValue()
+                );
+            }
+        }
+    }
+
+    /// Preserves generic blend values before JavaFX 18's string-only parser.
+    @Test
+    void validatesLegacyGenericBlendValuesByVersion() {
+        var stylesheet = stylesheet(styleRuleWithDeclaration(
+                "Pane",
+                "-fx-blend-mode",
+                "#123456"
+        ));
+
+        assertDoesNotThrow(
+                () -> JavaFXCssValidator.validate(
+                        stylesheet,
+                        JavaFXTarget.JAVAFX17
+                )
+        );
+        assertThrows(
+                CssSerializeException.class,
+                () -> JavaFXCssValidator.validate(
+                        stylesheet,
+                        JavaFXTarget.JAVAFX18
+                )
+        );
+    }
+
+    /// Rejects malformed special scalars and suffixes OpenJFX would discard.
+    @Test
+    void rejectsUnsafeSpecialScalarValues() {
+        var declarations = java.util.Map.ofEntries(
+                java.util.Map.entry("-fx-font-smoothing-type", "gray ignored"),
+                java.util.Map.entry("-fx-blend-mode", "multiply ignored"),
+                java.util.Map.entry("-fx-stroke-line-cap", "triangle"),
+                java.util.Map.entry("-fx-stroke-line-join", "miter 10px"),
+                java.util.Map.entry("-fx-stroke-type", "\"inside\""),
+                java.util.Map.entry("-fx-stroke-dash-array", "1px, 2px"),
+                java.util.Map.entry("-fx-custom-global", "inherit ignored")
+        );
+
+        for (var declaration : declarations.entrySet()) {
+            assertThrows(
+                    CssSerializeException.class,
+                    () -> JavaFXCssValidator.validate(
+                            stylesheet(styleRuleWithDeclaration(
+                                    "Pane",
+                                    declaration.getKey(),
+                                    declaration.getValue()
+                            )),
+                            JavaFXTarget.JAVAFX27
+                    ),
+                    declaration.getKey() + ": " + declaration.getValue()
+            );
+        }
     }
 
     /// Rejects conflicting blend modes through JavaFX 17 and accepts them in JavaFX 18.

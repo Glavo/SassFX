@@ -922,6 +922,17 @@ small-caps and line height. SassFX rejects surplus family tokens and leading
 global keywords followed by more shorthand terms because OpenJFX would
 silently ignore the remainder.
 
+Global declaration keywords and OpenJFX's special scalar properties also use
+one grammar in both backends. `none` and `null` share OpenJFX's canonical
+`null` BSS representation, while any suffix after a global keyword is
+rejected. Font smoothing and JavaFX 18+ blend modes require one identifier or
+string. JavaFX 8–17 blend modes retain the older generic-parser lookup and
+color semantics. Stroke cap, join, and type values are validated and
+canonicalized to their enum keywords; stroke dash arrays accept only one
+non-empty sequence of non-time JavaFX sizes. Values such as `miter 10px` and
+comma-separated dash layers are rejected because OpenJFX parses them but
+silently discards part of the declaration.
+
 JavaFX value functions use OpenJFX's case-insensitive prefix dispatch for
 colors, effects, gradients, image patterns, ladders, Region references, and
 the border-style-specific `segments(...)` form. `url(...)` requires its exact

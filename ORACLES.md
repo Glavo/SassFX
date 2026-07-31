@@ -127,6 +127,11 @@ Across textual and byte-exact checks, the executable matrix currently covers:
 - scalar sizes, durations, URLs, blend modes, shadow effects, and
   generic quoted strings, including empty strings and special keyword/color
   recognition in root and imported plain-CSS stylesheets;
+- global declaration keywords, font-smoothing and versioned blend-mode string
+  storage, stroke cap/join/type enums, and stroke dash arrays, including
+  byte-exact JavaFX 8–17 generic blend lookup and color behavior, JavaFX 18+
+  direct storage, enum canonicalization, and rejection of silently discarded
+  terms;
 - plain-CSS declaration evaluation, including named colors in layered paints
   and registered-property precedence at the top level and inside gradients
   and shadow effects;

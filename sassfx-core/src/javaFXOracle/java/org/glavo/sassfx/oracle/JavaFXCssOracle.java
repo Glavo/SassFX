@@ -82,6 +82,7 @@ public final class JavaFXCssOracle {
         verifyStructuralTriviaSemantics(target);
         verifyFontFaceSourceSemantics(target);
         verifyFontPropertySemantics(target);
+        verifyScalarPropertySemantics(target);
         verifyVersionedParserSemantics(target);
         for (var fixture : acceptedFixtures(target)) {
             verifyAccepted(fixture, target);
@@ -136,6 +137,32 @@ public final class JavaFXCssOracle {
                 "Pane { -fx-opacity: 0.5; -fx-text-fill: #ff0000; }",
                 Syntax.SCSS
         ));
+        fixtures.add(new Fixture(
+                "special-scalars",
+                """
+                        SpecialScalarPane {
+                          -fx-custom-inherit: InHeRiT;
+                          -fx-custom-none: NONE;
+                          -fx-custom-null: NuLl;
+                          -fx-font-smoothing-type: "GRAY";
+                          -fx-blend-mode: MULTIPLY;
+                          -fx-stroke-line-cap: ROUND;
+                          -fx-stroke-line-join: BeVeL;
+                          -fx-stroke-type: INSIDE;
+                          -fx-stroke-dash-array: 1PX 2em -3deg 4turn;
+                        }
+                        """,
+                Syntax.SCSS
+        ));
+        if (!target.supports(
+                org.glavo.sassfx.JavaFXFeature.EXTENDED_BLEND_MODES
+        )) {
+            fixtures.add(new Fixture(
+                    "legacy-blend-generic",
+                    "LegacyBlend { -fx-blend-mode: #123456; }",
+                    Syntax.SCSS
+            ));
+        }
         fixtures.add(new Fixture(
                 "plain-css-values",
                 """
@@ -811,7 +838,9 @@ public final class JavaFXCssOracle {
             );
         }
         var compareBss = switch (fixture.name()) {
-            case "plain-css-values",
+            case "special-scalars",
+                 "legacy-blend-generic",
+                 "plain-css-values",
                  "declaration-names",
                  "functional-pseudo-classes",
                  "case-insensitive-properties",
@@ -1416,6 +1445,71 @@ public final class JavaFXCssOracle {
         }
         throw new AssertionError(
                 "SassFX accepted unsafe JavaFX font declaration: "
+                + declaration
+        );
+    }
+
+    /// Verifies shared scalar grammar and OpenJFX's silent suffix handling.
+    ///
+    /// OpenJFX accepts the declarations below but retains only their leading
+    /// scalar value. SassFX rejects each spelling so CSS and BSS cannot encode
+    /// a declaration with silently changed meaning.
+    ///
+    /// @param target the selected JavaFX release
+    /// @throws Exception if parser behavior or SassFX validation diverges
+    private static void verifyScalarPropertySemantics(
+            JavaFXTarget target
+    ) throws Exception {
+        for (var declaration : List.of(
+                "-fx-opacity: inherit ignored",
+                "-fx-font-smoothing-type: gray ignored",
+                "-fx-blend-mode: multiply ignored",
+                "-fx-stroke-line-cap: round ignored",
+                "-fx-stroke-line-join: miter 10px",
+                "-fx-stroke-type: inside ignored",
+                "-fx-stroke-dash-array: 1px, 2px"
+        )) {
+            CssParser.errorsProperty().clear();
+            var stylesheet = new CssParser().parse(
+                    "Pane { " + declaration + "; }"
+            );
+            if (!CssParser.errorsProperty().isEmpty()
+                    || stylesheet.getRules().isEmpty()
+                    || stylesheet.getRules().get(0)
+                    .getDeclarations().isEmpty()) {
+                throw new AssertionError(
+                        "JavaFX " + target.version()
+                                + " no longer silently accepts " + declaration
+                                + "; errors=" + CssParser.errorsProperty()
+                );
+            }
+            requireScalarCompilationFailure(target, declaration);
+        }
+    }
+
+    /// Requires SassFX to reject one unsafe JavaFX scalar declaration.
+    ///
+    /// @param target      the selected JavaFX release
+    /// @param declaration the declaration without a trailing semicolon
+    /// @throws Exception if compilation fails outside the expected model
+    private static void requireScalarCompilationFailure(
+            JavaFXTarget target,
+            String declaration
+    ) throws Exception {
+        try {
+            compile(
+                    new Fixture(
+                            "invalid-special-scalar",
+                            "Pane { " + declaration + "; }",
+                            Syntax.SCSS
+                    ),
+                    target
+            );
+        } catch (SassCompilationException expected) {
+            return;
+        }
+        throw new AssertionError(
+                "SassFX accepted unsafe JavaFX scalar declaration: "
                         + declaration
         );
     }

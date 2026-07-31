@@ -1113,6 +1113,116 @@ final class BssTargetTest {
         assertTrue(strings.contains("blue"));
     }
 
+    /// Applies JavaFX target validation before BSS scalar serialization.
+    @Test
+    void rejectsExtendedBlendModesBeforeJavaFX18() {
+        var failure = assertThrows(
+                SassCompilationException.class,
+                () -> new SassCompiler().compile(
+                        SassSource.fromString(
+                                "Pane { -fx-blend-mode: red; }",
+                                Syntax.SCSS
+                        ),
+                        new BssTarget(JavaFXTarget.JAVAFX17)
+                )
+        );
+
+        assertEquals(
+                "JavaFX 17 does not support -fx-blend-mode value red.",
+                failure.getMessage()
+        );
+    }
+
+    /// Retains JavaFX 8–17 generic blend values before the string-only parser.
+    @Test
+    void compilesLegacyGenericBlendValuesByVersion() throws Exception {
+        var source = SassSource.fromString(
+                "Pane { -fx-blend-mode: #123456; }",
+                Syntax.SCSS
+        );
+        var document = decodeDocument(new SassCompiler().compile(
+                source,
+                new BssTarget(JavaFXTarget.JAVAFX17)
+        ).output());
+
+        assertEquals(6, document.version());
+        var failure = assertThrows(
+                SassCompilationException.class,
+                () -> new SassCompiler().compile(
+                        source,
+                        new BssTarget(JavaFXTarget.JAVAFX18)
+                )
+        );
+        assertEquals(
+                "JavaFX font smoothing and blend modes require one string or identifier.",
+                failure.getMessage()
+        );
+    }
+
+    /// Canonicalizes global keywords and stroke enums while retaining stored strings.
+    @Test
+    void compilesCanonicalSpecialScalars() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                Pane {
+                                  -fx-custom-inherit: InHeRiT;
+                                  -fx-custom-none: NONE;
+                                  -fx-custom-null: NuLl;
+                                  -fx-font-smoothing-type: "GRAY";
+                                  -fx-blend-mode: MULTIPLY;
+                                  -fx-stroke-line-cap: ROUND;
+                                  -fx-stroke-line-join: BeVeL;
+                                  -fx-stroke-type: INSIDE;
+                                  -fx-stroke-dash-array: 1PX 2em -3deg 4turn;
+                                }
+                                """,
+                        Syntax.SCSS
+                ),
+                new BssTarget(JavaFXTarget.JAVAFX18)
+        ).output());
+        var strings = java.util.Arrays.asList(document.strings());
+
+        assertTrue(strings.contains("inherit"));
+        assertTrue(strings.contains("null"));
+        assertTrue(strings.contains("GRAY"));
+        assertTrue(strings.contains("MULTIPLY"));
+        assertTrue(strings.contains("round"));
+        assertTrue(strings.contains("bevel"));
+        assertTrue(strings.contains("inside"));
+        assertFalse(strings.contains("NONE"));
+        assertFalse(strings.contains("NuLl"));
+        assertFalse(strings.contains("ROUND"));
+        assertFalse(strings.contains("BeVeL"));
+        assertFalse(strings.contains("INSIDE"));
+    }
+
+    /// Rejects malformed scalar values and terms OpenJFX would silently discard.
+    @Test
+    void rejectsUnsafeSpecialScalars() {
+        for (var declaration : List.of(
+                "-fx-font-smoothing-type: gray ignored",
+                "-fx-blend-mode: multiply ignored",
+                "-fx-stroke-line-cap: triangle",
+                "-fx-stroke-line-join: miter 10px",
+                "-fx-stroke-type: \"inside\"",
+                "-fx-stroke-dash-array: 1px, 2px",
+                "-fx-custom-global: inherit ignored"
+        )) {
+            assertThrows(
+                    SassCompilationException.class,
+                    () -> new SassCompiler().compile(
+                            SassSource.fromString(
+                                    "Pane { " + declaration + "; }",
+                                    Syntax.SCSS
+                            ),
+                            new BssTarget(JavaFXTarget.JAVAFX27)
+                    ),
+                    declaration
+            );
+        }
+    }
+
     /// Serializes JavaFX numeric, relative, and posture font variants.
     @Test
     void compilesNumericAndRelativeFontVariants() throws Exception {
@@ -1549,7 +1659,9 @@ final class BssTargetTest {
             );
 
             assertEquals(
-                    "JavaFX font shorthand requires optional style, small-caps,"
+                    value.startsWith("inherit")
+                            ? "JavaFX global declaration keywords cannot have surplus tokens."
+                            : "JavaFX font shorthand requires optional style, small-caps,"
                             + " and weight identifiers followed by a size, optional"
                             + " line height, and one font family.",
                     failure.getMessage()

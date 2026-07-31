@@ -16,7 +16,6 @@ import java.util.Objects;
 import java.util.Set;
 
 import static org.glavo.sassfx.JavaFXFeature.CSS_TRANSITIONS;
-import static org.glavo.sassfx.JavaFXFeature.EXTENDED_BLEND_MODES;
 import static org.glavo.sassfx.JavaFXFeature.MULTIPLE_RULES_PER_MEDIA_QUERY;
 import static org.glavo.sassfx.JavaFXFeature.USER_PREFERENCE_MEDIA_QUERIES;
 
@@ -35,14 +34,6 @@ public final class JavaFXCssValidator {
             "transition-duration",
             "transition-property",
             "transition-timing-function"
-    );
-
-    /// Contains blend modes parsed correctly beginning with JavaFX 18.
-    private static final @Unmodifiable Set<String> NEW_BLEND_MODES = Set.of(
-            "add",
-            "blue",
-            "green",
-            "red"
     );
 
     /// Prevents instantiation.
@@ -290,10 +281,19 @@ public final class JavaFXCssValidator {
             return;
         }
         var propertyValue = withoutTrailingImportance(declarationValue);
+        @Nullable var scalarValue = JavaFXScalarParser.parse(
+                property,
+                propertyValue,
+                declaration.value().span(),
+                compatibility
+        );
+        var globalKeyword = scalarValue
+                instanceof JavaFXScalarParser.GlobalKeyword;
         if (validateFontProperty(
                 property,
                 propertyValue,
-                declaration.value().span()
+                declaration.value().span(),
+                globalKeyword
         )) {
             return;
         }
@@ -306,17 +306,23 @@ public final class JavaFXCssValidator {
             );
         }
         if (TRANSITION_PROPERTIES.contains(property)) {
-            JavaFXTransitionValidator.validate(
-                    property,
-                    propertyValue,
-                    declaration.value().span(),
-                    compatibility
-            );
+            if (!globalKeyword) {
+                JavaFXTransitionValidator.validate(
+                        property,
+                        propertyValue,
+                        declaration.value().span(),
+                        compatibility
+                );
+            }
+            return;
         }
-        if (!compatibility.supports(EXTENDED_BLEND_MODES)
+        if (globalKeyword) {
+            return;
+        }
+        if (scalarValue instanceof JavaFXScalarParser.LegacyString legacy
                 && property.equals("-fx-blend-mode")) {
-            var value = normalizedBlendMode(declarationValue);
-            if (NEW_BLEND_MODES.contains(value)) {
+            var value = legacy.text().toLowerCase(Locale.ROOT);
+            if (JavaFXScalarParser.isExtendedBlendMode(value)) {
                 throw failure(
                         "JavaFX " + compatibility.version()
                                 + " CSS does not support -fx-blend-mode value "
@@ -326,9 +332,10 @@ public final class JavaFXCssValidator {
                 );
             }
         }
-        if (!TRANSITION_PROPERTIES.contains(property)) {
-            validateValueFunction(declaration, property, declarationValue);
+        if (scalarValue != null) {
+            return;
         }
+        validateValueFunction(declaration, property, declarationValue);
     }
 
     /// Validates one property dispatched through OpenJFX's font parsers.
@@ -339,11 +346,14 @@ public final class JavaFXCssValidator {
     /// @param property the normalized declaration name
     /// @param value    the declaration value without `!important`
     /// @param span     the source range associated with the value
+    /// @param globalKeyword whether the shared scalar parser found a complete
+    /// global keyword
     /// @return whether the property belongs to the JavaFX font family
     private static boolean validateFontProperty(
             String property,
             String value,
-            SourceSpan span
+            SourceSpan span,
+            boolean globalKeyword
     ) {
         var family = property.endsWith("font-family");
         var size = property.endsWith("font-size");
@@ -353,7 +363,7 @@ public final class JavaFXCssValidator {
         if (!family && !size && !style && !weight && !shorthand) {
             return false;
         }
-        if (JavaFXFontParser.isGlobalKeyword(value, span)) {
+        if (globalKeyword) {
             return true;
         }
         if (family) {
@@ -408,33 +418,6 @@ public final class JavaFXCssValidator {
                         + functionName + "().",
                 declaration.value().span()
         );
-    }
-
-    /// Normalizes a blend-mode token for legacy JavaFX conflict detection.
-    ///
-    /// The old JavaFX parser resolves conflicting identifiers as
-    /// colors even when they are quoted or followed by trivia and
-    /// `!important`.
-    ///
-    /// @param value the emitted declaration value
-    /// @return the lowercase unquoted token without an importance suffix
-    private static String normalizedBlendMode(String value) {
-        var start = JavaFXCssLexer.triviaEnd(value, 0);
-        if (start < 0 || start == value.length()) {
-            return "";
-        }
-        var first = value.charAt(start);
-        if (first == '\'' || first == '"') {
-            var end = value.indexOf(first, start + 1);
-            if (end < 0) {
-                return "";
-            }
-            return value.substring(start + 1, end).toLowerCase(Locale.ROOT);
-        }
-        var end = JavaFXCssLexer.identifierEnd(value, start);
-        return end == start
-                ? ""
-                : value.substring(start, end).toLowerCase(Locale.ROOT);
     }
 
     /// Removes one trailing JavaFX importance token from a declaration value.
