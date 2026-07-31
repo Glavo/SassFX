@@ -138,9 +138,11 @@ Across textual and byte-exact checks, the executable matrix currently covers:
 - generic single sizes and space-separated size sequences across every
   non-time JavaFX `SizeUnits` value, including negative and mixed-unit series;
 - padding, region and border-image insets, border widths, border-image widths,
-  and border-image slices, including one-to-four-side expansion, layered
-  property lookups, optional trailing `fill`, byte-exact CSS/BSS parity, and
-  rejection of fifth values or layers that OpenJFX silently discards;
+  border-image slices, and background and border radii, including
+  one-to-four-value expansion, layered property lookups, horizontal and
+  vertical radius axes, trailing `/`, per-corner pixel-zero normalization,
+  optional trailing `fill`, byte-exact CSS/BSS parity, and rejection of fifth
+  values, repeated `/` markers, or layers that OpenJFX silently discards;
 - case-insensitive function-name prefix dispatch for colors, effects,
   gradients, image patterns, ladders, Region references, and border
   `segments(...)`, plus rejection of unsupported leading functions;

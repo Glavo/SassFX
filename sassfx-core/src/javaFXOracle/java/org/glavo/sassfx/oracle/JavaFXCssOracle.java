@@ -440,9 +440,22 @@ public final class JavaFXCssOracle {
                               -fx-right fill, 10% 20% FILL;
                           -fx-border-image-width:
                               auto -fx-left 11px 12%, -fx-top;
+                          -fx-background-radius:
+                              -fx-top 13px / -fx-right 14%, 15em;
+                          -fx-border-radius:
+                              0 / -fx-left, 16px / -fx-bottom;
                         }
                         """,
                 Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
+                "corner-radius-empty-vertical",
+                """
+                        EmptyVerticalRadius {
+                          -fx-background-radius: #{"16px /"};
+                        }
+                        """,
+                Syntax.SCSS
         ));
         fixtures.add(new Fixture(
                 "region-images",
@@ -711,6 +724,16 @@ public final class JavaFXCssOracle {
                 Syntax.CSS
         ));
         fixtures.add(new Fixture(
+                "corner-radius-fifth-value",
+                "Pane { -fx-background-radius: 1px 2px 3px 4px 5px; }",
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
+                "corner-radius-double-solidus",
+                "Pane { -fx-border-radius: 1px / 2px / 3px; }",
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
                 "non-ascii-function-name",
                 "Pane { -fx-background-color: linear-gradientπ(red, blue); }",
                 Syntax.CSS
@@ -901,6 +924,7 @@ public final class JavaFXCssOracle {
                  "font-properties",
                  "region-geometry",
                  "four-sided-geometry-lookups",
+                 "corner-radius-empty-vertical",
                  "region-images",
                  "region-paints-and-styles",
                  "region-references",

@@ -140,6 +140,92 @@ final class JavaFXFourSidedValueParserTest {
         assertTrue(parsed.layers().get(2).fill());
     }
 
+    /// Expands independent horizontal and vertical corner-radius axes while
+    /// preserving lookup identifiers and OpenJFX's empty vertical axis.
+    @Test
+    void parsesCornerRadiusLayers() {
+        var parsed = assertInstanceOf(
+                JavaFXFourSidedValueParser.CornerRadiusLayers.class,
+                parse(
+                        "-fx-background-radius",
+                        "/**/ -FX-H 2px /**/ / -fx-v 4%, 5em, 6px /"
+                )
+        );
+
+        assertEquals(3, parsed.layers().size());
+        assertEquals(
+                List.of(
+                        new JavaFXFourSidedValueParser.LookupSize("-FX-H"),
+                        raw(2),
+                        new JavaFXFourSidedValueParser.LookupSize("-FX-H"),
+                        raw(2)
+                ),
+                parsed.layers().get(0).horizontal().values()
+        );
+        assertEquals(
+                List.of(
+                        new JavaFXFourSidedValueParser.LookupSize("-fx-v"),
+                        raw(4, "%"),
+                        new JavaFXFourSidedValueParser.LookupSize("-fx-v"),
+                        raw(4, "%")
+                ),
+                parsed.layers().get(0).vertical().values()
+        );
+        assertEquals(
+                parsed.layers().get(1).horizontal(),
+                parsed.layers().get(1).vertical()
+        );
+        assertEquals(
+                parsed.layers().get(2).horizontal(),
+                parsed.layers().get(2).vertical()
+        );
+    }
+
+    /// Zeroes both axes of a corner when either axis is unitless zero or zero
+    /// pixels, while retaining zero values in other units.
+    @Test
+    void normalizesCornerRadiusPixelZeros() {
+        var parsed = assertInstanceOf(
+                JavaFXFourSidedValueParser.CornerRadiusLayers.class,
+                parse(
+                        "-fx-border-radius",
+                        "0 1px 0% 0em / 2px 0 3px 0px"
+                )
+        );
+        var layer = parsed.layers().get(0);
+
+        assertEquals(
+                List.of(raw(0), raw(0), raw(0, "%"), raw(0)),
+                layer.horizontal().values()
+        );
+        assertEquals(
+                List.of(raw(0), raw(0), raw(3), raw(0)),
+                layer.vertical().values()
+        );
+    }
+
+    /// Rejects malformed corner-radius layers and unsupported size tokens.
+    @Test
+    void rejectsInvalidCornerRadiusValues() {
+        for (var value : List.of(
+                "",
+                "/ 1px",
+                "1px / 2px / 3px",
+                "1px 2px 3px 4px 5px",
+                "1px / 2px 3px 4px 5px 6px",
+                "1ms",
+                "\"-fx-radius\"",
+                "1px,,2px",
+                "1px,"
+        )) {
+            assertThrows(
+                    CssSerializeException.class,
+                    () -> parse("-fx-background-radius", value),
+                    value
+            );
+        }
+    }
+
     /// Rejects empty values, invalid sizes, surplus terms, and discarded
     /// layers.
     @Test
@@ -171,7 +257,7 @@ final class JavaFXFourSidedValueParserTest {
     /// Leaves properties outside the four-sided family to other parsers.
     @Test
     void ignoresOtherProperties() {
-        assertNull(parse("-fx-background-radius", "1px"));
+        assertNull(parse("-fx-background-position", "left 1px"));
         assertNull(parse("-fx-custom", "1px 2px"));
     }
 

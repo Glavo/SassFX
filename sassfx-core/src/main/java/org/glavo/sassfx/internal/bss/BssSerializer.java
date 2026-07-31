@@ -1462,10 +1462,6 @@ public final class BssSerializer {
             writeBackgroundSizeLayers(output, value, span, strings);
             return;
         }
-        if (isCornerRadiiProperty(property)) {
-            writeCornerRadiiValue(output, value, span, strings);
-            return;
-        }
         if (isEffectProperty(property)) {
             if (JavaFXEffectParser.isEffectFunction(value)) {
                 writeEffectValue(
@@ -1764,14 +1760,6 @@ public final class BssSerializer {
     /// @return whether the property consumes background-size layers
     private static boolean isBackgroundSizeProperty(String property) {
         return property.equals("-fx-background-size");
-    }
-
-    /// Returns whether a property accepts a comma-separated sequence of corner-radius layers.
-    ///
-    /// @param property the CSS property name
-    /// @return whether the property consumes layered corner radii
-    private static boolean isCornerRadiiProperty(String property) {
-        return property.equals("-fx-background-radius") || property.equals("-fx-border-radius");
     }
 
     /// Writes an ordinary size, duration, or font-size numeric value.
@@ -3843,6 +3831,10 @@ public final class BssSerializer {
             SourceSpan span,
             StringStore strings
     ) throws IOException {
+        if (value instanceof JavaFXFourSidedValueParser.CornerRadiusLayers radii) {
+            writeCornerRadiiValue(output, radii, span, strings);
+            return;
+        }
         if (value instanceof JavaFXFourSidedValueParser.SliceLayers slices) {
             writeBorderImageSliceLayers(output, slices, span, strings);
             return;
@@ -4008,20 +4000,19 @@ public final class BssSerializer {
     /// Writes JavaFX's sequence of two-axis corner-radius values.
     ///
     /// @param output  the declaration output stream
-    /// @param value   the evaluated Sass value
+    /// @param radii   the parsed and normalized radius layers
     /// @param span    the source value span
     /// @param strings the shared string table
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeCornerRadiiValue(
             DataOutputStream output,
-            SassValue value,
+            JavaFXFourSidedValueParser.CornerRadiusLayers radii,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
-        var layers = cornerRadiiLayers(value, span);
         writeParsedHeader(output, false, CORNER_RADII_CONVERTER, strings);
-        writeParsedValueArrayPrefix(output, layers.size());
-        for (var layer : layers) {
+        writeParsedValueArrayPrefix(output, radii.layers().size());
+        for (var layer : radii.layers()) {
             output.writeByte(NESTED_VALUE);
             writeParsedHeader(output, false, null, strings);
             output.writeByte(ARRAY_OF_VALUE_ARRAY);
@@ -4053,143 +4044,6 @@ public final class BssSerializer {
         return List.copyOf(list.contents());
     }
 
-    /// Returns the normalized corner-radius layers represented by one declaration.
-    ///
-    /// @param value the evaluated Sass value
-    /// @param span  the source value span
-    /// @return the normalized layers in source order
-    /// @throws BssSerializeException if a layer cannot be represented
-    private static @Unmodifiable List<CornerRadiiLayer> cornerRadiiLayers(
-            SassValue value,
-            SourceSpan span
-    ) {
-        var values = layeredValues(
-                value,
-                span,
-                "BSS corner radii require one or more comma-separated radius layers."
-        );
-        var layers = new ArrayList<CornerRadiiLayer>(values.size());
-        for (var layer : values) {
-            layers.add(cornerRadiiLayer(layer, span));
-        }
-        return List.copyOf(layers);
-    }
-
-    /// Parses and normalizes one horizontal-and-vertical corner-radius layer.
-    ///
-    /// @param value the evaluated Sass value for one layer
-    /// @param span  the source value span
-    /// @return one normalized radius layer
-    /// @throws BssSerializeException if the layer has an unsupported shape
-    private static CornerRadiiLayer cornerRadiiLayer(SassValue value, SourceSpan span) {
-        var values = cornerRadiiValues(value, span);
-        var horizontal = new ArrayList<SassNumber>(4);
-        var vertical = new ArrayList<SassNumber>(4);
-        var sawSlash = false;
-        for (var number : values) {
-            @Nullable SassNumber numerator = number.slashNumerator();
-            @Nullable SassNumber denominator = number.slashDenominator();
-            if (numerator == null) {
-                if (sawSlash) {
-                    vertical.add(number);
-                } else {
-                    horizontal.add(number);
-                }
-                continue;
-            }
-            if (sawSlash) {
-                throw invalidCornerRadii(span);
-            }
-            horizontal.add(numerator);
-            vertical.add(Objects.requireNonNull(denominator, "slash denominator"));
-            sawSlash = true;
-        }
-        if (horizontal.isEmpty() || horizontal.size() > 4 || vertical.size() > 4) {
-            throw invalidCornerRadii(span);
-        }
-
-        var normalizedHorizontal = new ArrayList<>(expandCornerRadii(horizontal));
-        var normalizedVertical = sawSlash
-                ? new ArrayList<>(expandCornerRadii(vertical))
-                : new ArrayList<>(normalizedHorizontal);
-        for (var index = 0; index < normalizedHorizontal.size(); index++) {
-            if (isJavaFXPixelZero(normalizedHorizontal.get(index))
-                    || isJavaFXPixelZero(normalizedVertical.get(index))) {
-                var zero = SassNumber.of(0.0, "px");
-                normalizedHorizontal.set(index, zero);
-                normalizedVertical.set(index, zero);
-            }
-        }
-        return new CornerRadiiLayer(normalizedHorizontal, normalizedVertical);
-    }
-
-    /// Returns the one-to-four horizontal or vertical size values for one radius side.
-    ///
-    /// @param value the evaluated Sass value for one layer
-    /// @param span  the source value span
-    /// @return the supplied source-order size values
-    /// @throws BssSerializeException if the value is not a size sequence
-    private static @Unmodifiable List<SassNumber> cornerRadiiValues(
-            SassValue value,
-            SourceSpan span
-    ) {
-        if (value instanceof SassNumber number) {
-            return List.of(number);
-        }
-        if (!(value instanceof SassList list)
-                || list.hasBrackets()
-                || list.separator() != ListSeparator.SPACE
-                || list.contents().isEmpty()) {
-            throw invalidCornerRadii(span);
-        }
-        var values = new ArrayList<SassNumber>(list.contents().size());
-        for (var item : list.contents()) {
-            if (!(item instanceof SassNumber number)) {
-                throw invalidCornerRadii(span);
-            }
-            values.add(number);
-        }
-        return List.copyOf(values);
-    }
-
-    /// Expands CSS one-to-four-value corner-radius shorthand to four corners.
-    ///
-    /// @param supplied the one to four supplied sizes
-    /// @return top-left, top-right, bottom-right, and bottom-left sizes
-    private static @Unmodifiable List<SassNumber> expandCornerRadii(List<SassNumber> supplied) {
-        return switch (supplied.size()) {
-            case 1 -> List.of(supplied.get(0), supplied.get(0), supplied.get(0), supplied.get(0));
-            case 2 -> List.of(supplied.get(0), supplied.get(1), supplied.get(0), supplied.get(1));
-            case 3 -> List.of(supplied.get(0), supplied.get(1), supplied.get(2), supplied.get(1));
-            case 4 -> List.copyOf(supplied);
-            default -> throw new AssertionError("validated corner radius count is invalid");
-        };
-    }
-
-    /// Returns whether JavaFX parses the size as its canonical zero-pixel value.
-    ///
-    /// @param number the Sass size
-    /// @return whether the parsed JavaFX size equals zero pixels
-    private static boolean isJavaFXPixelZero(SassNumber number) {
-        return number.value() == 0.0
-                && number.denominatorUnits().isEmpty()
-                && (number.isUnitless()
-                || number.numeratorUnits().size() == 1
-                && number.numeratorUnits().get(0).equalsIgnoreCase("px"));
-    }
-
-    /// Creates the standard BSS failure for an unsupported corner-radius layer.
-    ///
-    /// @param span the source value span
-    /// @return the source-associated serialization failure
-    private static BssSerializeException invalidCornerRadii(SourceSpan span) {
-        return new BssSerializeException(
-                "BSS corner radii require one to four space-separated sizes on each side of '/'.",
-                span,
-                null
-        );
-    }
-
     /// Writes an array header for non-null nested parsed values.
     ///
     /// @param output the declaration output stream
@@ -4210,15 +4064,15 @@ public final class BssSerializer {
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeSizeRow(
             DataOutputStream output,
-            List<SassNumber> values,
+            JavaFXFourSidedValueParser.FourSides values,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
         output.writeByte(NESTED_VALUE);
-        output.writeInt(values.size());
-        for (var value : values) {
+        output.writeInt(values.values().size());
+        for (var value : values.values()) {
             output.writeByte(NESTED_VALUE);
-            writeSizeValue(output, value, span, strings);
+            writeFourSidedSize(output, value, span, strings);
         }
     }
 
@@ -4719,27 +4573,6 @@ public final class BssSerializer {
             paints = List.copyOf(paints);
             if (paints.size() != 4) {
                 throw new IllegalArgumentException("border paints require four paints");
-            }
-        }
-    }
-
-    /// Stores one normalized layer of horizontal and vertical corner radii.
-    ///
-    /// @param horizontal the four top-left, top-right, bottom-right, and bottom-left horizontal sizes
-    /// @param vertical   the four top-left, top-right, bottom-right, and bottom-left vertical sizes
-    @NotNullByDefault
-    private record CornerRadiiLayer(
-            @Unmodifiable List<SassNumber> horizontal,
-            @Unmodifiable List<SassNumber> vertical
-    ) {
-        /// Creates an immutable normalized corner-radius layer.
-        ///
-        /// @throws IllegalArgumentException if either axis does not contain exactly four values
-        private CornerRadiiLayer {
-            horizontal = List.copyOf(horizontal);
-            vertical = List.copyOf(vertical);
-            if (horizontal.size() != 4 || vertical.size() != 4) {
-                throw new IllegalArgumentException("corner radii require four values per axis");
             }
         }
     }

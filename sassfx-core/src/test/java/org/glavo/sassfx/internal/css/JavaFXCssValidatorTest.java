@@ -1106,6 +1106,14 @@ final class JavaFXCssValidatorTest {
                 java.util.Map.entry(
                         "-fx-border-image-width",
                         "auto -fx-image-width 3 4%, 5px"
+                ),
+                java.util.Map.entry(
+                        "-fx-background-radius",
+                        "-fx-horizontal 2px / -fx-vertical 4%, 5em"
+                ),
+                java.util.Map.entry(
+                        "-fx-border-radius",
+                        "0 / -fx-vertical, 6px /"
                 )
         );
 
@@ -1144,6 +1152,14 @@ final class JavaFXCssValidatorTest {
                 java.util.Map.entry(
                         "-fx-border-image-slice",
                         "1px fill 2px"
+                ),
+                java.util.Map.entry(
+                        "-fx-background-radius",
+                        "1px 2px 3px 4px 5px"
+                ),
+                java.util.Map.entry(
+                        "-fx-border-radius",
+                        "1px / 2px / 3px"
                 )
         );
 

@@ -938,9 +938,15 @@ and border-image slices share one four-sided grammar in the JavaFX CSS and BSS
 backends. Each layer accepts one to four numeric sizes or unquoted property
 lookups and expands them to top, right, bottom, and left. Layered properties
 preserve comma-separated layers, while a border-image slice may add one
-trailing `fill` marker. Quoted lookups, time units, fifth values, extra layers
-on single-layer properties, and terms after `fill` are rejected instead of
-letting OpenJFX silently discard them.
+trailing `fill` marker.
+
+Background and border radii use the same size and lookup tokens, with one to
+four horizontal radii and an optional `/` followed by up to four vertical
+radii per layer. Omitting the vertical axis, including a trailing `/`, copies
+the horizontal axis as OpenJFX does. A unitless or pixel zero on either axis
+zeroes both axes of that corner. Quoted lookups, time units, fifth values,
+extra layers on single-layer properties, repeated `/` markers, and terms after
+`fill` are rejected instead of letting OpenJFX silently discard them.
 
 JavaFX value functions use OpenJFX's case-insensitive prefix dispatch for
 colors, effects, gradients, image patterns, ladders, Region references, and

@@ -164,6 +164,11 @@ public final class JavaFX8OracleInputGenerator {
               -fx-border-image-insets: -fx-top, 8px 9%;
               -fx-border-image-slice: -fx-right fill, 10% 20% FILL;
               -fx-border-image-width: auto -fx-left 11px 12%, -fx-top;
+              -fx-background-radius: -fx-top 13px / -fx-right 14%, 15em;
+              -fx-border-radius: 0 / -fx-left, 16px / -fx-bottom;
+            }
+            EmptyVerticalRadius {
+              -fx-background-radius: #{"16px /"};
             }
             RegionImages {
               -fx-background-image: url("image.png"), url(second.png);
@@ -349,7 +354,9 @@ public final class JavaFX8OracleInputGenerator {
                 "-fx-padding: 1px 2px 3px 4px 5px",
                 "-fx-opaque-insets: 1px, 2px",
                 "-fx-background-insets: 1px 2px 3px 4px 5px",
-                "-fx-border-image-slice: 1px fill 2px"
+                "-fx-border-image-slice: 1px fill 2px",
+                "-fx-background-radius: 1px 2px 3px 4px 5px",
+                "-fx-border-radius: 1px / 2px / 3px"
         )) {
             try {
                 compiler.compile(
