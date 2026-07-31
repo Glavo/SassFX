@@ -346,6 +346,77 @@ final class BssTargetTest {
         );
     }
 
+    /// Matches JavaFX descriptor persistence and source trivia in direct BSS.
+    @Test
+    void normalizesFontFaceDescriptorsAndSourceTrivia() throws Exception {
+        var compiler = new SassCompiler();
+        var canonical = compiler.compile(
+                SassSource.fromString(
+                        """
+                                @font-face {
+                                  font-family: ExampleSans;
+                                  font-weight: 600!important;
+                                  src: local("Example Local"), ExampleReference;
+                                }
+                                Pane { -fx-opacity: 1; }
+                                """,
+                        Syntax.CSS
+                ),
+                BssTarget.DEFAULT
+        ).output();
+        var withTrivia = compiler.compile(
+                SassSource.fromString(
+                        """
+                                @font-face {
+                                  font-family: Example /**/ Sans;
+                                  font-weight: 600 /**/ !important;
+                                  src: /**/ local(/**/"Example Local"/**/) /**/,
+                                    ExampleReference /**/;
+                                }
+                                Pane { -fx-opacity: 1; }
+                                """,
+                        Syntax.CSS
+                ),
+                BssTarget.DEFAULT
+        ).output();
+
+        assertArrayEquals(
+                remainingBytes(canonical),
+                remainingBytes(withTrivia)
+        );
+    }
+
+    /// Rejects unsafe font sources consistently in CSS and BSS output.
+    @Test
+    void rejectsUnsafeFontFaceSourcesAcrossJavaFXTargets() {
+        var compiler = new SassCompiler();
+        for (var value : List.of(
+                "local()",
+                "local(Example Local)",
+                "url(font.woff) format(woff2 extra)",
+                "url(font.woff) local(Example)",
+                "custom(Example)",
+                "local(Example) !important",
+                "local(Example) // consumes the rule"
+        )) {
+            var source = SassSource.fromString(
+                    "@font-face { src: " + value
+                            + "; } Pane { -fx-opacity: 1; }",
+                    Syntax.CSS
+            );
+            for (var target : List.<OutputTarget<?>>of(
+                    JavaFXCssTarget.DEFAULT,
+                    BssTarget.DEFAULT
+            )) {
+                assertThrows(
+                        SassCompilationException.class,
+                        () -> compiler.compile(source, target),
+                        value + " for " + target
+                );
+            }
+        }
+    }
+
     /// Serializes selectors and supported values into JavaFX 17 BSS bytes.
     @Test
     void compilesJavaFX17Bss() throws Exception {

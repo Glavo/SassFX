@@ -113,6 +113,10 @@ Across textual and byte-exact checks, the executable matrix currently covers:
 - structural trivia boundaries in functional pseudo-classes, import
   arguments, and media conditions, including LF-terminated line comments and
   product-side rejection of comments that would consume stylesheet structure;
+- font-face URL, local, and reference sources, optional format hints,
+  descriptor token concatenation, comment boundaries, byte-exact BSS
+  persistence, and rejection of unquoted local names that OpenJFX silently
+  concatenates;
 - JavaFX 23–27 transition text conversion, including target-specific easing
   functions and rejection of parser inputs that fail during conversion or
   contain surplus tokens that OpenJFX silently discards;

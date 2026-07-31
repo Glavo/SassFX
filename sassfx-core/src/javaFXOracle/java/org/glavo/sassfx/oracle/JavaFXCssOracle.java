@@ -80,6 +80,7 @@ public final class JavaFXCssOracle {
         verifyLegacyLexerSemantics();
         verifyLegacyValueTriviaSemantics();
         verifyStructuralTriviaSemantics(target);
+        verifyFontFaceSourceSemantics(target);
         verifyVersionedParserSemantics(target);
         for (var fixture : acceptedFixtures(target)) {
             verifyAccepted(fixture, target);
@@ -166,6 +167,21 @@ public final class JavaFXCssOracle {
                               dropshadow(gaussian, green, 8px, 20%, 1px, 2px);
                           -fx-stroke-dash-array: 1px 2px;
                         }
+                        """,
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
+                "font-face-values",
+                """
+                        @font-face {
+                          font-family: Oracle /**/ Sans;
+                          font-weight: 600 /**/ !important;
+                          src: /**/ url("https://example.invalid/font\\-oracle.woff2")
+                              /**/ FoRmAt(/**/"woff2"/**/),
+                              local(/**/"Oracle Local"/**/),
+                              OracleReference /**/;
+                        }
+                        FontFacePane { -fx-font-family: "Oracle Sans"; }
                         """,
                 Syntax.CSS
         ));
@@ -636,6 +652,21 @@ public final class JavaFXCssOracle {
                 Syntax.CSS
         ));
         fixtures.add(new Fixture(
+                "unknown-font-source",
+                "@font-face { src: custom(Oracle); }",
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
+                "silently-concatenated-local-font-source",
+                "@font-face { src: local(Oracle Local); }",
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
+                "important-font-source",
+                "@font-face { src: local(Oracle) !important; }",
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
                 "media-type",
                 "@media screen and (min-width: 600px) { Pane { -fx-opacity: 1; } }",
                 Syntax.SCSS
@@ -797,6 +828,7 @@ public final class JavaFXCssOracle {
                  "media-viewport",
                  "media-platform",
                  "font-shorthand",
+                 "font-face-values",
                  "paint-functions" -> true;
             default -> false;
         };
@@ -1244,6 +1276,63 @@ public final class JavaFXCssOracle {
             Files.deleteIfExists(destination);
             Files.deleteIfExists(source);
             Files.deleteIfExists(directory);
+        }
+    }
+
+    /// Verifies JavaFX font-source errors and one silent local-name mutation.
+    ///
+    /// OpenJFX concatenates every token inside an unquoted `local(...)` value,
+    /// discarding separating whitespace. SassFX rejects that spelling because
+    /// emitting it would select a different installed font name.
+    ///
+    /// @param target the selected JavaFX release
+    /// @throws Exception if SassFX accepts the unsafe local-font spelling
+    private static void verifyFontFaceSourceSemantics(
+            JavaFXTarget target
+    ) throws Exception {
+        CssParser.errorsProperty().clear();
+        var mutated = new CssParser().parse(
+                "@font-face { src: local(Oracle Local); }"
+        );
+        if (!CssParser.errorsProperty().isEmpty()
+                || mutated.getFontFaces().size() != 1
+                || !mutated.getFontFaces().get(0).toString().contains(
+                "LOCAL \"OracleLocal\""
+        )) {
+            throw new AssertionError(
+                    "JavaFX " + target.version()
+                            + " no longer concatenates unquoted local-font tokens: "
+                            + mutated.getFontFaces()
+                            + "; errors=" + CssParser.errorsProperty()
+            );
+        }
+
+        var rejected = false;
+        try {
+            compile(
+                    new Fixture(
+                            "silently-concatenated-local-font-source",
+                            "@font-face { src: local(Oracle Local); }",
+                            Syntax.CSS
+                    ),
+                    target
+            );
+        } catch (SassCompilationException expected) {
+            rejected = true;
+        }
+        if (!rejected) {
+            throw new AssertionError(
+                    "SassFX accepted a local font name that JavaFX mutates."
+            );
+        }
+
+        CssParser.errorsProperty().clear();
+        new CssParser().parse("@font-face { src: custom(Oracle); }");
+        if (CssParser.errorsProperty().isEmpty()) {
+            throw new AssertionError(
+                    "JavaFX " + target.version()
+                            + " accepted an unknown font-source function."
+            );
         }
     }
 

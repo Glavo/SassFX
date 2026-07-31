@@ -275,6 +275,20 @@ public final class JavaFXCssValidator {
             );
         }
         var property = sourceProperty.toLowerCase(Locale.ROOT);
+        if (declaration.parent() instanceof CssFontFace) {
+            if (property.equals("src")) {
+                JavaFXFontFaceParser.parseSources(
+                        declarationValue,
+                        declaration.value().span()
+                );
+            } else {
+                JavaFXFontFaceParser.storedDescriptorValue(
+                        declarationValue,
+                        declaration.value().span()
+                );
+            }
+            return;
+        }
         if (!compatibility.supports(CSS_TRANSITIONS)
                 && TRANSITION_PROPERTIES.contains(property)) {
             throw failure(
@@ -309,8 +323,7 @@ public final class JavaFXCssValidator {
                 );
             }
         }
-        if (!(declaration.parent() instanceof CssFontFace)
-                && !TRANSITION_PROPERTIES.contains(property)) {
+        if (!TRANSITION_PROPERTIES.contains(property)) {
             validateValueFunction(declaration, property, declarationValue);
         }
     }

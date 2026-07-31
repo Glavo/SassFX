@@ -228,6 +228,88 @@ final class JavaFXCssValidatorTest {
         }
     }
 
+    /// Accepts the JavaFX URL, local, and reference font-source forms.
+    @Test
+    void acceptsJavaFXFontFaceSources() {
+        var fontFace = fontFace(
+                declaration(
+                        "src",
+                        "/**/ url(\"font\\-regular.woff2\") /**/"
+                                + " FoRmAt(/**/\"woff2\"/**/),"
+                                + " local(/**/\"Example Local\"/**/),"
+                                + " ExampleReference /**/"
+                )
+        );
+        var stylesheet = stylesheet(fontFace);
+
+        for (var compatibility : JavaFXTarget.values()) {
+            assertDoesNotThrow(
+                    () -> JavaFXCssValidator.validate(
+                            stylesheet,
+                            compatibility
+                    )
+            );
+        }
+    }
+
+    /// Rejects font-source forms that JavaFX errors on or changes silently.
+    ///
+    /// @param value the unsafe source-list text
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "local()",
+            "local(Example Local)",
+            "url(font.woff) format(woff2 extra)",
+            "url(font.woff) local(Example)",
+            "custom(Example)",
+            "local(Example) !important",
+            "local(Example) // consumes the rule"
+    })
+    void rejectsUnsafeJavaFXFontFaceSources(String value) {
+        for (var compatibility : JavaFXTarget.values()) {
+            assertThrows(
+                    CssSerializeException.class,
+                    () -> JavaFXCssValidator.validate(
+                            stylesheet(fontFace(declaration("src", value))),
+                            compatibility
+                    )
+            );
+        }
+    }
+
+    /// Treats non-source font-face declarations as opaque descriptors.
+    @Test
+    void acceptsOpaqueJavaFXFontFaceDescriptors() {
+        var fontFace = fontFace(
+                declaration("transition", "unsupported(Example)"),
+                declaration("-fx-blend-mode", "red"),
+                declaration("font-weight", "600 !important")
+        );
+
+        assertDoesNotThrow(
+                () -> JavaFXCssValidator.validate(
+                        stylesheet(fontFace),
+                        JavaFXTarget.JAVAFX17
+                )
+        );
+    }
+
+    /// Rejects unsafe URL tokens in opaque font-face descriptors.
+    @Test
+    void rejectsUnsafeJavaFXFontFaceDescriptorUrl() {
+        var fontFace = fontFace(declaration("font-family", "url()"));
+
+        for (var compatibility : JavaFXTarget.values()) {
+            assertThrows(
+                    CssSerializeException.class,
+                    () -> JavaFXCssValidator.validate(
+                            stylesheet(fontFace),
+                            compatibility
+                    )
+            );
+        }
+    }
+
     /// Rejects each transition property through JavaFX 22 and accepts it in JavaFX 23.
     @ParameterizedTest
     @ValueSource(strings = {
@@ -1058,6 +1140,18 @@ final class JavaFXCssValidatorTest {
         var rule = styleRule(selectorText);
         rule.addChild(declaration(name, value));
         return rule;
+    }
+
+    /// Creates a font-face rule containing the supplied declarations.
+    ///
+    /// @param declarations the descriptors to append in source order
+    /// @return the populated font-face rule
+    private static CssFontFace fontFace(CssDeclaration... declarations) {
+        var fontFace = new CssFontFace(span("@font-face"));
+        for (var declaration : declarations) {
+            fontFace.addChild(declaration);
+        }
+        return fontFace;
     }
 
     /// Creates a raw CSS declaration.

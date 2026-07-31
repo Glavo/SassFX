@@ -938,6 +938,12 @@ The current release has the following boundaries:
   are rejected.
 - JavaFX targets reject native CSS nesting, `@supports`, and unknown at-rules.
   Font faces and retained imports must occur at the stylesheet root.
+- JavaFX font-face sources support exact lowercase `url(...)`,
+  case-insensitive `local(...)` and `format(...)`, and identifier references.
+  CSS and BSS use the same source grammar and reject multi-token unquoted
+  names or surplus tokens that OpenJFX would silently reinterpret. Direct BSS
+  output resolves font URLs and stores other descriptors using OpenJFX's
+  whitespace-free token concatenation.
 - JavaFX media conditions begin at the modeled JavaFX 25 boundary. CSS media
   types such as `screen` and `print` are not JavaFX media conditions.
 - Textual JavaFX CSS supports transitions from JavaFX 23 and rejects timing

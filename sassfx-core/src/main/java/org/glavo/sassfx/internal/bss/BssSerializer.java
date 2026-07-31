@@ -18,8 +18,10 @@ import org.glavo.sassfx.internal.css.CssSupportsRule;
 import org.glavo.sassfx.internal.css.CssStyleRule;
 import org.glavo.sassfx.internal.css.CssStylesheet;
 import org.glavo.sassfx.internal.css.CssUnknownAtRule;
+import org.glavo.sassfx.internal.css.CssSerializeException;
 import org.glavo.sassfx.internal.css.JavaFXCssImport;
 import org.glavo.sassfx.internal.css.JavaFXCssLexer;
+import org.glavo.sassfx.internal.css.JavaFXFontFaceParser;
 import org.glavo.sassfx.internal.css.JavaFXLegacyGradient;
 import org.glavo.sassfx.internal.css.JavaFXValueFunction;
 import org.glavo.sassfx.internal.css.JavaFXMediaQuery;
@@ -43,6 +45,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -594,7 +597,7 @@ public final class BssSerializer {
     /// @return a BSS-ready font-face snapshot
     private static BssFontFace collectFontFace(CssFontFace fontFace) {
         var descriptors = new HashMap<String, String>();
-        var sources = new ArrayList<JavaFXFontFaceParser.Source>();
+        var sources = new ArrayList<BssFontFaceSource>();
         for (var child : fontFace.children()) {
             if (child instanceof CssComment || child.isInvisible()) {
                 continue;
@@ -603,26 +606,101 @@ public final class BssSerializer {
                 throw unsupported(child, "font-face CSS node");
             }
             requireDeclarationName(declaration);
-            if (!declaration.parsedAsSassScript()) {
-                throw new BssSerializeException(
-                        "BSS @font-face doesn't support raw CSS descriptor values.",
-                        declaration.value().span(),
-                        null
-                );
-            }
             var name = declaration.name().value();
             var value = fontFaceValue(declaration);
             requireTokenizableValue(value, declaration.value().span());
-            if (name.equalsIgnoreCase("src")) {
-                sources.addAll(JavaFXFontFaceParser.parseSources(
-                        value,
-                        declaration.value().span()
-                ));
-            } else {
-                descriptors.put(name, value);
+            try {
+                if (name.equalsIgnoreCase("src")) {
+                    for (var source : JavaFXFontFaceParser.parseSources(
+                            value,
+                            declaration.value().span()
+                    )) {
+                        sources.add(toBssFontFaceSource(
+                                source,
+                                declaration.value().span()
+                        ));
+                    }
+                } else {
+                    descriptors.put(
+                            name,
+                            JavaFXFontFaceParser.storedDescriptorValue(
+                                    value,
+                                    declaration.value().span()
+                            )
+                    );
+                }
+            } catch (CssSerializeException failure) {
+                throw new BssSerializeException(
+                        failure.primaryDiagnostic(),
+                        failure.sassTrace(),
+                        failure
+                );
             }
         }
         return new BssFontFace(descriptors, sources, fontFace.span());
+    }
+
+    /// Converts one parsed font source into its BSS representation.
+    ///
+    /// @param source the parsed JavaFX source
+    /// @param span   the source range associated with the descriptor
+    /// @return the source with any URL resolved for BSS storage
+    /// @throws BssSerializeException if a URL cannot be resolved deterministically
+    private static BssFontFaceSource toBssFontFaceSource(
+            JavaFXFontFaceParser.Source source,
+            SourceSpan span
+    ) {
+        var value = source.type() == JavaFXFontFaceParser.SourceType.URL
+                ? resolveFontFaceUrl(source.source(), span)
+                : source.source();
+        return new BssFontFaceSource(
+                source.type().name(),
+                value,
+                source.format()
+        );
+    }
+
+    /// Resolves one JavaFX font URL to the spelling persisted in BSS.
+    ///
+    /// Relative URLs require a non-opaque stylesheet URL. Class-loader and
+    /// absolute-path resolution are rejected because they would make emitted
+    /// BSS depend on the JavaFX runtime environment that consumes it.
+    ///
+    /// @param resource the decoded URL resource text
+    /// @param span     the source range associated with the descriptor
+    /// @return the resolved external URL spelling
+    /// @throws BssSerializeException if deterministic URL resolution is unavailable
+    private static String resolveFontFaceUrl(String resource, SourceSpan span) {
+        try {
+            var resourceUri = new URI(resource);
+            if (resourceUri.isAbsolute()) {
+                return resourceUri.toURL().toExternalForm();
+            }
+            if (resourceUri.getPath() == null
+                    || resourceUri.getPath().startsWith("/")) {
+                throw invalidFontFaceSource(span);
+            }
+            @Nullable URI stylesheetUrl = span.url();
+            if (stylesheetUrl == null || stylesheetUrl.isOpaque()) {
+                throw invalidFontFaceSource(span);
+            }
+            return stylesheetUrl.resolve(resourceUri).toURL().toExternalForm();
+        } catch (URISyntaxException | MalformedURLException failure) {
+            throw invalidFontFaceSource(span);
+        }
+    }
+
+    /// Creates the standard BSS failure for an unsupported font source.
+    ///
+    /// @param span the source range associated with the invalid value
+    /// @return the source-associated serialization failure
+    private static BssSerializeException invalidFontFaceSource(SourceSpan span) {
+        return new BssSerializeException(
+                "BSS @font-face src requires a resolvable URL, local(...), "
+                        + "or identifier source.",
+                span,
+                null
+        );
     }
 
     /// Requires a declaration name accepted by JavaFX's ASCII identifier lexer.
@@ -639,22 +717,18 @@ public final class BssSerializer {
         }
     }
 
-    /// Returns one JavaFX font-face descriptor value without priority syntax.
+    /// Returns one emitted JavaFX font-face descriptor value.
     ///
     /// @param declaration the descriptor declaration
     /// @return the canonical CSS descriptor text
     /// @throws BssSerializeException if the value cannot be emitted safely
     private static String fontFaceValue(CssDeclaration declaration) {
-        var split = splitImportant(declaration.value().value());
-        if (split.important()) {
-            throw new BssSerializeException(
-                    "BSS @font-face declarations don't support !important.",
-                    declaration.value().span(),
-                    null
-            );
+        if (!declaration.parsedAsSassScript()
+                && declaration.value().value() instanceof SassString string) {
+            return string.text();
         }
         try {
-            return split.value().toCssString();
+            return declaration.value().value().toCssString();
         } catch (SassValueException failure) {
             throw new BssSerializeException(
                     Objects.requireNonNull(failure.getMessage(), "font-face value failure message"),
@@ -815,7 +889,7 @@ public final class BssSerializer {
                 "font-face sources"
         );
         for (var source : fontFace.sources()) {
-            output.writeInt(strings.add(source.type().name()));
+            output.writeInt(strings.add(source.type()));
             output.writeInt(strings.add(source.source()));
             output.writeInt(strings.add(source.format()));
         }
@@ -5187,7 +5261,7 @@ public final class BssSerializer {
     @NotNullByDefault
     private record BssFontFace(
             @Unmodifiable Map<String, String> descriptors,
-            @Unmodifiable List<JavaFXFontFaceParser.Source> sources,
+            @Unmodifiable List<BssFontFaceSource> sources,
             SourceSpan span
     ) {
         /// Creates one immutable font-face snapshot.
@@ -5195,6 +5269,24 @@ public final class BssSerializer {
             descriptors = Collections.unmodifiableMap(new HashMap<>(descriptors));
             sources = List.copyOf(sources);
             Objects.requireNonNull(span, "span");
+        }
+    }
+
+    /// Holds one JavaFX font source ready for BSS encoding.
+    ///
+    /// @param type   the JavaFX source-type name
+    /// @param source the resolved URL, local family, or reference name
+    /// @param format the optional URL format hint, or `null`
+    @NotNullByDefault
+    private record BssFontFaceSource(
+            String type,
+            String source,
+            @Nullable String format
+    ) {
+        /// Validates one immutable BSS font source.
+        private BssFontFaceSource {
+            Objects.requireNonNull(type, "type");
+            Objects.requireNonNull(source, "source");
         }
     }
 
