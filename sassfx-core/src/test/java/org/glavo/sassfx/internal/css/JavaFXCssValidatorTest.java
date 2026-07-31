@@ -13,6 +13,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /// Verifies JavaFX-version validation over evaluated CSS IR.
@@ -92,8 +93,8 @@ final class JavaFXCssValidatorTest {
     @ValueSource(strings = {
             "\"theme.css\"",
             "/* before */ \"theme.css\" /* after */",
-            "'theme\\' name.css'",
-            "URL(\"theme ) ( name.css\")",
+            "'theme name.css'",
+            "url(\"theme ) ( name.css\")",
             "url(data:image/svg+xml;utf8,<svg\\)>)"
     })
     void acceptsUnconditionalImports(String argument) {
@@ -117,8 +118,8 @@ final class JavaFXCssValidatorTest {
     @ParameterizedTest
     @ValueSource(strings = {
             "\"theme.css\" (prefers-color-scheme: dark)",
-            "'theme\\' name.css' (min-width: 100px)",
-            "URL(\"theme ) ( name.css\") (orientation: landscape)"
+            "'theme name.css' (min-width: 100px)",
+            "url(\"theme ) ( name.css\") (orientation: landscape)"
     })
     void validatesConditionalImportsByVersion(String argument) {
         var stylesheet = stylesheet(new CssImport(argument, span(argument)));
@@ -143,7 +144,9 @@ final class JavaFXCssValidatorTest {
     @ValueSource(strings = {
             "theme.css",
             "\"theme.css",
-            "url(theme.css"
+            "url(theme.css",
+            "URL(\"theme.css\")",
+            "'theme\\' name.css'"
     })
     void rejectsMalformedImportUrl(String argument) {
         assertThrows(
@@ -152,6 +155,27 @@ final class JavaFXCssValidatorTest {
                         stylesheet(new CssImport(argument, span(argument))),
                         JavaFXTarget.JAVAFX27
                 )
+        );
+    }
+
+    /// Decodes URL escapes and whitespace with the legacy JavaFX lexer rules.
+    @Test
+    void parsesLegacyJavaFXImportTokens() {
+        assertEquals(
+                "foobar.css",
+                parseImport("url(foo bar.css)").resource()
+        );
+        assertEquals(
+                "t68eme.css",
+                parseImport("url(t\\68 eme.css)").resource()
+        );
+        assertEquals(
+                "t68 eme.css",
+                parseImport("url(\"t\\68 eme.css\")").resource()
+        );
+        assertEquals(
+                "t\\68 eme.css",
+                parseImport("\"t\\68 eme.css\"").resource()
         );
     }
 
@@ -654,6 +678,68 @@ final class JavaFXCssValidatorTest {
         }
     }
 
+    /// Rejects declaration values containing tokens unavailable from the
+    /// legacy JavaFX CSS lexer.
+    ///
+    /// @param value the unsupported declaration value
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "π",
+            "--custom",
+            "\\66 oo",
+            "linear-gradientπ(red, blue)",
+            "linear-gradient(red, π)",
+            "URL(\"image.png\")",
+            "1rem",
+            "1e3",
+            "[1px 2px]"
+    })
+    void rejectsUntokenizableJavaFXDeclarationValues(String value) {
+        for (var compatibility : JavaFXTarget.values()) {
+            assertThrows(
+                    CssSerializeException.class,
+                    () -> JavaFXCssValidator.validate(
+                            stylesheet(
+                                    styleRuleWithDeclaration(
+                                            "Pane",
+                                            "-fx-custom",
+                                            value
+                                    )
+                            ),
+                            compatibility
+                    )
+            );
+        }
+    }
+
+    /// Preserves Unicode text where JavaFX treats it as opaque string or URL
+    /// payload data.
+    ///
+    /// @param value the supported declaration value
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "\"字体\"",
+            "'π'",
+            "url(字体/icon.svg)",
+            "url(\"字体/icon.svg\")"
+    })
+    void acceptsUnicodeJavaFXStringAndUrlPayloads(String value) {
+        for (var compatibility : JavaFXTarget.values()) {
+            assertDoesNotThrow(
+                    () -> JavaFXCssValidator.validate(
+                            stylesheet(
+                                    styleRuleWithDeclaration(
+                                            "Pane",
+                                            "-fx-custom",
+                                            value
+                                    )
+                            ),
+                            compatibility
+                    )
+            );
+        }
+    }
+
     /// Accepts the value-function name prefixes dispatched by OpenJFX.
     ///
     /// @param value the supported function value
@@ -868,6 +954,17 @@ final class JavaFXCssValidatorTest {
             stylesheet.addChild(node);
         }
         return stylesheet;
+    }
+
+    /// Parses one import argument for the latest JavaFX grammar.
+    ///
+    /// @param argument the complete import argument
+    /// @return the parsed import
+    private static JavaFXCssImport parseImport(String argument) {
+        return JavaFXCssImport.parse(
+                new CssImport(argument, span(argument)),
+                JavaFXTarget.JAVAFX27
+        );
     }
 
     /// Creates a style rule for one selector.

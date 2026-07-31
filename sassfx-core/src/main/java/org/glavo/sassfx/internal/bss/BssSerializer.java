@@ -19,6 +19,7 @@ import org.glavo.sassfx.internal.css.CssStyleRule;
 import org.glavo.sassfx.internal.css.CssStylesheet;
 import org.glavo.sassfx.internal.css.CssUnknownAtRule;
 import org.glavo.sassfx.internal.css.JavaFXCssImport;
+import org.glavo.sassfx.internal.css.JavaFXCssLexer;
 import org.glavo.sassfx.internal.css.JavaFXLegacyGradient;
 import org.glavo.sassfx.internal.css.JavaFXValueFunction;
 import org.glavo.sassfx.internal.css.JavaFXMediaQuery;
@@ -611,6 +612,7 @@ public final class BssSerializer {
             }
             var name = declaration.name().value();
             var value = fontFaceValue(declaration);
+            requireTokenizableValue(value, declaration.value().span());
             if (name.equalsIgnoreCase("src")) {
                 sources.addAll(JavaFXFontFaceParser.parseSources(
                         value,
@@ -628,7 +630,7 @@ public final class BssSerializer {
     /// @param declaration the declaration whose name is validated
     /// @throws BssSerializeException if JavaFX CSS cannot tokenize the name
     private static void requireDeclarationName(CssDeclaration declaration) {
-        if (!JavaFXSimpleSelector.isIdentifier(declaration.name().value())) {
+        if (!JavaFXCssLexer.isIdentifier(declaration.name().value())) {
             throw new BssSerializeException(
                     "JavaFX CSS does not support this declaration name.",
                     declaration.name().span(),
@@ -1083,6 +1085,7 @@ public final class BssSerializer {
         var property = declaration.property();
         output.writeShort(strings.add(property));
         var value = splitImportant(source.value().value());
+        requireTokenizableValue(value.value(), source.value().span());
         var normalizedValue = normalizeLayeredPaintColors(
                 property,
                 value.value(),
@@ -1179,6 +1182,48 @@ public final class BssSerializer {
                 ? contents.get(0)
                 : new SassList(contents, ListSeparator.SPACE, false);
         return new DeclarationValue(trimmed, true);
+    }
+
+    /// Requires an evaluated value to use token forms accepted by JavaFX CSS.
+    ///
+    /// @param value the evaluated declaration value
+    /// @param span  the source range associated with the value
+    /// @throws BssSerializeException if JavaFX's legacy lexer cannot tokenize
+    /// the serialized value
+    private static void requireTokenizableValue(
+            SassValue value,
+            SourceSpan span
+    ) {
+        final String text;
+        try {
+            text = value.toCssString();
+        } catch (SassValueException failure) {
+            throw new BssSerializeException(
+                    Objects.requireNonNull(
+                            failure.getMessage(),
+                            "declaration value failure message"
+                    ),
+                    span,
+                    failure
+            );
+        }
+        requireTokenizableValue(text, span);
+    }
+
+    /// Requires emitted value text to use token forms accepted by JavaFX CSS.
+    ///
+    /// @param text the emitted declaration value
+    /// @param span the source range associated with the value
+    /// @throws BssSerializeException if JavaFX's legacy lexer cannot tokenize
+    /// the value
+    private static void requireTokenizableValue(String text, SourceSpan span) {
+        if (!JavaFXCssLexer.isTokenizableValue(text)) {
+            throw new BssSerializeException(
+                    "JavaFX CSS cannot tokenize this declaration value.",
+                    span,
+                    null
+            );
+        }
     }
 
     /// Writes one supported declaration value.
@@ -1643,7 +1688,7 @@ public final class BssSerializer {
             return false;
         }
         var text = string.text().stripLeading();
-        return text.length() >= 4 && text.regionMatches(true, 0, "url(", 0, 4);
+        return text.startsWith("url(");
     }
 
     /// Returns whether a Sass color token is a JavaFX 18 blend-mode identifier.
@@ -2497,7 +2542,7 @@ public final class BssSerializer {
         while (index < length && isCssWhitespace(text.charAt(index))) {
             index++;
         }
-        if (!text.regionMatches(true, index, "url(", 0, 4)) {
+        if (!text.startsWith("url(", index)) {
             throw invalidUrlSource(span);
         }
         index += 4;
@@ -2637,7 +2682,10 @@ public final class BssSerializer {
     /// @param character the character to inspect
     /// @return whether JavaFX's CSS lexer treats the character as whitespace
     private static boolean isCssWhitespace(char character) {
-        return character == ' ' || character == '\t' || isCssNewline(character);
+        return character == ' '
+                || character == '\t'
+                || character == '\f'
+                || isCssNewline(character);
     }
 
     /// Returns whether a character is a CSS newline.
@@ -2645,7 +2693,7 @@ public final class BssSerializer {
     /// @param character the character to inspect
     /// @return whether JavaFX's CSS lexer treats the character as a newline
     private static boolean isCssNewline(char character) {
-        return character == '\n' || character == '\r' || character == '\f';
+        return character == '\n' || character == '\r';
     }
 
     /// Returns the source URL spelling JavaFX stores for URL resolution.

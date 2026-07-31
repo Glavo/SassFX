@@ -196,6 +196,40 @@ final class SassCompilerTest {
         assertNull(result.sourceMap());
     }
 
+    /// Omits CSS charset markers that OpenJFX cannot tokenize.
+    @Test
+    void omitsCharsetMarkersFromNonAsciiJavaFXCss() throws Exception {
+        var source = SassSource.fromString(
+                "Label { -fx-font-family: \"字体\"; }",
+                Syntax.SCSS
+        );
+        var compiler = new SassCompiler();
+
+        var expanded = compiler.compile(
+                source,
+                new JavaFXCssTarget(
+                        JavaFXTarget.JAVAFX27,
+                        OutputStyle.EXPANDED
+                )
+        ).output();
+        var compressed = compiler.compile(
+                source,
+                new JavaFXCssTarget(
+                        JavaFXTarget.JAVAFX27,
+                        OutputStyle.COMPRESSED
+                )
+        ).output();
+
+        assertEquals(
+                """
+                        Label {
+                          -fx-font-family: "字体";
+                        }""",
+                expanded
+        );
+        assertEquals("Label{-fx-font-family:\"字体\"}", compressed);
+    }
+
     /// Terminates the final compressed font-face descriptor for OpenJFX.
     @Test
     void terminatesCompressedJavaFXFontFaceDescriptors() throws Exception {

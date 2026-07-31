@@ -2,6 +2,7 @@
 package org.glavo.sassfx.internal.bss;
 
 import org.glavo.sassfx.SourceSpan;
+import org.glavo.sassfx.internal.css.JavaFXCssLexer;
 import org.glavo.sassfx.internal.css.JavaFXValueFunction;
 import org.glavo.sassfx.internal.value.SassNumber;
 import org.glavo.sassfx.internal.value.SassString;
@@ -34,12 +35,8 @@ final class JavaFXEffectParser {
         if (!(value instanceof SassString string) || string.hasQuotes()) {
             return false;
         }
-        var text = string.text().stripLeading();
-        var parenthesis = text.indexOf('(');
-        if (parenthesis <= 0) {
-            return false;
-        }
-        return EffectKind.forFunctionName(text.substring(0, parenthesis).trim()) != null;
+        @Nullable var name = JavaFXValueFunction.invocationName(string.text());
+        return name != null && EffectKind.forFunctionName(name) != null;
     }
 
     /// Parses one complete JavaFX shadow effect.
@@ -153,9 +150,10 @@ final class JavaFXEffectParser {
         if (opening <= 0) {
             throw invalidEffect(span);
         }
-        var name = trimmed.substring(0, opening).trim();
+        var name = trimmed.substring(0, opening);
         var closing = matchingParenthesis(trimmed, opening, span);
-        if (name.isEmpty() || closing != trimmed.length() - 1) {
+        if (!JavaFXCssLexer.isIdentifier(name)
+                || closing != trimmed.length() - 1) {
             throw invalidEffect(span);
         }
         return new FunctionInvocation(name, trimmed.substring(opening + 1, closing));

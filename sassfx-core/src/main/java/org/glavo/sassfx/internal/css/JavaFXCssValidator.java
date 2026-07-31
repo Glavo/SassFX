@@ -252,19 +252,6 @@ public final class JavaFXCssValidator {
         JavaFXCssImport.parse(cssImport, compatibility);
     }
 
-    /// Returns whether a character is CSS whitespace.
-    ///
-    /// @param value the character to inspect
-    /// @return whether the character is space, tab, line feed, carriage return,
-    /// or form feed
-    private static boolean isWhitespace(char value) {
-        return value == ' '
-                || value == '\t'
-                || value == '\n'
-                || value == '\r'
-                || value == '\f';
-    }
-
     /// Validates versioned JavaFX declaration compatibility.
     ///
     /// @param declaration the declaration to validate
@@ -274,10 +261,17 @@ public final class JavaFXCssValidator {
             JavaFXTarget compatibility
     ) {
         var sourceProperty = declaration.name().value();
-        if (!JavaFXSimpleSelector.isIdentifier(sourceProperty)) {
+        if (!JavaFXCssLexer.isIdentifier(sourceProperty)) {
             throw failure(
                     "JavaFX CSS does not support this declaration name.",
                     declaration.name().span()
+            );
+        }
+        var declarationValue = declarationValueText(declaration);
+        if (!JavaFXCssLexer.isTokenizableValue(declarationValue)) {
+            throw failure(
+                    "JavaFX CSS cannot tokenize this declaration value.",
+                    declaration.value().span()
             );
         }
         var property = sourceProperty.toLowerCase(Locale.ROOT);
@@ -290,7 +284,7 @@ public final class JavaFXCssValidator {
             );
         }
         if (TRANSITION_PROPERTIES.contains(property)) {
-            var value = declarationValueText(declaration).strip();
+            var value = declarationValue.strip();
             var importanceStart = trailingImportanceStart(value);
             if (importanceStart >= 0) {
                 value = value.substring(0, importanceStart).stripTrailing();
@@ -304,7 +298,7 @@ public final class JavaFXCssValidator {
         }
         if (!compatibility.supports(EXTENDED_BLEND_MODES)
                 && property.equals("-fx-blend-mode")) {
-            var value = normalizedBlendMode(declarationValueText(declaration));
+            var value = normalizedBlendMode(declarationValue);
             if (NEW_BLEND_MODES.contains(value)) {
                 throw failure(
                         "JavaFX " + compatibility.version()
@@ -317,7 +311,7 @@ public final class JavaFXCssValidator {
         }
         if (!(declaration.parent() instanceof CssFontFace)
                 && !TRANSITION_PROPERTIES.contains(property)) {
-            validateValueFunction(declaration, property);
+            validateValueFunction(declaration, property, declarationValue);
         }
     }
 
@@ -329,18 +323,20 @@ public final class JavaFXCssValidator {
     ///
     /// @param declaration the declaration whose emitted value is inspected
     /// @param property    the normalized declaration name
+    /// @param declarationValue the emitted declaration value
     private static void validateValueFunction(
             CssDeclaration declaration,
-            String property
+            String property,
+            String declarationValue
     ) {
-        var value = declarationValueText(declaration).strip();
+        var value = declarationValue.strip();
         var importanceStart = trailingImportanceStart(value);
         if (importanceStart >= 0) {
             value = value.substring(0, importanceStart).stripTrailing();
         }
         @Nullable var functionName = JavaFXValueFunction.invocationName(value);
         if (functionName == null
-                || functionName.equalsIgnoreCase("url")
+                || functionName.equals("url")
                 || property.equals("-fx-border-style")
                 && functionName.regionMatches(
                         true,
@@ -399,7 +395,8 @@ public final class JavaFXCssValidator {
             return -1;
         }
         var index = importantStart - 1;
-        while (index >= 0 && isWhitespace(value.charAt(index))) {
+        while (index >= 0
+                && JavaFXCssLexer.isWhitespace(value.charAt(index))) {
             index--;
         }
         return index >= 0 && value.charAt(index) == '!' ? index : -1;

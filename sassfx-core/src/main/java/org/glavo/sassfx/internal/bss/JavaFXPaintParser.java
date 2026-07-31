@@ -2,6 +2,7 @@
 package org.glavo.sassfx.internal.bss;
 
 import org.glavo.sassfx.SourceSpan;
+import org.glavo.sassfx.internal.css.JavaFXCssLexer;
 import org.glavo.sassfx.internal.css.JavaFXLegacyGradient;
 import org.glavo.sassfx.internal.css.JavaFXValueFunction;
 import org.glavo.sassfx.internal.value.SassColor;
@@ -137,14 +138,10 @@ final class JavaFXPaintParser {
         if (!(value instanceof SassString string) || string.hasQuotes()) {
             return false;
         }
-        var text = string.text().stripLeading();
-        var parenthesis = text.indexOf('(');
-        if (parenthesis <= 0) {
-            return false;
-        }
-        @Nullable var function = JavaFXValueFunction.fromName(
-                text.substring(0, parenthesis).trim()
-        );
+        @Nullable var name = JavaFXValueFunction.invocationName(string.text());
+        @Nullable var function = name == null
+                ? null
+                : JavaFXValueFunction.fromName(name);
         if (function == null) {
             return false;
         }
@@ -1033,8 +1030,8 @@ final class JavaFXPaintParser {
         if (opening <= 0) {
             throw invalidPaint(span);
         }
-        var name = trimmed.substring(0, opening).trim();
-        if (name.isEmpty()) {
+        var name = trimmed.substring(0, opening);
+        if (!JavaFXCssLexer.isIdentifier(name)) {
             throw invalidPaint(span);
         }
         var closing = matchingParenthesis(trimmed, opening, span);
@@ -1659,48 +1656,7 @@ final class JavaFXPaintParser {
     /// @param text the candidate token
     /// @return whether the token uses the supported CSS identifier subset
     static boolean isLookupIdentifier(String text) {
-        var length = text.length();
-        if (length == 0) {
-            return false;
-        }
-        var index = 0;
-        if (text.charAt(index) == '-') {
-            index++;
-            if (index == length) {
-                return false;
-            }
-            if (text.charAt(index) == '-') {
-                index++;
-                if (index == length) {
-                    return false;
-                }
-            }
-        }
-        if (!isCssIdentifierStart(text.charAt(index))) {
-            return false;
-        }
-        for (index++; index < length; index++) {
-            if (!isCssIdentifierPart(text.charAt(index))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /// Returns whether one character can begin the supported CSS identifier subset.
-    ///
-    /// @param character the candidate character
-    /// @return whether the character can begin an identifier
-    private static boolean isCssIdentifierStart(char character) {
-        return character == '_' || character == '\\' || Character.isLetter(character) || character >= 0x80;
-    }
-
-    /// Returns whether one character can continue the supported CSS identifier subset.
-    ///
-    /// @param character the candidate character
-    /// @return whether the character can continue an identifier
-    private static boolean isCssIdentifierPart(char character) {
-        return isCssIdentifierStart(character) || Character.isDigit(character) || character == '-';
+        return JavaFXCssLexer.isIdentifier(text);
     }
 
     /// Returns the lower-case simple-unit spelling for one parsed size.

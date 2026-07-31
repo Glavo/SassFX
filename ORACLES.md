@@ -106,6 +106,9 @@ The byte-exact matrix currently covers:
   normalization, including self, prior, forward, unresolved, and import-local
   lookup state, plus rejection of declaration names outside OpenJFX's ASCII
   identifier grammar;
+- legacy value tokenization, including ASCII identifiers and units, rejection
+  of modern CSS escapes and non-ASCII unquoted tokens, Unicode string and URL
+  payloads, and marker-free non-ASCII JavaFX CSS;
 - scalar sizes, durations, URLs, fonts, blend modes, shadow effects, and
   generic quoted strings, including empty strings and special keyword/color
   recognition in root and imported plain-CSS stylesheets;

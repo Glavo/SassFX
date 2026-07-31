@@ -13,7 +13,7 @@ import static org.glavo.sassfx.JavaFXFeature.CONDITIONAL_STYLESHEET_IMPORTS;
 
 /// Stores one parsed JavaFX stylesheet import.
 ///
-/// @param resource   the decoded nonempty resource
+/// @param resource   the nonempty resource text produced by JavaFX tokenization
 /// @param conditions the optional media-query condition list
 @ApiStatus.Internal
 @NotNullByDefault
@@ -31,7 +31,7 @@ public record JavaFXCssImport(String resource, JavaFXMediaQuery conditions) {
     ///
     /// @param cssImport    the retained import
     /// @param compatibility the selected JavaFX release
-    /// @return the decoded resource and parsed conditions
+    /// @return the tokenized resource text and parsed conditions
     /// @throws CssSerializeException if the import grammar or condition is invalid
     public static JavaFXCssImport parse(
             CssImport cssImport,
@@ -50,15 +50,21 @@ public record JavaFXCssImport(String resource, JavaFXMediaQuery conditions) {
         int end;
         String resource;
         if (first == '\'' || first == '"') {
-            var decoded = new StringBuilder();
-            end = appendQuoted(argument, start, first, decoded, span);
-            resource = decoded.toString();
+            var resourceText = new StringBuilder();
+            end = appendImportString(
+                    argument,
+                    start,
+                    first,
+                    resourceText,
+                    span
+            );
+            resource = resourceText.toString();
         } else if (start + 3 < argument.length()
-                && argument.regionMatches(true, start, "url", 0, 3)
+                && argument.startsWith("url", start)
                 && argument.charAt(start + 3) == '(') {
-            var decoded = new StringBuilder();
-            end = appendUrl(argument, start + 4, decoded, span);
-            resource = decoded.toString().strip();
+            var resourceText = new StringBuilder();
+            end = appendUrl(argument, start + 4, resourceText, span);
+            resource = resourceText.toString();
         } else {
             throw failure(
                     "JavaFX CSS requires @import to begin with a string or url() token.",
@@ -87,15 +93,18 @@ public record JavaFXCssImport(String resource, JavaFXMediaQuery conditions) {
         );
     }
 
-    /// Decodes a quoted string and returns the offset after its closing quote.
+    /// Copies a legacy JavaFX string token and returns its closing offset.
+    ///
+    /// The legacy lexer does not interpret escapes in ordinary strings. A
+    /// quote preceded by `\` therefore still closes the token.
     ///
     /// @param text   the complete import argument
     /// @param start  the opening quote offset
     /// @param quote  the opening quote character
-    /// @param result the decoded resource destination
+    /// @param result the resource-text destination
     /// @param span   the import source range
     /// @return the offset immediately following the closing quote
-    private static int appendQuoted(
+    private static int appendImportString(
             String text,
             int start,
             char quote,
@@ -107,14 +116,7 @@ public record JavaFXCssImport(String resource, JavaFXMediaQuery conditions) {
             if (current == quote) {
                 return index + 1;
             }
-            if (current == '\n' || current == '\r' || current == '\f') {
-                throw failure("JavaFX CSS requires a closed @import string.", span);
-            }
-            if (current == '\\') {
-                index = appendEscape(text, index, result);
-            } else {
-                result.append(current);
-            }
+            result.append(current);
         }
         throw failure("JavaFX CSS requires a closed @import string.", span);
     }
@@ -135,78 +137,94 @@ public record JavaFXCssImport(String resource, JavaFXMediaQuery conditions) {
         var index = skipWhitespace(text, start);
         if (index < text.length()
                 && (text.charAt(index) == '\'' || text.charAt(index) == '"')) {
-            var quote = text.charAt(index);
-            index = appendQuoted(text, index, quote, result, span);
-            index = skipWhitespace(text, index);
-            if (index >= text.length() || text.charAt(index) != ')') {
-                throw failure("JavaFX CSS requires a closed @import url() token.", span);
-            }
-            return index + 1;
+            return appendQuotedUrl(text, index, result, span);
         }
-        var depth = 1;
         while (index < text.length()) {
-            var current = text.charAt(index);
-            if (current == '\\') {
-                index = appendEscape(text, index, result);
-            } else if (current == '(') {
-                depth++;
-                result.append(current);
-            } else if (current == ')') {
-                if (--depth == 0) {
-                    return index + 1;
-                }
-                result.append(current);
-            } else {
-                result.append(current);
+            var current = text.charAt(index++);
+            if (JavaFXCssLexer.isWhitespace(current)) {
+                continue;
             }
-            index++;
+            if (current == ')') {
+                return index;
+            }
+            if (current == '\\') {
+                index = appendUrlEscape(text, index, result, span);
+                continue;
+            }
+            if (current == '\'' || current == '"' || current == '(') {
+                throw failure(
+                        "JavaFX CSS requires a valid @import url() token.",
+                        span
+                );
+            }
+            result.append(current);
         }
         throw failure("JavaFX CSS requires a closed @import url() token.", span);
     }
 
-    /// Appends one CSS escape and returns the final consumed offset.
+    /// Decodes a quoted JavaFX URL token.
     ///
     /// @param text   the complete import argument
-    /// @param slash  the escape marker offset
+    /// @param start  the opening quote offset
     /// @param result the decoded resource destination
-    /// @return the final offset consumed by the escape
-    private static int appendEscape(String text, int slash, StringBuilder result) {
-        if (slash + 1 >= text.length()) {
-            return slash;
-        }
-        var index = slash + 1;
-        var next = text.charAt(index);
-        if (isHex(next)) {
-            var value = 0;
-            var count = 0;
-            while (index < text.length() && count < 6 && isHex(text.charAt(index))) {
-                value = value * 16 + Character.digit(text.charAt(index), 16);
-                index++;
-                count++;
-            }
-            if (index < text.length() && isWhitespace(text.charAt(index))) {
-                if (text.charAt(index) == '\r'
-                        && index + 1 < text.length()
-                        && text.charAt(index + 1) == '\n') {
-                    index++;
+    /// @param span   the import source range
+    /// @return the offset immediately following the closing parenthesis
+    private static int appendQuotedUrl(
+            String text,
+            int start,
+            StringBuilder result,
+            SourceSpan span
+    ) {
+        var quote = text.charAt(start);
+        var index = start + 1;
+        while (index < text.length()) {
+            var current = text.charAt(index++);
+            if (current == quote) {
+                index = skipWhitespace(text, index);
+                if (index < text.length() && text.charAt(index) == ')') {
+                    return index + 1;
                 }
-            } else {
-                index--;
+                break;
             }
-            result.appendCodePoint(
-                    value == 0 || value > Character.MAX_CODE_POINT
-                            ? 0xfffd
-                            : value
-            );
-            return index;
+            if (current == '\r' || current == '\n') {
+                break;
+            }
+            if (current == '\\') {
+                index = appendUrlEscape(text, index, result, span);
+            } else {
+                result.append(current);
+            }
         }
-        if (next == '\r'
-                && index + 1 < text.length()
-                && text.charAt(index + 1) == '\n') {
-            return index + 1;
+        throw failure("JavaFX CSS requires a closed @import url() token.", span);
+    }
+
+    /// Appends one JavaFX URL escape and returns the next unread offset.
+    ///
+    /// JavaFX removes one escape marker without interpreting hexadecimal
+    /// escapes. Escaped CR and LF characters are consumed without output.
+    ///
+    /// @param text   the complete import argument
+    /// @param index  the offset immediately after the escape marker
+    /// @param result the decoded resource destination
+    /// @param span   the import source range
+    /// @return the next unread offset
+    private static int appendUrlEscape(
+            String text,
+            int index,
+            StringBuilder result,
+            SourceSpan span
+    ) {
+        if (index >= text.length()) {
+            throw failure("JavaFX CSS requires a valid @import url() escape.", span);
         }
-        if (next != '\n' && next != '\r' && next != '\f') {
-            result.append(next);
+        var escaped = text.charAt(index++);
+        if (escaped == '\r') {
+            return index < text.length() && text.charAt(index) == '\n'
+                    ? index + 1
+                    : index;
+        }
+        if (escaped != '\n') {
+            result.append(escaped);
         }
         return index;
     }
@@ -241,30 +259,11 @@ public record JavaFXCssImport(String resource, JavaFXMediaQuery conditions) {
     /// @return the first non-whitespace offset or the text length
     private static int skipWhitespace(String text, int start) {
         var index = start;
-        while (index < text.length() && isWhitespace(text.charAt(index))) {
+        while (index < text.length()
+                && JavaFXCssLexer.isWhitespace(text.charAt(index))) {
             index++;
         }
         return index;
-    }
-
-    /// Returns whether a character is CSS whitespace.
-    ///
-    /// @param value the character to inspect
-    /// @return whether the character is CSS whitespace
-    private static boolean isWhitespace(char value) {
-        return value == ' '
-                || value == '\t'
-                || value == '\n'
-                || value == '\r'
-                || value == '\f';
-    }
-
-    /// Returns whether a character is a hexadecimal digit.
-    ///
-    /// @param value the character to inspect
-    /// @return whether the character is a hexadecimal digit
-    private static boolean isHex(char value) {
-        return Character.digit(value, 16) >= 0;
     }
 
     /// Creates a source-associated import failure.

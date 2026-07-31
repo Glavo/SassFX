@@ -134,7 +134,6 @@ plugins {
 sassfx {
     target.set("css/javafx@21")
     style.set("compressed")
-    charset.set(true)
     loadPaths.from(layout.projectDirectory.dir("src/shared/scss"))
 }
 ```
@@ -143,6 +142,8 @@ The target accepts only `css`, `css/javafx@8` through `css/javafx@27`, or
 `bss/javafx@8` through `bss/javafx@27`. Text targets produce `.css`; BSS
 targets produce `.bss`. Source-relative directory structure is preserved.
 `sourceDirectory` and `outputDirectory` may be replaced through the extension.
+The `charset` property applies only to the standard `css` target; JavaFX CSS
+never emits a marker because OpenJFX cannot tokenize `@charset` or a UTF-8 BOM.
 
 When the Java plugin is present, `processResources` automatically includes the
 generated tree and depends on `compileScss`. Additional independent
@@ -186,7 +187,7 @@ Usage: sassfx [OPTIONS] INPUT [OUTPUT]
 | --- | --- |
 | `--target` | `css`, `css/javafx@8` through `css/javafx@27`, or `bss/javafx@8` through `bss/javafx@27`; defaults to `css` |
 | `-s`, `--style` | `expanded` or `compressed`; text targets only, defaults to `expanded` |
-| `--[no-]charset` | Emits `@charset` for expanded non-ASCII output or a UTF-8 BOM for compressed output; enabled by default |
+| `--[no-]charset` | For the standard `css` target, emits `@charset` for expanded non-ASCII output or a UTF-8 BOM for compressed output; enabled by default |
 | `--[no-]source-map` | Generates source maps for file output; enabled by default |
 | `--source-map-urls` | Uses `relative` or `absolute` source URLs; defaults to `relative` |
 | `--[no-]embed-sources` | Includes original source text in generated maps |
@@ -312,8 +313,8 @@ appends the corresponding source-map comment. `--no-source-map` disables new
 map output without deleting an existing sidecar. Embedded maps use percent-
 encoded UTF-8 JSON. Source contents may be embedded independently, and stdin
 is represented by a UTF-8 contents data URL. Source-map options that cannot
-produce a usable stdout result are rejected as usage errors. BSS does not
-support source maps or charset markers.
+produce a usable stdout result are rejected as usage errors. JavaFX CSS and
+BSS do not support charset markers; BSS also does not support source maps.
 
 On a Sass failure, textual file output is replaced with a browser-readable
 error stylesheet by default. Stdout remains empty unless `--error-css` is
@@ -386,7 +387,8 @@ cancels all in-flight work. Protocol violations emit a fatal protocol error
 and exit with status `76`; unexpected endpoint failures use status `70`.
 
 String and path inputs support load paths, Node package imports, output style,
-charset handling, source maps, loaded URLs, logs, and deprecation settings.
+standard-CSS charset handling, source maps, loaded URLs, logs, and deprecation
+settings.
 Contents importers, file importers, global functions, host function values,
 and compiler-owned function and mixin values use synchronous callbacks routed
 to the compilation that requested them.
@@ -441,8 +443,8 @@ String css = result.output();
 
 Canonical string selectors shared by the CLI and Gradle plugin can be parsed
 with `OutputTarget.parse("css/javafx@27")`. The parser accepts only the target
-forms documented for `--target` and returns targets with expanded output and
-charset emission enabled where applicable.
+forms documented for `--target` and returns targets with expanded output.
+Only the standard `css` target enables charset emission.
 
 Standard CSS uses `CssTarget`. `JavaFXCssTarget` validates structures and
 values against the selected JavaFX release without loading JavaFX classes.
@@ -891,6 +893,13 @@ followed by an ASCII letter or underscore, then ASCII letters, digits,
 underscores, or hyphens. Custom-property names, non-ASCII names, and other
 names that OpenJFX would silently discard are rejected. For every BSS version,
 accepted declaration names are canonicalized to lower case.
+The same legacy token grammar applies to unquoted values and function names.
+Modern CSS escapes, double-leading-hyphen identifiers, non-ASCII identifiers,
+unsupported number units, and characters unavailable from OpenJFX's lexer are
+rejected consistently by the text and BSS backends. Unicode remains supported
+inside quoted strings and exact lowercase `url(...)` payloads. JavaFX CSS
+never receives an `@charset` rule or UTF-8 BOM because either marker prevents
+OpenJFX from parsing the stylesheet.
 Unquoted property lookups are canonicalized only after that property has been
 encountered in the same source stylesheet; forward and unresolved identifiers
 retain their source spelling. Each imported stylesheet has independent

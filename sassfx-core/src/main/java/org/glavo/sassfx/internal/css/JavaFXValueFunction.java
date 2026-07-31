@@ -91,22 +91,17 @@ public enum JavaFXValueFunction {
     ///         with a function token
     public static @Nullable String invocationName(String text) {
         Objects.requireNonNull(text, "text");
-        var stripped = text.stripLeading();
-        var opening = stripped.indexOf('(');
-        if (opening <= 0) {
+        var start = 0;
+        while (start < text.length()
+                && JavaFXCssLexer.isWhitespace(text.charAt(start))) {
+            start++;
+        }
+        var end = JavaFXCssLexer.identifierEnd(text, start);
+        if (end == start
+                || end == text.length()
+                || text.charAt(end) != '(') {
             return null;
         }
-        for (var index = 0; index < opening; index++) {
-            var character = stripped.charAt(index);
-            var valid = character >= 'a' && character <= 'z'
-                    || character >= 'A' && character <= 'Z'
-                    || character == '_'
-                    || character == '-'
-                    || index > 0 && character >= '0' && character <= '9';
-            if (!valid) {
-                return null;
-            }
-        }
-        return stripped.substring(0, opening);
+        return text.substring(start, end);
     }
 }

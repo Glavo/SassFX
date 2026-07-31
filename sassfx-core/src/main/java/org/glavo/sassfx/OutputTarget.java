@@ -16,7 +16,8 @@ public sealed interface OutputTarget<T> permits CssTarget, JavaFXCssTarget, BssT
     /// `css` selects [CssTarget#DEFAULT]. `css/javafx@N` and
     /// `bss/javafx@N` select JavaFX release `N`, where `N` is an integer from
     /// `8` through `27` without leading zeroes. Text targets use expanded
-    /// output with charset emission enabled.
+    /// output. Standard CSS enables charset markers; JavaFX CSS omits them
+    /// because OpenJFX does not recognize either marker form.
     ///
     /// @param selector the case-sensitive target selector
     /// @return the parsed output target
@@ -53,8 +54,7 @@ public sealed interface OutputTarget<T> permits CssTarget, JavaFXCssTarget, BssT
         return format.equals("css")
                 ? new JavaFXCssTarget(
                         javaFXTarget,
-                        OutputStyle.EXPANDED,
-                        true
+                        OutputStyle.EXPANDED
                 )
                 : new BssTarget(javaFXTarget);
     }

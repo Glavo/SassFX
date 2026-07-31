@@ -67,6 +67,11 @@ with library, command-line, Embedded Sass, and Gradle interfaces.
 - Validates declaration names with OpenJFX's ASCII identifier grammar, then
   canonicalizes names and source-ordered property lookups with independent
   parser state for each imported stylesheet.
+- Applies OpenJFX's legacy ASCII token grammar to unquoted values, lookups,
+  function names, font references, and numeric units while preserving Unicode
+  string and URL payloads.
+- Omits `@charset` and UTF-8 BOM markers from JavaFX CSS because OpenJFX treats
+  both forms as invalid leading tokens.
 - Matches named-color and registered-property lookup precedence in plain CSS,
   layered paints, gradients, derived and ladder colors, and shadow effects.
 - Matches OpenJFX's case-insensitive value-function prefix dispatch and

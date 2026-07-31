@@ -206,7 +206,7 @@ public final class CssSerializer {
         Objects.requireNonNull(stylesheet, "stylesheet");
         Objects.requireNonNull(target, "target");
         JavaFXCssValidator.validate(stylesheet, target.javaFXTarget());
-        var result = serialize(
+        return serialize(
                 stylesheet,
                 target.style(),
                 sourceMap,
@@ -217,23 +217,6 @@ public final class CssSerializer {
                 stdinContents,
                 ""
         );
-        if (!target.charset() || !containsNonAscii(result.css())) {
-            return result;
-        }
-        var prefix = charsetPrefix(target.style());
-        return sourceMap
-                ? serialize(
-                        stylesheet,
-                        target.style(),
-                        true,
-                        true,
-                        sourceMapUrls,
-                        sourceMapIncludeSources,
-                        sourceContents,
-                        stdinContents,
-                        prefix
-                )
-                : new CssSerializeResult(prefix + result.css(), null);
     }
 
     /// Serializes a stylesheet with the selected layout and grammar profile.

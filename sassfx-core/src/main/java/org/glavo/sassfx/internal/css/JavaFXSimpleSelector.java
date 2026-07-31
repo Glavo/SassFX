@@ -76,7 +76,7 @@ public record JavaFXSimpleSelector(
                 var name = type.name().name().value();
                 if (!type.name().isUnqualified()
                         || typeSpecified
-                        || !isIdentifier(name)) {
+                        || !JavaFXCssLexer.isIdentifier(name)) {
                     return null;
                 }
                 typeName = name;
@@ -88,7 +88,7 @@ public record JavaFXSimpleSelector(
                 typeSpecified = true;
             } else if (simple instanceof ClassSelector styleClass) {
                 var name = styleClass.name().value();
-                if (!isIdentifier(name)) {
+                if (!JavaFXCssLexer.isIdentifier(name)) {
                     return null;
                 }
                 if (!styleClasses.contains(name)) {
@@ -98,7 +98,7 @@ public record JavaFXSimpleSelector(
                 var name = identifier.name().value();
                 if (idSpecified
                         || !name.equals(identifier.name().toCssString())
-                        || !isHashName(name)) {
+                        || !JavaFXCssLexer.isHashName(name)) {
                     return null;
                 }
                 id = name;
@@ -108,7 +108,7 @@ public record JavaFXSimpleSelector(
                     return null;
                 }
                 var name = pseudo.name().value();
-                if (!isIdentifier(name)) {
+                if (!JavaFXCssLexer.isIdentifier(name)) {
                     return null;
                 }
                 if (pseudo.argument() == null) {
@@ -165,7 +165,7 @@ public record JavaFXSimpleSelector(
         var index = 0;
         while (index < argument.length()) {
             var current = argument.charAt(index);
-            if (isWhitespace(current)) {
+            if (JavaFXCssLexer.isWhitespace(current)) {
                 index++;
                 continue;
             }
@@ -202,8 +202,8 @@ public record JavaFXSimpleSelector(
                 continue;
             }
 
-            var identifierEnd = identifierEnd(argument, index);
-            if (identifierEnd < 0) {
+            var identifierEnd = JavaFXCssLexer.identifierEnd(argument, index);
+            if (identifierEnd == index) {
                 return null;
             }
             result.append(argument, index, identifierEnd);
@@ -212,86 +212,4 @@ public record JavaFXSimpleSelector(
         return result.append(')').toString();
     }
 
-    /// Returns the end of one JavaFX identifier token.
-    ///
-    /// @param value the text containing the token
-    /// @param start the token start
-    /// @return the exclusive token end, or `-1` when no identifier starts
-    private static int identifierEnd(String value, int start) {
-        var first = value.charAt(start);
-        var index = start;
-        if (first == '-') {
-            if (start + 1 >= value.length()
-                    || !isIdentifierStart(value.charAt(start + 1))) {
-                return -1;
-            }
-            index += 2;
-        } else if (isIdentifierStart(first)) {
-            index++;
-        } else {
-            return -1;
-        }
-        while (index < value.length() && isNameCharacter(value.charAt(index))) {
-            index++;
-        }
-        return index;
-    }
-
-    /// Returns whether a complete string is a JavaFX identifier token.
-    ///
-    /// @param value the identifier candidate
-    /// @return whether JavaFX emits one identifier token for the complete value
-    public static boolean isIdentifier(String value) {
-        return !value.isEmpty() && identifierEnd(value, 0) == value.length();
-    }
-
-    /// Returns whether a complete string is a JavaFX hash-token name.
-    ///
-    /// @param value the hash name candidate without `#`
-    /// @return whether every character is accepted after JavaFX's hash prefix
-    private static boolean isHashName(String value) {
-        if (value.isEmpty()) {
-            return false;
-        }
-        for (var index = 0; index < value.length(); index++) {
-            if (!isNameCharacter(value.charAt(index))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /// Returns whether a character can begin a JavaFX identifier after an
-    /// optional hyphen.
-    ///
-    /// @param value the character to inspect
-    /// @return whether the character is `_` or an ASCII letter
-    private static boolean isIdentifierStart(char value) {
-        return value == '_'
-                || value >= 'A' && value <= 'Z'
-                || value >= 'a' && value <= 'z';
-    }
-
-    /// Returns whether a character may continue a JavaFX identifier or hash.
-    ///
-    /// @param value the character to inspect
-    /// @return whether the character is `_`, `-`, an ASCII letter, or a digit
-    private static boolean isNameCharacter(char value) {
-        return isIdentifierStart(value)
-                || value == '-'
-                || value >= '0' && value <= '9';
-    }
-
-    /// Returns whether a character is skipped as JavaFX CSS whitespace.
-    ///
-    /// @param value the character to inspect
-    /// @return whether the character is space, tab, line feed, carriage return,
-    /// or form feed
-    private static boolean isWhitespace(char value) {
-        return value == ' '
-                || value == '\t'
-                || value == '\n'
-                || value == '\r'
-                || value == '\f';
-    }
 }

@@ -37,7 +37,6 @@ final class OutputTargetTest {
             );
             assertEquals(version, javaFXCss.javaFXTarget().version());
             assertEquals(OutputStyle.EXPANDED, javaFXCss.style());
-            assertTrue(javaFXCss.charset());
 
             var bss = assertInstanceOf(
                     BssTarget.class,

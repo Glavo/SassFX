@@ -120,7 +120,7 @@ public abstract class SassFXCompile extends DefaultTask {
     @Input
     public abstract Property<String> getStyle();
 
-    /// Returns whether textual non-ASCII output receives a charset marker.
+    /// Returns whether standard CSS non-ASCII output receives a charset marker.
     ///
     /// @return the charset-emission property
     @Input
@@ -334,7 +334,7 @@ public abstract class SassFXCompile extends DefaultTask {
     ///
     /// @param targetValue the strict target selector
     /// @param styleValue the strict text style selector
-    /// @param charset whether text output emits a charset marker
+    /// @param charset whether standard CSS output emits a charset marker
     /// @return the concrete compiler target and output extension
     /// @throws GradleException if a property value is unsupported
     private static ParsedTarget parseTarget(
@@ -366,8 +366,7 @@ public abstract class SassFXCompile extends DefaultTask {
             return new ParsedTarget(
                     new JavaFXCssTarget(
                             javaFXCssTarget.javaFXTarget(),
-                            style,
-                            charset
+                            style
                     ),
                     ".css"
             );

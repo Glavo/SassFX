@@ -449,7 +449,7 @@ final class CliOutputPolicyTest {
         );
     }
 
-    /// Applies textual charset and source-map policies to JavaFX CSS.
+    /// Omits unsupported charset markers while retaining JavaFX source maps.
     @Test
     void appliesTextPoliciesToJavaFXCss(@TempDir Path directory)
             throws Exception {
@@ -470,11 +470,30 @@ final class CliOutputPolicyTest {
                         )
         );
         var css = Files.readString(output);
-        assertTrue(css.startsWith("@charset \"UTF-8\";\n"));
+        assertFalse(css.startsWith("@charset"));
+        assertFalse(css.startsWith("\uFEFF"));
+        assertTrue(css.contains("\"字体\""));
         assertTrue(css.contains(
                 "/*# sourceMappingURL=out.css.map */"
         ));
         assertTrue(Files.exists(Path.of(output + ".map")));
+
+        assertUsageFailure(
+                directory,
+                "charset options are not supported for JavaFX CSS targets",
+                "--target=css/javafx@27",
+                "--charset",
+                input.toString(),
+                directory.resolve("with-charset.css").toString()
+        );
+        assertUsageFailure(
+                directory,
+                "charset options are not supported for JavaFX CSS targets",
+                "--target=css/javafx@27",
+                "--no-charset",
+                input.toString(),
+                directory.resolve("without-charset.css").toString()
+        );
     }
 
     /// Emits error CSS for file output but not implicit stdout output.

@@ -103,7 +103,7 @@ final class SassFXPluginTest {
         );
         write(
                 project.resolve("src/main/scss/application.scss"),
-                "Pane { -fx-opacity: 0.5; }"
+                "Pane { -fx-font-family: \"字体\"; }"
         );
 
         var result = run(project, "compileScss", "compileBss");
@@ -117,7 +117,7 @@ final class SassFXPluginTest {
                 taskOutcome(result, ":compileBss")
         );
         assertEquals(
-                "Pane{-fx-opacity:0.5}",
+                "Pane{-fx-font-family:\"字体\"}",
                 Files.readString(project.resolve(
                         "build/generated/sassfx/main/application.css"
                 ))

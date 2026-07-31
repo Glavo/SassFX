@@ -140,7 +140,7 @@ public final class SassFXMain implements Callable<Integer> {
     @Option(
             names = "--charset",
             negatable = true,
-            description = "Emit a UTF-8 charset marker when needed."
+            description = "Emit a UTF-8 charset marker for standard CSS when needed."
     )
     private void setCharsetOption(boolean enabled) {
         charsetOption = enabled;
@@ -1576,6 +1576,12 @@ public final class SassFXMain implements Callable<Integer> {
         var writesToStdout = plan.jobs().size() == 1
                 && plan.jobs().get(0).destination() == null;
         boolean emitSourceMap;
+        if (outputTarget instanceof JavaFXCssTarget
+                && charsetOption != null) {
+            throw new IllegalArgumentException(
+                    "charset options are not supported for JavaFX CSS targets"
+            );
+        }
         if (outputTarget instanceof BssTarget) {
             if (sourceMapEnabled && sourceMapParsed
                     || sourceMapUrlsParsed
@@ -1585,9 +1591,9 @@ public final class SassFXMain implements Callable<Integer> {
                         "source maps are not supported for the bss target"
                 );
             }
-            if (charsetEnabled() && isOptionSpecified("--charset")) {
+            if (charsetOption != null) {
                 throw new IllegalArgumentException(
-                        "--charset is not supported for the bss target"
+                        "charset options are not supported for the bss target"
                 );
             }
             if (Boolean.TRUE.equals(errorCss)) {
@@ -1866,8 +1872,7 @@ public final class SassFXMain implements Callable<Integer> {
         if (parsedTarget instanceof JavaFXCssTarget javaFXCssTarget) {
             return new JavaFXCssTarget(
                     javaFXCssTarget.javaFXTarget(),
-                    outputStyle,
-                    charsetEnabled()
+                    outputStyle
             );
         }
         throw new IllegalStateException(

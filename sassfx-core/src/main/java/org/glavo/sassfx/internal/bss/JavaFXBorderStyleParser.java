@@ -2,6 +2,7 @@
 package org.glavo.sassfx.internal.bss;
 
 import org.glavo.sassfx.SourceSpan;
+import org.glavo.sassfx.internal.css.JavaFXCssLexer;
 import org.glavo.sassfx.internal.css.JavaFXValueFunction;
 import org.glavo.sassfx.internal.value.ListSeparator;
 import org.glavo.sassfx.internal.value.SassList;
@@ -263,7 +264,7 @@ final class JavaFXBorderStyleParser {
             return new RawBorderStyleSize(number);
         }
         var trimmed = text.trim();
-        if (isLookupIdentifier(trimmed)) {
+        if (JavaFXCssLexer.isIdentifier(trimmed)) {
             return new LookupBorderStyleSize(trimmed);
         }
         throw invalidBorderStyle(span);
@@ -278,7 +279,9 @@ final class JavaFXBorderStyleParser {
             return true;
         }
         @Nullable String text = unquotedText(value);
-        return text != null && (tryParseSize(text) != null || isLookupIdentifier(text.trim()));
+        return text != null
+                && (tryParseSize(text) != null
+                || JavaFXCssLexer.isIdentifier(text.trim()));
     }
 
     /// Returns one normalized JavaFX stroke-type enum spelling.
@@ -384,8 +387,8 @@ final class JavaFXBorderStyleParser {
         if (opening <= 0) {
             throw invalidBorderStyle(span);
         }
-        var name = trimmed.substring(0, opening).trim();
-        if (name.isEmpty()) {
+        var name = trimmed.substring(0, opening);
+        if (!JavaFXCssLexer.isIdentifier(name)) {
             throw invalidBorderStyle(span);
         }
         var closing = matchingParenthesis(trimmed, opening, span);
@@ -514,55 +517,6 @@ final class JavaFXBorderStyleParser {
         }
         @Nullable String unit = matcher.group(2);
         return SassNumber.of(number, unit);
-    }
-
-    /// Returns whether one text token is a CSS identifier usable for a JavaFX lookup.
-    ///
-    /// @param text the candidate token
-    /// @return whether the token uses the supported identifier subset
-    private static boolean isLookupIdentifier(String text) {
-        var length = text.length();
-        if (length == 0) {
-            return false;
-        }
-        var index = 0;
-        if (text.charAt(index) == '-') {
-            index++;
-            if (index == length) {
-                return false;
-            }
-            if (text.charAt(index) == '-') {
-                index++;
-                if (index == length) {
-                    return false;
-                }
-            }
-        }
-        if (!isCssIdentifierStart(text.charAt(index))) {
-            return false;
-        }
-        for (index++; index < length; index++) {
-            if (!isCssIdentifierPart(text.charAt(index))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /// Returns whether one character can begin the supported CSS identifier subset.
-    ///
-    /// @param character the candidate character
-    /// @return whether the character can begin an identifier
-    private static boolean isCssIdentifierStart(char character) {
-        return character == '_' || character == '\\' || Character.isLetter(character) || character >= 0x80;
-    }
-
-    /// Returns whether one character can continue the supported CSS identifier subset.
-    ///
-    /// @param character the candidate character
-    /// @return whether the character can continue an identifier
-    private static boolean isCssIdentifierPart(char character) {
-        return isCssIdentifierStart(character) || Character.isDigit(character) || character == '-';
     }
 
     /// Creates the standard border-style serialization failure.

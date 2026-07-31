@@ -428,6 +428,67 @@ final class BssTargetTest {
         }
     }
 
+    /// Rejects untokenizable values consistently for textual JavaFX CSS and
+    /// direct BSS output.
+    @Test
+    void rejectsUnsupportedJavaFXValueTokens() {
+        var compiler = new SassCompiler();
+        for (var source : List.of(
+                "Pane { -fx-custom: π; }",
+                "Pane { -fx-custom: --custom; }",
+                "Pane { -fx-custom: 1rem; }",
+                "Pane { -fx-custom: [1px 2px]; }",
+                "Pane { -fx-background-color: linear-gradientπ(red, blue); }",
+                "Pane { -fx-background-color: linear-gradient(red, π); }",
+                "Pane { -fx-border-style: segmentsπ(1px, 2px); }",
+                "@font-face { src: 字体; } Pane { -fx-opacity: 1; }"
+        )) {
+            var input = SassSource.fromString(source, Syntax.CSS);
+            for (var target : List.<OutputTarget<?>>of(
+                    JavaFXCssTarget.DEFAULT,
+                    BssTarget.DEFAULT
+            )) {
+                var failure = assertThrows(
+                        SassCompilationException.class,
+                        () -> compiler.compile(input, target)
+                );
+                assertTrue(
+                        failure.getMessage().contains("cannot tokenize"),
+                        failure.getMessage()
+                );
+            }
+        }
+    }
+
+    /// Preserves Unicode payloads inside JavaFX strings and URLs.
+    @Test
+    void compilesUnicodeJavaFXStringAndUrlPayloads() throws Exception {
+        var source = """
+                Pane {
+                  -fx-custom-string: "字体";
+                  -fx-graphic: url("字体.png");
+                }
+                """;
+        var compiler = new SassCompiler();
+
+        var css = compiler.compile(
+                SassSource.fromString(source, Syntax.CSS),
+                JavaFXCssTarget.DEFAULT
+        ).output();
+        assertTrue(css.contains("\"字体\""));
+        assertTrue(css.contains("url(\"字体.png\")"));
+
+        var document = decodeDocument(compiler.compile(
+                SassSource.fromString(source, Syntax.CSS),
+                BssTarget.DEFAULT
+        ).output());
+        var strings = java.util.Arrays.asList(document.strings());
+        assertTrue(strings.contains("字体"));
+        assertTrue(
+                strings.stream().anyMatch(value -> value.contains("字体.png"))
+        );
+    }
+
     /// Stores functional pseudo-classes with JavaFX's token concatenation.
     @Test
     void compilesFunctionalPseudoClasses() throws Exception {
@@ -936,8 +997,7 @@ final class BssTargetTest {
                 "-fx-other-size 1px",
                 "1px red",
                 "1px, 2px",
-                "1px / 2px",
-                "[1px 2px]"
+                "1px / 2px"
         }) {
             var failure = assertThrows(
                     SassCompilationException.class,

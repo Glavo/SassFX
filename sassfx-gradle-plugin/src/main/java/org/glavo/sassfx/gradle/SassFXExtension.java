@@ -49,7 +49,7 @@ public abstract class SassFXExtension {
     /// @return the output-style property
     public abstract Property<String> getStyle();
 
-    /// Returns whether textual non-ASCII output receives a charset marker.
+    /// Returns whether standard CSS non-ASCII output receives a charset marker.
     ///
     /// @return the charset-emission property
     public abstract Property<Boolean> getCharset();

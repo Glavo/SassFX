@@ -2,6 +2,7 @@
 package org.glavo.sassfx.internal.bss;
 
 import org.glavo.sassfx.SourceSpan;
+import org.glavo.sassfx.internal.css.JavaFXCssLexer;
 import org.glavo.sassfx.internal.value.ListSeparator;
 import org.glavo.sassfx.internal.value.SassList;
 import org.glavo.sassfx.internal.value.SassNumber;
@@ -189,7 +190,7 @@ final class JavaFXBorderImageParser {
         }
         if (value instanceof SassString string
                 && !string.hasQuotes()
-                && isLookupIdentifier(string.text())) {
+                && JavaFXCssLexer.isIdentifier(string.text())) {
             return new LookupSizeValue(string.text());
         }
         throw invalidBorderImage(span, message);
@@ -220,55 +221,6 @@ final class JavaFXBorderImageParser {
             case 4 -> List.copyOf(supplied);
             default -> throw new IllegalArgumentException("border-image size count must be between one and four");
         };
-    }
-
-    /// Returns whether one text token is a CSS identifier usable for a JavaFX lookup.
-    ///
-    /// @param text the candidate token
-    /// @return whether the token uses the supported identifier subset
-    private static boolean isLookupIdentifier(String text) {
-        var length = text.length();
-        if (length == 0) {
-            return false;
-        }
-        var index = 0;
-        if (text.charAt(index) == '-') {
-            index++;
-            if (index == length) {
-                return false;
-            }
-            if (text.charAt(index) == '-') {
-                index++;
-                if (index == length) {
-                    return false;
-                }
-            }
-        }
-        if (!isCssIdentifierStart(text.charAt(index))) {
-            return false;
-        }
-        for (index++; index < length; index++) {
-            if (!isCssIdentifierPart(text.charAt(index))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /// Returns whether one character can begin the supported CSS identifier subset.
-    ///
-    /// @param character the candidate character
-    /// @return whether the character can begin an identifier
-    private static boolean isCssIdentifierStart(char character) {
-        return character == '_' || character == '\\' || Character.isLetter(character) || character >= 0x80;
-    }
-
-    /// Returns whether one character can continue the supported CSS identifier subset.
-    ///
-    /// @param character the candidate character
-    /// @return whether the character can continue an identifier
-    private static boolean isCssIdentifierPart(char character) {
-        return isCssIdentifierStart(character) || Character.isDigit(character) || character == '-';
     }
 
     /// Creates a source-associated border-image serialization failure.

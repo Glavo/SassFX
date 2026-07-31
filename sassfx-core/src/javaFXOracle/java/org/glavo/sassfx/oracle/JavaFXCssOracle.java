@@ -70,7 +70,7 @@ public final class JavaFXCssOracle {
             );
         }
 
-        verifyDeclarationNameSemantics();
+        verifyLegacyLexerSemantics();
         verifyVersionedParserSemantics(target);
         for (var fixture : acceptedFixtures(target)) {
             verifyAccepted(fixture, target);
@@ -291,6 +291,16 @@ public final class JavaFXCssOracle {
                         }
                         """,
                 Syntax.SCSS
+        ));
+        fixtures.add(new Fixture(
+                "unicode-string-and-url-payloads",
+                """
+                        Label {
+                          -fx-custom-string: "字体";
+                          -fx-graphic: url("字体.png");
+                        }
+                        """,
+                Syntax.CSS
         ));
         fixtures.add(new Fixture(
                 "generic-size-sequence",
@@ -581,6 +591,41 @@ public final class JavaFXCssOracle {
                 Syntax.CSS
         ));
         fixtures.add(new Fixture(
+                "non-ascii-value",
+                "Pane { -fx-custom: π; }",
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
+                "custom-property-value",
+                "Pane { -fx-custom: --custom; }",
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
+                "unsupported-javafx-unit",
+                "Pane { -fx-custom: 1rem; }",
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
+                "non-ascii-function-name",
+                "Pane { -fx-background-color: linear-gradientπ(red, blue); }",
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
+                "non-ascii-nested-value",
+                "Pane { -fx-background-color: linear-gradient(red, π); }",
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
+                "non-ascii-segments-function",
+                "Pane { -fx-border-style: segmentsπ(1px, 2px); }",
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
+                "non-ascii-font-reference",
+                "@font-face { src: 字体; }",
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
                 "media-type",
                 "@media screen and (min-width: 600px) { Pane { -fx-opacity: 1; } }",
                 Syntax.SCSS
@@ -728,6 +773,7 @@ public final class JavaFXCssOracle {
                  "function-prefix-dispatch",
                  "duration-scalars",
                  "quoted-strings",
+                 "unicode-string-and-url-payloads",
                  "generic-size-sequence",
                  "font-size-keywords",
                  "region-geometry",
@@ -817,7 +863,7 @@ public final class JavaFXCssOracle {
             Files.writeString(
                     source,
                     """
-                            @import "theme.css" (prefers-color-scheme: dark);
+                            @import url(theme.css) (prefers-color-scheme: dark);
                             RootPane {
                               -FX-FILL: -FX-SHARED;
                               -FX-LOCAL: red;
@@ -1076,16 +1122,26 @@ public final class JavaFXCssOracle {
         }
     }
 
-    /// Verifies the ASCII-only declaration-name grammar shared by all releases.
-    private static void verifyDeclarationNameSemantics() {
+    /// Verifies the legacy ASCII lexical grammar shared by all releases.
+    private static void verifyLegacyLexerSemantics() {
         for (var source : List.of(
                 "Pane { --custom: red; }",
-                "Pane { 属性: red; }"
+                "Pane { 属性: red; }",
+                "Pane { -fx-custom: π; }",
+                "Pane { -fx-custom: --custom; }",
+                "Pane { -fx-custom: \\66 oo; }",
+                "Pane { -fx-custom: 1rem; }",
+                "Pane { -fx-custom: 1e3; }",
+                "Pane { -fx-custom: [1px 2px]; }",
+                "Pane { -fx-graphic: URL(\"image.png\"); }",
+                "Pane { -fx-background-color: linear-gradientπ(red, blue); }",
+                "Pane { -fx-background-color: linear-gradient(red, π); }",
+                "Pane { -fx-border-style: segmentsπ(1px, 2px); }"
         )) {
             CssParser.errorsProperty().clear();
             var stylesheet = new CssParser().parse(source);
-            var retainedDeclaration = !stylesheet.getRules().isEmpty()
-                    && !stylesheet.getRules().get(0).getDeclarations().isEmpty();
+            var retainedDeclaration = stylesheet.getRules().stream()
+                    .anyMatch(rule -> !rule.getDeclarations().isEmpty());
             if (retainedDeclaration) {
                 throw new AssertionError(
                         "JavaFX unexpectedly retained declaration source: "
@@ -1093,6 +1149,14 @@ public final class JavaFXCssOracle {
                                 + "; errors=" + CssParser.errorsProperty()
                 );
             }
+        }
+
+        CssParser.errorsProperty().clear();
+        new CssParser().parse("@font-face { src: 字体; }");
+        if (CssParser.errorsProperty().isEmpty()) {
+            throw new AssertionError(
+                    "JavaFX accepted a non-ASCII @font-face reference."
+            );
         }
     }
 

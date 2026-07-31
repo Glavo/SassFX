@@ -2,6 +2,7 @@
 package org.glavo.sassfx.internal.bss;
 
 import org.glavo.sassfx.SourceSpan;
+import org.glavo.sassfx.internal.css.JavaFXCssLexer;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
@@ -43,7 +44,7 @@ final class JavaFXFontFaceParser {
 
         while (true) {
             var sourceStart = index;
-            var identifierEnd = identifierEnd(text, index);
+            var identifierEnd = JavaFXCssLexer.identifierEnd(text, index);
             if (identifierEnd == index) {
                 throw invalidSource(span);
             }
@@ -59,7 +60,7 @@ final class JavaFXFontFaceParser {
                     );
                     index = skipWhitespace(text, index);
                     @Nullable String format = null;
-                    var formatEnd = identifierEnd(text, index);
+                    var formatEnd = JavaFXCssLexer.identifierEnd(text, index);
                     if (formatEnd > index
                             && text.regionMatches(true, index, "format", 0, formatEnd - index)
                             && formatEnd - index == "format".length()
@@ -107,42 +108,11 @@ final class JavaFXFontFaceParser {
     /// @param index the first candidate character
     /// @return the first non-whitespace index, or {@code text.length()}
     private static int skipWhitespace(String text, int index) {
-        while (index < text.length() && Character.isWhitespace(text.charAt(index))) {
+        while (index < text.length()
+                && JavaFXCssLexer.isWhitespace(text.charAt(index))) {
             index++;
         }
         return index;
-    }
-
-    /// Returns the index immediately after one supported CSS identifier.
-    ///
-    /// @param text the parsed descriptor text
-    /// @param index the identifier start index
-    /// @return the first index after the identifier, or {@code index} when absent
-    private static int identifierEnd(String text, int index) {
-        if (index == text.length() || !isIdentifierStart(text.charAt(index))) {
-            return index;
-        }
-        index++;
-        while (index < text.length() && isIdentifierPart(text.charAt(index))) {
-            index++;
-        }
-        return index;
-    }
-
-    /// Returns whether one character may begin a supported CSS identifier.
-    ///
-    /// @param character the character to inspect
-    /// @return whether the character may begin an identifier
-    private static boolean isIdentifierStart(char character) {
-        return character == '-' || character == '_' || Character.isLetter(character);
-    }
-
-    /// Returns whether one character may continue a supported CSS identifier.
-    ///
-    /// @param character the character to inspect
-    /// @return whether the character may continue an identifier
-    private static boolean isIdentifierPart(char character) {
-        return isIdentifierStart(character) || Character.isDigit(character);
     }
 
     /// Finds the closing parenthesis for a JavaFX source function.
@@ -189,7 +159,7 @@ final class JavaFXFontFaceParser {
                 && trimmed.charAt(trimmed.length() - 1) == trimmed.charAt(0)) {
             return quotedValue(trimmed, span);
         }
-        var end = identifierEnd(trimmed, 0);
+        var end = JavaFXCssLexer.identifierEnd(trimmed, 0);
         if (end != trimmed.length()) {
             throw invalidSource(span);
         }
@@ -212,7 +182,7 @@ final class JavaFXFontFaceParser {
                 && trimmed.charAt(trimmed.length() - 1) == trimmed.charAt(0)) {
             return quotedValue(trimmed, span);
         }
-        var end = identifierEnd(trimmed, 0);
+        var end = JavaFXCssLexer.identifierEnd(trimmed, 0);
         if (end != trimmed.length()) {
             throw invalidSource(span);
         }
