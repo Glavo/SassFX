@@ -993,6 +993,81 @@ final class BssTargetTest {
         assertFalse(strings.contains("-FX-PADDING"));
     }
 
+    /// Encodes numeric and property-lookup values across every JavaFX
+    /// four-sided property family.
+    @Test
+    void compilesFourSidedGeometryLookups() throws Exception {
+        var document = decodeDocument(new SassCompiler().compile(
+                SassSource.fromString(
+                        """
+                                Pane {
+                                  -fx-top: 1px;
+                                  -fx-right: 2%;
+                                  -fx-bottom: 3em;
+                                  -fx-left: 4deg;
+                                  -fx-padding: -fx-top -fx-right -fx-bottom -fx-left;
+                                  -fx-label-padding: -fx-left;
+                                  -fx-opaque-insets: -fx-top -fx-right;
+                                  -fx-background-insets: -fx-top, -fx-right -fx-bottom;
+                                  -fx-border-insets: -fx-left 5px, 6%;
+                                  -fx-border-width: -fx-top -fx-right -fx-bottom -fx-left, 7px;
+                                  -fx-border-image-insets: -fx-top, 8px 9%;
+                                  -fx-border-image-slice: -fx-right fill, 10% 20% fill;
+                                  -fx-border-image-width: auto -fx-left 11px 12%, -fx-top;
+                                }
+                                """,
+                        Syntax.SCSS
+                ),
+                BssTarget.DEFAULT
+        ).output());
+        var strings = java.util.Arrays.asList(document.strings());
+
+        for (var lookup : java.util.List.of(
+                "-fx-top",
+                "-fx-right",
+                "-fx-bottom",
+                "-fx-left",
+                "auto"
+        )) {
+            assertTrue(strings.contains(lookup), lookup);
+        }
+        assertTrue(strings.contains("javafx.css.converter.InsetsConverter"));
+        assertTrue(strings.contains(
+                "com.sun.javafx.scene.layout.region.Margins$Converter"
+        ));
+        assertTrue(strings.contains(
+                "com.sun.javafx.scene.layout.region.BorderImageSliceConverter"
+        ));
+        assertTrue(strings.contains(
+                "com.sun.javafx.scene.layout.region.BorderImageWidthConverter"
+        ));
+    }
+
+    /// Rejects four-sided values that OpenJFX would truncate or discard.
+    @Test
+    void rejectsUnsafeFourSidedGeometry() {
+        for (var declaration : java.util.List.of(
+                "-fx-padding: 1px 2px 3px 4px 5px",
+                "-fx-opaque-insets: 1px, 2px",
+                "-fx-background-insets: 1px 2px 3px 4px 5px",
+                "-fx-border-width: 1ms",
+                "-fx-border-image-slice: 1px fill 2px",
+                "-fx-border-image-width: 1px / 2px"
+        )) {
+            assertThrows(
+                    SassCompilationException.class,
+                    () -> new SassCompiler().compile(
+                            SassSource.fromString(
+                                    "Pane { " + declaration + "; }",
+                                    Syntax.SCSS
+                            ),
+                            BssTarget.DEFAULT
+                    ),
+                    declaration
+            );
+        }
+    }
+
     /// Keeps each imported stylesheet's source-ordered property lookup registry
     /// independent from its importer.
     @Test

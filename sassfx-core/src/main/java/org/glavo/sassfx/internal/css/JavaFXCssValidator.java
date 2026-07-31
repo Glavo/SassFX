@@ -319,6 +319,13 @@ public final class JavaFXCssValidator {
         if (globalKeyword) {
             return;
         }
+        if (JavaFXFourSidedValueParser.parse(
+                property,
+                propertyValue,
+                declaration.value().span()
+        ) != null) {
+            return;
+        }
         if (scalarValue instanceof JavaFXScalarParser.LegacyString legacy
                 && property.equals("-fx-blend-mode")) {
             var value = legacy.text().toLowerCase(Locale.ROOT);

@@ -933,6 +933,15 @@ non-empty sequence of non-time JavaFX sizes. Values such as `miter 10px` and
 comma-separated dash layers are rejected because OpenJFX parses them but
 silently discards part of the declaration.
 
+Padding, region and border-image insets, border widths, border-image widths,
+and border-image slices share one four-sided grammar in the JavaFX CSS and BSS
+backends. Each layer accepts one to four numeric sizes or unquoted property
+lookups and expands them to top, right, bottom, and left. Layered properties
+preserve comma-separated layers, while a border-image slice may add one
+trailing `fill` marker. Quoted lookups, time units, fifth values, extra layers
+on single-layer properties, and terms after `fill` are rejected instead of
+letting OpenJFX silently discard them.
+
 JavaFX value functions use OpenJFX's case-insensitive prefix dispatch for
 colors, effects, gradients, image patterns, ladders, Region references, and
 the border-style-specific `segments(...)` form. `url(...)` requires its exact

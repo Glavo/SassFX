@@ -5,6 +5,7 @@ import org.glavo.sassfx.BssTarget;
 import org.glavo.sassfx.JavaFXCssTarget;
 import org.glavo.sassfx.JavaFXTarget;
 import org.glavo.sassfx.OutputStyle;
+import org.glavo.sassfx.SassCompilationException;
 import org.glavo.sassfx.SassCompiler;
 import org.glavo.sassfx.SassSource;
 import org.glavo.sassfx.Syntax;
@@ -149,6 +150,21 @@ public final class JavaFX8OracleInputGenerator {
               -fx-border-radius: 16px 17px / 18px 19px, 20%;
               -fx-border-width: 1px 2px 3px 4px, 5%;
             }
+            FourSideLookups {
+              -fx-top: 1px;
+              -fx-right: 2%;
+              -fx-bottom: 3em;
+              -fx-left: 4deg;
+              -fx-padding: -fx-top -fx-right -fx-bottom -fx-left;
+              -fx-label-padding: -fx-left;
+              -fx-opaque-insets: -fx-top -fx-right;
+              -fx-background-insets: -fx-top, -fx-right -fx-bottom;
+              -fx-border-insets: -fx-left 5px, 6%;
+              -fx-border-width: -fx-top -fx-right -fx-bottom -fx-left, 7px;
+              -fx-border-image-insets: -fx-top, 8px 9%;
+              -fx-border-image-slice: -fx-right fill, 10% 20% FILL;
+              -fx-border-image-width: auto -fx-left 11px 12%, -fx-top;
+            }
             RegionImages {
               -fx-background-image: url("image.png"), url(second.png);
               -fx-background-position: left 10px top 20%, right 5px bottom 6px, center bottom;
@@ -283,6 +299,7 @@ public final class JavaFX8OracleInputGenerator {
                 plainCssPath.toUri()
         );
         var compiler = new SassCompiler();
+        verifyRejectedFourSidedValues(compiler);
 
         Files.writeString(
                 cssPath,
@@ -318,6 +335,41 @@ public final class JavaFX8OracleInputGenerator {
                         new BssTarget(JavaFXTarget.JAVAFX8)
                 ).output())
         );
+    }
+
+    /// Requires JavaFX 8 targets to reject four-sided values whose meaning
+    /// OpenJFX would change by silently discarding terms.
+    ///
+    /// @param compiler the compiler used for the generated oracle inputs
+    /// @throws Exception if compilation fails outside the expected model
+    private static void verifyRejectedFourSidedValues(
+            SassCompiler compiler
+    ) throws Exception {
+        for (var declaration : java.util.List.of(
+                "-fx-padding: 1px 2px 3px 4px 5px",
+                "-fx-opaque-insets: 1px, 2px",
+                "-fx-background-insets: 1px 2px 3px 4px 5px",
+                "-fx-border-image-slice: 1px fill 2px"
+        )) {
+            try {
+                compiler.compile(
+                        SassSource.fromString(
+                                "Pane { " + declaration + "; }",
+                                Syntax.CSS
+                        ),
+                        new JavaFXCssTarget(
+                                JavaFXTarget.JAVAFX8,
+                                OutputStyle.COMPRESSED
+                        )
+                );
+            } catch (SassCompilationException expected) {
+                continue;
+            }
+            throw new AssertionError(
+                    "SassFX accepted unsafe JavaFX 8 four-sided declaration: "
+                            + declaration
+            );
+        }
     }
 
     /// Copies all remaining output bytes without changing the supplied buffer.

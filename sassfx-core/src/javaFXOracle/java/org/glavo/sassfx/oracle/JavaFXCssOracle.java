@@ -83,6 +83,7 @@ public final class JavaFXCssOracle {
         verifyFontFaceSourceSemantics(target);
         verifyFontPropertySemantics(target);
         verifyScalarPropertySemantics(target);
+        verifyFourSidedPropertySemantics(target);
         verifyVersionedParserSemantics(target);
         for (var fixture : acceptedFixtures(target)) {
             verifyAccepted(fixture, target);
@@ -418,6 +419,32 @@ public final class JavaFXCssOracle {
                 Syntax.SCSS
         ));
         fixtures.add(new Fixture(
+                "four-sided-geometry-lookups",
+                """
+                        FourSideLookups {
+                          -fx-top: 1px;
+                          -fx-right: 2%;
+                          -fx-bottom: 3em;
+                          -fx-left: 4deg;
+                          -fx-padding:
+                              -fx-top -fx-right -fx-bottom -fx-left;
+                          -fx-label-padding: -fx-left;
+                          -fx-opaque-insets: -fx-top -fx-right;
+                          -fx-background-insets:
+                              -fx-top, -fx-right -fx-bottom;
+                          -fx-border-insets: -fx-left 5px, 6%;
+                          -fx-border-width:
+                              -fx-top -fx-right -fx-bottom -fx-left, 7px;
+                          -fx-border-image-insets: -fx-top, 8px 9%;
+                          -fx-border-image-slice:
+                              -fx-right fill, 10% 20% FILL;
+                          -fx-border-image-width:
+                              auto -fx-left 11px 12%, -fx-top;
+                        }
+                        """,
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
                 "region-images",
                 """
                         Pane {
@@ -664,6 +691,26 @@ public final class JavaFXCssOracle {
                 Syntax.CSS
         ));
         fixtures.add(new Fixture(
+                "four-sided-fifth-size",
+                "Pane { -fx-padding: 1px 2px 3px 4px 5px; }",
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
+                "four-sided-discarded-layer",
+                "Pane { -fx-opaque-insets: 1px, 2px; }",
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
+                "four-sided-time-unit",
+                "Pane { -fx-border-width: 1ms; }",
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
+                "border-image-slice-suffix",
+                "Pane { -fx-border-image-slice: 1px fill 2px; }",
+                Syntax.CSS
+        ));
+        fixtures.add(new Fixture(
                 "non-ascii-function-name",
                 "Pane { -fx-background-color: linear-gradientπ(red, blue); }",
                 Syntax.CSS
@@ -853,6 +900,7 @@ public final class JavaFXCssOracle {
                  "font-size-keywords",
                  "font-properties",
                  "region-geometry",
+                 "four-sided-geometry-lookups",
                  "region-images",
                  "region-paints-and-styles",
                  "region-references",
@@ -1512,6 +1560,112 @@ public final class JavaFXCssOracle {
                 "SassFX accepted unsafe JavaFX scalar declaration: "
                         + declaration
         );
+    }
+
+    /// Verifies OpenJFX's silent four-sided truncation and layer-discard
+    /// behavior while requiring SassFX to reject the ambiguous source forms.
+    ///
+    /// @param target the selected JavaFX release
+    /// @throws Exception if OpenJFX or SassFX behavior diverges
+    private static void verifyFourSidedPropertySemantics(
+            JavaFXTarget target
+    ) throws Exception {
+        for (var values : List.of(
+                java.util.Map.entry(
+                        "-fx-padding: 1px 2px 3px 4px 5px",
+                        "-fx-padding: 1px 2px 3px 4px"
+                ),
+                java.util.Map.entry(
+                        "-fx-opaque-insets: 1px, 2px",
+                        "-fx-opaque-insets: 2px"
+                ),
+                java.util.Map.entry(
+                        "-fx-background-insets: 1px 2px 3px 4px 5px",
+                        "-fx-background-insets: 1px 2px 3px 4px"
+                ),
+                java.util.Map.entry(
+                        "-fx-border-image-slice: 1px fill 2px",
+                        "-fx-border-image-slice: 1px fill"
+                )
+        )) {
+            requireEquivalentOpenJFXBss(
+                    target,
+                    values.getKey(),
+                    values.getValue()
+            );
+            try {
+                compile(
+                        new Fixture(
+                                "unsafe-four-sided-value",
+                                "Pane { " + values.getKey() + "; }",
+                                Syntax.CSS
+                        ),
+                        target
+                );
+            } catch (SassCompilationException expected) {
+                continue;
+            }
+            throw new AssertionError(
+                    "SassFX accepted unsafe JavaFX four-sided declaration: "
+                            + values.getKey()
+            );
+        }
+    }
+
+    /// Requires two declarations to produce identical OpenJFX BSS bytes.
+    ///
+    /// @param target    the selected JavaFX release
+    /// @param unsafe    the declaration containing silently discarded terms
+    /// @param canonical the declaration containing only retained terms
+    /// @throws Exception if parsing, conversion, or filesystem access fails
+    private static void requireEquivalentOpenJFXBss(
+            JavaFXTarget target,
+            String unsafe,
+            String canonical
+    ) throws Exception {
+        CssParser.errorsProperty().clear();
+        var stylesheet = new CssParser().parse(
+                "Pane { " + unsafe + "; }"
+        );
+        if (!CssParser.errorsProperty().isEmpty()
+                || stylesheet.getRules().isEmpty()
+                || stylesheet.getRules().get(0).getDeclarations().isEmpty()) {
+            throw new AssertionError(
+                    "JavaFX " + target.version()
+                            + " no longer silently accepts " + unsafe
+                            + "; errors=" + CssParser.errorsProperty()
+            );
+        }
+
+        var directory = createOracleDirectory(
+                "sassfx-javafx-four-sided-oracle-"
+        );
+        var source = directory.resolve("fixture.css");
+        var unsafeBss = directory.resolve("unsafe.bss");
+        var canonicalBss = directory.resolve("canonical.bss");
+        try {
+            Files.writeString(source, "Pane { " + unsafe + "; }");
+            Stylesheet.convertToBinary(source.toFile(), unsafeBss.toFile());
+            Files.writeString(source, "Pane { " + canonical + "; }");
+            Stylesheet.convertToBinary(
+                    source.toFile(),
+                    canonicalBss.toFile()
+            );
+            var unsafeBytes = Files.readAllBytes(unsafeBss);
+            var canonicalBytes = Files.readAllBytes(canonicalBss);
+            if (!Arrays.equals(unsafeBytes, canonicalBytes)) {
+                throw new AssertionError(
+                        "JavaFX " + target.version()
+                                + " did not discard four-sided suffixes as expected: "
+                                + unsafe
+                );
+            }
+        } finally {
+            Files.deleteIfExists(canonicalBss);
+            Files.deleteIfExists(unsafeBss);
+            Files.deleteIfExists(source);
+            Files.deleteIfExists(directory);
+        }
     }
 
     /// Verifies parser semantics at the JavaFX 18 and JavaFX 23 boundaries.

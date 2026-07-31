@@ -23,6 +23,7 @@ import org.glavo.sassfx.internal.css.JavaFXCssImport;
 import org.glavo.sassfx.internal.css.JavaFXCssLexer;
 import org.glavo.sassfx.internal.css.JavaFXFontFaceParser;
 import org.glavo.sassfx.internal.css.JavaFXFontParser;
+import org.glavo.sassfx.internal.css.JavaFXFourSidedValueParser;
 import org.glavo.sassfx.internal.css.JavaFXLegacyGradient;
 import org.glavo.sassfx.internal.css.JavaFXMediaQuery;
 import org.glavo.sassfx.internal.css.JavaFXMediaQueryValidator;
@@ -1357,11 +1358,12 @@ public final class BssSerializer {
                     null
             );
         }
+        var cssText = cssValueText(value, span);
         final @Nullable JavaFXScalarParser.Value scalarValue;
         try {
             scalarValue = JavaFXScalarParser.parse(
                     property,
-                    cssValueText(value, span),
+                    cssText,
                     span,
                     compatibility
             );
@@ -1396,6 +1398,26 @@ public final class BssSerializer {
             writeStrokeDashArray(output, sizes, span, strings);
             return;
         }
+        final @Nullable JavaFXFourSidedValueParser.Value fourSidedValue;
+        try {
+            fourSidedValue = JavaFXFourSidedValueParser.parse(
+                    property,
+                    cssText,
+                    span
+            );
+        } catch (CssSerializeException failure) {
+            throw asBssFailure(failure);
+        }
+        if (fourSidedValue != null) {
+            writeFourSidedValue(
+                    output,
+                    property,
+                    fourSidedValue,
+                    span,
+                    strings
+            );
+            return;
+        }
         if (isFontFamilyProperty(property)) {
             writeFontFamilyValue(output, value, span, strings);
             return;
@@ -1420,20 +1442,8 @@ public final class BssSerializer {
             writeBorderPaintLayers(output, value, span, strings);
             return;
         }
-        if (isBorderWidthProperty(property)) {
-            writeBorderWidthLayers(output, value, span, strings);
-            return;
-        }
         if (isBorderStyleProperty(property)) {
             writeBorderStyleLayers(output, value, span, strings);
-            return;
-        }
-        if (isBorderImageSliceProperty(property)) {
-            writeBorderImageSliceLayers(output, value, span, strings);
-            return;
-        }
-        if (isBorderImageWidthProperty(property)) {
-            writeBorderImageWidthLayers(output, value, span, strings);
             return;
         }
         if (isUrlLayersProperty(property)) {
@@ -1450,14 +1460,6 @@ public final class BssSerializer {
         }
         if (isBackgroundSizeProperty(property)) {
             writeBackgroundSizeLayers(output, value, span, strings);
-            return;
-        }
-        if (isBorderImageInsetsProperty(property)) {
-            writeBorderImageInsetLayers(output, value, span, strings);
-            return;
-        }
-        if (isLayeredInsetsProperty(property)) {
-            writeLayeredInsetsValue(output, value, span, strings);
             return;
         }
         if (isCornerRadiiProperty(property)) {
@@ -1536,9 +1538,7 @@ public final class BssSerializer {
             }
             return;
         }
-        if (isInsetsProperty(property)) {
-            writeInsetsValue(output, value, span, strings);
-        } else if (value instanceof SassNumber number) {
+        if (value instanceof SassNumber number) {
             writeNumberValue(output, property, number, span, strings);
         } else if (value instanceof SassColor color) {
             @Nullable String lookup =
@@ -1689,16 +1689,6 @@ public final class BssSerializer {
         return property.equals("-fx-effect");
     }
 
-    /// Returns whether a property uses JavaFX's four-sided insets payload.
-    ///
-    /// @param property the CSS property name
-    /// @return whether the property consumes an insets value
-    private static boolean isInsetsProperty(String property) {
-        return property.equals("-fx-padding")
-                || property.equals("-fx-label-padding")
-                || property.equals("-fx-opaque-insets");
-    }
-
     /// Returns whether a property accepts a comma-separated sequence of solid background paints.
     ///
     /// @param property the CSS property name
@@ -1715,14 +1705,6 @@ public final class BssSerializer {
         return property.equals("-fx-border-color");
     }
 
-    /// Returns whether a property accepts comma-separated four-sided border-width layers.
-    ///
-    /// @param property the CSS property name
-    /// @return whether the property consumes layered border widths
-    private static boolean isBorderWidthProperty(String property) {
-        return property.equals("-fx-border-width");
-    }
-
     /// Returns whether a property accepts comma-separated four-sided border-style layers.
     ///
     /// @param property the CSS property name
@@ -1731,36 +1713,12 @@ public final class BssSerializer {
         return property.equals("-fx-border-style");
     }
 
-    /// Returns whether a property accepts comma-separated border-image inset layers.
-    ///
-    /// @param property the CSS property name
-    /// @return whether the property consumes layered border-image insets
-    private static boolean isBorderImageInsetsProperty(String property) {
-        return property.equals("-fx-border-image-insets");
-    }
-
     /// Returns whether a property accepts comma-separated border-image repeat layers.
     ///
     /// @param property the CSS property name
     /// @return whether the property consumes border-image repeat layers
     private static boolean isBorderImageRepeatProperty(String property) {
         return property.equals("-fx-border-image-repeat");
-    }
-
-    /// Returns whether a property accepts comma-separated border-image slice layers.
-    ///
-    /// @param property the CSS property name
-    /// @return whether the property consumes border-image slice layers
-    private static boolean isBorderImageSliceProperty(String property) {
-        return property.equals("-fx-border-image-slice");
-    }
-
-    /// Returns whether a property accepts comma-separated border-image width layers.
-    ///
-    /// @param property the CSS property name
-    /// @return whether the property consumes border-image width layers
-    private static boolean isBorderImageWidthProperty(String property) {
-        return property.equals("-fx-border-image-width");
     }
 
     /// Returns whether a property accepts a comma-separated sequence of URL sources.
@@ -1806,14 +1764,6 @@ public final class BssSerializer {
     /// @return whether the property consumes background-size layers
     private static boolean isBackgroundSizeProperty(String property) {
         return property.equals("-fx-background-size");
-    }
-
-    /// Returns whether a property accepts a comma-separated sequence of inset layers.
-    ///
-    /// @param property the CSS property name
-    /// @return whether the property consumes layered insets
-    private static boolean isLayeredInsetsProperty(String property) {
-        return property.equals("-fx-background-insets") || property.equals("-fx-border-insets");
     }
 
     /// Returns whether a property accepts a comma-separated sequence of corner-radius layers.
@@ -3878,166 +3828,174 @@ public final class BssSerializer {
         throw new AssertionError("unsupported JavaFX border-style size type");
     }
 
-    /// Writes JavaFX's layered border-image inset values.
+    /// Writes one parsed JavaFX four-sided property value.
     ///
-    /// @param output  the declaration output stream
-    /// @param value   the evaluated Sass value
-    /// @param span    the source value span
-    /// @param strings the shared string table
+    /// @param output   the declaration output stream
+    /// @param property the normalized declaration name
+    /// @param value    the parsed ordinary or slice layers
+    /// @param span     the source value span
+    /// @param strings  the shared string table
     /// @throws IOException if an in-memory output stream rejects a write
-    private static void writeBorderImageInsetLayers(
+    private static void writeFourSidedValue(
             DataOutputStream output,
-            SassValue value,
+            String property,
+            JavaFXFourSidedValueParser.Value value,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
-        var layers = JavaFXBorderImageParser.parseInsetLayers(value, span);
-        writeParsedHeader(output, false, INSETS_SEQUENCE_CONVERTER, strings);
-        writeParsedValueArrayPrefix(output, layers.size());
-        for (var layer : layers) {
+        if (value instanceof JavaFXFourSidedValueParser.SliceLayers slices) {
+            writeBorderImageSliceLayers(output, slices, span, strings);
+            return;
+        }
+        if (!(value instanceof JavaFXFourSidedValueParser.SizeLayers sizes)) {
+            throw new AssertionError("unsupported JavaFX four-sided value type");
+        }
+
+        if (property.equals("-fx-padding")
+                || property.equals("-fx-label-padding")
+                || property.equals("-fx-opaque-insets")) {
+            writeFourSidedLayer(
+                    output,
+                    sizes.layers().get(0),
+                    INSETS_CONVERTER,
+                    span,
+                    strings
+            );
+            return;
+        }
+
+        final String sequenceConverter;
+        final String layerConverter;
+        switch (property) {
+            case "-fx-background-insets",
+                 "-fx-border-insets",
+                 "-fx-border-image-insets" -> {
+                sequenceConverter = INSETS_SEQUENCE_CONVERTER;
+                layerConverter = INSETS_CONVERTER;
+            }
+            case "-fx-border-width" -> {
+                sequenceConverter = MARGINS_SEQUENCE_CONVERTER;
+                layerConverter = MARGINS_CONVERTER;
+            }
+            case "-fx-border-image-width" -> {
+                sequenceConverter = BORDER_IMAGE_WIDTHS_SEQUENCE_CONVERTER;
+                layerConverter = BORDER_IMAGE_WIDTH_CONVERTER;
+            }
+            default -> throw new AssertionError(
+                    "unsupported JavaFX four-sided property: " + property
+            );
+        }
+
+        writeParsedHeader(output, false, sequenceConverter, strings);
+        writeParsedValueArrayPrefix(output, sizes.layers().size());
+        for (var layer : sizes.layers()) {
             output.writeByte(NESTED_VALUE);
-            writeBorderImageInsetsValue(output, layer, span, strings);
+            writeFourSidedLayer(
+                    output,
+                    layer,
+                    layerConverter,
+                    span,
+                    strings
+            );
         }
     }
 
-    /// Writes JavaFX's layered border-image slice values.
+    /// Writes JavaFX's layered border-image slice representation.
     ///
     /// @param output  the declaration output stream
-    /// @param value   the evaluated Sass value
+    /// @param slices  the parsed slice layers
     /// @param span    the source value span
     /// @param strings the shared string table
     /// @throws IOException if an in-memory output stream rejects a write
     private static void writeBorderImageSliceLayers(
             DataOutputStream output,
-            SassValue value,
+            JavaFXFourSidedValueParser.SliceLayers slices,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
-        var layers = JavaFXBorderImageParser.parseSliceLayers(value, span);
         writeParsedHeader(output, false, SLICE_SEQUENCE_CONVERTER, strings);
-        writeParsedValueArrayPrefix(output, layers.size());
-        for (var layer : layers) {
+        writeParsedValueArrayPrefix(output, slices.layers().size());
+        for (var slice : slices.layers()) {
             output.writeByte(NESTED_VALUE);
-            writeBorderImageSliceValue(output, layer, span, strings);
+            writeParsedHeader(
+                    output,
+                    false,
+                    BORDER_IMAGE_SLICE_CONVERTER,
+                    strings
+            );
+            writeParsedValueArrayPrefix(output, 2);
+            output.writeByte(NESTED_VALUE);
+            writeFourSidedLayer(
+                    output,
+                    slice.sizes(),
+                    INSETS_CONVERTER,
+                    span,
+                    strings
+            );
+            output.writeByte(NESTED_VALUE);
+            writeRawBooleanValue(output, slice.fill(), strings);
         }
     }
 
-    /// Writes one JavaFX border-image slice layer.
+    /// Writes one converted four-sided size layer.
     ///
-    /// @param output  the declaration output stream
-    /// @param slice   the normalized slice layer
-    /// @param span    the source value span
-    /// @param strings the shared string table
+    /// @param output    the declaration output stream
+    /// @param layer     the expanded side values
+    /// @param converter the JavaFX converter class name
+    /// @param span      the source value span
+    /// @param strings   the shared string table
     /// @throws IOException if an in-memory output stream rejects a write
-    private static void writeBorderImageSliceValue(
+    private static void writeFourSidedLayer(
             DataOutputStream output,
-            JavaFXBorderImageParser.BorderImageSlice slice,
+            JavaFXFourSidedValueParser.FourSides layer,
+            String converter,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
-        writeParsedHeader(output, false, BORDER_IMAGE_SLICE_CONVERTER, strings);
-        writeParsedValueArrayPrefix(output, 2);
-        output.writeByte(NESTED_VALUE);
-        writeBorderImageInsetsValue(output, slice.sizes(), span, strings);
-        output.writeByte(NESTED_VALUE);
-        writeBorderImageRawBooleanValue(output, slice.fill(), strings);
-    }
-
-    /// Writes JavaFX's layered border-image width values.
-    ///
-    /// @param output  the declaration output stream
-    /// @param value   the evaluated Sass value
-    /// @param span    the source value span
-    /// @param strings the shared string table
-    /// @throws IOException if an in-memory output stream rejects a write
-    private static void writeBorderImageWidthLayers(
-            DataOutputStream output,
-            SassValue value,
-            SourceSpan span,
-            StringStore strings
-    ) throws IOException {
-        var layers = JavaFXBorderImageParser.parseWidthLayers(value, span);
-        writeParsedHeader(output, false, BORDER_IMAGE_WIDTHS_SEQUENCE_CONVERTER, strings);
-        writeParsedValueArrayPrefix(output, layers.size());
-        for (var layer : layers) {
+        writeParsedHeader(output, false, converter, strings);
+        writeParsedValueArrayPrefix(output, layer.values().size());
+        for (var size : layer.values()) {
             output.writeByte(NESTED_VALUE);
-            writeBorderImageWidthValue(output, layer, span, strings);
+            writeFourSidedSize(output, size, span, strings);
         }
     }
 
-    /// Writes one JavaFX border-image width layer.
+    /// Writes one numeric or lookup-backed side value.
     ///
     /// @param output  the declaration output stream
-    /// @param widths  the normalized four-sided width layer
+    /// @param size    the parsed size or lookup
     /// @param span    the source value span
     /// @param strings the shared string table
     /// @throws IOException if an in-memory output stream rejects a write
-    private static void writeBorderImageWidthValue(
+    private static void writeFourSidedSize(
             DataOutputStream output,
-            JavaFXBorderImageParser.FourSidedSizes widths,
+            JavaFXFourSidedValueParser.SizeValue size,
             SourceSpan span,
             StringStore strings
     ) throws IOException {
-        writeParsedHeader(output, false, BORDER_IMAGE_WIDTH_CONVERTER, strings);
-        writeParsedValueArrayPrefix(output, widths.values().size());
-        for (var width : widths.values()) {
-            output.writeByte(NESTED_VALUE);
-            writeBorderImageSizeValue(output, width, span, strings);
-        }
-    }
-
-    /// Writes one JavaFX four-sided inset parsed value.
-    ///
-    /// @param output  the declaration output stream
-    /// @param insets  the normalized four-sided size layer
-    /// @param span    the source value span
-    /// @param strings the shared string table
-    /// @throws IOException if an in-memory output stream rejects a write
-    private static void writeBorderImageInsetsValue(
-            DataOutputStream output,
-            JavaFXBorderImageParser.FourSidedSizes insets,
-            SourceSpan span,
-            StringStore strings
-    ) throws IOException {
-        writeParsedHeader(output, false, INSETS_CONVERTER, strings);
-        writeParsedValueArrayPrefix(output, insets.values().size());
-        for (var inset : insets.values()) {
-            output.writeByte(NESTED_VALUE);
-            writeBorderImageSizeValue(output, inset, span, strings);
-        }
-    }
-
-    /// Writes one raw or lookup JavaFX border-image size parsed value.
-    ///
-    /// @param output  the declaration output stream
-    /// @param size    the normalized size
-    /// @param span    the source value span
-    /// @param strings the shared string table
-    /// @throws IOException if an in-memory output stream rejects a write
-    private static void writeBorderImageSizeValue(
-            DataOutputStream output,
-            JavaFXBorderImageParser.SizeValue size,
-            SourceSpan span,
-            StringStore strings
-    ) throws IOException {
-        if (size instanceof JavaFXBorderImageParser.RawSizeValue raw) {
-            writeSizeValue(output, raw.value(), span, strings);
+        if (size instanceof JavaFXFourSidedValueParser.RawSize raw) {
+            writeSizeValue(
+                    output,
+                    SassNumber.of(raw.value(), raw.unit()),
+                    span,
+                    strings
+            );
             return;
         }
-        if (size instanceof JavaFXBorderImageParser.LookupSizeValue lookup) {
+        if (size instanceof JavaFXFourSidedValueParser.LookupSize lookup) {
             writeLookupValue(output, lookup.key(), strings);
             return;
         }
-        throw new AssertionError("unsupported JavaFX border-image size type");
+        throw new AssertionError("unsupported JavaFX side value type");
     }
 
-    /// Writes one raw JavaFX boolean parsed value without a boolean converter.
+    /// Writes one raw JavaFX boolean without a converter.
     ///
     /// @param output  the declaration output stream
     /// @param value   the boolean value
     /// @param strings the shared string table
     /// @throws IOException if an in-memory output stream rejects a write
-    private static void writeBorderImageRawBooleanValue(
+    private static void writeRawBooleanValue(
             DataOutputStream output,
             boolean value,
             StringStore strings
@@ -4045,84 +4003,6 @@ public final class BssSerializer {
         writeParsedHeader(output, false, null, strings);
         output.writeByte(BOOLEAN_VALUE);
         output.writeBoolean(value);
-    }
-
-    /// Writes JavaFX's sequence of four-sided border-width layers.
-    ///
-    /// @param output  the declaration output stream
-    /// @param value   the evaluated Sass value
-    /// @param span    the source value span
-    /// @param strings the shared string table
-    /// @throws IOException if an in-memory output stream rejects a write
-    private static void writeBorderWidthLayers(
-            DataOutputStream output,
-            SassValue value,
-            SourceSpan span,
-            StringStore strings
-    ) throws IOException {
-        var layers = layeredValues(
-                value,
-                span,
-                "BSS border widths require one or more comma-separated size layers."
-        );
-        writeParsedHeader(output, false, MARGINS_SEQUENCE_CONVERTER, strings);
-        writeParsedValueArrayPrefix(output, layers.size());
-        for (var layer : layers) {
-            output.writeByte(NESTED_VALUE);
-            writeMarginsValue(output, layer, span, strings);
-        }
-    }
-
-    /// Writes JavaFX's four-sided border-width representation.
-    ///
-    /// @param output  the declaration output stream
-    /// @param value   the evaluated Sass value
-    /// @param span    the source value span
-    /// @param strings the shared string table
-    /// @throws IOException if an in-memory output stream rejects a write
-    private static void writeMarginsValue(
-            DataOutputStream output,
-            SassValue value,
-            SourceSpan span,
-            StringStore strings
-    ) throws IOException {
-        var values = fourSidedSizeValues(
-                value,
-                span,
-                "BSS border widths require one to four space-separated sizes."
-        );
-        writeParsedHeader(output, false, MARGINS_CONVERTER, strings);
-        writeParsedValueArrayPrefix(output, values.size());
-        for (var number : values) {
-            output.writeByte(NESTED_VALUE);
-            writeSizeValue(output, number, span, strings);
-        }
-    }
-
-    /// Writes JavaFX's sequence of four-sided inset values.
-    ///
-    /// @param output  the declaration output stream
-    /// @param value   the evaluated Sass value
-    /// @param span    the source value span
-    /// @param strings the shared string table
-    /// @throws IOException if an in-memory output stream rejects a write
-    private static void writeLayeredInsetsValue(
-            DataOutputStream output,
-            SassValue value,
-            SourceSpan span,
-            StringStore strings
-    ) throws IOException {
-        var layers = layeredValues(
-                value,
-                span,
-                "BSS layered insets require one or more comma-separated inset values."
-        );
-        writeParsedHeader(output, false, INSETS_SEQUENCE_CONVERTER, strings);
-        writeParsedValueArrayPrefix(output, layers.size());
-        for (var layer : layers) {
-            output.writeByte(NESTED_VALUE);
-            writeInsetsValue(output, layer, span, strings);
-        }
     }
 
     /// Writes JavaFX's sequence of two-axis corner-radius values.
@@ -4611,81 +4491,6 @@ public final class BssSerializer {
         output.writeByte(STRING_VALUE);
         output.writeShort(strings.add(Boolean.toString(value.value())));
     }
-    /// Writes JavaFX's four-sided insets representation.
-    ///
-    /// @param output  the declaration output stream
-    /// @param value   the evaluated Sass value
-    /// @param span    the source value span
-    /// @param strings the shared string table
-    /// @throws IOException if an in-memory output stream rejects a write
-    private static void writeInsetsValue(
-            DataOutputStream output,
-            SassValue value,
-            SourceSpan span,
-            StringStore strings
-    ) throws IOException {
-        var values = insetsValues(value, span);
-        writeParsedHeader(output, false, INSETS_CONVERTER, strings);
-        output.writeByte(VALUE_ARRAY);
-        output.writeByte(NESTED_VALUE);
-        output.writeInt(values.size());
-        for (var number : values) {
-            output.writeByte(NESTED_VALUE);
-            writeSizeValue(output, number, span, strings);
-        }
-    }
-
-    /// Returns four size values using JavaFX's CSS shorthand expansion rules.
-    ///
-    /// @param value the evaluated Sass value
-    /// @param span  the source value span
-    /// @return the expanded top, right, bottom, and left values
-    private static @Unmodifiable List<SassNumber> insetsValues(SassValue value, SourceSpan span) {
-        return fourSidedSizeValues(
-                value,
-                span,
-                "BSS insets require one to four space-separated sizes."
-        );
-    }
-
-    /// Expands one to four unbracketed Sass sizes using CSS four-sided shorthand rules.
-    ///
-    /// @param value   the evaluated Sass value
-    /// @param span    the source value span
-    /// @param message the error text for an unsupported value shape
-    /// @return the expanded top, right, bottom, and left values
-    /// @throws BssSerializeException if the value is not one to four Sass sizes
-    private static @Unmodifiable List<SassNumber> fourSidedSizeValues(
-            SassValue value,
-            SourceSpan span,
-            String message
-    ) {
-        if (value instanceof SassNumber number) {
-            return List.of(number, number, number, number);
-        }
-        if (!(value instanceof SassList list)
-                || list.hasBrackets()
-                || list.separator() != ListSeparator.SPACE
-                || list.contents().isEmpty()
-                || list.contents().size() > 4) {
-            throw new BssSerializeException(message, span, null);
-        }
-        var supplied = new ArrayList<SassNumber>(list.contents().size());
-        for (var item : list.contents()) {
-            if (!(item instanceof SassNumber number)) {
-                throw new BssSerializeException(message, span, null);
-            }
-            supplied.add(number);
-        }
-        return switch (supplied.size()) {
-            case 1 -> List.of(supplied.get(0), supplied.get(0), supplied.get(0), supplied.get(0));
-            case 2 -> List.of(supplied.get(0), supplied.get(1), supplied.get(0), supplied.get(1));
-            case 3 -> List.of(supplied.get(0), supplied.get(1), supplied.get(2), supplied.get(1));
-            case 4 -> List.copyOf(supplied);
-            default -> throw new AssertionError("validated four-sided size count is invalid");
-        };
-    }
-
     /// Writes a raw JavaFX Size parsed value.
     ///
     /// @param output  the declaration output stream

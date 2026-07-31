@@ -1072,6 +1072,99 @@ final class JavaFXCssValidatorTest {
         }
     }
 
+    /// Accepts every JavaFX four-sided property with numeric and lookup-backed
+    /// layers.
+    @Test
+    void acceptsJavaFXFourSidedProperties() {
+        var declarations = java.util.List.of(
+                java.util.Map.entry(
+                        "-fx-padding",
+                        "/**/ -fx-top 2PX 3% 4em /**/ !important"
+                ),
+                java.util.Map.entry("-fx-label-padding", "1px 2px"),
+                java.util.Map.entry("-fx-opaque-insets", "-fx-inset"),
+                java.util.Map.entry(
+                        "-fx-background-insets",
+                        "1px 2px, -fx-background-inset"
+                ),
+                java.util.Map.entry(
+                        "-fx-border-insets",
+                        "-fx-top -fx-right -fx-bottom -fx-left, 2%"
+                ),
+                java.util.Map.entry(
+                        "-fx-border-width",
+                        "1px 2px 3px 4px, -fx-border-width-value"
+                ),
+                java.util.Map.entry(
+                        "-fx-border-image-insets",
+                        "-fx-image-inset, 1px 2px"
+                ),
+                java.util.Map.entry(
+                        "-fx-border-image-slice",
+                        "10% fill, -fx-image-slice FILL"
+                ),
+                java.util.Map.entry(
+                        "-fx-border-image-width",
+                        "auto -fx-image-width 3 4%, 5px"
+                )
+        );
+
+        for (var compatibility : JavaFXTarget.values()) {
+            for (var declaration : declarations) {
+                assertDoesNotThrow(
+                        () -> JavaFXCssValidator.validate(
+                                stylesheet(styleRuleWithDeclaration(
+                                        "Pane",
+                                        declaration.getKey(),
+                                        declaration.getValue()
+                                )),
+                                compatibility
+                        ),
+                        declaration.getKey() + ": " + declaration.getValue()
+                );
+            }
+        }
+    }
+
+    /// Rejects malformed or silently truncated JavaFX four-sided values.
+    @Test
+    void rejectsUnsafeJavaFXFourSidedProperties() {
+        var declarations = java.util.List.of(
+                java.util.Map.entry("-fx-padding", "1px 2px 3px 4px 5px"),
+                java.util.Map.entry("-fx-padding", "1px, 2px"),
+                java.util.Map.entry("-fx-opaque-insets", "1px, 2px"),
+                java.util.Map.entry("-fx-background-insets", "1px,,2px"),
+                java.util.Map.entry("-fx-border-insets", "1px,"),
+                java.util.Map.entry("-fx-border-width", "1ms"),
+                java.util.Map.entry(
+                        "-fx-border-image-insets",
+                        "\"-fx-image-inset\""
+                ),
+                java.util.Map.entry("-fx-border-image-width", "1px / 2px"),
+                java.util.Map.entry(
+                        "-fx-border-image-slice",
+                        "1px fill 2px"
+                )
+        );
+
+        for (var compatibility : JavaFXTarget.values()) {
+            for (var declaration : declarations) {
+                assertThrows(
+                        CssSerializeException.class,
+                        () -> JavaFXCssValidator.validate(
+                                stylesheet(styleRuleWithDeclaration(
+                                        "Pane",
+                                        declaration.getKey(),
+                                        declaration.getValue()
+                                )),
+                                compatibility
+                        ),
+                        declaration.getKey() + ": " + declaration.getValue()
+                );
+            }
+        }
+    }
+
     /// Accepts the value-function name prefixes dispatched by OpenJFX.
     ///
     /// @param value the supported function value
