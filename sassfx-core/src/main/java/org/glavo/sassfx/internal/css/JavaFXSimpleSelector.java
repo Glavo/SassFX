@@ -20,11 +20,12 @@ import java.util.Objects;
 ///
 /// JavaFX tokenizes selector identifiers with an ASCII-only grammar and stores
 /// functional pseudo-class arguments as a concatenated sequence of identifier
-/// and string tokens. Repeated style classes and pseudo-classes are collapsed;
-/// the last `dir(...)` argument becomes a normalized direction entry after all
-/// ordinary pseudo-classes. [#from(ComplexSelectorComponent)] returns `null`
-/// when emitting the source selector would fail or acquire different JavaFX
-/// semantics.
+/// and string tokens after removing trivia. Repeated style classes and
+/// pseudo-classes are collapsed; the last `dir(...)` argument becomes a
+/// normalized direction entry after all ordinary pseudo-classes.
+/// [#from(ComplexSelectorComponent)] returns `null` when emitting the source
+/// selector would fail or acquire different JavaFX semantics, including when
+/// selector serialization cannot retain a line comment's terminator.
 ///
 /// @param typeName      the element name, or `*` for the universal selector
 /// @param styleClasses  the distinct style-class names in first-occurrence order
@@ -164,34 +165,15 @@ public record JavaFXSimpleSelector(
         var result = new StringBuilder(name).append('(');
         var index = 0;
         while (index < argument.length()) {
-            var current = argument.charAt(index);
-            if (JavaFXCssLexer.isWhitespace(current)) {
-                index++;
+            var triviaEnd = JavaFXCssLexer.triviaEnd(argument, index);
+            if (triviaEnd < 0) {
+                return null;
+            }
+            if (triviaEnd > index) {
+                index = triviaEnd;
                 continue;
             }
-            if (current == '/' && index + 1 < argument.length()) {
-                var next = argument.charAt(index + 1);
-                if (next == '*') {
-                    var end = argument.indexOf("*/", index + 2);
-                    if (end < 0) {
-                        return null;
-                    }
-                    index = end + 2;
-                    continue;
-                }
-                if (next == '/') {
-                    index += 2;
-                    while (index < argument.length()
-                            && argument.charAt(index) != '\r'
-                            && argument.charAt(index) != '\n') {
-                        index++;
-                    }
-                    if (index == argument.length()) {
-                        return null;
-                    }
-                    continue;
-                }
-            }
+            var current = argument.charAt(index);
             if (current == '\'' || current == '"') {
                 var end = argument.indexOf(current, index + 1);
                 if (end < 0) {

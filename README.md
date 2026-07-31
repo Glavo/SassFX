@@ -901,10 +901,11 @@ inside quoted strings and exact lowercase `url(...)` payloads. Ordinary quoted
 strings follow JavaFX's legacy first-matching-quote behavior: backslashes do
 not escape the closing quote, and a string may span lines. JavaFX whitespace,
 block comments, and line-feed-terminated `//` comments are handled
-consistently across value validation; a comment that would consume the
-following declaration or rule terminator is rejected. JavaFX CSS never
-receives an `@charset` rule or UTF-8 BOM because either marker prevents OpenJFX
-from parsing the stylesheet.
+consistently across declaration values, import arguments, media conditions,
+and selector validation. A comment that would consume a following token,
+declaration terminator, or rule boundary is rejected. JavaFX CSS never receives
+an `@charset` rule or UTF-8 BOM because either marker prevents OpenJFX from
+parsing the stylesheet.
 Unquoted property lookups are canonicalized only after that property has been
 encountered in the same source stylesheet; forward and unresolved identifiers
 retain their source spelling. Each imported stylesheet has independent
@@ -930,9 +931,11 @@ The current release has the following boundaries:
 - JavaFX-target selectors currently support type, universal, class, ID, and
   pseudo-class selectors with descendant and child combinators. Functional
   pseudo-class arguments may contain JavaFX ASCII identifiers, quoted strings,
-  whitespace, and comments; JavaFX concatenates the identifier and string
-  tokens. Namespaces, attributes, siblings, pseudo-elements, and other
-  functional argument tokens are rejected.
+  whitespace, and block comments; JavaFX concatenates the identifier and
+  string tokens. Line comments are rejected because canonical Sass selector
+  text does not retain their required line-feed boundary. Namespaces,
+  attributes, siblings, pseudo-elements, and other functional argument tokens
+  are rejected.
 - JavaFX targets reject native CSS nesting, `@supports`, and unknown at-rules.
   Font faces and retained imports must occur at the stylesheet root.
 - JavaFX media conditions begin at the modeled JavaFX 25 boundary. CSS media

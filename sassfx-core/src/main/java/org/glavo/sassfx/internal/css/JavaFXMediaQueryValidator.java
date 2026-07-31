@@ -17,7 +17,9 @@ import java.util.Objects;
 ///
 /// JavaFX accepts a `media-condition` list rather than the complete web
 /// `media-query` grammar. In particular, media types such as `screen` and
-/// `print` are not accepted by the supported parser profiles.
+/// `print` are not accepted by the supported parser profiles. Identifiers and
+/// comments follow JavaFX's legacy lexer; a line comment must reach a
+/// line-feed character before the surrounding stylesheet structure.
 @NotNullByDefault
 public final class JavaFXMediaQueryValidator {
     /// Prevents instantiation.
@@ -69,31 +71,18 @@ public final class JavaFXMediaQueryValidator {
         var tokens = new ArrayList<Token>();
         var index = 0;
         while (index < source.length()) {
-            var character = source.charAt(index);
-            if (isWhitespace(character)) {
-                index++;
+            var triviaEnd = JavaFXCssLexer.triviaEnd(source, index);
+            if (triviaEnd < 0) {
+                throw failure(
+                        "A JavaFX media-query comment must end before the stylesheet does",
+                        span
+                );
+            }
+            if (triviaEnd > index) {
+                index = triviaEnd;
                 continue;
             }
-            if (character == '/' && index + 1 < source.length()) {
-                var next = source.charAt(index + 1);
-                if (next == '*') {
-                    var close = source.indexOf("*/", index + 2);
-                    if (close < 0) {
-                        throw failure("Unterminated comment in JavaFX media query", span);
-                    }
-                    index = close + 2;
-                    continue;
-                }
-                if (next == '/') {
-                    index += 2;
-                    while (index < source.length()
-                            && source.charAt(index) != '\r'
-                            && source.charAt(index) != '\n') {
-                        index++;
-                    }
-                    continue;
-                }
-            }
+            var character = source.charAt(index);
             var punctuation = punctuation(character);
             if (punctuation != null) {
                 tokens.add(new Token(punctuation, Character.toString(character)));
@@ -110,10 +99,7 @@ public final class JavaFXMediaQueryValidator {
                     continue;
                 }
                 var unitStart = index;
-                while (index < source.length()
-                        && isIdentifierContinue(source.charAt(index))) {
-                    index++;
-                }
+                index = JavaFXCssLexer.identifierEnd(source, index);
                 if (unitStart == index) {
                     tokens.add(new Token(TokenType.NUMBER, number));
                     continue;
@@ -127,13 +113,10 @@ public final class JavaFXMediaQueryValidator {
                 tokens.add(new Token(type, number + unit));
                 continue;
             }
-            if (isIdentifierStart(character)) {
+            var identifierEnd = JavaFXCssLexer.identifierEnd(source, index);
+            if (identifierEnd > index) {
                 var identifierStart = index;
-                index++;
-                while (index < source.length()
-                        && isIdentifierContinue(source.charAt(index))) {
-                    index++;
-                }
+                index = identifierEnd;
                 var identifier = source.substring(identifierStart, index);
                 if (index < source.length() && source.charAt(index) == '(') {
                     tokens.add(new Token(TokenType.INVALID, identifier + "("));
@@ -217,33 +200,6 @@ public final class JavaFXMediaQueryValidator {
             }
         }
         return index;
-    }
-
-    /// Returns whether a character can begin a JavaFX CSS identifier.
-    ///
-    /// @param character the character to inspect
-    /// @return whether it may begin an identifier
-    private static boolean isIdentifierStart(char character) {
-        return character == '-' || character == '_'
-                || character >= 'A' && character <= 'Z'
-                || character >= 'a' && character <= 'z';
-    }
-
-    /// Returns whether a character can continue a JavaFX CSS identifier.
-    ///
-    /// @param character the character to inspect
-    /// @return whether it may continue an identifier
-    private static boolean isIdentifierContinue(char character) {
-        return isIdentifierStart(character) || isDigit(character);
-    }
-
-    /// Returns whether a character is one of JavaFX CSS's whitespace tokens.
-    ///
-    /// @param character the character to inspect
-    /// @return whether JavaFX treats it as whitespace
-    private static boolean isWhitespace(char character) {
-        return character == ' ' || character == '\t' || character == '\r'
-                || character == '\n' || character == '\f';
     }
 
     /// Returns whether a character is an ASCII decimal digit.

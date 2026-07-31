@@ -29,6 +29,9 @@ public record JavaFXCssImport(String resource, JavaFXMediaQuery conditions) {
 
     /// Parses one retained CSS import for a JavaFX release.
     ///
+    /// JavaFX whitespace and comments may surround the resource and separate
+    /// it from a condition. A line comment must retain a line-feed terminator.
+    ///
     /// @param cssImport    the retained import
     /// @param compatibility the selected JavaFX release
     /// @return the tokenized resource text and parsed conditions
@@ -76,7 +79,7 @@ public record JavaFXCssImport(String resource, JavaFXMediaQuery conditions) {
         }
 
         var conditionStart = skipTrivia(argument, end, span);
-        var condition = argument.substring(conditionStart).strip();
+        var condition = argument.substring(conditionStart);
         if (condition.isEmpty()) {
             return new JavaFXCssImport(resource, new JavaFXMediaQuery(List.of()));
         }
@@ -229,27 +232,23 @@ public record JavaFXCssImport(String resource, JavaFXMediaQuery conditions) {
         return index;
     }
 
-    /// Skips whitespace and block comments.
+    /// Skips JavaFX whitespace and comments.
     ///
     /// @param text  the complete import argument
     /// @param start the first candidate offset
     /// @param span  the import source range
     /// @return the first non-trivia offset or the text length
+    /// @throws CssSerializeException if a comment would consume the remainder
+    /// of the stylesheet
     private static int skipTrivia(String text, int start, SourceSpan span) {
-        var index = start;
-        while (true) {
-            index = skipWhitespace(text, index);
-            if (index + 1 >= text.length()
-                    || text.charAt(index) != '/'
-                    || text.charAt(index + 1) != '*') {
-                return index;
-            }
-            var end = text.indexOf("*/", index + 2);
-            if (end < 0) {
-                throw failure("JavaFX CSS requires a closed @import comment.", span);
-            }
-            index = end + 2;
+        var end = JavaFXCssLexer.triviaEnd(text, start);
+        if (end < 0) {
+            throw failure(
+                    "A JavaFX @import comment must end before the stylesheet does.",
+                    span
+            );
         }
+        return end;
     }
 
     /// Skips CSS whitespace.

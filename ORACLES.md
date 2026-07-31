@@ -110,6 +110,9 @@ Across textual and byte-exact checks, the executable matrix currently covers:
   of modern CSS escapes and non-ASCII unquoted tokens, Unicode string and URL
   payloads, multiline ordinary strings, JavaFX block and line comments, and
   marker-free non-ASCII JavaFX CSS;
+- structural trivia boundaries in functional pseudo-classes, import
+  arguments, and media conditions, including LF-terminated line comments and
+  product-side rejection of comments that would consume stylesheet structure;
 - JavaFX 23–27 transition text conversion, including target-specific easing
   functions and rejection of parser inputs that fail during conversion or
   contain surplus tokens that OpenJFX silently discards;
@@ -130,6 +133,11 @@ Across textual and byte-exact checks, the executable matrix currently covers:
   positions, repeats, sizes, slices, and stroke styles;
 - JavaFX 25–27 media-query framing and JavaFX 27 conditional imports,
   including nested import parser-state isolation.
+
+The oracle does not submit a consuming media line comment directly to JavaFX
+25: that parser path grows its media-token list until the process exhausts
+memory. Instead, safe line-comment cases run against the pinned parser and the
+oracle separately requires SassFX to reject each dangerous boundary case.
 
 `BssTargetTest.coversEverySupportedConverterFamilyWithPinnedFixtures` checks
 the pinned OpenJFX bytes and a composite fixture against every converter class

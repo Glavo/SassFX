@@ -93,6 +93,7 @@ final class JavaFXCssValidatorTest {
     @ValueSource(strings = {
             "\"theme.css\"",
             "/* before */ \"theme.css\" /* after */",
+            "// before\n\"theme.css\" // after\n",
             "'theme name.css'",
             "url(\"theme ) ( name.css\")",
             "url(data:image/svg+xml;utf8,<svg\\)>)"
@@ -118,6 +119,8 @@ final class JavaFXCssValidatorTest {
     @ParameterizedTest
     @ValueSource(strings = {
             "\"theme.css\" (prefers-color-scheme: dark)",
+            "\"theme.css\" // separator\n (prefers-color-scheme: dark)",
+            "\"theme.css\" (prefers-color-scheme: dark) // trailing\n",
             "'theme name.css' (min-width: 100px)",
             "url(\"theme ) ( name.css\") (orientation: landscape)"
     })
@@ -139,16 +142,21 @@ final class JavaFXCssValidatorTest {
         );
     }
 
-    /// Rejects an import that does not begin with a complete string or URL token.
+    /// Rejects malformed import resources and consuming comments.
     @ParameterizedTest
     @ValueSource(strings = {
             "theme.css",
             "\"theme.css",
             "url(theme.css",
             "URL(\"theme.css\")",
-            "'theme\\' name.css'"
+            "'theme\\' name.css'",
+            "// consumes import",
+            "\"theme.css\" // consumes terminator",
+            "\"theme.css\" // carriage return\r",
+            "\"theme.css\" (prefers-color-scheme: dark) // consumes terminator",
+            "\"theme.css\" /* unterminated"
     })
-    void rejectsMalformedImportUrl(String argument) {
+    void rejectsMalformedImportArguments(String argument) {
         assertThrows(
                 CssSerializeException.class,
                 () -> JavaFXCssValidator.validate(
@@ -920,6 +928,9 @@ final class JavaFXCssValidatorTest {
             "Pane:is(.active)",
             "Pane:nth-child(2n+1)",
             "Pane:state(primary, selected)",
+            "Pane:state(primary// comment\nselected)",
+            "Pane:state(primary// consumes argument)",
+            "Pane:state(primary// carriage return\rselected)",
             "Pane:url(icon)",
             "Pane#first#second",
             "Pane#\\31 abc",

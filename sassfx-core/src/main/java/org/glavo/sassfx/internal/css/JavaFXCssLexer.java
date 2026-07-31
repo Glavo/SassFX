@@ -219,8 +219,9 @@ public final class JavaFXCssLexer {
     /// Returns the end of JavaFX whitespace and comment trivia.
     ///
     /// A line comment must reach a line-feed character. Without it, OpenJFX
-    /// consumes the remainder of the stylesheet, including the declaration
-    /// and rule terminators that follow a serialized value.
+    /// consumes the remainder of the stylesheet, including any closing token,
+    /// declaration terminator, or rule boundary appended after a serialized
+    /// fragment.
     ///
     /// @param text  the complete text containing the trivia
     /// @param start the inclusive offset at which trivia may begin

@@ -48,7 +48,8 @@ final class JavaFXMediaQueryValidatorTest {
             "((width >= 500px) and (height >= 300px))",
             "(width: 10cm), (prefers-color-scheme: light)",
             "/* leading */ (width: 1in) /* trailing */",
-            "(width: 1px) // trailing"
+            "// leading\n(width: 1px) // trailing\n",
+            "(width: // value\n 1px)"
     })
     void acceptsSupportedQueries(String query) {
         assertDoesNotThrow(() -> JavaFXMediaQueryValidator.validate(
@@ -58,7 +59,7 @@ final class JavaFXMediaQueryValidatorTest {
         ));
     }
 
-    /// Rejects media types, unsupported features, invalid values, and malformed logic.
+    /// Rejects unsupported grammar, lexical forms, values, and comment boundaries.
     ///
     /// @param query the rejected query-list text
     @ParameterizedTest
@@ -85,7 +86,12 @@ final class JavaFXMediaQueryValidatorTest {
             "(width >= 500px),",
             "rgb(1, 2, 3)",
             "(width: calc(1px))",
-            "/* unterminated"
+            "/* unterminated",
+            "(width: 1px) // consumes rule",
+            "(width: 1px) // carriage return\r",
+            "(属性: 1px)",
+            "(--width: 1px)",
+            "(\\77 idth: 1px)"
     })
     void rejectsUnsupportedQueries(String query) {
         assertThrows(

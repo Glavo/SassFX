@@ -11,8 +11,14 @@ import org.glavo.sassfx.OutputStyle;
 import org.glavo.sassfx.SassCompilationException;
 import org.glavo.sassfx.SassCompiler;
 import org.glavo.sassfx.SassSource;
+import org.glavo.sassfx.SourceLocation;
+import org.glavo.sassfx.SourceSpan;
 import org.glavo.sassfx.Syntax;
+import org.glavo.sassfx.internal.css.CssImport;
+import org.glavo.sassfx.internal.css.CssSerializeException;
+import org.glavo.sassfx.internal.css.JavaFXCssImport;
 import org.glavo.sassfx.internal.css.JavaFXCssLexer;
+import org.glavo.sassfx.internal.css.JavaFXMediaQueryValidator;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
@@ -73,6 +79,7 @@ public final class JavaFXCssOracle {
 
         verifyLegacyLexerSemantics();
         verifyLegacyValueTriviaSemantics();
+        verifyStructuralTriviaSemantics(target);
         verifyVersionedParserSemantics(target);
         for (var fixture : acceptedFixtures(target)) {
             verifyAccepted(fixture, target);
@@ -1385,6 +1392,168 @@ public final class JavaFXCssOracle {
                 );
             }
         }
+    }
+
+    /// Verifies comment boundaries in JavaFX structural CSS grammars.
+    ///
+    /// @param target the selected JavaFX release
+    private static void verifyStructuralTriviaSemantics(JavaFXTarget target) {
+        var importArgument = "// leading\n\"theme.css\" // trailing\n";
+        var parsedImport = JavaFXCssImport.parse(
+                new CssImport(importArgument, syntheticSpan(importArgument)),
+                target
+        );
+        if (!parsedImport.resource().equals("theme.css")) {
+            throw new AssertionError(
+                    "SassFX changed a JavaFX import resource around comments."
+            );
+        }
+        for (var argument : List.of(
+                "// consumes import",
+                "\"theme.css\" // consumes terminator",
+                "\"theme.css\" // carriage return\r"
+        )) {
+            try {
+                JavaFXCssImport.parse(
+                        new CssImport(argument, syntheticSpan(argument)),
+                        target
+                );
+            } catch (CssSerializeException expected) {
+                continue;
+            }
+            throw new AssertionError(
+                    "SassFX accepted a consuming JavaFX import comment: "
+                            + argument
+            );
+        }
+        if (target.supports(
+                org.glavo.sassfx.JavaFXFeature.CONDITIONAL_STYLESHEET_IMPORTS
+        )) {
+            var conditionalArgument = "\"theme.css\""
+                    + " (prefers-color-scheme: dark) // trailing\n";
+            var conditionalImport = JavaFXCssImport.parse(
+                    new CssImport(
+                            conditionalArgument,
+                            syntheticSpan(conditionalArgument)
+                    ),
+                    target
+            );
+            if (conditionalImport.conditions().alternatives().isEmpty()) {
+                throw new AssertionError(
+                        "SassFX lost a JavaFX import condition before trailing trivia."
+                );
+            }
+            var consumingCondition = "\"theme.css\""
+                    + " (prefers-color-scheme: dark) // consumes terminator";
+            var rejected = false;
+            try {
+                JavaFXCssImport.parse(
+                        new CssImport(
+                                consumingCondition,
+                                syntheticSpan(consumingCondition)
+                        ),
+                        target
+                );
+            } catch (CssSerializeException expected) {
+                rejected = true;
+            }
+            if (!rejected) {
+                throw new AssertionError(
+                        "SassFX accepted a consuming conditional-import comment."
+                );
+            }
+        }
+
+        for (var source : List.of(
+                "Pane:state(primary// comment\nselected)"
+                        + " { -fx-opacity: 1; }",
+                "Pane:state(primary/**/selected) { -fx-opacity: 1; }"
+        )) {
+            CssParser.errorsProperty().clear();
+            var stylesheet = new CssParser().parse(source);
+            if (!CssParser.errorsProperty().isEmpty()
+                    || stylesheet.getRules().isEmpty()) {
+                throw new AssertionError(
+                        "JavaFX rejected safe selector trivia: " + source
+                                + "; errors=" + CssParser.errorsProperty()
+                );
+            }
+        }
+        for (var source : List.of(
+                "Pane:state(primary// consumes argument)"
+                        + " { -fx-opacity: 1; }",
+                "Pane:state(primary// carriage return\rselected)"
+                        + " { -fx-opacity: 1; }"
+        )) {
+            CssParser.errorsProperty().clear();
+            var stylesheet = new CssParser().parse(source);
+            if (!stylesheet.getRules().isEmpty()) {
+                throw new AssertionError(
+                        "JavaFX retained a selector after a consuming comment: "
+                                + source
+                );
+            }
+        }
+
+        if (!target.supports(
+                org.glavo.sassfx.JavaFXFeature.USER_PREFERENCE_MEDIA_QUERIES
+        )) {
+            return;
+        }
+        for (var query : List.of(
+                "// leading\n(prefers-color-scheme: dark) // trailing\n",
+                "(prefers-color-scheme: // value\n dark)"
+        )) {
+            JavaFXMediaQueryValidator.validate(
+                    query,
+                    syntheticSpan(query),
+                    target
+            );
+            var source = "@media " + query + " { Pane { -fx-opacity: 1; } }";
+            CssParser.errorsProperty().clear();
+            var stylesheet = new CssParser().parse(source);
+            if (!CssParser.errorsProperty().isEmpty()
+                    || stylesheet.getRules().isEmpty()) {
+                throw new AssertionError(
+                        "JavaFX rejected safe media-query trivia: " + source
+                                + "; errors=" + CssParser.errorsProperty()
+                );
+            }
+        }
+        for (var query : List.of(
+                "(prefers-color-scheme: dark) // consumes rule",
+                "(prefers-color-scheme: dark) // carriage return\r"
+        )) {
+            try {
+                JavaFXMediaQueryValidator.validate(
+                        query,
+                        syntheticSpan(query),
+                        target
+                );
+            } catch (CssSerializeException expected) {
+                // OpenJFX 25 grows its media-token list until OOM after this
+                // comment consumes the block. Keep the oracle process bounded
+                // and verify the SassFX guard without invoking that path.
+                continue;
+            }
+            throw new AssertionError(
+                    "SassFX accepted a consuming JavaFX media-query comment: "
+                            + query
+            );
+        }
+    }
+
+    /// Creates a synthetic source span over complete in-memory text.
+    ///
+    /// @param text the represented source text
+    /// @return a span from offset zero through the text length
+    private static SourceSpan syntheticSpan(String text) {
+        return new SourceSpan(
+                null,
+                new SourceLocation(0, 0, 0),
+                new SourceLocation(0, text.length(), text.length()),
+                text
+        );
     }
 
     /// Requires a BSS document to declare the expected format version.
