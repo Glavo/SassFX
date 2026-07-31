@@ -594,7 +594,7 @@ final class JavaFXTransitionValidator {
             if (startsNumber(index)) {
                 return numericToken();
             }
-            if (isIdentifierStart(character)) {
+            if (JavaFXCssLexer.identifierEnd(source, index) > index) {
                 return identifierOrFunctionToken();
             }
             throw failure(
@@ -606,25 +606,19 @@ final class JavaFXTransitionValidator {
         /// Reads one quoted string token.
         ///
         /// @param quote the opening quote character
-        /// @return the decoded string token
+        /// @return the legacy JavaFX string token
         private Token quotedToken(char quote) {
-            index++;
-            var result = new StringBuilder();
-            while (index < source.length()) {
-                var character = source.charAt(index++);
-                if (character == quote) {
-                    return new Token(TokenType.STRING, result.toString(), List.of());
-                }
-                if (character == '\r' || character == '\n' || character == '\f') {
-                    throw failure("Unclosed string in JavaFX transition value.", span);
-                }
-                if (character == '\\' && index < source.length()) {
-                    result.append(source.charAt(index++));
-                } else {
-                    result.append(character);
-                }
+            var contentStart = ++index;
+            var end = source.indexOf(quote, contentStart);
+            if (end < 0) {
+                throw failure("Unclosed string in JavaFX transition value.", span);
             }
-            throw failure("Unclosed string in JavaFX transition value.", span);
+            index = end + 1;
+            return new Token(
+                    TokenType.STRING,
+                    source.substring(contentStart, end),
+                    List.of()
+            );
         }
 
         /// Reads an identifier or immediately following function.
@@ -632,11 +626,7 @@ final class JavaFXTransitionValidator {
         /// @return the identifier or function token
         private Token identifierOrFunctionToken() {
             var start = index;
-            index++;
-            while (index < source.length()
-                    && isIdentifierContinuation(source.charAt(index))) {
-                index++;
-            }
+            index = JavaFXCssLexer.identifierEnd(source, index);
             var name = source.substring(start, index);
             if (index < source.length() && source.charAt(index) == '(') {
                 index++;
@@ -728,48 +718,16 @@ final class JavaFXTransitionValidator {
                     && Character.isDigit(source.charAt(cursor + 1));
         }
 
-        /// Skips CSS whitespace and block comments.
+        /// Skips JavaFX whitespace and comments.
         private void skipTrivia() {
-            while (index < source.length()) {
-                if (Character.isWhitespace(source.charAt(index))) {
-                    index++;
-                    continue;
-                }
-                if (index + 1 < source.length()
-                        && source.charAt(index) == '/'
-                        && source.charAt(index + 1) == '*') {
-                    var end = source.indexOf("*/", index + 2);
-                    if (end < 0) {
-                        throw failure(
-                                "Unclosed comment in JavaFX transition value.",
-                                span
-                        );
-                    }
-                    index = end + 2;
-                    continue;
-                }
-                return;
+            var end = JavaFXCssLexer.triviaEnd(source, index);
+            if (end < 0) {
+                throw failure(
+                        "A JavaFX comment must end before the stylesheet does.",
+                        span
+                );
             }
-        }
-
-        /// Returns whether a character may begin a CSS identifier token.
-        ///
-        /// @param character the character to inspect
-        /// @return whether the tokenizer accepts it as an identifier start
-        private static boolean isIdentifierStart(char character) {
-            return character == '-'
-                    || character == '_'
-                    || character == '\\'
-                    || Character.isLetter(character)
-                    || character >= 0x80;
-        }
-
-        /// Returns whether a character may continue a CSS identifier token.
-        ///
-        /// @param character the character to inspect
-        /// @return whether the tokenizer accepts it in an identifier
-        private static boolean isIdentifierContinuation(char character) {
-            return isIdentifierStart(character) || Character.isDigit(character);
+            index = end;
         }
     }
 }

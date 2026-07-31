@@ -98,7 +98,7 @@ Selected fixtures additionally compare the complete BSS document
 byte-for-byte, including the header, string table, converter graph, selectors,
 declarations, media payload, and font faces.
 
-The byte-exact matrix currently covers:
+Across textual and byte-exact checks, the executable matrix currently covers:
 
 - type, class, ID, ordinary pseudo-class, and functional pseudo-class
   selectors, including JavaFX token concatenation and `dir(...)` orientation;
@@ -108,7 +108,11 @@ The byte-exact matrix currently covers:
   identifier grammar;
 - legacy value tokenization, including ASCII identifiers and units, rejection
   of modern CSS escapes and non-ASCII unquoted tokens, Unicode string and URL
-  payloads, and marker-free non-ASCII JavaFX CSS;
+  payloads, multiline ordinary strings, JavaFX block and line comments, and
+  marker-free non-ASCII JavaFX CSS;
+- JavaFX 23–27 transition text conversion, including target-specific easing
+  functions and rejection of parser inputs that fail during conversion or
+  contain surplus tokens that OpenJFX silently discards;
 - scalar sizes, durations, URLs, fonts, blend modes, shadow effects, and
   generic quoted strings, including empty strings and special keyword/color
   recognition in root and imported plain-CSS stylesheets;

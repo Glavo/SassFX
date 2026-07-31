@@ -284,10 +284,10 @@ public final class JavaFXCssValidator {
             );
         }
         if (TRANSITION_PROPERTIES.contains(property)) {
-            var value = declarationValue.strip();
+            var value = declarationValue;
             var importanceStart = trailingImportanceStart(value);
             if (importanceStart >= 0) {
-                value = value.substring(0, importanceStart).stripTrailing();
+                value = value.substring(0, importanceStart);
             }
             JavaFXTransitionValidator.validate(
                     property,
@@ -358,48 +358,55 @@ public final class JavaFXCssValidator {
     /// Normalizes a blend-mode token for legacy JavaFX conflict detection.
     ///
     /// The old JavaFX parser resolves conflicting identifiers as
-    /// colors even when they are quoted or followed by `!important`.
+    /// colors even when they are quoted or followed by trivia and
+    /// `!important`.
     ///
     /// @param value the emitted declaration value
     /// @return the lowercase unquoted token without an importance suffix
     private static String normalizedBlendMode(String value) {
-        var normalized = value.strip();
-        var importanceStart = trailingImportanceStart(normalized);
-        if (importanceStart >= 0) {
-            normalized = normalized.substring(0, importanceStart).stripTrailing();
+        var start = JavaFXCssLexer.triviaEnd(value, 0);
+        if (start < 0 || start == value.length()) {
+            return "";
         }
-        if (normalized.length() >= 2) {
-            var quote = normalized.charAt(0);
-            if ((quote == '\'' || quote == '"')
-                    && normalized.charAt(normalized.length() - 1) == quote) {
-                normalized = normalized.substring(1, normalized.length() - 1);
+        var first = value.charAt(start);
+        if (first == '\'' || first == '"') {
+            var end = value.indexOf(first, start + 1);
+            if (end < 0) {
+                return "";
             }
+            return value.substring(start + 1, end).toLowerCase(Locale.ROOT);
         }
-        return normalized.toLowerCase(Locale.ROOT);
+        var end = JavaFXCssLexer.identifierEnd(value, start);
+        return end == start
+                ? ""
+                : value.substring(start, end).toLowerCase(Locale.ROOT);
     }
 
     /// Finds a trailing CSS `!important` suffix.
     ///
-    /// @param value the stripped declaration value
+    /// @param value the complete declaration value
     /// @return the suffix start, or `-1` when no suffix is present
     private static int trailingImportanceStart(String value) {
-        var importantStart = value.length() - "important".length();
-        if (importantStart <= 0
-                || !value.regionMatches(
-                        true,
-                        importantStart,
-                        "important",
-                        0,
-                        "important".length()
-                )) {
-            return -1;
+        var candidate = value.lastIndexOf('!');
+        while (candidate >= 0) {
+            if (JavaFXCssLexer.isTokenizableValue(
+                    value.substring(0, candidate)
+            )) {
+                var importanceEnd = JavaFXCssLexer.importanceEnd(
+                        value,
+                        candidate
+                );
+                if (importanceEnd >= 0
+                        && JavaFXCssLexer.triviaEnd(
+                                value,
+                                importanceEnd
+                        ) == value.length()) {
+                    return candidate;
+                }
+            }
+            candidate = value.lastIndexOf('!', candidate - 1);
         }
-        var index = importantStart - 1;
-        while (index >= 0
-                && JavaFXCssLexer.isWhitespace(value.charAt(index))) {
-            index--;
-        }
-        return index >= 0 && value.charAt(index) == '!' ? index : -1;
+        return -1;
     }
 
     /// Returns the CSS text used to inspect a declaration value.

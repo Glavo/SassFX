@@ -124,11 +124,15 @@ public final class JavaFXCssLexer {
         Objects.requireNonNull(text, "text");
         var index = 0;
         while (index < text.length()) {
-            var character = text.charAt(index);
-            if (isWhitespace(character)) {
-                index++;
+            var triviaEnd = triviaEnd(text, index);
+            if (triviaEnd < 0) {
+                return false;
+            }
+            if (triviaEnd > index) {
+                index = triviaEnd;
                 continue;
             }
+            var character = text.charAt(index);
             if (character == '\'' || character == '"') {
                 index = stringEnd(text, index, character);
                 if (index < 0) {
@@ -136,25 +140,8 @@ public final class JavaFXCssLexer {
                 }
                 continue;
             }
-            if (character == '/' && index + 1 < text.length()) {
-                var next = text.charAt(index + 1);
-                if (next == '*') {
-                    var end = text.indexOf("*/", index + 2);
-                    index = end < 0 ? text.length() : end + 2;
-                    continue;
-                }
-                if (next == '/') {
-                    index += 2;
-                    while (index < text.length()
-                            && text.charAt(index) != '\r'
-                            && text.charAt(index) != '\n') {
-                        index++;
-                    }
-                    continue;
-                }
-            }
             if (character == '!') {
-                index = importantEnd(text, index);
+                index = importanceEnd(text, index);
                 if (index < 0) {
                     return false;
                 }
@@ -229,6 +216,55 @@ public final class JavaFXCssLexer {
                 || value == '\f';
     }
 
+    /// Returns the end of JavaFX whitespace and comment trivia.
+    ///
+    /// A line comment must reach a line-feed character. Without it, OpenJFX
+    /// consumes the remainder of the stylesheet, including the declaration
+    /// and rule terminators that follow a serialized value.
+    ///
+    /// @param text  the complete text containing the trivia
+    /// @param start the inclusive offset at which trivia may begin
+    /// @return the first non-trivia offset, or `-1` for a comment that would
+    /// consume the remainder of the stylesheet
+    /// @throws IndexOutOfBoundsException if `start` is negative or greater than
+    /// the text length
+    public static int triviaEnd(String text, int start) {
+        Objects.requireNonNull(text, "text");
+        if (start < 0 || start > text.length()) {
+            throw new IndexOutOfBoundsException("start: " + start);
+        }
+
+        var index = start;
+        while (index < text.length()) {
+            if (isWhitespace(text.charAt(index))) {
+                index++;
+                continue;
+            }
+            if (index + 1 >= text.length() || text.charAt(index) != '/') {
+                break;
+            }
+            var next = text.charAt(index + 1);
+            if (next == '*') {
+                var end = text.indexOf("*/", index + 2);
+                if (end < 0) {
+                    return -1;
+                }
+                index = end + 2;
+                continue;
+            }
+            if (next == '/') {
+                var end = text.indexOf('\n', index + 2);
+                if (end < 0) {
+                    return -1;
+                }
+                index = end + 1;
+                continue;
+            }
+            break;
+        }
+        return index;
+    }
+
     /// Returns whether one character can begin an identifier after an optional
     /// leading hyphen.
     ///
@@ -267,36 +303,23 @@ public final class JavaFXCssLexer {
 
     /// Returns the end of one JavaFX `!important` token.
     ///
+    /// JavaFX whitespace and comments may separate `!` from the
+    /// case-insensitive `important` keyword.
+    ///
     /// @param text  the complete value text
     /// @param start the `!` offset
     /// @return the offset after `important`, or `-1` when the token is malformed
-    private static int importantEnd(String text, int start) {
-        var index = start + 1;
-        while (true) {
-            while (index < text.length() && isWhitespace(text.charAt(index))) {
-                index++;
-            }
-            if (index + 1 >= text.length()
-                    || text.charAt(index) != '/') {
-                break;
-            }
-            var next = text.charAt(index + 1);
-            if (next == '*') {
-                var end = text.indexOf("*/", index + 2);
-                if (end < 0) {
-                    return -1;
-                }
-                index = end + 2;
-            } else if (next == '/') {
-                index += 2;
-                while (index < text.length()
-                        && text.charAt(index) != '\r'
-                        && text.charAt(index) != '\n') {
-                    index++;
-                }
-            } else {
-                break;
-            }
+    /// @throws IndexOutOfBoundsException if `start` is negative or not less
+    /// than the text length
+    public static int importanceEnd(String text, int start) {
+        Objects.requireNonNull(text, "text");
+        Objects.checkIndex(start, text.length());
+        if (text.charAt(start) != '!') {
+            return -1;
+        }
+        var index = triviaEnd(text, start + 1);
+        if (index < 0) {
+            return -1;
         }
         return index + "important".length() <= text.length()
                 && text.regionMatches(

@@ -265,10 +265,26 @@ final class JavaFXCssValidatorTest {
                 "transition-property",
                 "-fx-opacity, \"custom-name\", Foo"
         );
+        assertTransitionAcceptedAll(
+                "transition-property",
+                "\"line\nbreak\", \"form\ffeed\""
+        );
         assertTransitionAcceptedAll("transition-duration", "0ms");
         assertTransitionAcceptedAll(
                 "transition-duration",
                 "250ms, 1.5s, indefinite, -fx-duration, initial"
+        );
+        assertTransitionAcceptedAll(
+                "transition-duration",
+                "100ms // JavaFX line comment\n"
+        );
+        assertTransitionAcceptedAll(
+                "transition-duration",
+                "100ms !/**/important"
+        );
+        assertTransitionAcceptedAll(
+                "transition-duration",
+                "100ms ! // priority\n IMPORTANT"
         );
         assertTransitionAcceptedAll(
                 "transition-delay",
@@ -299,6 +315,21 @@ final class JavaFXCssValidatorTest {
         assertTransitionRejected(
                 "transition-duration",
                 "1px",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-duration",
+                "100ms 200ms",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-duration",
+                "100ms // unterminated",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-duration",
+                "100ms /* unterminated",
                 JavaFXTarget.JAVAFX27
         );
         assertTransitionRejected(
@@ -416,6 +447,11 @@ final class JavaFXCssValidatorTest {
         );
         assertTransitionRejected(
                 "transition-timing-function",
+                "cubic-bezier(0, 0, 1, 1, 2)",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-timing-function",
                 "CUBIC-BEZIER(0, 0, 1, 1)",
                 JavaFXTarget.JAVAFX27
         );
@@ -491,6 +527,16 @@ final class JavaFXCssValidatorTest {
         assertTransitionRejected(
                 "transition-timing-function",
                 "linear()",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-timing-function",
+                "linear(0)",
+                JavaFXTarget.JAVAFX27
+        );
+        assertTransitionRejected(
+                "transition-timing-function",
+                "linear(0 0% 50% 75%)",
                 JavaFXTarget.JAVAFX27
         );
         assertTransitionRejected(
@@ -580,7 +626,10 @@ final class JavaFXCssValidatorTest {
             "red",
             "RED",
             "\"red\"",
+            "/**/red/**/",
+            "// leading\nred // trailing\n",
             "green !important",
+            "green !/**/important",
             "'blue' !IMPORTANT"
     })
     void validatesNewBlendModesByVersion(String value) {
@@ -756,7 +805,9 @@ final class JavaFXCssValidatorTest {
             "repeating-image-patternSuffix(\"image.png\")",
             "ladderSuffix(red, black 0%, white 100%)",
             "regionSuffix(\"#glyph\")",
-            "url(\"image.png\")"
+            "url(\"image.png\")",
+            "/**/linear-gradientSuffix(red, blue)",
+            "// leading\nlinear-gradientSuffix(red, blue)"
     })
     void acceptsJavaFXValueFunctionPrefixes(String value) {
         for (var compatibility : JavaFXTarget.values()) {
@@ -803,7 +854,9 @@ final class JavaFXCssValidatorTest {
             "hslSuffix(0, 100%, 50%)",
             "calc(1px + 2px)",
             "segments(1px, 2px)",
-            "urlSuffix(\"image.png\")"
+            "urlSuffix(\"image.png\")",
+            "/**/unsupported(1)",
+            "// leading\nunsupported(1)"
     })
     void rejectsUnsupportedJavaFXValueFunctions(String value) {
         for (var compatibility : JavaFXTarget.values()) {

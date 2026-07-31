@@ -70,6 +70,12 @@ with library, command-line, Embedded Sass, and Gradle interfaces.
 - Applies OpenJFX's legacy ASCII token grammar to unquoted values, lookups,
   function names, font references, and numeric units while preserving Unicode
   string and URL payloads.
+- Matches JavaFX's multiline ordinary-string behavior and shared whitespace,
+  block-comment, and line-comment trivia rules while rejecting comments that
+  would consume the following declaration or rule terminator.
+- Validates textual transition values against the target release's runtime
+  converter behavior and rejects invalid easing functions or surplus tokens
+  that OpenJFX would otherwise fail to convert or silently discard.
 - Omits `@charset` and UTF-8 BOM markers from JavaFX CSS because OpenJFX treats
   both forms as invalid leading tokens.
 - Matches named-color and registered-property lookup precedence in plain CSS,

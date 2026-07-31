@@ -83,18 +83,18 @@ public enum JavaFXValueFunction {
 
     /// Returns the leading function name in an unquoted CSS value.
     ///
-    /// Whitespace between the name and opening parenthesis does not form a
-    /// function token and therefore returns {@code null}.
+    /// Leading JavaFX whitespace and comments are ignored. Trivia between the
+    /// name and opening parenthesis does not form a function token and
+    /// therefore returns {@code null}.
     ///
     /// @param text the complete unquoted CSS value text
     /// @return the function name, or {@code null} when the value does not begin
     ///         with a function token
     public static @Nullable String invocationName(String text) {
         Objects.requireNonNull(text, "text");
-        var start = 0;
-        while (start < text.length()
-                && JavaFXCssLexer.isWhitespace(text.charAt(start))) {
-            start++;
+        var start = JavaFXCssLexer.triviaEnd(text, 0);
+        if (start < 0) {
+            return null;
         }
         var end = JavaFXCssLexer.identifierEnd(text, start);
         if (end == start

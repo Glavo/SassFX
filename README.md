@@ -897,9 +897,14 @@ The same legacy token grammar applies to unquoted values and function names.
 Modern CSS escapes, double-leading-hyphen identifiers, non-ASCII identifiers,
 unsupported number units, and characters unavailable from OpenJFX's lexer are
 rejected consistently by the text and BSS backends. Unicode remains supported
-inside quoted strings and exact lowercase `url(...)` payloads. JavaFX CSS
-never receives an `@charset` rule or UTF-8 BOM because either marker prevents
-OpenJFX from parsing the stylesheet.
+inside quoted strings and exact lowercase `url(...)` payloads. Ordinary quoted
+strings follow JavaFX's legacy first-matching-quote behavior: backslashes do
+not escape the closing quote, and a string may span lines. JavaFX whitespace,
+block comments, and line-feed-terminated `//` comments are handled
+consistently across value validation; a comment that would consume the
+following declaration or rule terminator is rejected. JavaFX CSS never
+receives an `@charset` rule or UTF-8 BOM because either marker prevents OpenJFX
+from parsing the stylesheet.
 Unquoted property lookups are canonicalized only after that property has been
 encountered in the same source stylesheet; forward and unresolved identifiers
 retain their source spelling. Each imported stylesheet has independent
@@ -932,9 +937,11 @@ The current release has the following boundaries:
   Font faces and retained imports must occur at the stylesheet root.
 - JavaFX media conditions begin at the modeled JavaFX 25 boundary. CSS media
   types such as `screen` and `print` are not JavaFX media conditions.
-- Textual JavaFX CSS supports transitions from JavaFX 23. The BSS backend
-  rejects transition declarations for JavaFX 23 through 27 because those
-  OpenJFX readers cannot restore the transition-specific converters.
+- Textual JavaFX CSS supports transitions from JavaFX 23 and rejects timing
+  functions or surplus arguments that OpenJFX would fail to convert or
+  silently discard. The BSS backend rejects transition declarations for
+  JavaFX 23 through 27 because those OpenJFX readers cannot restore the
+  transition-specific converters.
 - JavaFX 8 through 26 flatten unconditional retained imports. JavaFX 27 BSS v9
   preserves each direct imported body and condition. Imported font faces do
   not propagate to the parent stylesheet.

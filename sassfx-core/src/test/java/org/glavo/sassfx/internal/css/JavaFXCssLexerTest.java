@@ -64,6 +64,34 @@ final class JavaFXCssLexerTest {
         assertEquals(8, JavaFXCssLexer.identifierEnd("property", 8));
     }
 
+    /// Locates complete JavaFX whitespace and comment trivia.
+    @Test
+    void locatesTriviaEnd() {
+        var text = " \t/* block */// line\nred";
+        assertEquals(text.indexOf("red"), JavaFXCssLexer.triviaEnd(text, 0));
+        assertEquals(-1, JavaFXCssLexer.triviaEnd("/* unterminated", 0));
+        assertEquals(-1, JavaFXCssLexer.triviaEnd("// unterminated", 0));
+        assertEquals(-1, JavaFXCssLexer.triviaEnd("// comment\rred", 0));
+    }
+
+    /// Locates complete JavaFX importance tokens.
+    @Test
+    void locatesImportanceEnd() {
+        assertEquals(
+                "!/**/important".length(),
+                JavaFXCssLexer.importanceEnd("!/**/important", 0)
+        );
+        assertEquals(
+                "! // priority\n IMPORTANT".length(),
+                JavaFXCssLexer.importanceEnd(
+                        "! // priority\n IMPORTANT",
+                        0
+                )
+        );
+        assertEquals(-1, JavaFXCssLexer.importanceEnd("!// priority", 0));
+        assertEquals(-1, JavaFXCssLexer.importanceEnd("!urgent", 0));
+    }
+
     /// Accepts tokenizable values, including opaque Unicode strings and URLs.
     ///
     /// @param text the tokenizable value
@@ -74,11 +102,15 @@ final class JavaFXCssLexerTest {
             "linear-gradient(red, #123456 50%, blue)",
             "\"字体\"",
             "'π'",
+            "\"line\nbreak\"",
+            "\"form\ffeed\"",
             "url(字体/icon.svg)",
             "url(\"字体/icon.svg\")",
             "1px 250ms 45deg",
             "red ! /* priority */ IMPORTANT",
-            "red/**/blue"
+            "red/**/blue",
+            "red // comment\nblue",
+            "red ! // priority\n IMPORTANT"
     })
     void acceptsTokenizableValues(String text) {
         assertTrue(JavaFXCssLexer.isTokenizableValue(text));
@@ -101,6 +133,9 @@ final class JavaFXCssLexerTest {
             "#",
             "\"unterminated",
             "url(foo(bar))",
+            "red /* unterminated",
+            "red // unterminated",
+            "red // comment\rblue",
             "+"
     })
     void rejectsUntokenizableValues(String text) {

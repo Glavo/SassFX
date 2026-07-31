@@ -12,6 +12,7 @@ import org.glavo.sassfx.SassCompilationException;
 import org.glavo.sassfx.SassCompiler;
 import org.glavo.sassfx.SassSource;
 import org.glavo.sassfx.Syntax;
+import org.glavo.sassfx.internal.css.JavaFXCssLexer;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
@@ -71,6 +72,7 @@ public final class JavaFXCssOracle {
         }
 
         verifyLegacyLexerSemantics();
+        verifyLegacyValueTriviaSemantics();
         verifyVersionedParserSemantics(target);
         for (var fixture : acceptedFixtures(target)) {
             verifyAccepted(fixture, target);
@@ -80,6 +82,7 @@ public final class JavaFXCssOracle {
         }
         verifyScalarUrlBss(target);
         if (target.supports(org.glavo.sassfx.JavaFXFeature.CSS_TRANSITIONS)) {
+            verifyTransitionTextSafety(target);
             verifyTransitionBssLimitation(target);
         }
         if (target == JavaFXTarget.JAVAFX27) {
@@ -992,6 +995,176 @@ public final class JavaFXCssOracle {
         }
     }
 
+    /// Verifies that accepted transition text converts at runtime and that
+    /// SassFX rejects parser quirks that would fail or discard input.
+    ///
+    /// @param target the selected JavaFX release
+    /// @throws Exception if compilation or runtime conversion fails
+    private static void verifyTransitionTextSafety(
+            JavaFXTarget target
+    ) throws Exception {
+        var safeSource = """
+                Pane {
+                  transition-property: -fx-opacity, "-fx-rotate";
+                  transition-duration: 100ms, initial, indefinite;
+                  transition-delay: -10ms, inherit;
+                  transition-timing-function: steps(1), steps(2, jump-none),
+                      cubic-bezier(0.1, 0.2, 0.9, 0.8);
+                  transition: -fx-opacity 100ms steps(2, jump-both) -10ms;
+                }
+                """;
+        if (target.supports(
+                org.glavo.sassfx.JavaFXFeature.ADVANCED_TRANSITION_EASING
+        )) {
+            safeSource += """
+                    Pane {
+                      transition-timing-function:
+                          cubic-bezier(0.1, -2, 0.9, 3),
+                          linear(0, 0.25 25% 75%, 1);
+                    }
+                    """;
+        }
+
+        var safeCss = compile(
+                new Fixture("transition-runtime-safety", safeSource, Syntax.SCSS),
+                target
+        );
+        CssParser.errorsProperty().clear();
+        var safeStylesheet = new CssParser().parse(safeCss);
+        if (!CssParser.errorsProperty().isEmpty()) {
+            throw new AssertionError(
+                    "Runtime-safe transitions produced JavaFX parser errors: "
+                            + CssParser.errorsProperty()
+            );
+        }
+        var convertedDeclarations = 0;
+        for (var rule : safeStylesheet.getRules()) {
+            for (var declaration : rule.getDeclarations()) {
+                try {
+                    declaration.getParsedValue().convert(null);
+                } catch (RuntimeException failure) {
+                    throw new AssertionError(
+                            "JavaFX " + target.version()
+                                    + " could not convert accepted "
+                                    + declaration.getProperty() + ".",
+                            failure
+                    );
+                }
+                convertedDeclarations++;
+            }
+        }
+        if (convertedDeclarations < 5) {
+            throw new AssertionError(
+                    "Runtime-safe transition fixture retained only "
+                            + convertedDeclarations + " declarations."
+            );
+        }
+
+        verifyRejectedTransitionQuirk(
+                target,
+                "transition-timing-function: steps(1, jump-none)",
+                true
+        );
+        verifyRejectedTransitionQuirk(
+                target,
+                "transition-timing-function: steps(2, end, ignored)",
+                false
+        );
+        verifyRejectedTransitionQuirk(
+                target,
+                "transition-timing-function: cubic-bezier(0, 0, 1, 1, 2)",
+                false
+        );
+        verifyRejectedTransitionQuirk(
+                target,
+                "transition-duration: 100ms 200ms",
+                false
+        );
+        if (target.supports(
+                org.glavo.sassfx.JavaFXFeature.ADVANCED_TRANSITION_EASING
+        )) {
+            verifyRejectedTransitionQuirk(
+                    target,
+                    "transition-timing-function: linear(0)",
+                    true
+            );
+            verifyRejectedTransitionQuirk(
+                    target,
+                    "transition-timing-function: linear(0 0% 50% 75%)",
+                    false
+            );
+        }
+    }
+
+    /// Verifies one OpenJFX transition parser quirk that SassFX rejects.
+    ///
+    /// @param target             the selected JavaFX release
+    /// @param declaration       the declaration text without a terminator
+    /// @param conversionFailure whether OpenJFX conversion must fail
+    /// @throws Exception if the observed OpenJFX behavior changes or SassFX
+    /// accepts the declaration
+    private static void verifyRejectedTransitionQuirk(
+            JavaFXTarget target,
+            String declaration,
+            boolean conversionFailure
+    ) throws Exception {
+        var source = "Pane { " + declaration + "; }";
+        CssParser.errorsProperty().clear();
+        var stylesheet = new CssParser().parse(source);
+        if (!CssParser.errorsProperty().isEmpty()
+                || stylesheet.getRules().isEmpty()
+                || stylesheet.getRules().get(0).getDeclarations().isEmpty()) {
+            throw new AssertionError(
+                    "JavaFX " + target.version()
+                            + " no longer exhibits transition parser quirk: "
+                            + declaration
+            );
+        }
+
+        var converted = false;
+        try {
+            stylesheet.getRules().get(0)
+                    .getDeclarations().get(0)
+                    .getParsedValue().convert(null);
+            converted = true;
+        } catch (IllegalArgumentException expected) {
+            if (!conversionFailure) {
+                throw new AssertionError(
+                        "JavaFX " + target.version()
+                                + " unexpectedly failed to convert "
+                                + declaration,
+                        expected
+                );
+            }
+        }
+        if (converted == conversionFailure) {
+            throw new AssertionError(
+                    "JavaFX " + target.version()
+                            + (conversionFailure
+                            ? " unexpectedly converted "
+                            : " unexpectedly failed to convert ")
+                            + declaration
+            );
+        }
+
+        try {
+            compile(
+                    new Fixture(
+                            "transition-rejected-quirk",
+                            source,
+                            Syntax.SCSS
+                    ),
+                    target
+            );
+        } catch (SassCompilationException expected) {
+            return;
+        }
+        throw new AssertionError(
+                "SassFX accepted unsafe transition declaration: "
+                        + declaration
+        );
+    }
+
     /// Verifies the upstream transition BSS deserialization gap.
     ///
     /// OpenJFX writes the transition-specific converter names, but its binary
@@ -1157,6 +1330,60 @@ public final class JavaFXCssOracle {
             throw new AssertionError(
                     "JavaFX accepted a non-ASCII @font-face reference."
             );
+        }
+    }
+
+    /// Verifies legacy string and comment boundaries against the product lexer.
+    private static void verifyLegacyValueTriviaSemantics() {
+        for (var value : List.of(
+                "\"line\nbreak\"",
+                "\"form\ffeed\"",
+                "/**/red/**/",
+                "// leading\nred // trailing\n"
+        )) {
+            if (!JavaFXCssLexer.isTokenizableValue(value)) {
+                throw new AssertionError(
+                        "SassFX rejected JavaFX value trivia: " + value
+                );
+            }
+            CssParser.errorsProperty().clear();
+            var stylesheet = new CssParser().parse(
+                    "Pane { -fx-custom: " + value + "; }"
+            );
+            var retainedDeclaration = stylesheet.getRules().stream()
+                    .anyMatch(rule -> !rule.getDeclarations().isEmpty());
+            if (!retainedDeclaration) {
+                throw new AssertionError(
+                        "JavaFX rejected value trivia accepted by SassFX: "
+                                + value
+                                + "; errors=" + CssParser.errorsProperty()
+                );
+            }
+        }
+
+        for (var value : List.of(
+                "red /* unterminated",
+                "red // unterminated",
+                "red // comment\rblue"
+        )) {
+            if (JavaFXCssLexer.isTokenizableValue(value)) {
+                throw new AssertionError(
+                        "SassFX accepted consuming JavaFX comment: " + value
+                );
+            }
+            CssParser.errorsProperty().clear();
+            var stylesheet = new CssParser().parse(
+                    "Pane { -fx-custom: " + value + "; }"
+            );
+            var retainedDeclaration = stylesheet.getRules().stream()
+                    .anyMatch(rule -> !rule.getDeclarations().isEmpty());
+            if (retainedDeclaration) {
+                throw new AssertionError(
+                        "JavaFX retained value after consuming comment: "
+                                + value
+                                + "; errors=" + CssParser.errorsProperty()
+                );
+            }
         }
     }
 
