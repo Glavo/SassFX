@@ -4,8 +4,10 @@ package org.glavo.sassfx.internal.css;
 import org.glavo.sassfx.CssTarget;
 import org.glavo.sassfx.JavaFXCssTarget;
 import org.glavo.sassfx.OutputStyle;
+import org.glavo.sassfx.SourceSpan;
 import org.glavo.sassfx.internal.sourcemap.SourceMapBuffer;
 import org.glavo.sassfx.internal.sourcemap.SourceMapGenerator;
+import org.glavo.sassfx.internal.value.SassNumber;
 import org.glavo.sassfx.internal.value.SassString;
 import org.glavo.sassfx.internal.value.SassValueException;
 import org.jetbrains.annotations.ApiStatus;
@@ -358,7 +360,7 @@ public final class CssSerializer {
         if (writeIndent) {
             writeIndentation(buffer, indentation);
         }
-        buffer.forSpan(comment.span(), () -> {
+        buffer.forSpanLines(comment.span(), () -> {
             // Match dart-sass: multi-line comments are re-indented relative to the
             // least-indented continuation line and the current CSS indentation.
             @Nullable Integer minimum = minimumContinuationIndentation(comment.text());
@@ -530,7 +532,7 @@ public final class CssSerializer {
         // Preserve source line breaks between selector complexes; indent the
         // continuation at the same depth as the first complex (dart-sass).
         int indentSpaces = indentation * 2;
-        buffer.forSpan(rule.selector().span(), () ->
+        buffer.forSpanLines(rule.selector().span(), () ->
                 buffer.append(rule.selector().value().toCssString(false, indentSpaces)));
         buffer.append(" {");
         writeExpandedChildren(rule, buffer, indentation, javaFX);
@@ -748,11 +750,12 @@ public final class CssSerializer {
             SourceMapBuffer buffer,
             boolean javaFX
     ) {
+        @Nullable var last = lastCompressedVisibleChild(stylesheet);
         for (var child : stylesheet.children()) {
             if (!isCompressedVisible(child)) {
                 continue;
             }
-            writeCompressedNode(child, buffer, javaFX);
+            writeCompressedNode(child, buffer, javaFX, child == last);
         }
     }
 
@@ -761,14 +764,27 @@ public final class CssSerializer {
     /// @param node   the visible node
     /// @param buffer the output and source-map buffer
     /// @param javaFX whether JavaFX-required token separators are emitted
+    /// @param terminal whether this is the final visible child of its parent
     private static void writeCompressedNode(
             CssNode node,
             SourceMapBuffer buffer,
-            boolean javaFX
+            boolean javaFX,
+            boolean terminal
     ) {
         if (node instanceof CssImport importRule) {
-            buffer.forSpan(importRule.span(), () ->
-                    buffer.append("@import ").append(importRule.argument()).append(';'));
+            buffer.forSpan(importRule.span(), () -> {
+                if (javaFX) {
+                    // OpenJFX requires the conventional separator and terminator
+                    // even when the surrounding stylesheet is compressed.
+                    buffer.append("@import ").append(importRule.argument()).append(';');
+                } else {
+                    buffer.append("@import")
+                            .append(compressImportArgument(importRule.argument()));
+                }
+                if (!javaFX && !terminal) {
+                    buffer.append(';');
+                }
+            });
         } else if (node instanceof CssMediaRule mediaRule) {
             buffer.forSpan(mediaRule.span(), () -> {
                 buffer.append("@media");
@@ -802,7 +818,7 @@ public final class CssSerializer {
                 buffer.append('{');
                 writeCompressedChildren(unknownAtRule, buffer, javaFX);
                 buffer.append('}');
-            } else {
+            } else if (!terminal) {
                 buffer.append(';');
             }
         } else if (node instanceof CssFontFace fontFace) {
@@ -816,7 +832,7 @@ public final class CssSerializer {
             buffer.append('}');
         } else if (node instanceof CssStyleRule rule) {
             buffer.forSpan(rule.selector().span(), () ->
-                    buffer.append(rule.selector().value().toCssString(false)));
+                    buffer.append(rule.selector().value().toCssString(false, 0, true)));
             buffer.append('{');
             writeCompressedChildren(rule, buffer, javaFX);
             buffer.append('}');
@@ -857,6 +873,7 @@ public final class CssSerializer {
             boolean javaFX
     ) {
         boolean precedingDeclaration = false;
+        @Nullable var last = lastCompressedVisibleChild(parent);
         for (var child : parent.children()) {
             if (!isCompressedVisible(child)) {
                 continue;
@@ -864,9 +881,110 @@ public final class CssSerializer {
             if (precedingDeclaration) {
                 buffer.append(';');
             }
-            writeCompressedNode(child, buffer, javaFX);
+            writeCompressedNode(child, buffer, javaFX, child == last);
             precedingDeclaration = child instanceof CssDeclaration;
         }
+    }
+
+    /// Returns the final child that contributes to compressed output.
+    ///
+    /// @param parent the parent to inspect
+    /// @return the final visible child, or {@code null} when none is visible
+    private static @Nullable CssNode lastCompressedVisibleChild(CssParentNode parent) {
+        for (var index = parent.children().size() - 1; index >= 0; index--) {
+            var child = parent.children().get(index);
+            if (isCompressedVisible(child)) {
+                return child;
+            }
+        }
+        return null;
+    }
+
+    /// Returns a compact plain-CSS import argument.
+    ///
+    /// A leading URL function is serialized as a quoted string when its body is
+    /// representable as one import URL. Optional media, layer, and supports
+    /// modifiers follow without whitespace because the preceding quote or
+    /// closing parenthesis provides a token boundary.
+    ///
+    /// @param argument the evaluated import argument
+    /// @return the compressed argument including its leading URL token
+    private static String compressImportArgument(String argument) {
+        var text = argument.strip();
+        if (text.isEmpty()) {
+            return text;
+        }
+        var first = text.charAt(0);
+        if (first == '\'' || first == '"') {
+            var end = quotedEnd(text, 0, first);
+            if (end >= 0) {
+                return text.substring(0, end + 1)
+                        + text.substring(end + 1).stripLeading();
+            }
+            return text;
+        }
+        if (text.length() < 5 || !text.regionMatches(true, 0, "url(", 0, 4)) {
+            return text;
+        }
+
+        var close = closingUrlParenthesis(text);
+        if (close < 0) {
+            return text;
+        }
+        var body = text.substring(4, close).strip();
+        String url;
+        if (body.length() >= 2
+                && (body.charAt(0) == '\'' || body.charAt(0) == '"')
+                && quotedEnd(body, 0, body.charAt(0)) == body.length() - 1) {
+            url = new SassString(body.substring(1, body.length() - 1), true)
+                    .toCssString();
+        } else {
+            url = new SassString(body, true).toCssString();
+        }
+        return url + text.substring(close + 1).stripLeading();
+    }
+
+    /// Finds the closing parenthesis of an initial `url()` token.
+    ///
+    /// @param text text beginning with `url(`
+    /// @return the closing-parenthesis index, or `-1` for malformed input
+    private static int closingUrlParenthesis(String text) {
+        var quote = 0;
+        for (var index = 4; index < text.length(); index++) {
+            var character = text.charAt(index);
+            if (character == '\\' && index + 1 < text.length()) {
+                index++;
+                continue;
+            }
+            if (quote != 0) {
+                if (character == quote) {
+                    quote = 0;
+                }
+            } else if (character == '\'' || character == '"') {
+                quote = character;
+            } else if (character == ')') {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    /// Finds the unescaped closing quote of a quoted token.
+    ///
+    /// @param text the text containing the token
+    /// @param start the opening-quote index
+    /// @param quote the quote character
+    /// @return the closing-quote index, or `-1` when unterminated
+    private static int quotedEnd(String text, int start, char quote) {
+        for (var index = start + 1; index < text.length(); index++) {
+            var character = text.charAt(index);
+            if (character == '\\' && index + 1 < text.length()) {
+                index++;
+            } else if (character == quote) {
+                return index;
+            }
+        }
+        return -1;
     }
 
     /// Writes one declaration using compressed layout.
@@ -930,7 +1048,7 @@ public final class CssSerializer {
             // Raw CSS custom-property / declaration values keep author whitespace;
             // expanded mode reindents multi-line values, and values that end only
             // in newlines become a single trailing space (dart-sass).
-            buffer.forSpan(declaration.value().span(), () ->
+            buffer.forSpan(declarationValueMappingSpan(declaration), () ->
                     writeRawDeclarationValue(declaration, buffer, indentation, compressed));
             return;
         }
@@ -939,10 +1057,18 @@ public final class CssSerializer {
             @Nullable var legacyGradient = javaFX
                     ? JavaFXLegacyGradient.serialize(value)
                     : null;
-            var css = legacyGradient != null
-                    ? legacyGradient
-                    : value.toCssString(true, compressed);
-            buffer.forSpan(declaration.value().span(), () -> buffer.append(css));
+            String css;
+            if (legacyGradient != null) {
+                css = legacyGradient;
+            } else if (javaFX && compressed && value instanceof SassNumber) {
+                css = value.toCssString(true, false);
+            } else {
+                css = value.toCssString(true, compressed);
+            }
+            buffer.forSpan(
+                    declarationValueMappingSpan(declaration),
+                    () -> buffer.append(css)
+            );
         } catch (SassValueException cause) {
             throw new CssSerializeException(
                     Objects.requireNonNull(cause.getMessage(), "value failure message"),
@@ -950,6 +1076,26 @@ public final class CssSerializer {
                     cause
             );
         }
+    }
+
+    /// Returns the source-map span for a declaration value when it adds useful
+    /// information beyond the declaration-name mapping.
+    ///
+    /// Values originating on the same source line as their property name are
+    /// covered by the name entry. Values from another line or source retain a
+    /// distinct entry, including variables and callable arguments.
+    ///
+    /// @param declaration the declaration being serialized
+    /// @return the value origin, or {@code null} when the name mapping covers it
+    private static @Nullable SourceSpan declarationValueMappingSpan(
+            CssDeclaration declaration
+    ) {
+        var name = declaration.name().span();
+        var value = declaration.value().sourceMapSpan();
+        return Objects.equals(name.url(), value.url())
+                && name.start().line() == value.start().line()
+                ? null
+                : value;
     }
 
     /// Appends a raw (non-SassScript) declaration value.

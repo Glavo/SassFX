@@ -392,16 +392,36 @@ public record ComplexSelector(
     /// @return the serialized complex selector
     /// @throws SassValueException if an unresolved parent selector remains
     public String toCssString(boolean inspect) {
+        return toCssString(inspect, false);
+    }
+
+    /// Returns the CSS text of this complex selector with configurable layout.
+    ///
+    /// @param inspect    whether placeholder selectors and full structure are retained
+    /// @param compressed whether optional whitespace around combinators and in
+    ///                   nested selector lists is omitted
+    /// @return the serialized complex selector
+    /// @throws SassValueException if an unresolved parent selector remains
+    public String toCssString(boolean inspect, boolean compressed) {
         var result = new StringBuilder();
         for (var combinator : leadingCombinators) {
-            if (!result.isEmpty()) {
+            if (!compressed && !result.isEmpty()) {
                 result.append(' ');
             }
             result.append(combinator.css());
         }
-        for (var component : components) {
+        for (var componentIndex = 0;
+             componentIndex < components.size();
+             componentIndex++) {
+            var component = components.get(componentIndex);
             if (!result.isEmpty()) {
-                result.append(' ');
+                var previousHasCombinator = componentIndex > 0
+                        && !components.get(componentIndex - 1).combinators().isEmpty();
+                var descendantBoundary = componentIndex > 0
+                        && !previousHasCombinator;
+                if (!compressed || descendantBoundary) {
+                    result.append(' ');
+                }
             }
             var compoundStart = result.length();
             for (var simple : component.selector().components()) {
@@ -415,7 +435,7 @@ public record ComplexSelector(
                         continue;
                     }
                     if (simple instanceof PseudoSelector pseudo) {
-                        @Nullable String emitted = emitPseudo(pseudo);
+                        @Nullable String emitted = emitPseudo(pseudo, compressed);
                         if (emitted == null) {
                             continue;
                         }
@@ -423,33 +443,61 @@ public record ComplexSelector(
                         continue;
                     }
                 }
-                result.append(simple.toCssString());
+                result.append(simple instanceof AttributeSelector attribute
+                        ? attribute.toCssString(compressed)
+                        : serializeSimple(simple, compressed));
             }
             if (!inspect && result.length() == compoundStart) {
                 // All simples were placeholders or omitted `:not(%…)` forms.
                 result.append('*');
             }
             for (var combinator : component.combinators()) {
-                result.append(' ').append(combinator.css());
+                if (!compressed) {
+                    result.append(' ');
+                }
+                result.append(combinator.css());
             }
         }
         return result.toString();
+    }
+
+    /// Serializes one simple selector that remains visible.
+    ///
+    /// @param simple the selector to serialize
+    /// @param compressed whether nested selector-list commas are compacted
+    /// @return the selector CSS
+    private static String serializeSimple(
+            SimpleSelector simple,
+            boolean compressed
+    ) {
+        if (!(simple instanceof PseudoSelector pseudo)
+                || !(pseudo.argument() instanceof NthPseudoArgument nth)
+                || nth.selectors() == null) {
+            return simple.toCssString();
+        }
+        return (pseudo.element() ? "::" : ":")
+                + pseudo.name().toCssString()
+                + '(' + nth.formula() + " of "
+                + nth.selectors().toCssString(true, 0, compressed) + ')';
     }
 
     /// Serializes one pseudo selector for CSS emission.
     ///
     /// @param pseudo the pseudo selector
     /// @return the emitted text, or {@code null} when the pseudo is omitted
-    private static @Nullable String emitPseudo(PseudoSelector pseudo) {
+    private static @Nullable String emitPseudo(
+            PseudoSelector pseudo,
+            boolean compressed
+    ) {
         if (!(pseudo.argument() instanceof SelectorPseudoArgument selectorArgument)) {
-            return pseudo.toCssString();
+            return serializeSimple(pseudo, compressed);
         }
         var argumentList = selectorArgument.selectors();
         var name = pseudo.name().value();
         if ("not".equalsIgnoreCase(name) && argumentList.isInvisible()) {
             return null;
         }
-        var emittedArgs = argumentList.toCssString(false);
+        var emittedArgs = argumentList.toCssString(false, 0, compressed);
         if (emittedArgs.isEmpty() && !"not".equalsIgnoreCase(name)) {
             // Fully invisible selector-taking pseudos make the complex invisible;
             // emission should not reach an empty non-`:not` argument list.

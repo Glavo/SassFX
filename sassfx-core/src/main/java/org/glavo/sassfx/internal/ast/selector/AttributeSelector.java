@@ -71,17 +71,32 @@ public record AttributeSelector(
 
     @Override
     public String toCssString() {
+        return toCssString(false);
+    }
+
+    /// Returns the canonical CSS spelling with configurable modifier spacing.
+    ///
+    /// In compressed layout, whitespace before a modifier is omitted after a
+    /// quoted value because the closing quote already creates a token boundary.
+    ///
+    /// @param compressed whether optional whitespace is omitted
+    /// @return the serialized attribute selector
+    public String toCssString(boolean compressed) {
         var result = new StringBuilder().append('[').append(name.toCssString());
         if (matcher != null) {
             result.append(matcher.css());
             var attributeValue = Objects.requireNonNull(value, "value");
-            if (canEmitUnquoted(attributeValue)) {
+            var unquoted = canEmitUnquoted(attributeValue);
+            if (unquoted) {
                 result.append(attributeValue);
             } else {
                 result.append(quoteAttributeValue(attributeValue));
             }
             if (modifier != null) {
-                result.append(' ').append(modifier.toCssString());
+                if (!compressed || unquoted) {
+                    result.append(' ');
+                }
+                result.append(modifier.toCssString());
             }
         }
         return result.append(']').toString();

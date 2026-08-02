@@ -223,9 +223,18 @@ final class SassValueTest {
                 complexNumber.toCssString()
         );
         assertEquals("calc(infinity)", SassNumber.of(Double.POSITIVE_INFINITY, null).toString());
+        var unitfulInfinity = SassNumber.of(Double.NEGATIVE_INFINITY, "px");
         assertEquals(
                 "calc(-infinity * 1px)",
-                SassNumber.of(Double.NEGATIVE_INFINITY, "px").toCssString()
+                unitfulInfinity.toCssString()
+        );
+        assertEquals(
+                "var(--c) / (-infinity * 1px)",
+                new CalculationOperation(
+                        CalculationOperator.DIVIDED_BY,
+                        new SassString("var(--c)", false),
+                        unitfulInfinity
+                ).toCssString()
         );
         assertEquals("calc(NaN)", SassNumber.of(Double.NaN, null).toCssString());
     }

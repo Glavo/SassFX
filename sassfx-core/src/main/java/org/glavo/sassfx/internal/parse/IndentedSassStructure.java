@@ -1956,7 +1956,9 @@ final class IndentedSassStructure {
             if (colon < 0) {
                 return true;
             }
-            return stripped.substring(colon + 1).isBlank();
+            if (stripped.substring(colon + 1).isBlank()) {
+                return true;
+            }
         }
         // Bare at-rule names whose dart-sass parsers use
         // {@code whitespace(consumeNewlines: true)} after the keyword may put
@@ -2046,7 +2048,12 @@ final class IndentedSassStructure {
                 return false;
             }
         }
-        return true;
+        // A bare word remains a style selector even when it is also a Sass
+        // expression keyword. Only directives and declaration-like statements
+        // may continue because of a trailing keyword. This keeps keyframe steps
+        // such as `from` and `to` as block headers.
+        return stripped.startsWith("@")
+                || looksLikeDeclarationOrAssignment(stripped);
     }
 
     /// Returns whether {@code text} ends with a top-level binary operator token.

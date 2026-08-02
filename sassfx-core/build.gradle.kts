@@ -124,6 +124,10 @@ tasks.named<JavaCompile>(javaFX8OracleSourceSet.compileJavaTaskName) {
 
 tasks.test {
     systemProperty("sassfx.test.expectedVersion", project.version.toString())
+    systemProperty(
+        "sassfx.test.rootDirectory",
+        rootProject.layout.projectDirectory.asFile.absolutePath,
+    )
     useJUnitPlatform {
         excludeTags("sass-spec")
     }

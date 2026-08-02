@@ -104,12 +104,36 @@ public record SassString(String text, boolean hasQuotes) implements SassValue {
     /// @return the serialized string
     @Override
     public String toCssString(boolean quote) {
+        return serialize(quote, false);
+    }
+
+    /// Returns this string with configurable quoting and output compaction.
+    ///
+    /// Compressed CSS emits private-use characters literally. Expanded CSS
+    /// escapes every code point in a private-use plane so glyph-font values
+    /// remain distinguishable.
+    ///
+    /// @param quote whether a quoted string retains quotes
+    /// @param compressed whether optional escaping is omitted
+    /// @return the serialized CSS string
+    @Override
+    public String toCssString(boolean quote, boolean compressed) {
+        return serialize(quote, compressed);
+    }
+
+    /// Serializes this string for one CSS layout mode.
+    ///
+    /// @param quote whether a quoted string retains quotes
+    /// @param compressed whether private-use escapes are omitted
+    /// @return the serialized CSS string
+    private String serialize(boolean quote, boolean compressed) {
         if (!hasQuotes || !quote) {
             // Unquoted emission folds newlines the way dart-sass
             // {@code _visitUnquotedString} does: each LF becomes a single space
             // and spaces immediately after that newline are dropped. Private-use
             // code points are escaped for glyph-font readability.
-            return escapePrivateUseOnly(foldUnquotedNewlines(text));
+            var folded = foldUnquotedNewlines(text);
+            return compressed ? folded : escapePrivateUseOnly(folded);
         }
 
         var includesSingleQuote = false;
@@ -130,7 +154,7 @@ public record SassString(String text, boolean hasQuotes) implements SassValue {
         }
 
         var result = new StringBuilder(text.length() + 2).append(quoteChar);
-        result.append(escapeSpecialCodePoints(text, quoteChar));
+        result.append(escapeSpecialCodePoints(text, quoteChar, !compressed));
         return result.append(quoteChar).toString();
     }
 
@@ -190,8 +214,13 @@ public record SassString(String text, boolean hasQuotes) implements SassValue {
     ///
     /// @param text      the semantic string text
     /// @param quoteChar the surrounding quote to backslash-escape, or {@code '\0'}
+    /// @param escapePrivateUse whether code points in private-use planes are escaped
     /// @return the escaped body text without surrounding quotes
-    private static String escapeSpecialCodePoints(String text, char quoteChar) {
+    private static String escapeSpecialCodePoints(
+            String text,
+            char quoteChar,
+            boolean escapePrivateUse
+    ) {
         var result = new StringBuilder(text.length());
         for (var index = 0; index < text.length(); index++) {
             var character = text.charAt(index);
@@ -207,7 +236,7 @@ public record SassString(String text, boolean hasQuotes) implements SassValue {
             }
             // Expanded mode prints Private Use Area code points as escape
             // codes so glyph-font code points stay distinguishable (dart-sass).
-            if (isPrivateUseBmp(character)) {
+            if (escapePrivateUse && isPrivateUseBmp(character)) {
                 index = appendHexEscape(result, character, text, index);
                 continue;
             }
@@ -215,7 +244,7 @@ public record SassString(String text, boolean hasQuotes) implements SassValue {
                 var low = text.charAt(index + 1);
                 if (Character.isLowSurrogate(low)) {
                     int codePoint = Character.toCodePoint(character, low);
-                    if (isPrivateUseSupplementary(codePoint)) {
+                    if (escapePrivateUse && isPrivateUseSupplementary(codePoint)) {
                         index = appendHexEscape(result, codePoint, text, index + 1);
                         continue;
                     }
@@ -251,8 +280,8 @@ public record SassString(String text, boolean hasQuotes) implements SassValue {
 
     /// Returns whether {@code codePoint} is in a supplementary private-use plane.
     private static boolean isPrivateUseSupplementary(int codePoint) {
-        return codePoint >= 0xF0000 && codePoint <= 0xFFFFD
-                || codePoint >= 0x100000 && codePoint <= 0x10FFFD;
+        return codePoint >= 0xF0000 && codePoint <= 0xFFFFF
+                || codePoint >= 0x100000 && codePoint <= 0x10FFFF;
     }
 
     /// Returns whether {@code character} is an ASCII hexadecimal digit.

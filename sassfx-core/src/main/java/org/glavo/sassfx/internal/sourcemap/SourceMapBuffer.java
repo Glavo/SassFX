@@ -50,6 +50,10 @@ public final class SourceMapBuffer {
     /// Contains source text aligned with [#sources], or {@code null} when omitted.
     private final @Nullable ArrayList<@Nullable String> sourceContents;
 
+    /// Contains the span mapped at the start of each appended line while a
+    /// multiline mapped write is active.
+    private @Nullable SourceSpan multilineSpan;
+
     /// Creates a buffer with source identifiers and optional embedded contents.
     ///
     /// @param enabled whether mappings are recorded
@@ -99,6 +103,9 @@ public final class SourceMapBuffer {
         if (value == '\n') {
             line++;
             column = 0;
+            if (enabled && multilineSpan != null) {
+                addEntry(multilineSpan);
+            }
         } else {
             column++;
         }
@@ -115,6 +122,29 @@ public final class SourceMapBuffer {
             addEntry(span);
         }
         writer.run();
+    }
+
+    /// Writes multiline content while mapping every generated line start to
+    /// the same source span.
+    ///
+    /// The first mapping is recorded at the current generated position. Each
+    /// newline appended by {@code writer} records another mapping immediately
+    /// after the newline. Nested calls restore the preceding multiline span.
+    ///
+    /// @param span the source span, or {@code null} to write without mappings
+    /// @param writer the content writer
+    public void forSpanLines(@Nullable SourceSpan span, Runnable writer) {
+        Objects.requireNonNull(writer, "writer");
+        if (enabled && span != null) {
+            addEntry(span);
+        }
+        var previous = multilineSpan;
+        multilineSpan = span;
+        try {
+            writer.run();
+        } finally {
+            multilineSpan = previous;
+        }
     }
 
     /// Returns the generated CSS text.

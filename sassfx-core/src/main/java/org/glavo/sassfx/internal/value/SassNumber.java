@@ -712,6 +712,20 @@ public final class SassNumber implements SassValue {
         return serialize(true);
     }
 
+    /// Returns this number's CSS representation for one output layout.
+    ///
+    /// Compressed output omits the leading zero from fractional magnitudes
+    /// whose absolute value is less than one.
+    ///
+    /// @param quote ignored because numbers never contain quoted strings
+    /// @param compressed whether an optional fractional leading zero is omitted
+    /// @return the CSS number or calculation
+    @Override
+    public String toCssString(boolean quote, boolean compressed) {
+        var css = serialize(true);
+        return compressed ? omitFractionalLeadingZero(css) : css;
+    }
+
     /// Serializes this number as a calculation operand.
     ///
     /// Non-finite values use bare CSS keywords ({@code infinity},
@@ -724,17 +738,35 @@ public final class SassNumber implements SassValue {
         if (slashNumerator != null) {
             return toCssString();
         }
-        if (Double.isFinite(value)) {
+        if (Double.isFinite(value)
+                && numeratorUnits.size() <= 1
+                && denominatorUnits.isEmpty()) {
             return toCssString();
         }
+        return serializeCalculationContents(true);
+    }
+
+    /// Serializes the contents of a complex-unit or non-finite calculation.
+    ///
+    /// @param css whether CSS precision truncation should be applied
+    /// @return calculation contents without an outer `calc()` function
+    private String serializeCalculationContents(boolean css) {
         var result = new StringBuilder();
-        if (Double.isNaN(value)) {
+        var firstAdditionalNumerator = 0;
+        if (Double.isFinite(value)) {
+            result.append(formatNumber(value, css));
+            if (!numeratorUnits.isEmpty()) {
+                result.append(numeratorUnits.get(0));
+                firstAdditionalNumerator = 1;
+            }
+        } else if (Double.isNaN(value)) {
             result.append("NaN");
         } else {
             result.append(value > 0 ? "infinity" : "-infinity");
         }
-        for (var unit : numeratorUnits) {
-            result.append(" * 1").append(unit);
+        for (var index = firstAdditionalNumerator;
+             index < numeratorUnits.size(); index++) {
+            result.append(" * 1").append(numeratorUnits.get(index));
         }
         for (var unit : denominatorUnits) {
             result.append(" / 1").append(unit);
@@ -742,18 +774,32 @@ public final class SassNumber implements SassValue {
         return result.toString();
     }
 
+    /// Returns CSS with an optional zero before its first decimal point removed.
+    ///
+    /// @param css the serialized number
+    /// @return the shortest equivalent leading spelling
+    private static String omitFractionalLeadingZero(String css) {
+        if (css.startsWith("0.")) {
+            return css.substring(1);
+        }
+        if (css.startsWith("-0.")) {
+            return "-" + css.substring(2);
+        }
+        return css;
+    }
+
     /// Returns whether calculation serialization is a multi-token product/quotient
     /// that may need parentheses under a surrounding {@code /} operator.
     ///
-    /// @return whether {@link #toCalculationCssString()} embeds {@code *} or {@code /}
+    /// @return whether [#toCalculationCssString()] embeds {@code *} or {@code /}
     public boolean isCompoundCalculationOperand() {
         if (slashNumerator != null) {
             return false;
         }
-        if (Double.isFinite(value)) {
-            return false;
+        if (!Double.isFinite(value)) {
+            return !numeratorUnits.isEmpty() || !denominatorUnits.isEmpty();
         }
-        return !numeratorUnits.isEmpty() || !denominatorUnits.isEmpty();
+        return numeratorUnits.size() > 1 || !denominatorUnits.isEmpty();
     }
 
     /// Compares magnitudes using Sass fuzzy equality and requires identical units.
@@ -802,27 +848,7 @@ public final class SassNumber implements SassValue {
                     + (numeratorUnits.isEmpty() ? "" : numeratorUnits.get(0));
         }
 
-        var result = new StringBuilder("calc(");
-        var firstAdditionalNumerator = 0;
-        if (Double.isFinite(value)) {
-            result.append(formatNumber(value, css));
-            if (!numeratorUnits.isEmpty()) {
-                result.append(numeratorUnits.get(0));
-                firstAdditionalNumerator = 1;
-            }
-        } else if (Double.isNaN(value)) {
-            result.append("NaN");
-        } else {
-            result.append(value > 0 ? "infinity" : "-infinity");
-        }
-        for (var index = firstAdditionalNumerator;
-             index < numeratorUnits.size(); index++) {
-            result.append(" * 1").append(numeratorUnits.get(index));
-        }
-        for (var unit : denominatorUnits) {
-            result.append(" / 1").append(unit);
-        }
-        return result.append(')').toString();
+        return "calc(" + serializeCalculationContents(css) + ')';
     }
 
     /// Returns a compatible result with the units selected by Sass arithmetic.

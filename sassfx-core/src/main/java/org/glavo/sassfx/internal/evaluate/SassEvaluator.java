@@ -3463,7 +3463,11 @@ public final class SassEvaluator implements
                 copyParentAfterSibling();
                 requireCssParent().addChild(new CssDeclaration(
                         name,
-                        new CssValue<>(value, valueExpression.span()),
+                        new CssValue<>(
+                                value,
+                                valueExpression.span(),
+                                expressionOrigin(valueExpression)
+                        ),
                         statement.span(),
                         statement.parsedAsSassScript()
                 ));
@@ -5032,11 +5036,7 @@ public final class SassEvaluator implements
         function.assertCompilationContext(compilationContext);
         return runCallable(
                 function.callable(),
-                new EvaluatedArguments(
-                        List.copyOf(arguments.asList()),
-                        new LinkedHashMap<>(arguments.keywords()),
-                        arguments.separator()
-                ),
+                forwardedArguments(arguments, span),
                 span
         );
     }
@@ -5056,13 +5056,36 @@ public final class SassEvaluator implements
         mixin.assertCompilationContext(compilationContext);
         runMixinCallable(
                 mixin.callable(),
-                new EvaluatedArguments(
-                        List.copyOf(arguments.asList()),
-                        new LinkedHashMap<>(arguments.keywords()),
-                        arguments.separator()
-                ),
+                forwardedArguments(arguments, span),
                 content,
                 span
+        );
+    }
+
+    /// Associates already-evaluated first-class callable arguments with their
+    /// forwarding call site.
+    ///
+    /// @param arguments the forwarded argument list
+    /// @param span the forwarding invocation span
+    /// @return aligned evaluated values and source origins
+    private static EvaluatedArguments forwardedArguments(
+            SassArgumentList arguments,
+            SourceSpan span
+    ) {
+        var positionalOrigins = new ArrayList<SourceSpan>(arguments.asList().size());
+        for (var ignored : arguments.asList()) {
+            positionalOrigins.add(span);
+        }
+        var namedOrigins = new LinkedHashMap<String, SourceSpan>();
+        for (var name : arguments.keywords().keySet()) {
+            namedOrigins.put(name, span);
+        }
+        return new EvaluatedArguments(
+                arguments.asList(),
+                positionalOrigins,
+                new LinkedHashMap<>(arguments.keywords()),
+                namedOrigins,
+                arguments.separator()
         );
     }
 
@@ -5778,14 +5801,18 @@ public final class SassEvaluator implements
             boolean stripSlash
     ) {
         var positional = new ArrayList<SassValue>();
+        var positionalOrigins = new ArrayList<SourceSpan>();
         for (var argument : arguments.positional()) {
             var value = evaluate(argument);
             positional.add(stripSlash ? value.withoutSlash() : value);
+            positionalOrigins.add(expressionOrigin(argument));
         }
         var named = new LinkedHashMap<String, SassValue>();
+        var namedOrigins = new LinkedHashMap<String, SourceSpan>();
         for (var entry : arguments.named().entrySet()) {
             var value = evaluate(entry.getValue());
             named.put(entry.getKey(), stripSlash ? value.withoutSlash() : value);
+            namedOrigins.put(entry.getKey(), expressionOrigin(entry.getValue()));
         }
         var separator = ListSeparator.UNDECIDED;
         if (arguments.rest() != null) {
@@ -5793,11 +5820,20 @@ public final class SassEvaluator implements
             // SassList.withoutSlash on the whole rest (that rewrites a trailing
             // slash-number as a nested slash list for color channels).
             var rest = evaluate(arguments.rest());
+            var restOrigin = expressionOrigin(arguments.rest());
             if (rest instanceof SassMap map) {
-                addRestMap(named, map, span, stripSlash);
+                addRestMap(
+                        named,
+                        namedOrigins,
+                        map,
+                        restOrigin,
+                        span,
+                        stripSlash
+                );
             } else if (rest instanceof SassArgumentList argumentList) {
                 for (var element : argumentList.asList()) {
                     positional.add(stripSlash ? element.withoutSlash() : element);
+                    positionalOrigins.add(restOrigin);
                 }
                 separator = argumentList.separator();
                 for (var entry : argumentList.keywords().entrySet()) {
@@ -5805,14 +5841,17 @@ public final class SassEvaluator implements
                             entry.getKey(),
                             stripSlash ? entry.getValue().withoutSlash() : entry.getValue()
                     );
+                    namedOrigins.put(entry.getKey(), restOrigin);
                 }
             } else if (rest instanceof SassList list) {
                 for (var element : list.contents()) {
                     positional.add(stripSlash ? element.withoutSlash() : element);
+                    positionalOrigins.add(restOrigin);
                 }
                 separator = list.separator();
             } else {
                 positional.add(stripSlash ? rest.withoutSlash() : rest);
+                positionalOrigins.add(restOrigin);
             }
         }
         if (arguments.keywordRest() != null) {
@@ -5826,20 +5865,37 @@ public final class SassEvaluator implements
                         span
                 );
             }
-            addRestMap(named, map, span, stripSlash);
+            addRestMap(
+                    named,
+                    namedOrigins,
+                    map,
+                    expressionOrigin(arguments.keywordRest()),
+                    span,
+                    stripSlash
+            );
         }
-        return new EvaluatedArguments(List.copyOf(positional), named, separator);
+        return new EvaluatedArguments(
+                positional,
+                positionalOrigins,
+                named,
+                namedOrigins,
+                separator
+        );
     }
 
     /// Merges a rest map into the named-argument table.
     ///
     /// @param named      the named-argument table to extend
-    /// @param map        the rest map
-    /// @param span       the invocation span for diagnostics
+    /// @param namedOrigins source origins keyed like {@code named}
+    /// @param map the rest map
+    /// @param origin the source origin assigned to expanded entries
+    /// @param span the invocation span for diagnostics
     /// @param stripSlash whether to strip slash presentation on values
     private void addRestMap(
             LinkedHashMap<String, SassValue> named,
+            LinkedHashMap<String, SourceSpan> namedOrigins,
             SassMap map,
+            SourceSpan origin,
             SourceSpan span,
             boolean stripSlash
     ) {
@@ -5869,6 +5925,7 @@ public final class SassEvaluator implements
                     name,
                     stripSlash ? entry.getValue().withoutSlash() : entry.getValue()
             );
+            namedOrigins.put(name, origin);
         }
     }
 
@@ -5904,7 +5961,9 @@ public final class SassEvaluator implements
     ) {
         var declared = parameters.parameters();
         var positional = new ArrayList<>(evaluated.positional());
+        var positionalOrigins = new ArrayList<>(evaluated.positionalOrigins());
         var named = new LinkedHashMap<>(evaluated.named());
+        var namedOrigins = new LinkedHashMap<>(evaluated.namedOrigins());
 
         for (var index = 0; index < declared.size(); index++) {
             var name = declared.get(index).name();
@@ -5928,13 +5987,21 @@ public final class SassEvaluator implements
         }
 
         for (var index = 0; index < Math.min(positional.size(), declared.size()); index++) {
-            environment.setLocalVariable(declared.get(index).name(), positional.get(index), span);
+            environment.setLocalVariable(
+                    declared.get(index).name(),
+                    positional.get(index),
+                    positionalOrigins.get(index)
+            );
         }
         for (var index = positional.size(); index < declared.size(); index++) {
             var parameter = declared.get(index);
             @Nullable SassValue namedValue = named.remove(parameter.name());
             if (namedValue != null) {
-                environment.setLocalVariable(parameter.name(), namedValue, span);
+                environment.setLocalVariable(
+                        parameter.name(),
+                        namedValue,
+                        Objects.requireNonNull(namedOrigins.remove(parameter.name()))
+                );
                 continue;
             }
             if (parameter.defaultValue() == null) {
@@ -5946,7 +6013,7 @@ public final class SassEvaluator implements
             environment.setLocalVariable(
                     parameter.name(),
                     evaluate(parameter.defaultValue()).withoutSlash(),
-                    parameter.defaultValue().span()
+                    expressionOrigin(parameter.defaultValue())
             );
         }
 
@@ -6170,14 +6237,39 @@ public final class SassEvaluator implements
     /// Contains evaluated invocation arguments.
     ///
     /// @param positional the evaluated positional arguments
-    /// @param named      the evaluated keyword arguments by normalized name
-    /// @param separator  the separator preserved from a spread argument list
+    /// @param positionalOrigins origins aligned with {@code positional}
+    /// @param named the evaluated keyword arguments by normalized name
+    /// @param namedOrigins origins keyed like {@code named}
+    /// @param separator the separator preserved from a spread argument list
     @NotNullByDefault
     private record EvaluatedArguments(
             @Unmodifiable List<SassValue> positional,
+            @Unmodifiable List<SourceSpan> positionalOrigins,
             LinkedHashMap<String, SassValue> named,
+            LinkedHashMap<String, SourceSpan> namedOrigins,
             ListSeparator separator
     ) {
+        /// Creates immutable aligned argument values and origins.
+        ///
+        /// @throws IllegalArgumentException if positional or named origins are
+        /// not aligned with their values
+        private EvaluatedArguments {
+            positional = List.copyOf(positional);
+            positionalOrigins = List.copyOf(positionalOrigins);
+            named = new LinkedHashMap<>(named);
+            namedOrigins = new LinkedHashMap<>(namedOrigins);
+            Objects.requireNonNull(separator, "separator");
+            if (positional.size() != positionalOrigins.size()) {
+                throw new IllegalArgumentException(
+                        "positional origins must align with values"
+                );
+            }
+            if (!named.keySet().equals(namedOrigins.keySet())) {
+                throw new IllegalArgumentException(
+                        "named origins must align with values"
+                );
+            }
+        }
     }
 
     /// Runs a body with a temporary evaluation environment.

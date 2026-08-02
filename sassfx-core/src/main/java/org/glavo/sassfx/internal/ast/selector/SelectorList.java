@@ -300,6 +300,24 @@ public record SelectorList(
     /// @param indentSpaces spaces to write after a line-breaking comma
     /// @return the comma-separated CSS selectors
     public String toCssString(boolean inspect, int indentSpaces) {
+        return toCssString(inspect, indentSpaces, false);
+    }
+
+    /// Returns the CSS text of this selector list with configurable layout.
+    ///
+    /// Compressed layout removes whitespace after commas and ignores source
+    /// line breaks. Expanded layout preserves the behavior of
+    /// [#toCssString(boolean, int)].
+    ///
+    /// @param inspect      whether placeholder selectors and full structure are retained
+    /// @param indentSpaces spaces to write after a line-breaking comma
+    /// @param compressed   whether optional selector whitespace is omitted
+    /// @return the comma-separated CSS selectors
+    public String toCssString(
+            boolean inspect,
+            int indentSpaces,
+            boolean compressed
+    ) {
         var result = new StringBuilder();
         var first = true;
         for (var complex : components) {
@@ -308,15 +326,17 @@ public record SelectorList(
             }
             if (!first) {
                 result.append(',');
-                if (complex.lineBreak()) {
-                    result.append('\n');
-                    result.append(" ".repeat(Math.max(0, indentSpaces)));
-                } else {
-                    result.append(' ');
+                if (!compressed) {
+                    if (complex.lineBreak()) {
+                        result.append('\n');
+                        result.append(" ".repeat(Math.max(0, indentSpaces)));
+                    } else {
+                        result.append(' ');
+                    }
                 }
             }
             first = false;
-            result.append(complex.toCssString(inspect));
+            result.append(complex.toCssString(inspect, compressed));
         }
         return result.toString();
     }

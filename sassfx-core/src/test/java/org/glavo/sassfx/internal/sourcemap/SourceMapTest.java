@@ -41,9 +41,9 @@ final class SourceMapTest {
         assertEquals("gB", encode(16));
     }
 
-    /// Maps selectors and declaration names/values to source locations.
+    /// Maps selectors and declaration names without redundant same-line values.
     @Test
-    void mapsSelectorsAndDeclarations() throws Exception {
+    void mapsSelectorsAndDeclarationNames() throws Exception {
         var result = new SassCompiler().compile(
                 SassSource.fromString(
                         """
@@ -69,7 +69,7 @@ final class SourceMapTest {
         assertFalse(entries.isEmpty());
         assertTrue(hasMapping(entries, 0, 0, 0, 0), entries.toString());
         assertTrue(hasMapping(entries, 1, 2, 1, 2), entries.toString());
-        assertTrue(hasMapping(entries, 1, 7, 1, 7), entries.toString());
+        assertFalse(hasMapping(entries, 1, 7, 1, 7), entries.toString());
     }
 
     /// Maps nested child selectors to the nested source selector.

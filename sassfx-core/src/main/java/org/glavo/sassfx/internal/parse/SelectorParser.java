@@ -851,11 +851,12 @@ public final class SelectorParser {
             do {
                 buffer.append(text.charAt(index++));
             } while (index < text.length() && CssCharacters.isDigit(text.charAt(index)));
+            var endOfInteger = index;
             while (index < text.length() && isWhitespace(text.charAt(index))) {
                 index++;
             }
             if (index >= text.length() || !isAsciiN(text.charAt(index))) {
-                return new AnPlusBParse(buffer.toString(), index);
+                return new AnPlusBParse(buffer.toString(), endOfInteger);
             }
         } else if (index >= text.length() || !isAsciiN(text.charAt(index))) {
             throw error("Expected \"n\".");
@@ -863,6 +864,7 @@ public final class SelectorParser {
         // Always emit lowercase {@code n}, matching dart-sass.
         buffer.append('n');
         index++;
+        var endOfN = index;
         while (index < text.length() && isWhitespace(text.charAt(index))) {
             index++;
         }
@@ -871,7 +873,7 @@ public final class SelectorParser {
         }
         var sign = text.charAt(index);
         if (sign != '+' && sign != '-') {
-            return new AnPlusBParse(buffer.toString(), index);
+            return new AnPlusBParse(buffer.toString(), endOfN);
         }
         buffer.append(sign);
         index++;

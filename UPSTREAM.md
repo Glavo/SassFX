@@ -19,6 +19,33 @@ against the following fixed upstream releases.
 Local upstream source checkouts are reference material only. Builds, tests,
 and published artifacts must remain self-contained.
 
+## Dart Sass test inventory
+
+The [Dart Sass 1.102.0 test coverage manifest](gradle/verification/dart-sass-1.102.0-tests.tsv)
+accounts for all 59 Dart files under the upstream `test` tree. The pinned
+inventory contains 1,068 lexical `test()` calls and 351 lexical `group()`
+calls; parameterized Dart helpers may generate additional runtime cases. Each
+entry identifies the Java test source that owns the observable contract and
+uses one of four dispositions:
+
+- `PORTED` is a direct translation of the implementation-specific cases.
+- `EQUIVALENT` exercises the same observable contract through the Java API.
+- `ADAPTED` replaces behavior tied to the Dart, browser, or Node runtime with
+  the corresponding Java surface.
+- `SUPPORT` identifies an upstream helper or runtime wrapper with no standalone
+  test cases.
+
+The ordinary core test task validates the inventory checksum, aggregate
+counts, dispositions, and every mapped repository path. This makes additions
+or removals from the pinned upstream suite an explicit compatibility change
+rather than an undocumented test gap.
+
+The pinned sass-spec selection contains 13,890 enabled upstream cases and 36
+SassFX-owned integration cases; all of them pass. Five additional sass-spec
+cases retain their own `todo: dart-sass` marking and are skipped for the pinned
+Dart Sass version. They are upstream exclusions, not unsupported behavior in
+the Dart Sass 1.102.0 compatibility baseline.
+
 OpenJFX source code is not copied into SassFX. JavaFX CSS and BSS support is an
 independent implementation validated through public behavior and test-only
 compatibility oracles.

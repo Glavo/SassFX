@@ -120,4 +120,30 @@ final class IndentedContinuationAndBraceTest {
                 ).strip()
         );
     }
+
+    /// Verifies keyframe keyword selectors are block headers, not continuations.
+    @Test
+    void indentedKeyframeKeywordsOpenBlocks() throws Exception {
+        assertEquals(
+                """
+                        @keyframes pulse {
+                          from {
+                            opacity: 0;
+                          }
+                          to {
+                            opacity: 1;
+                          }
+                        }""",
+                compile(
+                        """
+                                @keyframes pulse
+                                  from
+                                    opacity: 0
+                                  to
+                                    opacity: 1
+                                """,
+                        Syntax.SASS
+                ).strip()
+        );
+    }
 }
