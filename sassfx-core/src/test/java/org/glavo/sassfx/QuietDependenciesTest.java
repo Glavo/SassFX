@@ -139,21 +139,16 @@ final class QuietDependenciesTest {
             List<Path> loadPaths,
             Set<SassDeprecation> fatal
     ) {
-        return new CompileOptions(
-                false,
-                loadPaths,
-                null,
-                List.of(),
-                List.of(),
-                new SassDiagnosticOptions(
+        return CompileOptions.DEFAULT
+                .withLoadPaths(loadPaths)
+                .withDiagnosticOptions(new SassDiagnosticOptions(
                         SassLogger.NO_OP,
                         true,
                         false,
                         Set.of(),
                         fatal,
                         Set.of()
-                )
-        );
+                ));
     }
 
     /// Compiles an in-memory root with explicit options.

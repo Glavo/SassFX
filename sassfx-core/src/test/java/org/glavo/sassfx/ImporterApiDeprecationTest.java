@@ -248,25 +248,21 @@ final class ImporterApiDeprecationTest {
             List<SassImporter> importers,
             List<Path> loadPaths
     ) {
-        return new CompileOptions(
-                false,
-                loadPaths,
-                null,
-                importers,
-                List.of(),
-                new SassDiagnosticOptions(
+        return CompileOptions.DEFAULT
+                .withLoadPaths(loadPaths)
+                .withImporters(importers)
+                .withDiagnosticOptions(new SassDiagnosticOptions(
                         SassLogger.NO_OP,
                         quietDeps,
                         false,
                         silence,
                         fatal,
                         Set.of()
-                )
-        );
+                ));
     }
 
     /// Returns one stylesheet under a relative canonical URL.
-    private static final class RelativeImporter implements SassImporter {
+    private static final class RelativeImporter implements SassContentsImporter {
         /// Counts calls to [#load(URI)].
         private int loadCount;
 

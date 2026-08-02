@@ -20,9 +20,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies custom Sass importer ordering, context, identity, and metadata.
+/// Verifies contents-importer ordering, context, identity, and metadata.
 @NotNullByDefault
-final class SassImporterTest {
+final class SassContentsImporterTest {
     /// Gives a custom-loaded stylesheet ownership of its relative loads.
     @Test
     void resolvesRelativeLoadsWithOwningImporter() throws Exception {
@@ -98,7 +98,7 @@ final class SassImporterTest {
                         Syntax.SCSS
                 )
         );
-        SassImporter importer = new SassImporter() {
+        SassContentsImporter importer = new SassContentsImporter() {
             /// Canonicalizes the entrypoint and its resolved opaque child URL.
             @Override
             public @Nullable URI canonicalize(
@@ -178,12 +178,9 @@ final class SassImporterTest {
                 URI.create("virtual:///custom.scss"),
                 new SassImporterResult(".custom { value: ok; }", Syntax.SCSS)
         ));
-        var options = new CompileOptions(
-                false,
-                List.of(directory),
-                null,
-                List.of(first, second)
-        );
+        var options = CompileOptions.DEFAULT
+                .withLoadPaths(List.of(directory))
+                .withImporters(List.of(first, second));
 
         var custom = new SassCompiler().compile(
                 SassSource.fromString(
@@ -364,7 +361,7 @@ final class SassImporterTest {
     void snapshotsImporterOptions() {
         var importer = new RecordingImporter(Map.of());
         var importers = new ArrayList<SassImporter>(List.of(importer));
-        var options = new CompileOptions(false, List.of(), null, importers);
+        var options = CompileOptions.DEFAULT.withImporters(importers);
         importers.clear();
 
         assertEquals(List.of(importer), options.importers());
@@ -384,7 +381,9 @@ final class SassImporterTest {
                         URI.create("memory:///root.scss")
                 ),
                 CssTarget.DEFAULT,
-                new CompileOptions(sourceMap, List.of(), null, importers)
+                CompileOptions.DEFAULT
+                        .withSourceMap(sourceMap)
+                        .withImporters(importers)
         );
     }
 
@@ -414,7 +413,7 @@ final class SassImporterTest {
                 URI.create("container:right"),
                 new SassImporterResult("@use \"shared\";", Syntax.SCSS)
         );
-        SassImporter containerImporter = new SassImporter() {
+        SassContentsImporter containerImporter = new SassContentsImporter() {
             /// Canonicalizes the two containing modules.
             @Override
             public @Nullable URI canonicalize(
@@ -437,7 +436,7 @@ final class SassImporterTest {
             }
         };
         var requests = new ArrayList<URI>();
-        SassImporter sharedImporter = new SassImporter() {
+        SassContentsImporter sharedImporter = new SassContentsImporter() {
             /// Canonicalizes the shared request.
             @Override
             public @Nullable URI canonicalize(
@@ -478,7 +477,7 @@ final class SassImporterTest {
     }
 
     /// Resolves short test URLs into an in-memory virtual URL space.
-    private static class RecordingImporter implements SassImporter {
+    private static class RecordingImporter implements SassContentsImporter {
         /// Contains virtual sources keyed by canonical URL.
         private final Map<URI, SassImporterResult> sources;
 

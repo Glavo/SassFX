@@ -93,12 +93,7 @@ final class SassDependencyTrackerTest {
         Files.writeString(root, "@use 'custom';");
         Files.writeString(imported, "$value: custom;");
         SassFileImporter importer = (url, context) -> imported.toUri();
-        var options = new CompileOptions(
-                false,
-                List.of(),
-                null,
-                List.of(importer)
-        );
+        var options = CompileOptions.DEFAULT.withImporters(List.of(importer));
         var tracker = new SassDependencyTracker();
 
         new SassCompiler().compile(

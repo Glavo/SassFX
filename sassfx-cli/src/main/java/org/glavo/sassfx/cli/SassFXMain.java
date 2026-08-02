@@ -1469,15 +1469,12 @@ public final class SassFXMain implements Callable<Integer> {
                 : diagnosticOptions.configurationWarnings()) {
             configurationWarningMessages.add(warning.message());
         }
-        return new CompileOptions(
-                emitSourceMap,
-                effectiveLoadPaths(),
-                null,
-                packageImporters(),
-                List.of(),
-                diagnosticOptions,
-                embedSources
-        );
+        return CompileOptions.DEFAULT
+                .withSourceMap(emitSourceMap)
+                .withLoadPaths(effectiveLoadPaths())
+                .withImporters(packageImporters())
+                .withDiagnosticOptions(diagnosticOptions)
+                .withSourceMapIncludeSources(embedSources);
     }
 
     /// Returns explicit load paths followed by paths from `SASS_PATH`.

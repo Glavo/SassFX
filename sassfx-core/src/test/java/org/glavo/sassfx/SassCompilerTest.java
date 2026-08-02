@@ -1336,7 +1336,7 @@ final class SassCompilerTest {
         var result = compiler.compile(
                 source,
                 CssTarget.DEFAULT,
-                new CompileOptions(true, java.util.List.of())
+                CompileOptions.DEFAULT.withSourceMap(true)
         );
         assertEquals(
                 """
@@ -1355,7 +1355,7 @@ final class SassCompilerTest {
                         () -> compiler.compile(
                                 source,
                                 BssTarget.DEFAULT,
-                                new CompileOptions(true, java.util.List.of())
+                                CompileOptions.DEFAULT.withSourceMap(true)
                         )
                 ).getMessage()
         );

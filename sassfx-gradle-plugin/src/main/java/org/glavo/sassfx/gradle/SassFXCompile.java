@@ -155,7 +155,7 @@ public abstract class SassFXCompile extends DefaultTask {
         var entries = entrypoints(sourceRoot, target.extension());
         var loadPaths = loadPaths();
         var declaredInputRoots = declaredInputRoots(sourceRoot, loadPaths);
-        var options = new CompileOptions(false, loadPaths);
+        var options = CompileOptions.DEFAULT.withLoadPaths(loadPaths);
         var stagingRoot = getTemporaryDir().toPath()
                 .resolve("output")
                 .toAbsolutePath()

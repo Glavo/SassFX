@@ -219,9 +219,8 @@ final class SourceScanner {
             throw new IllegalArgumentException("length must not be negative");
         }
         return new ParseException(
-                org.glavo.sassfx.DiagnosticCode.PARSE_ERROR,
-                source.span(start, Math.addExact(start, length)),
-                message
+                message,
+                source.span(start, Math.addExact(start, length))
         );
     }
 
@@ -232,9 +231,8 @@ final class SourceScanner {
     /// @return the parse failure
     ParseException error(String message, SourceSpan span) {
         return new ParseException(
-                org.glavo.sassfx.DiagnosticCode.PARSE_ERROR,
-                Objects.requireNonNull(span, "span"),
-                Objects.requireNonNull(message, "message")
+                Objects.requireNonNull(message, "message"),
+                Objects.requireNonNull(span, "span")
         );
     }
 

@@ -223,7 +223,7 @@ public final class SassCompiler {
                         resolutionTracker
                 );
                 @Nullable JavaFXStylesheetResolver stylesheetResolver =
-                        options.javaFXStylesheetResolver();
+                        bssTarget.stylesheetResolver();
                 BssImportResolver resolver = (resource, baseUrl, span) -> {
                     @Nullable JavaFXStylesheetResolver.ResolvedStylesheet custom = null;
                     if (stylesheetResolver != null) {
@@ -303,14 +303,11 @@ public final class SassCompiler {
         } catch (ParseException failure) {
             urls.addAll(registry.loadedUrls());
             sourceContents.putAll(registry.sourceContents());
-            var code = failure.code() == null
-                    ? null
-                    : failure.code().name();
             var primary = new Diagnostic(
                             DiagnosticSeverity.ERROR,
                             Objects.requireNonNull(failure.getMessage(), "parse failure message"),
                             failure.span(),
-                            code
+                            failure.code().name()
                     );
             throw new SassCompilationException(
                     failureDiagnostics(primary, evaluator.diagnostics()),

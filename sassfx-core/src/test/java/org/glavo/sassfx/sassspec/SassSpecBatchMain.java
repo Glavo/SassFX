@@ -275,7 +275,7 @@ public final class SassSpecBatchMain {
         if ((expectedOutput == null) == (expectedError == null)) {
             throw new IllegalArgumentException("Fixture must define exactly one of output/error");
         }
-        var options = new CompileOptions(false, List.of(suiteRoot));
+        var options = CompileOptions.DEFAULT.withLoadPaths(List.of(suiteRoot));
         boolean upstream = isUpstreamArchive(resolved.archiveResource());
         if (expectedOutput != null) {
             CompileResult<String> result = new SassCompiler().compile(

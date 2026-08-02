@@ -5,7 +5,7 @@ import com.sass_lang.embedded_protocol.InboundMessage;
 import com.sass_lang.embedded_protocol.OutboundMessage;
 import org.glavo.sassfx.SassCanonicalizeContext;
 import org.glavo.sassfx.SassFileImporter;
-import org.glavo.sassfx.SassImporter;
+import org.glavo.sassfx.SassContentsImporter;
 import org.glavo.sassfx.SassImporterResult;
 import org.glavo.sassfx.Syntax;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -23,7 +23,7 @@ import java.util.regex.Pattern;
 
 /// Adapts Embedded Sass host importer callbacks to the SassFX importer API.
 @NotNullByDefault
-final class EmbeddedHostImporter implements SassImporter {
+final class EmbeddedHostImporter implements SassContentsImporter {
     /// Matches the lowercase URL schemes accepted by Dart Sass importers.
     private static final Pattern VALID_URL_SCHEME =
             Pattern.compile("[a-z0-9+.-]+");

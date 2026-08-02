@@ -417,12 +417,11 @@ final class SassNodePackageImporterTest {
                 root.resolve("src").resolve("main.scss"),
                 "@use \"pkg:demo\";"
         );
-        var options = new CompileOptions(
-                true,
-                List.of(),
-                null,
-                List.of(new SassNodePackageImporter(root.resolve("unrelated")))
-        );
+        var options = CompileOptions.DEFAULT
+                .withSourceMap(true)
+                .withImporters(List.of(
+                        new SassNodePackageImporter(root.resolve("unrelated"))
+                ));
 
         var result = new SassCompiler().compile(
                 SassSource.fromFile(source),
@@ -481,12 +480,7 @@ final class SassNodePackageImporterTest {
     /// @param importer the package importer
     /// @return compile options without source maps
     private static CompileOptions options(SassImporter importer) {
-        return new CompileOptions(
-                false,
-                List.of(),
-                null,
-                List.of(importer)
-        );
+        return CompileOptions.DEFAULT.withImporters(List.of(importer));
     }
 
     /// Creates and returns an installed package directory.

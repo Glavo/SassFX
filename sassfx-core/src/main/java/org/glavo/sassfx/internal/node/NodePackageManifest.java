@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-package org.glavo.sassfx;
+package org.glavo.sassfx.internal.node;
 
 import com.google.gson.Strictness;
 import com.google.gson.stream.JsonReader;

@@ -244,14 +244,7 @@ final class FunctionUnitsDeprecationTest {
         return new SassCompiler().compile(
                 SassSource.fromString(source, Syntax.SCSS),
                 CssTarget.DEFAULT,
-                new CompileOptions(
-                        false,
-                        List.of(),
-                        null,
-                        List.of(),
-                        List.of(),
-                        diagnostics
-                )
+                CompileOptions.DEFAULT.withDiagnosticOptions(diagnostics)
         );
     }
 }

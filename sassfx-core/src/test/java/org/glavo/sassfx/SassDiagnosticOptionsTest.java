@@ -342,14 +342,7 @@ final class SassDiagnosticOptionsTest {
 
     /// Creates compile options with explicit diagnostic processing.
     private static CompileOptions options(SassDiagnosticOptions diagnostics) {
-        return new CompileOptions(
-                false,
-                List.of(),
-                null,
-                List.of(),
-                List.of(),
-                diagnostics
-        );
+        return CompileOptions.DEFAULT.withDiagnosticOptions(diagnostics);
     }
 
     /// Compiles SCSS using the supplied options.

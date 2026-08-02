@@ -1,4 +1,3 @@
-import org.glavo.sassfx.build.FailTask
 import org.glavo.sassfx.build.VerifyCoreLibraryJarTask
 import org.glavo.sassfx.build.VerifyReferenceIsolationTask
 import org.gradle.api.publish.maven.MavenPublication
@@ -149,6 +148,11 @@ val sassSpec = tasks.register<Test>("sassSpec") {
 }
 
 tasks.withType<Javadoc>().configureEach {
+    setSource(
+        fileTree("src/main/java/org/glavo/sassfx") {
+            include("*.java")
+        },
+    )
     javadocTool = javaToolchains.javadocToolFor {
         languageVersion = JavaLanguageVersion.of(25)
     }
@@ -324,13 +328,15 @@ val generateJavaFX8OracleInputs =
 val javaFX8JavaHome = providers.gradleProperty("javaFX8OracleJavaHome").orNull
 val verifyJavaFX8CssOracle =
     if (javaFX8JavaHome == null) {
-        tasks.register<FailTask>("verifyJavaFX8CssOracle") {
+        tasks.register("verifyJavaFX8CssOracle") {
             group = LifecycleBasePlugin.VERIFICATION_GROUP
             description = "Validates JavaFX 8 BSS against a configured JavaFX 8 runtime."
-            failureMessage.set(
-                "verifyJavaFX8CssOracle requires -PjavaFX8OracleJavaHome="
-                    + "<a Java 8 JDK containing JavaFX 8>.",
-            )
+            doLast {
+                throw GradleException(
+                    "verifyJavaFX8CssOracle requires -PjavaFX8OracleJavaHome="
+                        + "<a Java 8 JDK containing JavaFX 8>.",
+                )
+            }
         }
     } else {
         tasks.register<Exec>("verifyJavaFX8CssOracle") {

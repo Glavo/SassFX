@@ -407,7 +407,7 @@ final class SassSpecRunnerTest {
             );
         }
 
-        var options = new CompileOptions(false, List.of(archiveRoot));
+        var options = CompileOptions.DEFAULT.withLoadPaths(List.of(archiveRoot));
         if (expectedOutput != null) {
             CompileResult<String> result = new SassCompiler().compile(
                     SassSource.fromFile(input),

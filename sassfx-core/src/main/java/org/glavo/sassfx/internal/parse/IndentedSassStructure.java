@@ -2,6 +2,7 @@
 package org.glavo.sassfx.internal.parse;
 
 import org.glavo.sassfx.SourceSpan;
+import org.glavo.sassfx.internal.diagnostic.DiagnosticCode;
 import org.glavo.sassfx.internal.source.MappedSourceBuilder;
 import org.glavo.sassfx.internal.source.SourceFile;
 import org.jetbrains.annotations.ApiStatus;
@@ -70,13 +71,20 @@ final class IndentedSassStructure {
             if (line.indent() > 0
                     && line.indent() > lastStatementIndent
                     && !lastStatementOpened) {
-                throw error(
-                        source,
-                        line,
-                        lastWasLoudComment
-                                ? org.glavo.sassfx.DiagnosticCode.INDENTED_TEXT_AFTER_COMMENT
-                                : org.glavo.sassfx.DiagnosticCode.INDENTED_NESTING_WITHOUT_HEADER
-                );
+                throw lastWasLoudComment
+                        ? error(
+                                source,
+                                line,
+                                DiagnosticCode.INDENTED_TEXT_AFTER_COMMENT,
+                                "Unexpected text after end of comment"
+                        )
+                        : error(
+                                source,
+                                line,
+                                DiagnosticCode.INDENTED_NESTING_WITHOUT_HEADER,
+                                "Indented Sass statements must be nested below "
+                                        + "a block header."
+                        );
             }
             lastWasLoudComment = false;
 
@@ -92,8 +100,9 @@ final class IndentedSassStructure {
                     throw error(
                             source,
                             line,
-                            org.glavo.sassfx.DiagnosticCode.INDENTED_INCONSISTENT_INDENT,
-                            expectedIndent
+                            DiagnosticCode.INDENTED_INCONSISTENT_INDENT,
+                            "Inconsistent indentation, expected "
+                                    + expectedIndent + " spaces."
                     );
                 }
             }
@@ -2686,16 +2695,16 @@ final class IndentedSassStructure {
     /// @param source the original source
     /// @param line   the offending line
     /// @param code   the stable diagnostic code
-    /// @param args   format arguments for [org.glavo.sassfx.DiagnosticMessages]
+    /// @param message the human-readable failure message
     /// @return the parse failure
     private static ParseException error(
             SourceFile source,
             LogicalLine line,
-            org.glavo.sassfx.DiagnosticCode code,
-            Object... args
+            DiagnosticCode code,
+            String message
     ) {
         SourceSpan span = source.span(line.startOffset(), line.endOffset());
-        return new ParseException(code, span, args);
+        return new ParseException(code, message, span);
     }
 
     /// Creates a preprocessing failure associated with a source range.

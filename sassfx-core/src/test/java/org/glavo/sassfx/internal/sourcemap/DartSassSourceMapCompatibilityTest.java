@@ -7,6 +7,7 @@ import org.glavo.sassfx.CompileResult;
 import org.glavo.sassfx.CssTarget;
 import org.glavo.sassfx.OutputStyle;
 import org.glavo.sassfx.SassCanonicalizeContext;
+import org.glavo.sassfx.SassContentsImporter;
 import org.glavo.sassfx.SassCompilationException;
 import org.glavo.sassfx.SassCompiler;
 import org.glavo.sassfx.SassDiagnosticOptions;
@@ -61,7 +62,7 @@ final class DartSassSourceMapCompatibilityTest {
                                 Syntax.SCSS
                         ),
                         CssTarget.DEFAULT,
-                        new CompileOptions(true, List.of())
+                        CompileOptions.DEFAULT.withSourceMap(true)
                 )
         );
         var span = Objects.requireNonNull(failure.primaryDiagnostic().span());
@@ -807,7 +808,7 @@ final class DartSassSourceMapCompatibilityTest {
     ///
     /// @return a self-contained importer for the `other` module
     private static SassImporter configurationImporter() {
-        return new SassImporter() {
+        return new SassContentsImporter() {
             /// Canonicalizes every request into the test scheme.
             @Override
             public URI canonicalize(
@@ -867,15 +868,11 @@ final class DartSassSourceMapCompatibilityTest {
     ) throws Exception {
         var source = extractLocations(annotatedSource);
         var expected = extractLocations(annotatedCss);
-        var options = new CompileOptions(
-                true,
-                List.of(),
-                null,
-                importer == null ? List.of() : List.of(importer),
-                List.of(),
-                SassDiagnosticOptions.DEFAULT,
-                false
-        );
+        var options = CompileOptions.DEFAULT
+                .withSourceMap(true)
+                .withImporters(
+                        importer == null ? List.of() : List.of(importer)
+                );
         var result = compileMappingFixture(source.text(), syntax, style, options);
         assertEquals(expected.text(), result.output(), syntax.toString());
 

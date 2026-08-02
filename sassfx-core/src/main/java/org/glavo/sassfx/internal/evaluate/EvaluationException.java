@@ -5,6 +5,7 @@ import org.glavo.sassfx.Diagnostic;
 import org.glavo.sassfx.DiagnosticSeverity;
 import org.glavo.sassfx.SassStackFrame;
 import org.glavo.sassfx.SourceSpan;
+import org.glavo.sassfx.internal.diagnostic.DiagnosticCode;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -55,10 +56,11 @@ public final class EvaluationException extends RuntimeException {
             @Nullable Throwable cause
     ) {
         this(
-                org.glavo.sassfx.DiagnosticMessages.error(
-                        classifyMessage(message),
+                new Diagnostic(
+                        DiagnosticSeverity.ERROR,
+                        Objects.requireNonNull(message, "message"),
                         span,
-                        message
+                        classifyMessage(message).name()
                 ),
                 relatedSpans,
                 List.of(new SassStackFrame("root stylesheet", span)),
@@ -67,12 +69,12 @@ public final class EvaluationException extends RuntimeException {
     }
 
     /// Maps a pre-rendered value-layer message onto a stable diagnostic code.
-    private static org.glavo.sassfx.DiagnosticCode classifyMessage(String message) {
+    private static DiagnosticCode classifyMessage(String message) {
         Objects.requireNonNull(message, "message");
         if (message.startsWith("Undefined operation ")) {
-            return org.glavo.sassfx.DiagnosticCode.UNDEFINED_OPERATION;
+            return DiagnosticCode.UNDEFINED_OPERATION;
         }
-        return org.glavo.sassfx.DiagnosticCode.EVALUATION_ERROR;
+        return DiagnosticCode.EVALUATION_ERROR;
     }
 
     /// Creates an evaluation failure with explicit diagnostic and trace data.

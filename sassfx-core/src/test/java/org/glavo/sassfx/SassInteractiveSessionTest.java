@@ -50,12 +50,9 @@ final class SassInteractiveSessionTest {
                 url.toString().equals("virtual:palette")
                         ? imported.toUri()
                         : null;
-        var options = new CompileOptions(
-                false,
-                List.of(loadPath),
-                null,
-                List.of(importer)
-        );
+        var options = CompileOptions.DEFAULT
+                .withLoadPaths(List.of(loadPath))
+                .withImporters(List.of(importer));
         var session = session(options, directory);
 
         assertNull(session.evaluate("@use \"sass:math\"").value());
@@ -180,12 +177,7 @@ final class SassInteractiveSessionTest {
             Set<SassDeprecation> silence,
             Set<SassDeprecation> fatal
     ) {
-        return new CompileOptions(
-                false,
-                List.of(),
-                null,
-                List.of(),
-                List.of(),
+        return CompileOptions.DEFAULT.withDiagnosticOptions(
                 new SassDiagnosticOptions(
                         event -> {
                         },

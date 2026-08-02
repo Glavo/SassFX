@@ -96,27 +96,10 @@ shaded artifacts with automatic module names `org.glavo.sassfx.embedded`,
 runtime dependencies but no JavaFX, FFI, or native content.
 
 All four projects produce Maven publications with sources, Javadoc, license,
-developer, and SCM metadata. CLI, Embedded, and the Gradle plugin use their
-self-contained shaded JARs as the main artifacts. Gradle stages these
-publications in an isolated repository; JReleaser validates, signs, and deploys
-that repository through the Central Publisher API. The Gradle plugin is also
-configured for Plugin Portal publication. `verifyPublishedConsumer` resolves
-the staged plugin and library from a consumer build, compiles Java and SCSS,
-and runs both executable artifacts.
-
-Tags matching `v*.*.*` start the release workflow. The tag supplies the release
-version, while JReleaser reads the Central Portal token and armored PGP private
-key from the release environment. The required GitHub secrets are
-`MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `SIGNING_KEY`,
-`SIGNING_PASSWORD`, `GRADLE_PUBLISH_KEY`, and `GRADLE_PUBLISH_SECRET`.
-The public key corresponding to `SIGNING_KEY` must be available from a public
-OpenPGP key server before a release is published.
-After Maven Central and the Gradle Plugin Portal accept the artifacts, a
-separate job uses the workflow's GitHub token to create a GitHub Release with
-generated release notes. JReleaser reuses the pushed tag and does not create or
-replace it.
-Publication configuration does not imply that a particular version has
-already been released.
+developer, and SCM metadata. CLI, Embedded, and the Gradle plugin publish their
+self-contained shaded JARs as the main artifacts. See [RELEASING.md](RELEASING.md)
+for release prerequisites, local verification, and the tag-driven publication
+workflow.
 
 ## Gradle Plugin
 
@@ -417,6 +400,14 @@ the structured diagnostic fields.
 
 ## Java API
 
+For a published release, add the core library from Maven Central:
+
+```kotlin
+dependencies {
+    implementation("org.glavo:sassfx-core:<version>")
+}
+```
+
 `SassCompiler` is stateless, thread-safe, and reusable. A textual target
 returns `CompileResult<String>`:
 
@@ -487,7 +478,8 @@ available for BSS; requesting one fails with `SassCompilationException`.
 ### Compile options and source maps
 
 `CompileOptions` configures CSS source maps, ordered custom Sass importers and
-functions, Sass load paths, and the optional BSS retained-stylesheet resolver:
+functions, Sass load paths, and diagnostic processing. Start from
+`CompileOptions.DEFAULT` and derive only the settings a compilation needs:
 
 ```java
 import org.glavo.sassfx.CompileOptions;
@@ -500,13 +492,14 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 
+var options = CompileOptions.DEFAULT
+        .withSourceMap(true)
+        .withLoadPaths(List.of(Path.of("styles")));
+
 var result = new SassCompiler().compile(
         SassSource.fromFile(Path.of("style.scss")),
         new CssTarget(OutputStyle.COMPRESSED, false),
-        new CompileOptions(
-                true,
-                List.of(Path.of("styles"))
-        )
+        options
 );
 
 String css = result.output();
@@ -524,15 +517,15 @@ accepted for Dart Sass 1.x compatibility but report
 
 ### Custom Sass importers
 
-`SassImporter` provides the synchronous `canonicalize`/`load` contract used by
-`@use`, `@forward`, dynamic `@import`, and `meta.load-css()`. Custom importers
-are consulted in `CompileOptions.importers()` order before filesystem load
-paths:
+`SassContentsImporter` provides the synchronous `canonicalize`/`load` contract
+used by `@use`, `@forward`, dynamic `@import`, and `meta.load-css()`. Contents
+and file importers share the `SassImporter` marker type and are consulted in
+`CompileOptions.importers()` order before filesystem load paths:
 
 ```java
 import org.glavo.sassfx.CompileOptions;
 import org.glavo.sassfx.SassCanonicalizeContext;
-import org.glavo.sassfx.SassImporter;
+import org.glavo.sassfx.SassContentsImporter;
 import org.glavo.sassfx.SassImporterResult;
 import org.glavo.sassfx.Syntax;
 import org.jetbrains.annotations.Nullable;
@@ -546,7 +539,7 @@ Map<URI, SassImporterResult> sources = Map.of(
         new SassImporterResult("$accent: royalblue;", Syntax.SCSS)
 );
 
-SassImporter importer = new SassImporter() {
+SassContentsImporter importer = new SassContentsImporter() {
     @Override
     public @Nullable URI canonicalize(
             URI url,
@@ -564,12 +557,7 @@ SassImporter importer = new SassImporter() {
     }
 };
 
-var options = new CompileOptions(
-        false,
-        List.of(),
-        null,
-        List.of(importer)
-);
+var options = CompileOptions.DEFAULT.withImporters(List.of(importer));
 ```
 
 A canonical URL must be absolute and stable. It is the identity used for
@@ -631,10 +619,7 @@ import org.glavo.sassfx.SassNodePackageImporter;
 import java.nio.file.Path;
 import java.util.List;
 
-var options = new CompileOptions(
-        false,
-        List.of(),
-        null,
+var options = CompileOptions.DEFAULT.withImporters(
         List.of(new SassNodePackageImporter(Path.of(".")))
 );
 ```
@@ -674,13 +659,7 @@ var pow = new SassCustomFunction(
         ))
 );
 
-var options = new CompileOptions(
-        false,
-        List.of(),
-        null,
-        List.of(),
-        List.of(pow)
-);
+var options = CompileOptions.DEFAULT.withFunctions(List.of(pow));
 ```
 
 A rest parameter is passed as the final `SassValueType.ARGUMENT_LIST` value.
@@ -725,7 +704,6 @@ import org.glavo.sassfx.CompileOptions;
 import org.glavo.sassfx.SassDeprecation;
 import org.glavo.sassfx.SassDiagnosticOptions;
 
-import java.util.List;
 import java.util.Set;
 
 var diagnostics = new SassDiagnosticOptions(
@@ -737,14 +715,7 @@ var diagnostics = new SassDiagnosticOptions(
         Set.of()
 );
 
-var options = new CompileOptions(
-        false,
-        List.of(),
-        null,
-        List.of(),
-        List.of(),
-        diagnostics
-);
+var options = CompileOptions.DEFAULT.withDiagnosticOptions(diagnostics);
 ```
 
 `quietDeps` applies to compiler warnings emitted by custom-importer and
@@ -788,7 +759,6 @@ import-only files, or directory indexes, and it does not access the network.
 
 ```java
 import org.glavo.sassfx.BssTarget;
-import org.glavo.sassfx.CompileOptions;
 import org.glavo.sassfx.JavaFXStylesheetResolver;
 import org.glavo.sassfx.JavaFXTarget;
 import org.glavo.sassfx.SassCompiler;
@@ -796,7 +766,6 @@ import org.glavo.sassfx.SassSource;
 import org.glavo.sassfx.Syntax;
 
 import java.net.URI;
-import java.util.List;
 import java.util.Map;
 
 Map<URI, String> styles = Map.of(
@@ -820,16 +789,16 @@ JavaFXStylesheetResolver resolver = (resource, baseUrl) -> {
             );
 };
 
-var options = new CompileOptions(false, List.of(), resolver);
 var source = SassSource.fromString(
         "@import url(\"memory:/theme.css\");",
         Syntax.SCSS,
         URI.create("memory:/entry.scss")
 );
+var target = new BssTarget(JavaFXTarget.JAVAFX27)
+        .withStylesheetResolver(resolver);
 var result = new SassCompiler().compile(
         source,
-        new BssTarget(JavaFXTarget.JAVAFX27),
-        options
+        target
 );
 ```
 

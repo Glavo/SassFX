@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-package org.glavo.sassfx;
+package org.glavo.sassfx.internal.node;
 
+import org.glavo.sassfx.SassCanonicalizeContext;
+import org.glavo.sassfx.SassImporterResult;
+import org.glavo.sassfx.Syntax;
 import org.glavo.sassfx.internal.module.FilesystemImporter;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -18,15 +22,17 @@ import java.util.Objects;
 ///
 /// Instances retain only the normalized fallback lookup directory. Package
 /// manifests and stylesheet files are read for each operation.
+@ApiStatus.Internal
 @NotNullByDefault
-final class NodePackageResolver {
+public final class NodePackageResolver {
     /// The absolute base used when a request has no file containing URL.
     private final Path entryPointDirectory;
 
     /// Creates a resolver rooted at one entry-point directory.
     ///
     /// @param entryPointDirectory the fallback directory for package lookup
-    NodePackageResolver(Path entryPointDirectory) {
+    /// @throws NullPointerException if `entryPointDirectory` is `null`
+    public NodePackageResolver(Path entryPointDirectory) {
         this.entryPointDirectory = Objects.requireNonNull(
                 entryPointDirectory,
                 "entryPointDirectory"
@@ -36,7 +42,7 @@ final class NodePackageResolver {
     /// Returns the fallback package lookup directory.
     ///
     /// @return the absolute normalized entry-point directory
-    Path entryPointDirectory() {
+    public Path entryPointDirectory() {
         return entryPointDirectory;
     }
 
@@ -47,7 +53,8 @@ final class NodePackageResolver {
     /// @param context contextual information about the load
     /// @return an absolute canonical file URL, or `null` when unresolved
     /// @throws IOException if package metadata or the filesystem cannot be read
-    @Nullable URI canonicalize(
+    /// @throws NullPointerException if `url` or `context` is `null`
+    public @Nullable URI canonicalize(
             URI url,
             SassCanonicalizeContext context
     ) throws IOException {
@@ -140,7 +147,8 @@ final class NodePackageResolver {
     /// @return the decoded stylesheet and its file URL for source maps
     /// @throws IOException if the file cannot be read
     /// @throws IllegalArgumentException if the URL is not a plain file URL
-    SassImporterResult load(URI canonicalUrl) throws IOException {
+    /// @throws NullPointerException if `canonicalUrl` is `null`
+    public SassImporterResult load(URI canonicalUrl) throws IOException {
         Objects.requireNonNull(canonicalUrl, "canonicalUrl");
         var path = NodePackagePath.filePath(canonicalUrl);
         var syntax = Syntax.forPath(path);

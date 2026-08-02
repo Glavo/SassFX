@@ -6,13 +6,13 @@ import org.jetbrains.annotations.Nullable;
 
 import java.net.URI;
 
-/// Describes the load that caused a [SassImporter] canonicalization request.
+/// Describes the load that caused a contents-importer canonicalization request.
 ///
 /// Reading [#containingUrl()] during
-/// [SassImporter#canonicalize(URI, SassCanonicalizeContext)] records that the
-/// importer used the containing
-/// stylesheet identity. The compiler will not reuse that canonicalization
-/// result for a request originating from another containing stylesheet.
+/// [SassContentsImporter#canonicalize(URI, SassCanonicalizeContext)] records
+/// that the importer used the containing stylesheet identity. The compiler
+/// will not reuse that canonicalization result for a request originating from
+/// another containing stylesheet.
 @NotNullByDefault
 public final class SassCanonicalizeContext {
     /// Contains the canonical URL of the containing stylesheet, or

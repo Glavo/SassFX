@@ -158,7 +158,7 @@ final class UseModuleTest {
         var result = new SassCompiler().compile(
                 SassSource.fromFile(directory.resolve("main.scss")),
                 CssTarget.DEFAULT,
-                new CompileOptions(false, List.of(lib))
+                CompileOptions.DEFAULT.withLoadPaths(List.of(lib))
         );
         assertEquals(
                 """
@@ -280,4 +280,3 @@ final class UseModuleTest {
         );
     }
 }
-

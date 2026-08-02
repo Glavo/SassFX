@@ -19,7 +19,6 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -66,8 +65,9 @@ final class JavaFXStylesheetResolverTest {
                         Syntax.SCSS,
                         rootUrl
                 ),
-                new BssTarget(JavaFXTarget.JAVAFX27),
-                new CompileOptions(false, List.of(), resolver)
+                new BssTarget(JavaFXTarget.JAVAFX27)
+                        .withStylesheetResolver(resolver),
+                CompileOptions.DEFAULT
         );
         var binaryText = new String(
                 remainingBytes(result.output()),
@@ -110,8 +110,9 @@ final class JavaFXStylesheetResolverTest {
                         "@import url(\"memory:/theme\");",
                         Syntax.SCSS
                 ),
-                new BssTarget(JavaFXTarget.JAVAFX17),
-                new CompileOptions(false, List.of(), resolver)
+                new BssTarget(JavaFXTarget.JAVAFX17)
+                        .withStylesheetResolver(resolver),
+                CompileOptions.DEFAULT
         );
 
         assertEquals(1, calls.get());
@@ -142,8 +143,9 @@ final class JavaFXStylesheetResolverTest {
                                 """,
                         Syntax.SCSS
                 ),
-                new BssTarget(JavaFXTarget.JAVAFX17),
-                new CompileOptions(false, List.of(), resolver)
+                new BssTarget(JavaFXTarget.JAVAFX17)
+                        .withStylesheetResolver(resolver),
+                CompileOptions.DEFAULT
         );
 
         assertEquals(2, calls.get());
@@ -167,8 +169,9 @@ final class JavaFXStylesheetResolverTest {
                         "@import \"theme.css\"; RootPane { -fx-opacity: 1; }",
                         Syntax.SCSS
                 ),
-                new BssTarget(JavaFXTarget.JAVAFX17),
-                new CompileOptions(false, List.of(directory), resolver)
+                new BssTarget(JavaFXTarget.JAVAFX17)
+                        .withStylesheetResolver(resolver),
+                CompileOptions.DEFAULT.withLoadPaths(List.of(directory))
         );
         var binaryText = new String(
                 remainingBytes(result.output()),
@@ -197,8 +200,9 @@ final class JavaFXStylesheetResolverTest {
                                 Syntax.SCSS,
                                 rootUrl
                         ),
-                        new BssTarget(JavaFXTarget.JAVAFX27),
-                        new CompileOptions(false, List.of(), resolver)
+                        new BssTarget(JavaFXTarget.JAVAFX27)
+                                .withStylesheetResolver(resolver),
+                        CompileOptions.DEFAULT
                 )
         );
 
@@ -229,8 +233,9 @@ final class JavaFXStylesheetResolverTest {
                                 Syntax.SCSS,
                                 rootUrl
                         ),
-                        new BssTarget(JavaFXTarget.JAVAFX27),
-                        new CompileOptions(false, List.of(), resolver)
+                        new BssTarget(JavaFXTarget.JAVAFX27)
+                                .withStylesheetResolver(resolver),
+                        CompileOptions.DEFAULT
                 )
         );
 
@@ -239,39 +244,6 @@ final class JavaFXStylesheetResolverTest {
                 failure.getMessage()
         );
         assertEquals(themeUrl, failure.primaryDiagnostic().span().url());
-    }
-
-    /// Does not resolve imports retained in textual JavaFX CSS output.
-    @Test
-    void doesNotResolveTextualJavaFXCssImports() throws Exception {
-        var calls = new AtomicInteger();
-        JavaFXStylesheetResolver resolver = (resource, baseUrl) -> {
-            calls.incrementAndGet();
-            return new JavaFXStylesheetResolver.ResolvedStylesheet(
-                    URI.create("memory:/unused.css"),
-                    "UnusedPane { -fx-opacity: 0; }"
-            );
-        };
-
-        var result = new SassCompiler().compile(
-                SassSource.fromString(
-                        """
-                                @import "theme.css" (prefers-color-scheme: dark);
-                                RootPane { -fx-opacity: 1; }
-                                """,
-                        Syntax.SCSS,
-                        URI.create("memory:/root.scss")
-                ),
-                new JavaFXCssTarget(
-                        JavaFXTarget.JAVAFX27,
-                        OutputStyle.COMPRESSED
-                ),
-                new CompileOptions(false, List.of(), resolver)
-        );
-
-        assertEquals(0, calls.get());
-        assertTrue(result.output().contains("@import"));
-        assertFalse(result.output().contains("UnusedPane"));
     }
 
     /// Rejects a non-absolute canonical stylesheet URL.

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package org.glavo.sassfx;
 
+import org.glavo.sassfx.internal.node.NodePackageResolver;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -22,7 +23,7 @@ import java.util.Objects;
 /// manifests and stylesheet files are read for each canonicalization or load;
 /// one compiler invocation still applies its normal canonical-URL load cache.
 @NotNullByDefault
-public final class SassNodePackageImporter implements SassImporter {
+public final class SassNodePackageImporter implements SassContentsImporter {
     /// Resolves package metadata and stylesheet paths.
     private final NodePackageResolver resolver;
 

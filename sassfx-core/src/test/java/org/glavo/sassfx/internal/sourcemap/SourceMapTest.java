@@ -8,6 +8,7 @@ import org.glavo.sassfx.JavaFXCssTarget;
 import org.glavo.sassfx.OutputStyle;
 import org.glavo.sassfx.SassCompiler;
 import org.glavo.sassfx.SassCanonicalizeContext;
+import org.glavo.sassfx.SassContentsImporter;
 import org.glavo.sassfx.SassDiagnosticOptions;
 import org.glavo.sassfx.SassImporter;
 import org.glavo.sassfx.SassImporterResult;
@@ -54,7 +55,7 @@ final class SourceMapTest {
                         Syntax.SCSS
                 ),
                 CssTarget.DEFAULT,
-                new CompileOptions(true, List.of())
+                CompileOptions.DEFAULT.withSourceMap(true)
         );
         assertEquals(
                 """
@@ -87,7 +88,7 @@ final class SourceMapTest {
                         Syntax.SCSS
                 ),
                 CssTarget.DEFAULT,
-                new CompileOptions(true, List.of())
+                CompileOptions.DEFAULT.withSourceMap(true)
         );
         assertEquals(
                 """
@@ -121,7 +122,7 @@ final class SourceMapTest {
                         JavaFXTarget.JAVAFX27,
                         OutputStyle.COMPRESSED
                 ),
-                new CompileOptions(true, List.of())
+                CompileOptions.DEFAULT.withSourceMap(true)
         );
 
         assertEquals(
@@ -140,7 +141,7 @@ final class SourceMapTest {
     @Test
     void mapsAfterCharsetPrefixes() throws Exception {
         var compiler = new SassCompiler();
-        var options = new CompileOptions(true, List.of());
+        var options = CompileOptions.DEFAULT.withSourceMap(true);
         var expanded = compiler.compile(
                 SassSource.fromString("a { content: \"你好\"; }", Syntax.SCSS),
                 new CssTarget(OutputStyle.EXPANDED, true),
@@ -188,7 +189,7 @@ final class SourceMapTest {
         var result = new SassCompiler().compile(
                 SassSource.fromFile(directory.resolve("main.scss")),
                 CssTarget.DEFAULT,
-                new CompileOptions(true, List.of())
+                CompileOptions.DEFAULT.withSourceMap(true)
         );
         var map = result.sourceMap();
         assertNotNull(map);
@@ -206,7 +207,7 @@ final class SourceMapTest {
     @Test
     void embedsLoadedSourceContents(@TempDir Path directory) throws Exception {
         var displayUrl = directory.resolve("never-created.scss").toUri();
-        SassImporter importer = new SassImporter() {
+        SassContentsImporter importer = new SassContentsImporter() {
             /// Canonicalizes the test module.
             @Override
             public URI canonicalize(
@@ -226,15 +227,10 @@ final class SourceMapTest {
                 );
             }
         };
-        var options = new CompileOptions(
-                true,
-                List.of(),
-                null,
-                List.of(importer),
-                List.of(),
-                SassDiagnosticOptions.DEFAULT,
-                true
-        );
+        var options = CompileOptions.DEFAULT
+                .withSourceMap(true)
+                .withImporters(List.of(importer))
+                .withSourceMapIncludeSources(true);
         var result = new SassCompiler().compile(
                 SassSource.fromString(
                         "@use \"module\";\n.root { value: naïve; }",
@@ -266,7 +262,7 @@ final class SourceMapTest {
         var result = new SassCompiler().compile(
                 SassSource.fromString(".a { value: one; }", Syntax.SCSS),
                 CssTarget.DEFAULT,
-                new CompileOptions(true, List.of())
+                CompileOptions.DEFAULT.withSourceMap(true)
         );
 
         var map = result.sourceMap();
@@ -285,7 +281,7 @@ final class SourceMapTest {
         var withMap = new SassCompiler().compile(
                 SassSource.fromString(source, Syntax.SCSS),
                 CssTarget.DEFAULT,
-                new CompileOptions(true, List.of())
+                CompileOptions.DEFAULT.withSourceMap(true)
         );
         var withoutMap = new SassCompiler().compile(
                 SassSource.fromString(source, Syntax.SCSS),

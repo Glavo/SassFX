@@ -162,13 +162,7 @@ final class SassValueApiTest {
                         URI.create("memory:///function-value.scss")
                 ),
                 CssTarget.DEFAULT,
-                new CompileOptions(
-                        false,
-                        List.of(),
-                        null,
-                        List.of(),
-                        List.of(factory)
-                )
+                CompileOptions.DEFAULT.withFunctions(List.of(factory))
         ).output();
 
         assertEquals(

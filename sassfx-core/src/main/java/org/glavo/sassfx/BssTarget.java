@@ -2,6 +2,7 @@
 package org.glavo.sassfx;
 
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.nio.ByteBuffer;
@@ -17,9 +18,11 @@ import java.util.Objects;
 ///
 /// Media rules are encoded for JavaFX 25 and later. Retained filesystem
 /// `@import` rules are resolved relative to the source containing the import,
-/// with [CompileOptions#loadPaths()] used as fallback roots. JavaFX 8 through
-/// 26 flatten unconditional imported rules before local rules; JavaFX 27
-/// embeds each resolved direct import and its media condition in BSS v9.
+/// with [CompileOptions#loadPaths()] used as fallback roots. An optional
+/// [JavaFXStylesheetResolver] may resolve application-defined resource schemes
+/// before filesystem lookup. JavaFX 8 through 26 flatten unconditional
+/// imported rules before local rules; JavaFX 27 embeds each resolved direct
+/// import and its media condition in BSS v9.
 /// Imported font faces do not propagate into the importing stylesheet, matching
 /// JavaFX stylesheet merging. Non-file URI schemes are not loaded implicitly.
 /// Transition declarations are rejected even for JavaFX 23 and later because
@@ -27,13 +30,29 @@ import java.util.Objects;
 /// from BSS.
 ///
 /// @param javaFXTarget the JavaFX release target that determines the BSS version
+/// @param stylesheetResolver the resolver consulted before filesystem lookup,
+///                           or {@code null}
 @NotNullByDefault
-public record BssTarget(JavaFXTarget javaFXTarget)
+public record BssTarget(
+        JavaFXTarget javaFXTarget,
+        @Nullable JavaFXStylesheetResolver stylesheetResolver
+)
         implements OutputTarget<@Unmodifiable ByteBuffer> {
     /// The default target compatible with JavaFX 17 BSS version 6.
-    public static final BssTarget DEFAULT = new BssTarget(JavaFXTarget.JAVAFX17);
+    public static final BssTarget DEFAULT =
+            new BssTarget(JavaFXTarget.JAVAFX17, null);
+
+    /// Creates a binary stylesheet target using filesystem import resolution.
+    ///
+    /// @param javaFXTarget the JavaFX release target
+    /// @throws NullPointerException if `javaFXTarget` is `null`
+    public BssTarget(JavaFXTarget javaFXTarget) {
+        this(javaFXTarget, null);
+    }
 
     /// Creates a binary stylesheet output target.
+    ///
+    /// @throws NullPointerException if `javaFXTarget` is `null`
     public BssTarget {
         Objects.requireNonNull(javaFXTarget, "javaFXTarget");
     }
@@ -43,5 +62,17 @@ public record BssTarget(JavaFXTarget javaFXTarget)
     /// @return a value from `5` through `9`
     public int bssVersion() {
         return javaFXTarget.bssVersion();
+    }
+
+    /// Returns a target using the supplied retained-stylesheet resolver.
+    ///
+    /// Passing {@code null} restores filesystem-only resolution.
+    ///
+    /// @param stylesheetResolver the resolver, or {@code null}
+    /// @return the derived target
+    public BssTarget withStylesheetResolver(
+            @Nullable JavaFXStylesheetResolver stylesheetResolver
+    ) {
+        return new BssTarget(javaFXTarget, stylesheetResolver);
     }
 }

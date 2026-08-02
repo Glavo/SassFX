@@ -2,6 +2,7 @@
 package org.glavo.sassfx.internal.module;
 
 import org.glavo.sassfx.SassCanonicalizeContext;
+import org.glavo.sassfx.SassContentsImporter;
 import org.glavo.sassfx.SassDeprecation;
 import org.glavo.sassfx.SassFileImporter;
 import org.glavo.sassfx.SassImporter;
@@ -175,7 +176,8 @@ public final class SassImportResolver {
         for (var importer : importers) {
             var passContainingUrl = baseUrl != null
                     && (!requestedUrl.isAbsolute()
-                    || importer.isNonCanonicalScheme(
+                    || importer instanceof SassContentsImporter contentsImporter
+                    && contentsImporter.isNonCanonicalScheme(
                             Objects.requireNonNullElse(
                                     requestedUrl.getScheme(),
                                     ""
@@ -286,7 +288,7 @@ public final class SassImportResolver {
                                 context
                         )
                         : canonicalizeContentsImporter(
-                                importer,
+                                (SassContentsImporter) importer,
                                 requestedUrl,
                                 context
                         );
@@ -352,7 +354,7 @@ public final class SassImportResolver {
     /// @return the canonicalized import, or {@code null}
     /// @throws IOException if the importer fails
     private static @Nullable CanonicalizedImport canonicalizeContentsImporter(
-            SassImporter importer,
+            SassContentsImporter importer,
             URI requestedUrl,
             SassCanonicalizeContext context
     ) throws IOException {
@@ -413,8 +415,9 @@ public final class SassImportResolver {
             return loaded;
         }
 
+        var contentsImporter = (SassContentsImporter) importer;
         @Nullable SassImporterResult importerResult =
-                importer.load(canonicalUrl);
+                contentsImporter.load(canonicalUrl);
         if (importerResult == null) {
             throw new IllegalStateException("Can't find stylesheet to import.");
         }

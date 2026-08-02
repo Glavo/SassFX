@@ -190,13 +190,9 @@ final class SassCustomFunctionTest {
                         arguments.get(0).numberValue() + 1
                 )
         );
-        var options = new CompileOptions(
-                false,
-                List.of(directory),
-                null,
-                List.of(),
-                List.of(function)
-        );
+        var options = CompileOptions.DEFAULT
+                .withLoadPaths(List.of(directory))
+                .withFunctions(List.of(function));
 
         assertEquals(
                 """
@@ -318,13 +314,7 @@ final class SassCustomFunctionTest {
                 arguments -> SassValue.number(1)
         );
         var functions = new ArrayList<SassCustomFunction>(List.of(function));
-        var options = new CompileOptions(
-                false,
-                List.of(),
-                null,
-                List.of(),
-                functions
-        );
+        var options = CompileOptions.DEFAULT.withFunctions(functions);
         functions.clear();
 
         assertEquals(List.of(function), options.functions());
@@ -399,12 +389,6 @@ final class SassCustomFunctionTest {
 
     /// Creates compile options containing only custom functions.
     private static CompileOptions options(List<SassCustomFunction> functions) {
-        return new CompileOptions(
-                false,
-                List.of(),
-                null,
-                List.of(),
-                functions
-        );
+        return CompileOptions.DEFAULT.withFunctions(functions);
     }
 }

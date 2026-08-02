@@ -7,7 +7,7 @@ import org.jetbrains.annotations.Nullable;
 import java.net.URI;
 import java.util.Objects;
 
-/// Contains source text returned by a [SassImporter].
+/// Contains source text returned by a [SassContentsImporter].
 ///
 /// @param contents the complete stylesheet text
 /// @param syntax the syntax used to parse the stylesheet

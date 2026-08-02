@@ -15,6 +15,28 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 /// Verifies structured compilation diagnostics.
 @NotNullByDefault
 final class DiagnosticTest {
+    /// Exposes stable compiler error identifiers independently of messages.
+    @Test
+    void exposesStructuredCompilerCode() {
+        var failure = assertThrows(
+                SassCompilationException.class,
+                () -> new SassCompiler().compile(
+                        SassSource.fromString(
+                                """
+                                          b: c
+                                        """,
+                                Syntax.SASS
+                        ),
+                        CssTarget.DEFAULT
+                )
+        );
+
+        assertEquals(
+                "INDENTED_NESTING_WITHOUT_HEADER",
+                failure.primaryDiagnostic().code()
+        );
+    }
+
     /// Verifies exception message, cause, ordering, and defensive copying.
     @Test
     void preservesStructuredDiagnostics() {

@@ -14,13 +14,12 @@ import java.net.URI;
 /// absolute {@code file:} URLs bypass
 /// [#findFileUrl(URI, SassCanonicalizeContext)] and are resolved directly.
 ///
-/// This interface extends [SassImporter] so file importers and contents
-/// importers can be stored in one ordered [CompileOptions#importers()] list.
-/// The compiler recognizes this subtype and does not invoke the inherited
-/// canonicalize or load methods.
+/// File importers and [SassContentsImporter] instances share one ordered
+/// [CompileOptions#importers()] list, but expose disjoint operations so an
+/// implementation never needs placeholder methods that cannot be called.
 @FunctionalInterface
 @NotNullByDefault
-public interface SassFileImporter extends SassImporter {
+public non-sealed interface SassFileImporter extends SassImporter {
     /// Finds the filesystem location corresponding to a Sass URL.
     ///
     /// The returned URL must be absolute, use the {@code file} scheme, and
@@ -37,31 +36,4 @@ public interface SassFileImporter extends SassImporter {
             SassCanonicalizeContext context
     ) throws IOException;
 
-    /// Is not called for file importers.
-    ///
-    /// @param url the unused requested URL
-    /// @param context the unused canonicalization context
-    /// @return this method does not return normally
-    /// @throws UnsupportedOperationException always
-    @Override
-    default @Nullable URI canonicalize(
-            URI url,
-            SassCanonicalizeContext context
-    ) {
-        throw new UnsupportedOperationException(
-                "SassFileImporter canonicalize is compiler-managed"
-        );
-    }
-
-    /// Is not called for file importers.
-    ///
-    /// @param canonicalUrl the unused canonical URL
-    /// @return this method does not return normally
-    /// @throws UnsupportedOperationException always
-    @Override
-    default @Nullable SassImporterResult load(URI canonicalUrl) {
-        throw new UnsupportedOperationException(
-                "SassFileImporter load is compiler-managed"
-        );
-    }
 }

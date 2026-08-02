@@ -2,7 +2,6 @@
 package org.glavo.sassfx;
 
 import org.jetbrains.annotations.NotNullByDefault;
-import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.nio.file.Path;
@@ -11,11 +10,12 @@ import java.util.Objects;
 
 /// Configures behavior shared by all compilation targets.
 ///
+/// [#DEFAULT] provides the standard policy. The `with` methods derive a new
+/// immutable option value while retaining every setting that is not changed.
+///
 /// @param sourceMap whether the compiler should generate source-map data
-/// @param loadPaths additional directories searched by the Sass importer and,
-///                  using exact filenames, by BSS retained-CSS import resolution
-/// @param javaFXStylesheetResolver the resolver consulted before default file
-///                                 lookup for BSS retained-CSS imports, or {@code null}
+/// @param loadPaths additional directories searched by Sass import resolution
+///                  and BSS retained-stylesheet fallback lookup
 /// @param importers custom Sass importers consulted in list order before
 ///                  filesystem load paths
 /// @param functions synchronous Java custom functions
@@ -26,7 +26,6 @@ import java.util.Objects;
 public record CompileOptions(
         boolean sourceMap,
         @Unmodifiable List<Path> loadPaths,
-        @Nullable JavaFXStylesheetResolver javaFXStylesheetResolver,
         @Unmodifiable List<SassImporter> importers,
         @Unmodifiable List<SassCustomFunction> functions,
         SassDiagnosticOptions diagnosticOptions,
@@ -37,133 +36,16 @@ public record CompileOptions(
             new CompileOptions(
                     false,
                     List.of(),
-                    null,
                     List.of(),
                     List.of(),
                     SassDiagnosticOptions.DEFAULT,
                     false
             );
 
-    /// Creates options without a custom JavaFX stylesheet resolver.
-    ///
-    /// @param sourceMap whether the compiler should generate source-map data
-    /// @param loadPaths additional stylesheet search directories
-    public CompileOptions(
-            boolean sourceMap,
-            @Unmodifiable List<Path> loadPaths
-    ) {
-        this(
-                sourceMap,
-                loadPaths,
-                null,
-                List.of(),
-                List.of(),
-                SassDiagnosticOptions.DEFAULT,
-                false
-        );
-    }
-
-    /// Creates options without custom Sass importers.
-    ///
-    /// @param sourceMap whether the compiler should generate source-map data
-    /// @param loadPaths additional stylesheet search directories
-    /// @param javaFXStylesheetResolver the BSS retained-CSS resolver, or
-    ///                                 {@code null}
-    public CompileOptions(
-            boolean sourceMap,
-            @Unmodifiable List<Path> loadPaths,
-            @Nullable JavaFXStylesheetResolver javaFXStylesheetResolver
-    ) {
-        this(
-                sourceMap,
-                loadPaths,
-                javaFXStylesheetResolver,
-                List.of(),
-                List.of(),
-                SassDiagnosticOptions.DEFAULT,
-                false
-        );
-    }
-
-    /// Creates options without custom functions.
-    ///
-    /// @param sourceMap whether the compiler should generate source-map data
-    /// @param loadPaths additional stylesheet search directories
-    /// @param javaFXStylesheetResolver the BSS retained-CSS resolver, or
-    ///                                 {@code null}
-    /// @param importers custom Sass importers in precedence order
-    public CompileOptions(
-            boolean sourceMap,
-            @Unmodifiable List<Path> loadPaths,
-            @Nullable JavaFXStylesheetResolver javaFXStylesheetResolver,
-            @Unmodifiable List<SassImporter> importers
-    ) {
-        this(
-                sourceMap,
-                loadPaths,
-                javaFXStylesheetResolver,
-                importers,
-                List.of(),
-                SassDiagnosticOptions.DEFAULT,
-                false
-        );
-    }
-
-    /// Creates options with default diagnostic processing.
-    ///
-    /// @param sourceMap whether the compiler should generate source-map data
-    /// @param loadPaths additional stylesheet search directories
-    /// @param javaFXStylesheetResolver the BSS retained-CSS resolver, or
-    ///                                 {@code null}
-    /// @param importers custom Sass importers in precedence order
-    /// @param functions synchronous Java custom functions
-    public CompileOptions(
-            boolean sourceMap,
-            @Unmodifiable List<Path> loadPaths,
-            @Nullable JavaFXStylesheetResolver javaFXStylesheetResolver,
-            @Unmodifiable List<SassImporter> importers,
-            @Unmodifiable List<SassCustomFunction> functions
-    ) {
-        this(
-                sourceMap,
-                loadPaths,
-                javaFXStylesheetResolver,
-                importers,
-                functions,
-                SassDiagnosticOptions.DEFAULT,
-                false
-        );
-    }
-
-    /// Creates options without embedded source contents in generated maps.
-    ///
-    /// @param sourceMap whether the compiler should generate source-map data
-    /// @param loadPaths additional stylesheet search directories
-    /// @param javaFXStylesheetResolver the BSS retained-CSS resolver, or
-    ///                                 {@code null}
-    /// @param importers custom Sass importers in precedence order
-    /// @param functions synchronous Java custom functions
-    /// @param diagnosticOptions logger and deprecation processing configuration
-    public CompileOptions(
-            boolean sourceMap,
-            @Unmodifiable List<Path> loadPaths,
-            @Nullable JavaFXStylesheetResolver javaFXStylesheetResolver,
-            @Unmodifiable List<SassImporter> importers,
-            @Unmodifiable List<SassCustomFunction> functions,
-            SassDiagnosticOptions diagnosticOptions
-    ) {
-        this(
-                sourceMap,
-                loadPaths,
-                javaFXStylesheetResolver,
-                importers,
-                functions,
-                diagnosticOptions,
-                false
-        );
-    }
-
     /// Creates compile options with immutable snapshots of ordered collections.
+    ///
+    /// @throws NullPointerException if a collection, one of its elements, or
+    ///                               `diagnosticOptions` is `null`
     public CompileOptions {
         Objects.requireNonNull(loadPaths, "loadPaths");
         Objects.requireNonNull(importers, "importers");
@@ -172,5 +54,111 @@ public record CompileOptions(
         loadPaths = List.copyOf(loadPaths);
         importers = List.copyOf(importers);
         functions = List.copyOf(functions);
+    }
+
+    /// Returns options with source-map generation enabled or disabled.
+    ///
+    /// @param sourceMap whether source-map data is generated
+    /// @return the derived options
+    public CompileOptions withSourceMap(boolean sourceMap) {
+        return new CompileOptions(
+                sourceMap,
+                loadPaths,
+                importers,
+                functions,
+                diagnosticOptions,
+                sourceMapIncludeSources
+        );
+    }
+
+    /// Returns options with a snapshot of the supplied load paths.
+    ///
+    /// @param loadPaths additional stylesheet search directories
+    /// @return the derived options
+    /// @throws NullPointerException if the list or one of its elements is `null`
+    public CompileOptions withLoadPaths(
+            @Unmodifiable List<? extends Path> loadPaths
+    ) {
+        return new CompileOptions(
+                sourceMap,
+                List.copyOf(loadPaths),
+                importers,
+                functions,
+                diagnosticOptions,
+                sourceMapIncludeSources
+        );
+    }
+
+    /// Returns options with a snapshot of the supplied importers.
+    ///
+    /// @param importers custom importers in precedence order
+    /// @return the derived options
+    /// @throws NullPointerException if the list or one of its elements is `null`
+    public CompileOptions withImporters(
+            @Unmodifiable List<? extends SassImporter> importers
+    ) {
+        return new CompileOptions(
+                sourceMap,
+                loadPaths,
+                List.copyOf(importers),
+                functions,
+                diagnosticOptions,
+                sourceMapIncludeSources
+        );
+    }
+
+    /// Returns options with a snapshot of the supplied custom functions.
+    ///
+    /// @param functions synchronous Java custom functions
+    /// @return the derived options
+    /// @throws NullPointerException if the list or one of its elements is `null`
+    public CompileOptions withFunctions(
+            @Unmodifiable List<? extends SassCustomFunction> functions
+    ) {
+        return new CompileOptions(
+                sourceMap,
+                loadPaths,
+                importers,
+                List.copyOf(functions),
+                diagnosticOptions,
+                sourceMapIncludeSources
+        );
+    }
+
+    /// Returns options with the supplied diagnostic policy.
+    ///
+    /// @param diagnosticOptions logger and deprecation processing configuration
+    /// @return the derived options
+    /// @throws NullPointerException if `diagnosticOptions` is `null`
+    public CompileOptions withDiagnosticOptions(
+            SassDiagnosticOptions diagnosticOptions
+    ) {
+        return new CompileOptions(
+                sourceMap,
+                loadPaths,
+                importers,
+                functions,
+                diagnosticOptions,
+                sourceMapIncludeSources
+        );
+    }
+
+    /// Returns options that include or omit source contents in generated maps.
+    ///
+    /// This setting has no effect when [#sourceMap()] is false.
+    ///
+    /// @param sourceMapIncludeSources whether source contents are embedded
+    /// @return the derived options
+    public CompileOptions withSourceMapIncludeSources(
+            boolean sourceMapIncludeSources
+    ) {
+        return new CompileOptions(
+                sourceMap,
+                loadPaths,
+                importers,
+                functions,
+                diagnosticOptions,
+                sourceMapIncludeSources
+        );
     }
 }

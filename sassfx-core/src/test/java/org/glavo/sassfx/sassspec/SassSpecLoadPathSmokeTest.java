@@ -54,7 +54,7 @@ final class SassSpecLoadPathSmokeTest {
         var result = new SassCompiler().compile(
                 SassSource.fromFile(input),
                 CssTarget.DEFAULT,
-                new CompileOptions(false, List.of(suiteRoot))
+                CompileOptions.DEFAULT.withLoadPaths(List.of(suiteRoot))
         );
         assertEquals(
                 """

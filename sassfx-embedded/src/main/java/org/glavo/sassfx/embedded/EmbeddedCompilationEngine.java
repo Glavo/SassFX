@@ -191,15 +191,14 @@ final class EmbeddedCompilationEngine {
                             request.getAlertAscii()
                     )
             );
-            var options = new CompileOptions(
-                    request.getSourceMap(),
-                    List.of(),
-                    null,
-                    importers,
-                    functions,
-                    diagnosticOptions,
-                    request.getSourceMapIncludeSources()
-            );
+            var options = CompileOptions.DEFAULT
+                    .withSourceMap(request.getSourceMap())
+                    .withImporters(importers)
+                    .withFunctions(functions)
+                    .withDiagnosticOptions(diagnosticOptions)
+                    .withSourceMapIncludeSources(
+                            request.getSourceMapIncludeSources()
+                    );
             var target = new CssTarget(
                     request.getStyle()
                             == com.sass_lang.embedded_protocol.OutputStyle

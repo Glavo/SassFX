@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies end-to-end legacy Sass import behavior.
+/// Verifies legacy Sass imports across parsing, evaluation, and loading.
 @NotNullByDefault
 final class LegacyImportTest {
     /// Executes an imported partial in the caller's variable and callable scope.
@@ -39,7 +39,10 @@ final class LegacyImportTest {
                         """
         );
 
-        var result = new SassCompiler().compile(SassSource.fromFile(root), CssTarget.DEFAULT);
+        var result = new SassCompiler().compile(
+                SassSource.fromFile(root),
+                CssTarget.DEFAULT
+        );
 
         assertEquals(
                 """
@@ -120,7 +123,10 @@ final class LegacyImportTest {
                 "@import tokens\n"
         );
 
-        var result = new SassCompiler().compile(SassSource.fromFile(root), CssTarget.DEFAULT);
+        var result = new SassCompiler().compile(
+                SassSource.fromFile(root),
+                CssTarget.DEFAULT
+        );
 
         assertEquals(".token {\n  color: teal;\n}", result.output());
     }
@@ -147,7 +153,7 @@ final class LegacyImportTest {
         var result = new SassCompiler().compile(
                 SassSource.fromFile(root),
                 CssTarget.DEFAULT,
-                new CompileOptions(false, List.of(loadPath))
+                CompileOptions.DEFAULT.withLoadPaths(List.of(loadPath))
         );
 
         assertEquals(".shared {\n  color: purple;\n}", result.output());

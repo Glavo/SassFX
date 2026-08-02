@@ -34,7 +34,7 @@ final class UseInsideImportNamespaceTest {
         var css = new SassCompiler().compile(
                 SassSource.fromFile(directory.resolve("input.scss")),
                 CssTarget.DEFAULT,
-                new CompileOptions(false, List.of(directory))
+                CompileOptions.DEFAULT.withLoadPaths(List.of(directory))
         ).output().replace("\r\n", "\n");
         assertEquals(
                 """

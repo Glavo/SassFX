@@ -60,15 +60,21 @@ final class CompilationModelTest {
     @Test
     void snapshotsCompileOptions() {
         var paths = new ArrayList<>(List.of(Path.of("styles")));
+        List<SassFileImporter> importers = List.of((url, context) -> null);
         JavaFXStylesheetResolver resolver = (resource, baseUrl) -> null;
-        var options = new CompileOptions(true, paths, resolver);
+        var options = CompileOptions.DEFAULT
+                .withSourceMap(true)
+                .withLoadPaths(paths)
+                .withImporters(importers);
+        var target = BssTarget.DEFAULT.withStylesheetResolver(resolver);
         paths.clear();
 
         assertEquals(true, options.sourceMap());
         assertEquals(List.of(Path.of("styles")), options.loadPaths());
-        assertSame(resolver, options.javaFXStylesheetResolver());
+        assertEquals(importers, options.importers());
+        assertSame(resolver, target.stylesheetResolver());
         assertThrows(UnsupportedOperationException.class, () -> options.loadPaths().clear());
-        assertNull(new CompileOptions(false, List.of()).javaFXStylesheetResolver());
+        assertNull(BssTarget.DEFAULT.stylesheetResolver());
     }
 
     /// Verifies that compile results snapshot metadata collections.

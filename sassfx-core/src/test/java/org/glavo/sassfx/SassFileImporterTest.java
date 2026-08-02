@@ -293,12 +293,12 @@ final class SassFileImporterTest {
         return new SassCompiler().compile(
                 SassSource.fromString(source, Syntax.SCSS, rootUrl),
                 CssTarget.DEFAULT,
-                new CompileOptions(false, List.of(), null, importers)
+                CompileOptions.DEFAULT.withImporters(importers)
         );
     }
 
     /// Declines every request while recording its position in the chain.
-    private static class DecliningImporter implements SassImporter {
+    private static class DecliningImporter implements SassContentsImporter {
         /// The event label.
         private final String label;
 
