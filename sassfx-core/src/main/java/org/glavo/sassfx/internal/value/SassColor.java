@@ -1088,7 +1088,7 @@ public final class SassColor implements SassValue {
     /// @param other    the right operand
     /// @return the operation failure
     private SassValueException undefinedColorOperation(String operator, SassValue other) {
-        return new SassValueException(
+        return SassValueException.undefinedOperation(
                 "Undefined operation \"" + this + " " + operator + " " + other + "\"."
         );
     }

@@ -6,6 +6,7 @@ import org.glavo.sassfx.DiagnosticSeverity;
 import org.glavo.sassfx.SassStackFrame;
 import org.glavo.sassfx.SourceSpan;
 import org.glavo.sassfx.internal.diagnostic.DiagnosticCode;
+import org.glavo.sassfx.internal.value.SassValueException;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -60,7 +61,7 @@ public final class EvaluationException extends RuntimeException {
                         DiagnosticSeverity.ERROR,
                         Objects.requireNonNull(message, "message"),
                         span,
-                        classifyMessage(message).name()
+                        diagnosticCode(cause).name()
                 ),
                 relatedSpans,
                 List.of(new SassStackFrame("root stylesheet", span)),
@@ -68,13 +69,14 @@ public final class EvaluationException extends RuntimeException {
         );
     }
 
-    /// Maps a pre-rendered value-layer message onto a stable diagnostic code.
-    private static DiagnosticCode classifyMessage(String message) {
-        Objects.requireNonNull(message, "message");
-        if (message.startsWith("Undefined operation ")) {
-            return DiagnosticCode.UNDEFINED_OPERATION;
-        }
-        return DiagnosticCode.EVALUATION_ERROR;
+    /// Returns the structured category carried by an internal value failure.
+    ///
+    /// @param cause the underlying failure, or {@code null}
+    /// @return the propagated category, or the generic evaluation category
+    private static DiagnosticCode diagnosticCode(@Nullable Throwable cause) {
+        return cause instanceof SassValueException valueFailure
+                ? valueFailure.diagnosticCode()
+                : DiagnosticCode.EVALUATION_ERROR;
     }
 
     /// Creates an evaluation failure with explicit diagnostic and trace data.

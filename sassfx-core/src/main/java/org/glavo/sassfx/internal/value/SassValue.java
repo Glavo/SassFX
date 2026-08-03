@@ -408,7 +408,7 @@ public sealed interface SassValue permits
     /// @param other    the right operand
     /// @return the operation failure
     private SassValueException undefinedOperation(String operator, SassValue other) {
-        return new SassValueException(
+        return SassValueException.undefinedOperation(
                 "Undefined operation \"" + this + " " + operator + " " + other + "\"."
         );
     }

@@ -665,22 +665,28 @@ public final class SassCalculation implements SassValue {
 
     @Override
     public SassValue unaryPlus() {
-        throw new SassValueException("Undefined operation \"+" + this + "\".");
+        throw SassValueException.undefinedOperation(
+                "Undefined operation \"+" + this + "\"."
+        );
     }
 
     @Override
     public SassValue unaryMinus() {
-        throw new SassValueException("Undefined operation \"-" + this + "\".");
+        throw SassValueException.undefinedOperation(
+                "Undefined operation \"-" + this + "\"."
+        );
     }
 
     @Override
     public SassValue unaryDivide() {
-        throw new SassValueException("Undefined operation \"/" + this + "\".");
+        throw SassValueException.undefinedOperation(
+                "Undefined operation \"/" + this + "\"."
+        );
     }
 
     /// Creates an undefined binary operation failure for calculations.
     private SassValueException undefinedCalculationOperation(String operator, SassValue other) {
-        return new SassValueException(
+        return SassValueException.undefinedOperation(
                 "Undefined operation \"" + this + " " + operator + " " + other + "\"."
         );
     }
