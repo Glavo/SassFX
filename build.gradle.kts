@@ -2,6 +2,7 @@ import org.glavo.sassfx.build.VerifyModuleBoundariesTask
 import org.glavo.sassfx.build.VerifyReleaseVersionTask
 import org.gradle.api.publish.maven.tasks.PublishToMavenRepository
 import org.gradle.external.javadoc.StandardJavadocDocletOptions
+import java.util.Properties
 
 plugins {
     base
@@ -10,9 +11,16 @@ plugins {
 }
 
 group = "org.glavo"
+
+val versionProperties = Properties().apply {
+    file("gradle/version.properties").inputStream().use(::load)
+}
+val baseVersion = versionProperties.getProperty("sassfxVersion")
+    ?: error("gradle/version.properties must define sassfxVersion")
+
 version = providers.gradleProperty("sassfxVersion")
     .orElse(providers.environmentVariable("SASSFX_VERSION"))
-    .getOrElse("0.1.0-SNAPSHOT")
+    .getOrElse("$baseVersion-SNAPSHOT")
 description = "Pure Java Sass compiler with CSS, JavaFX CSS, and BSS backends."
 
 jreleaser {

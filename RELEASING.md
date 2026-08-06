@@ -18,8 +18,9 @@ OpenPGP key server before publication.
 
 ## Prepare a release
 
-Choose a stable semantic version and run the same verification used by the
-release workflow:
+Set `sassfxVersion` in `gradle/version.properties` to the stable semantic
+version being prepared. Ordinary builds append `-SNAPSHOT` to this base
+version. Then run the same verification used by the release workflow:
 
 ```shell
 ./gradlew --no-daemon \
