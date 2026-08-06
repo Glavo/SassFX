@@ -15,12 +15,12 @@ group = "org.glavo"
 val versionProperties = Properties().apply {
     file("gradle/version.properties").inputStream().use(::load)
 }
-val baseVersion = versionProperties.getProperty("sassfxVersion")
+val releaseBaseVersion = versionProperties.getProperty("sassfxVersion")
     ?: error("gradle/version.properties must define sassfxVersion")
 
 version = providers.gradleProperty("sassfxVersion")
     .orElse(providers.environmentVariable("SASSFX_VERSION"))
-    .getOrElse("$baseVersion-SNAPSHOT")
+    .getOrElse("$releaseBaseVersion-SNAPSHOT")
 description = "Pure Java Sass compiler with CSS, JavaFX CSS, and BSS backends."
 
 jreleaser {
@@ -38,6 +38,8 @@ val verifyReleaseVersion = tasks.register<VerifyReleaseVersionTask>(
     group = LifecycleBasePlugin.VERIFICATION_GROUP
     description = "Verifies that a release build uses a stable semantic version."
     releaseVersion.set(project.version.toString())
+    baseVersion.set(releaseBaseVersion)
+    changelogFile.set(layout.projectDirectory.file("CHANGELOG.md"))
 }
 
 val cleanStagingRepository = tasks.register<Delete>(

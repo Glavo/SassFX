@@ -1,6 +1,7 @@
 import org.glavo.sassfx.build.VerifyPluginJarTask
 import org.glavo.sassfx.build.VerifyPluginPublicationTask
 import org.gradle.api.publish.maven.MavenPublication
+import org.gradle.plugin.compatibility.compatibility
 
 plugins {
     id("com.gradle.plugin-publish")
@@ -31,6 +32,11 @@ gradlePlugin {
             displayName = "SassFX"
             description = "Compiles Sass to CSS, JavaFX CSS, or JavaFX BSS."
             tags = listOf("sass", "scss", "css", "javafx")
+            compatibility {
+                features {
+                    configurationCache = true
+                }
+            }
         }
     }
 }

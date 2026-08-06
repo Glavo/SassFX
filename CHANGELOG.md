@@ -2,7 +2,7 @@
 
 Notable user-visible changes to SassFX are recorded here.
 
-## 0.1.0 — Unreleased
+## 0.1.0 — 2026-08-07
 
 The initial release provides a pure Java 17 Sass implementation with library,
 command-line, Embedded Sass, and Gradle interfaces.

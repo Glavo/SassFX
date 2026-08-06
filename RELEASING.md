@@ -19,8 +19,10 @@ OpenPGP key server before publication.
 ## Prepare a release
 
 Set `sassfxVersion` in `gradle/version.properties` to the stable semantic
-version being prepared. Ordinary builds append `-SNAPSHOT` to this base
-version. Then run the same verification used by the release workflow:
+version being prepared, and replace `Unreleased` in that version's
+`CHANGELOG.md` heading with its ISO 8601 release date. Ordinary builds append
+`-SNAPSHOT` to the base version. Then run the same verification used by the
+release workflow:
 
 ```shell
 ./gradlew --no-daemon \
@@ -30,7 +32,9 @@ version. Then run the same verification used by the release workflow:
 ```
 
 Review `CHANGELOG.md`, confirm that the working tree contains the intended
-release state, and create a tag whose name is the version prefixed with `v`:
+release state, and create a tag whose name is the version prefixed with `v`.
+The release verification rejects a tag-derived version that differs from the
+base version or has no dated changelog heading:
 
 ```shell
 git tag v0.1.0

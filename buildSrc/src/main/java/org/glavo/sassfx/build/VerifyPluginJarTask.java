@@ -58,6 +58,16 @@ public abstract class VerifyPluginJarTask extends DefaultTask {
                                 + "implementation class."
                 );
             }
+            if (!descriptorText.contains(
+                    "compatibility.feature.configuration-cache=DECLARED_SUPPORTED"
+            )) {
+                throw new GradleException(
+                        "The Gradle plugin descriptor does not declare "
+                                + "Configuration Cache compatibility."
+                );
+            }
+
+            ArtifactNoticeVerifier.verify(jar, "The Gradle plugin JAR");
 
             @Unmodifiable List<String> requiredEntries = List.of(
                     "org/glavo/sassfx/gradle/SassFXPlugin.class",

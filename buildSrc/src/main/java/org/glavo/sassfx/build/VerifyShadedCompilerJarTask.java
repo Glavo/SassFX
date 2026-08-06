@@ -83,6 +83,8 @@ public abstract class VerifyShadedCompilerJarTask extends DefaultTask {
         List<String> forbiddenReferences = new ArrayList<>();
 
         try (JarFile jar = new JarFile(getArchiveFile().get().getAsFile())) {
+            ArtifactNoticeVerifier.verify(jar, artifact);
+
             @Nullable Manifest manifest = jar.getManifest();
             @Nullable String mainClass = manifest == null
                     ? null
