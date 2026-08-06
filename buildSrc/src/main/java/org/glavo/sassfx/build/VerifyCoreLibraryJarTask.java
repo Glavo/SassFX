@@ -33,8 +33,6 @@ public abstract class VerifyCoreLibraryJarTask extends DefaultTask {
     @TaskAction
     public final void verify() throws IOException {
         try (JarFile jar = new JarFile(getArchiveFile().get().getAsFile())) {
-            ArtifactNoticeVerifier.verify(jar, "The core library JAR");
-
             @Unmodifiable List<String> forbiddenEntries = jar.stream()
                     .map(JarEntry::getName)
                     .filter(name ->

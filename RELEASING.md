@@ -32,9 +32,7 @@ release workflow:
 ```
 
 Review `CHANGELOG.md`, confirm that the working tree contains the intended
-release state, and create a tag whose name is the version prefixed with `v`.
-The release verification rejects a tag-derived version that differs from the
-base version or has no dated changelog heading:
+release state, and create a tag whose name is the version prefixed with `v`:
 
 ```shell
 git tag v0.1.0
