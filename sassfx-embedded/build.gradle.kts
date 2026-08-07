@@ -95,7 +95,7 @@ publishing {
             artifact(tasks.named<Jar>("javadocJar"))
             pom {
                 name = "SassFX Embedded"
-                description = "Standalone Embedded Sass Protocol host implemented in Java."
+                description = "Standalone Embedded Sass Protocol compiler endpoint implemented in Java."
                 inceptionYear = "2026"
                 url = "https://github.com/Glavo/SassFX"
                 licenses {

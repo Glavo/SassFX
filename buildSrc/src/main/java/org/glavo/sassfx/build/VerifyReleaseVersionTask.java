@@ -21,8 +21,7 @@ public abstract class VerifyReleaseVersionTask extends DefaultTask {
     @TaskAction
     public final void verify() {
         String version = getReleaseVersion().get();
-        if (!version.matches("\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?")
-                || version.endsWith("-SNAPSHOT")) {
+        if (!version.matches("(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)")) {
             throw new GradleException(
                     "A release requires -PsassfxVersion=<stable semantic version>; "
                             + "received '" + version + "'."

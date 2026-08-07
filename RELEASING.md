@@ -53,7 +53,9 @@ Pushing a `v*.*.*` tag starts `.github/workflows/release.yml`. The workflow:
 
 JReleaser reuses the pushed tag and does not create or replace it. A failed
 workflow must be diagnosed before retrying; do not move a published release
-tag to different source content.
+tag to different source content. Maven Central and the Gradle Plugin Portal are
+published by independent jobs. If one succeeds and the other fails, rerun only
+the failed jobs so that an accepted version is not published again.
 
 Publication configuration does not imply that a particular version has
 already been released. Check Maven Central, the Gradle Plugin Portal, and the
